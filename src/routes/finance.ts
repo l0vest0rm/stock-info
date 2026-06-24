@@ -12,19 +12,19 @@ financeRoutes.get("/finance/sharechange", async (c) => {
   if (code instanceof Response) {
     return code;
   }
-  return ok(c, await fetchShareChange(code));
+  return ok(c, await fetchShareChange(c.env.DB, code));
 });
 
 financeRoutes.get("/finance/sharebonus", async (c) => {
   const code = requireQuery(c, "code");
   if (code instanceof Response) return code;
-  return ok(c, await fetchShareBonus(code));
+  return ok(c, await fetchShareBonus(c.env.DB, code));
 });
 
 financeRoutes.get("/finance/shareadditional", async (c) => {
   const code = requireQuery(c, "code");
   if (code instanceof Response) return code;
-  return ok(c, await fetchShareAdditional(code));
+  return ok(c, await fetchShareAdditional(c.env.DB, code));
 });
 
 financeRoutes.get("/finance/dividendyield", async (c) => ok(c, await fetchDividendYield(c.req.query("code") ?? "")));
@@ -32,7 +32,7 @@ financeRoutes.get("/finance/dividendyield", async (c) => ok(c, await fetchDivide
 financeRoutes.get("/finance/freeholders", async (c) => {
   const code = requireQuery(c, "code");
   if (code instanceof Response) return code;
-  return ok(c, await fetchFreeHolders(code));
+  return ok(c, await fetchFreeHolders(c.env.DB, code));
 });
 
 financeRoutes.get("/finance/orgholders", async (c) => {
@@ -40,14 +40,14 @@ financeRoutes.get("/finance/orgholders", async (c) => {
   if (code instanceof Response) return code;
   const reportDate = requireQuery(c, "reportDate");
   if (reportDate instanceof Response) return reportDate;
-  return ok(c, await fetchOrgHolders(code, reportDate));
+  return ok(c, await fetchOrgHolders(c.env.DB, code, reportDate));
 });
 
 financeRoutes.get("/company/restriction", async (c) => {
   const code = requireQuery(c, "code");
   if (code instanceof Response) return code;
   const normalized = normalizeSecurityCode(code);
-  const rows = await fetchEastmoneyDataRows("https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+  const rows = await fetchEastmoneyDataRows(c.env.DB, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPTA_APP_LIFTFUTURE",
     columns:
       "SECUCODE,SECURITY_CODE,LIFT_DATE,LIFT_NUM,TOTAL_SHARES_RATIO,UNLIMITED_A_SHARES_RATIO,LIFT_TYPE",
@@ -97,9 +97,9 @@ function trimDate(value: unknown): string {
   return typeof value === "string" ? value.slice(0, 10) : "";
 }
 
-async function fetchShareChange(code: string): Promise<Record<string, unknown>[]> {
+async function fetchShareChange(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
-  const rows = await fetchEastmoneyDataRows("https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+  const rows = await fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_EH_EQUITY",
     columns:
       "SECUCODE,SECURITY_CODE,END_DATE,TOTAL_SHARES,LIMITED_SHARES,LIMITED_OTHARS,LIMITED_DOMESTIC_NATURAL,LIMITED_STATE_LEGAL,UNLIMITED_SHARES,LISTED_A_SHARES,FREE_SHARES,LIMITED_A_SHARES,LIMITED_DOMESTIC_NOSTATE,CHANGE_REASON",
@@ -113,7 +113,7 @@ async function fetchShareChange(code: string): Promise<Record<string, unknown>[]
     client: "PC",
   });
   if (!rows.length) {
-    const overview = await fetchEastmoneyCompanyOverview(normalized);
+    const overview = await fetchEastmoneyCompanyOverview(db, normalized);
     const totalShares =
       overview.marketCapYi && overview.latestPrice && overview.latestPrice > 0
         ? (overview.marketCapYi * 100_000_000) / overview.latestPrice
@@ -142,9 +142,9 @@ async function fetchShareChange(code: string): Promise<Record<string, unknown>[]
   });
 }
 
-async function fetchShareBonus(code: string): Promise<Record<string, unknown>[]> {
+async function fetchShareBonus(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
-  const rows = await fetchEastmoneyDataRows("https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+  const rows = await fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_DIVIDEND_MAIN",
     columns:
       "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,IMPL_PLAN_PROFILE,ASSIGN_PROGRESS,EQUITY_RECORD_DATE,EX_DIVIDEND_DATE,PAY_CASH_DATE",
@@ -175,9 +175,9 @@ async function fetchShareBonus(code: string): Promise<Record<string, unknown>[]>
   return items;
 }
 
-async function fetchShareAdditional(code: string): Promise<Record<string, unknown>[]> {
+async function fetchShareAdditional(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
-  return fetchEastmoneyDataRows("https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+  return fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_DIVIDEND_SEO",
     columns:
       "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,ISSUE_NUM,NET_RAISE_FUNDS,ISSUE_PRICE,ISSUE_WAY_EXPLAIN,REG_DATE,LISTING_DATE,RECEIVE_DATE",
@@ -192,9 +192,9 @@ async function fetchShareAdditional(code: string): Promise<Record<string, unknow
   });
 }
 
-async function fetchFreeHolders(code: string): Promise<Record<string, unknown>[]> {
+async function fetchFreeHolders(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
-  return fetchEastmoneyDataRows("https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+  return fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_EH_FREEHOLDERS",
     columns:
       "SECUCODE,SECURITY_CODE,END_DATE,HOLDER_RANK,HOLDER_NAME,HOLDER_TYPE,SHARES_TYPE,HOLD_NUM,FREE_HOLDNUM_RATIO,HOLD_NUM_CHANGE,CHANGE_RATIO",
@@ -209,9 +209,9 @@ async function fetchFreeHolders(code: string): Promise<Record<string, unknown>[]
   });
 }
 
-async function fetchOrgHolders(code: string, reportDate: string): Promise<Record<string, unknown>[]> {
+async function fetchOrgHolders(db: D1Database, code: string, reportDate: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
-  return fetchEastmoneyDataRows("https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+  return fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_MAIN_ORGHOLDDETAIL",
     columns:
       "ORG_TYPE,SECUCODE,REPORT_DATE,HOLDER_CODE,HOLDER_NAME,TOTAL_SHARES,HOLD_VALUE,TOTALSHARES_RATIO,FREESHARES_RATIO,FREE_MARKET_CAP,FREE_SHARES,SECURITY_CODE,FUND_CODE,FUND_DERIVECODE,NETVALUE_RATIO",

@@ -1,5 +1,5 @@
 import { bareCode, eastmoneySecId, inferSecurityType, normalizeSecurityCode, securityMarket, securitySuffix } from "../shared/codes";
-import { fetchJson, fetchText, numberOrNull } from "../shared/http";
+import { cachedFetchJson, cachedFetchText, numberOrNull } from "../shared/http";
 import type { CompanyNotice, CompanyOverview, FinancialStatement, FundNavRow, KlineBar, SecurityRecord, StatementType } from "../types";
 
 type EastmoneySuggestResponse = {
@@ -105,15 +105,15 @@ type TencentKlineResponse = {
 
 const EASTMONEY_SUGGEST_TOKEN = "D43BF722C8E33BDC906FB84D85E326E8";
 
-export async function fetchEastmoneySuggest(q: string): Promise<SecurityRecord[]> {
+export async function fetchEastmoneySuggest(db: D1Database, q: string): Promise<SecurityRecord[]> {
   const url = new URL("https://searchadapter.eastmoney.com/api/suggest/get");
   url.searchParams.set("input", q);
   url.searchParams.set("type", "8");
   url.searchParams.set("token", EASTMONEY_SUGGEST_TOKEN);
   url.searchParams.set("count", "10");
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://www.eastmoney.com/" },
-  })) as EastmoneySuggestResponse;
+  }, 7 * 24 * 60 * 60 * 1000)) as EastmoneySuggestResponse;
   const now = Date.now();
   const records: SecurityRecord[] = [];
   for (const item of body.GubaCodeTable?.Data ?? []) {
@@ -136,6 +136,7 @@ export async function fetchEastmoneySuggest(q: string): Promise<SecurityRecord[]
 }
 
 export async function fetchEastmoneyStockKline(
+  db: D1Database,
   code: string,
   period: string,
   fq: string,
@@ -157,7 +158,7 @@ export async function fetchEastmoneyStockKline(
   url.searchParams.set("end", to.replaceAll("-", ""));
   url.searchParams.set("ut", "fa5fd1943c7b386f172d6893dbfba10b");
   url.searchParams.set("rtntype", "6");
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: {
       Accept: "*/*",
       "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -169,7 +170,7 @@ export async function fetchEastmoneyStockKline(
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
     },
-  })) as EastmoneyStockKlineResponse;
+  }, 6 * 60 * 60 * 1000)) as EastmoneyStockKlineResponse;
   const now = Date.now();
   const security = body.data?.name
     ? ({
@@ -206,6 +207,7 @@ export async function fetchEastmoneyStockKline(
 }
 
 export async function fetchEastmoneyFundNav(
+  db: D1Database,
   code: string,
   from: string,
   to: string,
@@ -222,9 +224,9 @@ export async function fetchEastmoneyFundNav(
   url.searchParams.set("startDate", from);
   url.searchParams.set("endDate", to);
   url.searchParams.set("_", String(Date.now()));
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://fundf10.eastmoney.com/" },
-  })) as EastmoneyFundNavResponse;
+  }, 6 * 60 * 60 * 1000)) as EastmoneyFundNavResponse;
   if (body.ErrCode && body.ErrCode !== 0) {
     throw new Error(`eastmoney fund nav error: code=${body.ErrCode} msg=${body.ErrMsg ?? ""}`);
   }
@@ -245,6 +247,7 @@ export async function fetchEastmoneyFundNav(
 }
 
 export async function fetchEastmoneyFinance(
+  db: D1Database,
   code: string,
   statementType: StatementType
 ): Promise<FinancialStatement[]> {
@@ -266,9 +269,9 @@ export async function fetchEastmoneyFinance(
   url.searchParams.set("st", "REPORT_DATE");
   url.searchParams.set("source", "HSF10");
   url.searchParams.set("client", "PC");
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://emweb.securities.eastmoney.com/" },
-  })) as EastmoneyFinanceResponse;
+  }, 24 * 60 * 60 * 1000)) as EastmoneyFinanceResponse;
   const now = Date.now();
   const statements: FinancialStatement[] = [];
   for (const row of body.result?.data ?? []) {
@@ -291,6 +294,7 @@ export async function fetchEastmoneyFinance(
 }
 
 export async function fetchEastmoneyDataRows(
+  db: D1Database,
   endpoint: string,
   params: Record<string, string>
 ): Promise<Record<string, unknown>[]> {
@@ -298,26 +302,28 @@ export async function fetchEastmoneyDataRows(
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://emweb.securities.eastmoney.com/" },
-  })) as EastmoneyFinanceResponse;
+  }, 24 * 60 * 60 * 1000)) as EastmoneyFinanceResponse;
   return body.result?.data ?? [];
 }
 
 export async function fetchEastmoneyText(
+  db: D1Database,
   url: string,
-  referer = "https://fundf10.eastmoney.com/"
+  referer = "https://fundf10.eastmoney.com/",
+  ttlMs = 24 * 60 * 60 * 1000
 ): Promise<string> {
-  return fetchText(url, {
+  return cachedFetchText(db, url, {
     headers: {
       Referer: referer,
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
     },
-  });
+  }, ttlMs);
 }
 
-export async function fetchYahooStockKline(code: string, fq: string): Promise<KlineBar[]> {
+export async function fetchYahooStockKline(db: D1Database, code: string, fq: string): Promise<KlineBar[]> {
   const normalized = normalizeSecurityCode(code);
   const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(normalized)}`);
   url.searchParams.set("period1", "0");
@@ -325,7 +331,7 @@ export async function fetchYahooStockKline(code: string, fq: string): Promise<Kl
   url.searchParams.set("interval", "1d");
   url.searchParams.set("events", "history");
   url.searchParams.set("includeAdjustedClose", "true");
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: {
       Origin: "https://finance.yahoo.com",
       Referer: `https://finance.yahoo.com/quote/${encodeURIComponent(normalized)}/`,
@@ -333,7 +339,7 @@ export async function fetchYahooStockKline(code: string, fq: string): Promise<Kl
       "Sec-Fetch-Mode": "cors",
       "Sec-Fetch-Site": "same-site",
     },
-  })) as YahooChartResponse;
+  }, 6 * 60 * 60 * 1000)) as YahooChartResponse;
   const error = body.chart?.error;
   if (error) {
     throw new Error(`yahoo chart error: code=${error.code ?? ""} description=${error.description ?? ""}`);
@@ -377,7 +383,7 @@ export async function fetchYahooStockKline(code: string, fq: string): Promise<Kl
   return rows;
 }
 
-export async function fetchTencentStockKline(code: string, period: string, fq: string): Promise<{ security?: SecurityRecord; rows: KlineBar[] }> {
+export async function fetchTencentStockKline(db: D1Database, code: string, period: string, fq: string): Promise<{ security?: SecurityRecord; rows: KlineBar[] }> {
   const normalized = normalizeSecurityCode(code);
   const symbol = tencentSymbol(normalized);
   if (!symbol || period !== "day") {
@@ -385,9 +391,9 @@ export async function fetchTencentStockKline(code: string, period: string, fq: s
   }
   const url = new URL("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get");
   url.searchParams.set("param", `${symbol},day,,,2000,${tencentFq(fq)}`);
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://gu.qq.com/" },
-  })) as TencentKlineResponse;
+  }, 6 * 60 * 60 * 1000)) as TencentKlineResponse;
   if (body.code && body.code !== 0) {
     throw new Error(`tencent kline error: code=${body.code} msg=${body.msg ?? ""}`);
   }
@@ -453,7 +459,7 @@ function tencentKlineKey(fq: string): "day" | "qfqday" | "hfqday" {
   return "day";
 }
 
-export async function fetchEastmoneyCompanyOverview(code: string): Promise<CompanyOverview> {
+export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string): Promise<CompanyOverview> {
   const normalized = normalizeSecurityCode(code);
   const secid = eastmoneySecId(normalized);
   if (!secid) {
@@ -465,9 +471,9 @@ export async function fetchEastmoneyCompanyOverview(code: string): Promise<Compa
   url.searchParams.set("fltt", "1");
   url.searchParams.set("secid", secid);
   url.searchParams.set("fields", "f43,f57,f58,f116,f162,f167,f168,f169,f170");
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://quote.eastmoney.com/" },
-  })) as EastmoneyOverviewResponse;
+  }, 10 * 60 * 1000)) as EastmoneyOverviewResponse;
   const data = body.data ?? {};
   const latestPriceRaw = numberOrNull(data.f43);
   const changeAmountRaw = numberOrNull(data.f169);
@@ -490,6 +496,7 @@ export async function fetchEastmoneyCompanyOverview(code: string): Promise<Compa
 }
 
 export async function fetchEastmoneyCompanyNotices(
+  db: D1Database,
   code: string,
   page = 1,
   pageSize = 20
@@ -507,9 +514,9 @@ export async function fetchEastmoneyCompanyNotices(
   url.searchParams.set("stock_list", bareCode(normalized));
   url.searchParams.set("f_node", "");
   url.searchParams.set("s_node", "");
-  const body = (await fetchJson(url.toString(), {
+  const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://data.eastmoney.com/" },
-  })) as EastmoneyNoticeResponse;
+  }, 6 * 60 * 60 * 1000)) as EastmoneyNoticeResponse;
   return (body.data?.list ?? []).map((item) => ({
     artCode: item.art_code?.trim() ?? "",
     title: item.title?.trim() ?? "",

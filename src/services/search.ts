@@ -12,7 +12,7 @@ export async function searchSecurities(db: D1Database, q: string): Promise<Secur
   if (local.length > 0) {
     return local;
   }
-  const remote = await fetchEastmoneySuggest(trimmed);
+  const remote = await fetchEastmoneySuggest(db, trimmed);
   for (const item of remote) {
     await upsertSecurity(db, item);
   }
@@ -25,7 +25,7 @@ export async function getSecurity(db: D1Database, code: string): Promise<Securit
   if (local) {
     return local;
   }
-  const remote = await fetchEastmoneySuggest(normalized.split(".")[0] ?? normalized);
+  const remote = await fetchEastmoneySuggest(db, normalized.split(".")[0] ?? normalized);
   const match = remote.find((item) => item.code === normalized) ?? remote[0] ?? null;
   if (match) {
     await upsertSecurity(db, match);

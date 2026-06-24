@@ -1,13 +1,13 @@
 import { Hono } from "hono";
-import { fetchJson, fetchText, ok } from "../shared/http";
+import { cachedFetchJson, cachedFetchText, ok } from "../shared/http";
 import type { AppEnv } from "../types";
 
 export const thirteenFRoutes = new Hono<AppEnv>();
 
 thirteenFRoutes.get("/13f/manager/list", async (c) => {
-  const html = await fetchText("https://13f.info/managers", {
+  const html = await cachedFetchText(c.env.DB, "https://13f.info/managers", {
     headers: { Referer: "https://13f.info/" },
-  });
+  }, 30 * 24 * 60 * 60 * 1000);
   const rows: unknown[][] = [["0001759760-h-h-international-investment-llc", "H&H International Investment, LLC", "段永平基金", "$14 B", 14000]];
   for (const tr of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
     const cells = [...tr[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) => strip(m[1]));
@@ -22,9 +22,9 @@ thirteenFRoutes.get("/13f/manager/list", async (c) => {
 
 thirteenFRoutes.get("/13f/quarters/:id", async (c) => {
   const id = c.req.param("id");
-  const html = await fetchText(`https://13f.info/manager/${encodeURIComponent(id)}`, {
+  const html = await cachedFetchText(c.env.DB, `https://13f.info/manager/${encodeURIComponent(id)}`, {
     headers: { Referer: "https://13f.info/managers" },
-  });
+  }, 30 * 24 * 60 * 60 * 1000);
   const table = html.match(/id=["']managerFilings["'][\s\S]*?<\/table>/i)?.[0] ?? html;
   const rows: string[][] = [];
   for (const tr of table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
@@ -39,9 +39,9 @@ thirteenFRoutes.get("/13f/quarters/:id", async (c) => {
 
 thirteenFRoutes.get("/13f/position/:filingId", async (c) => {
   const filingId = c.req.param("filingId");
-  const body = (await fetchJson(`https://13f.info/data/13f/${encodeURIComponent(filingId)}`, {
+  const body = (await cachedFetchJson(c.env.DB, `https://13f.info/data/13f/${encodeURIComponent(filingId)}`, {
     headers: { Referer: "https://13f.info/" },
-  })) as { data?: unknown[] };
+  }, 30 * 24 * 60 * 60 * 1000)) as { data?: unknown[] };
   return ok(c, Array.isArray(body.data) ? body.data : []);
 });
 

@@ -13,7 +13,7 @@ export async function loadFinancialStatements(
   if (cached.length > 0 && Date.now() - cached[0].updatedAt < 24 * 60 * 60 * 1000) {
     return { code, source: "d1", rows: cached };
   }
-  const rows = await fetchEastmoneyFinance(code, statementType);
+  const rows = await fetchEastmoneyFinance(db, code, statementType);
   await upsertFinancialStatements(db, rows);
   return { code, source: "eastmoney", rows };
 }

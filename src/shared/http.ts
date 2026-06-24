@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { getHttpCache, putHttpCache } from "../db/queries";
 import type { ApiFailure, ApiSuccess } from "../types";
 
 export function ok<T>(c: Context, data: T): Response {
@@ -22,6 +23,54 @@ export function requireQuery(c: Context, key: string): string | Response {
 export async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
   const text = await fetchText(url, init);
   return parseJsonOrJsonp(text);
+}
+
+export async function cachedFetchJson(
+  db: D1Database,
+  url: string,
+  init?: RequestInit,
+  ttlMs = 60 * 60 * 1000
+): Promise<unknown> {
+  const text = await cachedFetchText(db, url, init, ttlMs);
+  return parseJsonOrJsonp(text);
+}
+
+export async function cachedFetchText(
+  db: D1Database,
+  url: string,
+  init?: RequestInit,
+  ttlMs = 60 * 60 * 1000
+): Promise<string> {
+  const request = normalizeRequest(url, init);
+  const cacheKey = await digestHex(JSON.stringify(request));
+  const cached = await getHttpCache(db, cacheKey);
+  if (cached) {
+    return cached.bodyText;
+  }
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (compatible; stock-info-worker/0.1; +https://workers.cloudflare.com/)",
+      ...(init?.headers ?? {}),
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`request failed: status=${res.status} body=${truncate(text)}`);
+  }
+  const now = Date.now();
+  await putHttpCache(db, {
+    cacheKey,
+    url,
+    method: request.method,
+    status: res.status,
+    headersJson: JSON.stringify(Object.fromEntries(res.headers.entries())),
+    bodyText: text,
+    expiresAt: now + Math.max(1, ttlMs),
+    updatedAt: now,
+  });
+  return text;
 }
 
 export async function fetchText(url: string, init?: RequestInit): Promise<string> {
@@ -63,4 +112,46 @@ export function numberOrNull(value: unknown): number | null {
 
 export function truncate(value: string, max = 300): string {
   return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function normalizeRequest(url: string, init?: RequestInit): {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: string | null;
+} {
+  return {
+    method: (init?.method ?? "GET").toUpperCase(),
+    url,
+    headers: normalizeHeaders(init?.headers),
+    body: typeof init?.body === "string" ? init.body : null,
+  };
+}
+
+function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!headers) {
+    return result;
+  }
+  const entries =
+    headers instanceof Headers
+      ? [...headers.entries()]
+      : Array.isArray(headers)
+        ? headers
+        : Object.entries(headers);
+  for (const [key, value] of entries) {
+    const lowered = key.toLowerCase();
+    if (lowered === "authorization" || lowered === "cookie") {
+      result[lowered] = "<redacted>";
+    } else {
+      result[lowered] = String(value);
+    }
+  }
+  return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+async function digestHex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((item) => item.toString(16).padStart(2, "0")).join("");
 }

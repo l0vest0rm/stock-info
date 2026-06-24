@@ -3,6 +3,12 @@ export type Bindings = {
   DB: D1Database;
   RAW_BUCKET?: R2Bucket;
   APP_VERSION?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+  VOLC_ARK_API_KEY?: string;
+  VOLC_ARK_BASE_URL?: string;
+  LLM_API_KEY?: string;
+  LLM_BASE_URL?: string;
 };
 
 export type AppEnv = {

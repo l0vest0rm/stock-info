@@ -29,7 +29,7 @@ export async function loadKline(
     if (cached.length > 0 && isFreshEnough(cached[0]?.updatedAt)) {
       return { code: fundCode, source: "d1", rows: cached };
     }
-    const rows = await fetchEastmoneyFundNav(fundCode, from, to);
+    const rows = await fetchEastmoneyFundNav(db, fundCode, from, to);
     await upsertFundNav(db, rows);
     return { code: fundCode, source: "eastmoney", rows };
   }
@@ -43,7 +43,7 @@ export async function loadKline(
     if (cachedGlobal.length > 0 && isFreshEnough(cachedGlobal[0]?.updatedAt)) {
       return { code, source: "d1", rows: cachedGlobal };
     }
-    const rows = await fetchYahooStockKline(code, fq)
+    const rows = await fetchYahooStockKline(db, code, fq)
       .then((items) => items.filter((row) => row.date >= from && row.date <= to))
       .catch((err) => {
         console.warn(`yahoo kline unavailable for ${code}:`, err);
@@ -53,9 +53,9 @@ export async function loadKline(
     return { code, source: "yahoo", rows };
   }
 
-  const fetched = await fetchTencentStockKline(code, period, fq).catch(async (err) => {
+  const fetched = await fetchTencentStockKline(db, code, period, fq).catch(async (err) => {
     console.warn(`tencent kline unavailable for ${code}, trying Eastmoney:`, err);
-    return fetchEastmoneyStockKline(code, period, fq, from, to);
+    return fetchEastmoneyStockKline(db, code, period, fq, from, to);
   });
   if (fetched.security) {
     await upsertSecurity(db, fetched.security);

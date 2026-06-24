@@ -1,5 +1,19 @@
 import type { FinancialStatement, FundNavRow, KlineBar, SecurityRecord } from "../types";
 
+export type HttpCacheRecord = {
+  status: number;
+  headersJson: string | null;
+  bodyText: string;
+  expiresAt: number;
+  updatedAt: number;
+};
+
+export type LlmCacheRecord = {
+  responseJson: string;
+  expiresAt: number;
+  updatedAt: number;
+};
+
 export async function upsertSecurity(db: D1Database, record: SecurityRecord): Promise<void> {
   await db
     .prepare(
@@ -236,4 +250,106 @@ export async function getFinancialStatements(
     ...row,
     payload: JSON.parse(row.payloadJson),
   }));
+}
+
+export async function getHttpCache(db: D1Database, cacheKey: string, now = Date.now()): Promise<HttpCacheRecord | null> {
+  const row = await db
+    .prepare(
+      `select status, headers_json as headersJson, body_text as bodyText,
+        expires_at as expiresAt, updated_at as updatedAt
+       from http_cache
+       where cache_key = ? and expires_at > ?`
+    )
+    .bind(cacheKey, now)
+    .first<HttpCacheRecord>();
+  return row ?? null;
+}
+
+export async function putHttpCache(
+  db: D1Database,
+  record: {
+    cacheKey: string;
+    url: string;
+    method: string;
+    status: number;
+    headersJson: string | null;
+    bodyText: string;
+    expiresAt: number;
+    updatedAt: number;
+  }
+): Promise<void> {
+  await db
+    .prepare(
+      `insert into http_cache
+        (cache_key, url, method, status, headers_json, body_text, expires_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?)
+       on conflict(cache_key) do update set
+        url = excluded.url,
+        method = excluded.method,
+        status = excluded.status,
+        headers_json = excluded.headers_json,
+        body_text = excluded.body_text,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at`
+    )
+    .bind(
+      record.cacheKey,
+      record.url,
+      record.method,
+      record.status,
+      record.headersJson,
+      record.bodyText,
+      record.expiresAt,
+      record.updatedAt
+    )
+    .run();
+}
+
+export async function getLlmCache(db: D1Database, cacheKey: string, now = Date.now()): Promise<LlmCacheRecord | null> {
+  const row = await db
+    .prepare(
+      `select response_json as responseJson, expires_at as expiresAt, updated_at as updatedAt
+       from llm_cache
+       where cache_key = ? and expires_at > ?`
+    )
+    .bind(cacheKey, now)
+    .first<LlmCacheRecord>();
+  return row ?? null;
+}
+
+export async function putLlmCache(
+  db: D1Database,
+  record: {
+    cacheKey: string;
+    provider: string;
+    model: string;
+    requestJson: string;
+    responseJson: string;
+    expiresAt: number;
+    updatedAt: number;
+  }
+): Promise<void> {
+  await db
+    .prepare(
+      `insert into llm_cache
+        (cache_key, provider, model, request_json, response_json, expires_at, updated_at)
+       values (?, ?, ?, ?, ?, ?, ?)
+       on conflict(cache_key) do update set
+        provider = excluded.provider,
+        model = excluded.model,
+        request_json = excluded.request_json,
+        response_json = excluded.response_json,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at`
+    )
+    .bind(
+      record.cacheKey,
+      record.provider,
+      record.model,
+      record.requestJson,
+      record.responseJson,
+      record.expiresAt,
+      record.updatedAt
+    )
+    .run();
 }

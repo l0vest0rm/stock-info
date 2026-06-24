@@ -10,7 +10,7 @@ companyRoutes.get("/company/overview", async (c) => {
   if (code instanceof Response) {
     return code;
   }
-  const data = await fetchEastmoneyCompanyOverview(code);
+  const data = await fetchEastmoneyCompanyOverview(c.env.DB, code);
   return ok(c, data);
 });
 
@@ -19,7 +19,7 @@ companyRoutes.get("/company/info", async (c) => {
   if (code instanceof Response) {
     return code;
   }
-  const overview = await fetchEastmoneyCompanyOverview(code);
+  const overview = await fetchEastmoneyCompanyOverview(c.env.DB, code);
   return ok(c, {
     code: overview.code,
     secCode: overview.code.split(".")[0],
@@ -41,7 +41,7 @@ companyRoutes.get("/company/notices", async (c) => {
   }
   const page = Number(c.req.query("page") ?? "1") || 1;
   const pageSize = Number(c.req.query("pageSize") ?? "20") || 20;
-  const data = await fetchEastmoneyCompanyNotices(code, page, pageSize);
+  const data = await fetchEastmoneyCompanyNotices(c.env.DB, code, page, pageSize);
   return ok(
     c,
     data.map((item) => ({
