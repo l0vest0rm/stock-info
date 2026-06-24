@@ -1,4 +1,9 @@
-import { fetchEastmoneyFundNav, fetchEastmoneyStockKline, fetchYahooStockKline } from "../adapters/eastmoney";
+import {
+  fetchEastmoneyFundNav,
+  fetchEastmoneyStockKline,
+  fetchTencentStockKline,
+  fetchYahooStockKline,
+} from "../adapters/eastmoney";
 import {
   getFundNavRows,
   getKlineBars,
@@ -48,7 +53,10 @@ export async function loadKline(
     return { code, source: "yahoo", rows };
   }
 
-  const fetched = await fetchEastmoneyStockKline(code, period, fq, from, to);
+  const fetched = await fetchEastmoneyStockKline(code, period, fq, from, to).catch(async (err) => {
+    console.warn(`eastmoney kline unavailable for ${code}, trying Tencent:`, err);
+    return fetchTencentStockKline(code, period, fq);
+  });
   if (fetched.security) {
     await upsertSecurity(db, fetched.security);
   }

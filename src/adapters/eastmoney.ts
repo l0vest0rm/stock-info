@@ -89,6 +89,20 @@ type YahooChartResponse = {
   };
 };
 
+type TencentKlineResponse = {
+  code?: number;
+  msg?: string;
+  data?: Record<
+    string,
+    {
+      day?: string[][];
+      qfqday?: string[][];
+      hfqday?: string[][];
+      qt?: Record<string, string[]>;
+    }
+  >;
+};
+
 const EASTMONEY_SUGGEST_TOKEN = "D43BF722C8E33BDC906FB84D85E326E8";
 
 export async function fetchEastmoneySuggest(q: string): Promise<SecurityRecord[]> {
@@ -363,9 +377,80 @@ export async function fetchYahooStockKline(code: string, fq: string): Promise<Kl
   return rows;
 }
 
+export async function fetchTencentStockKline(code: string, period: string, fq: string): Promise<{ security?: SecurityRecord; rows: KlineBar[] }> {
+  const normalized = normalizeSecurityCode(code);
+  const symbol = tencentSymbol(normalized);
+  if (!symbol || period !== "day") {
+    throw new Error(`unsupported Tencent kline code or period: ${code} ${period}`);
+  }
+  const url = new URL("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get");
+  url.searchParams.set("param", `${symbol},day,,,8000,${tencentFq(fq)}`);
+  const body = (await fetchJson(url.toString(), {
+    headers: { Referer: "https://gu.qq.com/" },
+  })) as TencentKlineResponse;
+  if (body.code && body.code !== 0) {
+    throw new Error(`tencent kline error: code=${body.code} msg=${body.msg ?? ""}`);
+  }
+  const data = body.data?.[symbol];
+  const key = tencentKlineKey(fq);
+  const rawRows = data?.[key] ?? [];
+  const now = Date.now();
+  const quote = data?.qt?.[symbol];
+  const security = quote?.[1]
+    ? ({
+        code: normalized,
+        market: securityMarket(normalized),
+        type: inferSecurityType(normalized),
+        name: quote[1],
+        source: "tencent",
+        updatedAt: now,
+      } satisfies SecurityRecord)
+    : undefined;
+  const rows = rawRows.map((row) => ({
+    code: normalized,
+    period,
+    fq,
+    date: row[0] ?? "",
+    open: numberOrNull(row[1]),
+    close: numberOrNull(row[2]),
+    high: numberOrNull(row[3]),
+    low: numberOrNull(row[4]),
+    volume: numberOrNull(row[5]),
+    amount: null,
+    amplitude: null,
+    pctChange: null,
+    changeAmount: null,
+    turnover: null,
+    source: "tencent",
+    updatedAt: now,
+  } satisfies KlineBar)).filter((row) => row.date);
+  return { security, rows };
+}
+
 function at(values: Array<number | null> | undefined, idx: number): number | null {
   const value = values?.[idx];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function tencentSymbol(code: string): string | null {
+  const [base, suffix] = normalizeSecurityCode(code).split(".");
+  if (!base || !suffix) return null;
+  if (suffix === "SH") return `sh${base}`;
+  if (suffix === "SZ") return `sz${base}`;
+  if (suffix === "BJ") return `bj${base}`;
+  return null;
+}
+
+function tencentFq(fq: string): string {
+  if (fq === "qfq") return "qfq";
+  if (fq === "hfq") return "hfq";
+  return "";
+}
+
+function tencentKlineKey(fq: string): "day" | "qfqday" | "hfqday" {
+  if (fq === "qfq") return "qfqday";
+  if (fq === "hfq") return "hfqday";
+  return "day";
 }
 
 export async function fetchEastmoneyCompanyOverview(code: string): Promise<CompanyOverview> {
