@@ -238,26 +238,13 @@ function eastmoneyFqt(value: "qfq" | "normal" | "hfq"): string {
   return "0";
 }
 
-function parseJsonp(text: string): unknown {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    return JSON.parse(trimmed);
-  }
-  const start = trimmed.indexOf("(");
-  const end = trimmed.lastIndexOf(")");
-  if (start >= 0 && end > start) {
-    return JSON.parse(trimmed.slice(start + 1, end));
-  }
-  throw new Error(`invalid eastmoney payload: ${trimmed.slice(0, 120)}`);
-}
-
 async function fetchEastmoneyBrowserKline(
   inputCode: string,
   fqValue: "qfq" | "normal" | "hfq",
   from: string,
   to: string
 ): Promise<KlineRow[]> {
-  const callback = `jsonp${Date.now()}`;
+  const callback = `jsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
   url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
   url.searchParams.set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61");
@@ -269,11 +256,7 @@ async function fetchEastmoneyBrowserKline(
   url.searchParams.set("klt", "101");
   url.searchParams.set("fqt", eastmoneyFqt(fqValue));
   url.searchParams.set("cb", callback);
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    throw new Error(`eastmoney kline failed: ${response.status}`);
-  }
-  const payload = parseJsonp(await response.text()) as {
+  const payload = (await loadJsonp(url.toString(), callback)) as {
     data?: {
       klines?: string[];
     };
@@ -293,6 +276,34 @@ async function fetchEastmoneyBrowserKline(
       } satisfies KlineRow;
     })
     .filter((row) => row.date >= from && row.date <= to);
+}
+
+async function loadJsonp(url: string, callbackName: string): Promise<unknown> {
+  return await new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("eastmoney jsonp timeout"));
+    }, 15000);
+
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      script.remove();
+      delete (window as typeof window & Record<string, unknown>)[callbackName];
+    };
+
+    (window as typeof window & Record<string, unknown>)[callbackName] = (payload: unknown) => {
+      cleanup();
+      resolve(payload);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("eastmoney jsonp load failed"));
+    };
+    script.src = url;
+    document.head.appendChild(script);
+  });
 }
 
 function toNumber(value: string | undefined): number | null {
