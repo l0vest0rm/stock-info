@@ -3,6 +3,10 @@ export function normalizeSecurityCode(input: string): string {
   if (!raw) {
     return "";
   }
+  const compactKorea = raw.match(/^(\d{6})(KS|KQ)$/);
+  if (compactKorea) {
+    return `${compactKorea[1]}.${compactKorea[2]}`;
+  }
   const malformedKorea = raw.match(/^(\d{6})(KS|KQ)\.(SH|SZ)$/);
   if (malformedKorea) {
     return `${malformedKorea[1]}.${malformedKorea[2]}`;
