@@ -393,7 +393,7 @@ export async function fetchTencentStockKline(code: string, period: string, fq: s
   }
   const data = body.data?.[symbol];
   const key = tencentKlineKey(fq);
-  const rawRows = data?.[key] ?? [];
+  const rawRows = data?.[key] ?? data?.day ?? [];
   const now = Date.now();
   const quote = data?.qt?.[symbol];
   const security = quote?.[1]
