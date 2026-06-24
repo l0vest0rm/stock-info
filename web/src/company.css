@@ -125,6 +125,14 @@ h1 { font-size: 34px; }
   height: 520px;
 }
 
+.chart-image {
+  display: block;
+  width: 100%;
+  height: 520px;
+  object-fit: contain;
+  background: #fff;
+}
+
 .quote-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -178,7 +186,7 @@ th { color: #60707a; font-weight: 700; }
   .company-header, .toolbar, .content-grid { display: block; }
   .headline-metrics, .toolbar-group { margin-top: 12px; }
   .quote-panel { margin-top: 14px; }
-  .chart-box { height: 420px; }
+  .chart-box, .chart-image { height: 420px; }
 }
 
 @media (max-width: 560px) {

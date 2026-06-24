@@ -62,6 +62,9 @@ const chartRef = ref<HTMLDivElement | null>(null);
 let chart: ECharts | null = null;
 
 const latestRow = computed(() => klineRows.value.at(-1) ?? null);
+const eastmoneyChartImage = computed(() =>
+  isEastmoneyAStock(code.value) ? eastmoneyKlineImageUrl(code.value) : ""
+);
 
 async function bootstrap() {
   loading.value = true;
@@ -84,7 +87,7 @@ async function loadOverview() {
 
 async function loadKline() {
   if (isEastmoneyAStock(code.value)) {
-    klineRows.value = await fetchEastmoneyBrowserKline(code.value, fq.value, fromDate.value, toDate.value);
+    klineRows.value = [];
     return;
   }
   const payload = await api<{ rows: KlineRow[] }>(
@@ -109,6 +112,11 @@ async function refreshPage() {
 }
 
 function renderChart() {
+  if (eastmoneyChartImage.value) {
+    chart?.dispose();
+    chart = null;
+    return;
+  }
   if (!chartRef.value) {
     return;
   }
@@ -232,86 +240,18 @@ function eastmoneySecId(input: string): string {
   throw new Error(`unsupported code: ${input}`);
 }
 
-function eastmoneyFqt(value: "qfq" | "normal" | "hfq"): string {
-  if (value === "qfq") return "1";
-  if (value === "hfq") return "2";
-  return "0";
-}
-
-async function fetchEastmoneyBrowserKline(
-  inputCode: string,
-  fqValue: "qfq" | "normal" | "hfq",
-  from: string,
-  to: string
-): Promise<KlineRow[]> {
-  const callback = `jsonp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
-  url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
-  url.searchParams.set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61");
-  url.searchParams.set("beg", "0");
-  url.searchParams.set("end", "20500101");
-  url.searchParams.set("ut", "fa5fd1943c7b386f172d6893dbfba10b");
-  url.searchParams.set("rtntype", "6");
-  url.searchParams.set("secid", eastmoneySecId(inputCode));
-  url.searchParams.set("klt", "101");
-  url.searchParams.set("fqt", eastmoneyFqt(fqValue));
-  url.searchParams.set("cb", callback);
-  const payload = (await loadJsonp(url.toString(), callback)) as {
-    data?: {
-      klines?: string[];
-    };
-  };
-  return (payload.data?.klines ?? [])
-    .map((line) => {
-      const parts = line.split(",");
-      return {
-        date: parts[0] ?? "",
-        open: toNumber(parts[1]),
-        close: toNumber(parts[2]),
-        high: toNumber(parts[3]),
-        low: toNumber(parts[4]),
-        volume: toNumber(parts[5]),
-        amount: toNumber(parts[6]),
-        pctChange: toNumber(parts[8]),
-      } satisfies KlineRow;
-    })
-    .filter((row) => row.date >= from && row.date <= to);
-}
-
-async function loadJsonp(url: string, callbackName: string): Promise<unknown> {
-  return await new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    const timer = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("eastmoney jsonp timeout"));
-    }, 15000);
-
-    const cleanup = () => {
-      window.clearTimeout(timer);
-      script.remove();
-      delete (window as typeof window & Record<string, unknown>)[callbackName];
-    };
-
-    (window as typeof window & Record<string, unknown>)[callbackName] = (payload: unknown) => {
-      cleanup();
-      resolve(payload);
-    };
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("eastmoney jsonp load failed"));
-    };
-    script.src = url;
-    document.head.appendChild(script);
-  });
-}
-
-function toNumber(value: string | undefined): number | null {
-  if (!value) {
-    return null;
-  }
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
+function eastmoneyKlineImageUrl(inputCode: string): string {
+  const url = new URL("https://webquoteklinepic.eastmoney.com/GetPic.aspx");
+  url.searchParams.set("nid", eastmoneySecId(inputCode));
+  url.searchParams.set("type", "");
+  url.searchParams.set("unitWidth", "-6");
+  url.searchParams.set("imageType", "KXL");
+  url.searchParams.set("EF", "");
+  url.searchParams.set("formula", "MACD");
+  url.searchParams.set("AT", "1");
+  url.searchParams.set("dt", "6");
+  url.searchParams.set("token", "44c9d251add88e27b65ed86506f6e5da");
+  return url.toString();
 }
 </script>
 
@@ -360,9 +300,10 @@ function toNumber(value: string | undefined): number | null {
       <div class="chart-panel">
         <div class="panel-head">
           <h2>K 线</h2>
-          <span>东财 / {{ latestRow?.date || "-" }}</span>
+          <span>东财 / {{ eastmoneyChartImage ? "图片" : latestRow?.date || "-" }}</span>
         </div>
-        <div ref="chartRef" class="chart-box"></div>
+        <img v-if="eastmoneyChartImage" class="chart-image" :src="eastmoneyChartImage" alt="东财K线图" />
+        <div v-else ref="chartRef" class="chart-box"></div>
       </div>
 
       <div class="quote-panel">
