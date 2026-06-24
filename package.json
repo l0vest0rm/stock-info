@@ -1,0 +1,30 @@
+{
+  "name": "stock-info",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:web && wrangler dev --local",
+    "dev:worker": "wrangler dev --local",
+    "dev:web": "vite --config web/vite.config.ts",
+    "build": "npm run build:web",
+    "build:web": "vite build --config web/vite.config.ts",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit && vue-tsc --noEmit -p web/tsconfig.json",
+    "db:migrate:local": "wrangler d1 migrations apply stock_info --local",
+    "db:migrate:remote": "wrangler d1 migrations apply stock_info --remote"
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^6.0.3",
+    "echarts": "^6.0.0",
+    "hono": "^4.12.27",
+    "vite": "^7.2.7",
+    "vue": "^3.5.35"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260620.0",
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.1.8",
+    "wrangler": "^4.23.0"
+  }
+}
