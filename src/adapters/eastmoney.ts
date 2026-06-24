@@ -384,7 +384,7 @@ export async function fetchTencentStockKline(code: string, period: string, fq: s
     throw new Error(`unsupported Tencent kline code or period: ${code} ${period}`);
   }
   const url = new URL("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get");
-  url.searchParams.set("param", `${symbol},day,,,8000,${tencentFq(fq)}`);
+  url.searchParams.set("param", `${symbol},day,,,2000,${tencentFq(fq)}`);
   const body = (await fetchJson(url.toString(), {
     headers: { Referer: "https://gu.qq.com/" },
   })) as TencentKlineResponse;
