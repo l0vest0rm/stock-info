@@ -83,6 +83,10 @@ async function loadOverview() {
 }
 
 async function loadKline() {
+  if (isEastmoneyAStock(code.value)) {
+    klineRows.value = await fetchEastmoneyBrowserKline(code.value, fq.value, fromDate.value, toDate.value);
+    return;
+  }
   const payload = await api<{ rows: KlineRow[] }>(
     `/api/kline?code=${encodeURIComponent(code.value)}&fq=${fq.value}&from=${fromDate.value}&to=${toDate.value}`
   );
@@ -208,6 +212,95 @@ function label(type: StatementType): string {
   if (type === "balance") return "资产负债表";
   if (type === "cashflow") return "现金流量表";
   return "利润表";
+}
+
+function isEastmoneyAStock(input: string): boolean {
+  return /^\d{6}\.(SH|SZ|BJ)$/i.test(input.trim());
+}
+
+function eastmoneySecId(input: string): string {
+  const [base, suffix] = input.trim().toUpperCase().split(".");
+  if (!base || !suffix) {
+    throw new Error(`unsupported code: ${input}`);
+  }
+  if (suffix === "SH") {
+    return `1.${base}`;
+  }
+  if (suffix === "SZ" || suffix === "BJ") {
+    return `0.${base}`;
+  }
+  throw new Error(`unsupported code: ${input}`);
+}
+
+function eastmoneyFqt(value: "qfq" | "normal" | "hfq"): string {
+  if (value === "qfq") return "1";
+  if (value === "hfq") return "2";
+  return "0";
+}
+
+function parseJsonp(text: string): unknown {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return JSON.parse(trimmed);
+  }
+  const start = trimmed.indexOf("(");
+  const end = trimmed.lastIndexOf(")");
+  if (start >= 0 && end > start) {
+    return JSON.parse(trimmed.slice(start + 1, end));
+  }
+  throw new Error(`invalid eastmoney payload: ${trimmed.slice(0, 120)}`);
+}
+
+async function fetchEastmoneyBrowserKline(
+  inputCode: string,
+  fqValue: "qfq" | "normal" | "hfq",
+  from: string,
+  to: string
+): Promise<KlineRow[]> {
+  const callback = `jsonp${Date.now()}`;
+  const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
+  url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
+  url.searchParams.set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61");
+  url.searchParams.set("beg", "0");
+  url.searchParams.set("end", "20500101");
+  url.searchParams.set("ut", "fa5fd1943c7b386f172d6893dbfba10b");
+  url.searchParams.set("rtntype", "6");
+  url.searchParams.set("secid", eastmoneySecId(inputCode));
+  url.searchParams.set("klt", "101");
+  url.searchParams.set("fqt", eastmoneyFqt(fqValue));
+  url.searchParams.set("cb", callback);
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    throw new Error(`eastmoney kline failed: ${response.status}`);
+  }
+  const payload = parseJsonp(await response.text()) as {
+    data?: {
+      klines?: string[];
+    };
+  };
+  return (payload.data?.klines ?? [])
+    .map((line) => {
+      const parts = line.split(",");
+      return {
+        date: parts[0] ?? "",
+        open: toNumber(parts[1]),
+        close: toNumber(parts[2]),
+        high: toNumber(parts[3]),
+        low: toNumber(parts[4]),
+        volume: toNumber(parts[5]),
+        amount: toNumber(parts[6]),
+        pctChange: toNumber(parts[8]),
+      } satisfies KlineRow;
+    })
+    .filter((row) => row.date >= from && row.date <= to);
+}
+
+function toNumber(value: string | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
 }
 </script>
 
