@@ -14,6 +14,19 @@ searchRoutes.get("/search", async (c) => {
   return ok(c, data);
 });
 
+searchRoutes.get("/code/name", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) {
+    return code;
+  }
+  const result: Record<string, string> = {};
+  for (const item of code.split(",").map((value) => value.trim()).filter(Boolean)) {
+    const record = await getSecurity(c.env.DB, item);
+    result[item] = record?.name || item;
+  }
+  return ok(c, result);
+});
+
 searchRoutes.get("/securities/:code", async (c) => {
   const record = await getSecurity(c.env.DB, c.req.param("code"));
   if (!record) {

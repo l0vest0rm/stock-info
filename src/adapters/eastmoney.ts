@@ -1,5 +1,5 @@
 import { bareCode, eastmoneySecId, inferSecurityType, normalizeSecurityCode, securityMarket, securitySuffix } from "../shared/codes";
-import { fetchJson, numberOrNull } from "../shared/http";
+import { fetchJson, fetchText, numberOrNull } from "../shared/http";
 import type { CompanyNotice, CompanyOverview, FinancialStatement, FundNavRow, KlineBar, SecurityRecord, StatementType } from "../types";
 
 type EastmoneySuggestResponse = {
@@ -68,6 +68,27 @@ type EastmoneyNoticeResponse = {
   };
 };
 
+type YahooChartResponse = {
+  chart?: {
+    error?: { code?: string; description?: string } | null;
+    result?: Array<{
+      timestamp?: number[];
+      indicators?: {
+        quote?: Array<{
+          open?: Array<number | null>;
+          close?: Array<number | null>;
+          high?: Array<number | null>;
+          low?: Array<number | null>;
+          volume?: Array<number | null>;
+        }>;
+        adjclose?: Array<{
+          adjclose?: Array<number | null>;
+        }>;
+      };
+    }>;
+  };
+};
+
 const EASTMONEY_SUGGEST_TOKEN = "D43BF722C8E33BDC906FB84D85E326E8";
 
 export async function fetchEastmoneySuggest(q: string): Promise<SecurityRecord[]> {
@@ -114,14 +135,26 @@ export async function fetchEastmoneyStockKline(
   }
   const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
   url.searchParams.set("secid", secid);
-  url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6");
+  url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
   url.searchParams.set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61");
   url.searchParams.set("klt", eastmoneyKlt(period));
   url.searchParams.set("fqt", eastmoneyFqt(fq));
   url.searchParams.set("beg", from.replaceAll("-", ""));
   url.searchParams.set("end", to.replaceAll("-", ""));
+  url.searchParams.set("ut", "fa5fd1943c7b386f172d6893dbfba10b");
+  url.searchParams.set("rtntype", "6");
   const body = (await fetchJson(url.toString(), {
-    headers: { Referer: "https://quote.eastmoney.com/" },
+    headers: {
+      Accept: "*/*",
+      "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+      Cookie: "nid18=1",
+      Referer: "https://quote.eastmoney.com/",
+      "Sec-Fetch-Dest": "script",
+      "Sec-Fetch-Mode": "no-cors",
+      "Sec-Fetch-Site": "same-site",
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+    },
   })) as EastmoneyStockKlineResponse;
   const now = Date.now();
   const security = body.data?.name
@@ -241,6 +274,98 @@ export async function fetchEastmoneyFinance(
     });
   }
   return statements;
+}
+
+export async function fetchEastmoneyDataRows(
+  endpoint: string,
+  params: Record<string, string>
+): Promise<Record<string, unknown>[]> {
+  const url = new URL(endpoint);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  const body = (await fetchJson(url.toString(), {
+    headers: { Referer: "https://emweb.securities.eastmoney.com/" },
+  })) as EastmoneyFinanceResponse;
+  return body.result?.data ?? [];
+}
+
+export async function fetchEastmoneyText(
+  url: string,
+  referer = "https://fundf10.eastmoney.com/"
+): Promise<string> {
+  return fetchText(url, {
+    headers: {
+      Referer: referer,
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+    },
+  });
+}
+
+export async function fetchYahooStockKline(code: string, fq: string): Promise<KlineBar[]> {
+  const normalized = normalizeSecurityCode(code);
+  const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(normalized)}`);
+  url.searchParams.set("period1", "0");
+  url.searchParams.set("period2", String(Math.floor(Date.now() / 1000) + 86400));
+  url.searchParams.set("interval", "1d");
+  url.searchParams.set("events", "history");
+  url.searchParams.set("includeAdjustedClose", "true");
+  const body = (await fetchJson(url.toString(), {
+    headers: {
+      Origin: "https://finance.yahoo.com",
+      Referer: `https://finance.yahoo.com/quote/${encodeURIComponent(normalized)}/`,
+      "Sec-Fetch-Dest": "empty",
+      "Sec-Fetch-Mode": "cors",
+      "Sec-Fetch-Site": "same-site",
+    },
+  })) as YahooChartResponse;
+  const error = body.chart?.error;
+  if (error) {
+    throw new Error(`yahoo chart error: code=${error.code ?? ""} description=${error.description ?? ""}`);
+  }
+  const result = body.chart?.result?.[0];
+  const quote = result?.indicators?.quote?.[0];
+  if (!result?.timestamp?.length || !quote) {
+    return [];
+  }
+  const adjClose = result.indicators?.adjclose?.[0]?.adjclose ?? [];
+  const now = Date.now();
+  const rows: KlineBar[] = [];
+  for (let idx = 0; idx < result.timestamp.length; idx += 1) {
+    const ts = result.timestamp[idx];
+    const close = at(quote.close, idx);
+    const low = at(quote.low, idx);
+    const high = at(quote.high, idx);
+    if (!ts || close === null || low === null || high === null) {
+      continue;
+    }
+    const displayClose = fq === "qfq" ? at(adjClose, idx) ?? close : close;
+    rows.push({
+      code: normalized,
+      period: "day",
+      fq,
+      date: new Date(ts * 1000).toISOString().slice(0, 10),
+      open: at(quote.open, idx),
+      close: displayClose,
+      high,
+      low,
+      volume: at(quote.volume, idx),
+      amount: null,
+      amplitude: null,
+      pctChange: null,
+      changeAmount: null,
+      turnover: null,
+      source: "yahoo",
+      updatedAt: now,
+    });
+  }
+  return rows;
+}
+
+function at(values: Array<number | null> | undefined, idx: number): number | null {
+  const value = values?.[idx];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export async function fetchEastmoneyCompanyOverview(code: string): Promise<CompanyOverview> {

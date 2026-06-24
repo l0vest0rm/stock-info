@@ -1,663 +1,529 @@
-# Cloudflare Workers 股票信息站方案
+# Cloudflare Workers 版 licai 迁移方案
 
 ## 目标
 
-基于 Cloudflare Workers 搭建一个轻量股票信息网站，优先迁移本地 `licai`
-中已经相对稳定的股票/基金、K 线、财报、公告等结构化信息能力。
+把本地 `licai` 中股票、基金、K 线、财报、公告以及后续新闻/研报能力迁移到
+当前 `stock-info` 项目和 Cloudflare Workers。`licai` 后续会逐步废弃，所有线上
+能力最终都必须由 `stock-info` 承接。
 
-新闻、研报、知识库、LLM 研报解析和推荐排序先不迁移，只预留后续扩展边界。
+迁移方式不是重做一个新站，而是尽量完整复用 `licai/web` 前端页面、样式和交互，
+同时把后端接口从 Rust/Axum 重写为 TypeScript/Hono Worker。
 
-## 关键约束
-
-- Workers 不是完整 Node.js 服务，而是 JavaScript/TypeScript Worker 运行时加
-  Node.js API 兼容层。可以开启 `nodejs_compat`，但不能假设所有 Node API、
-  本地文件系统、原生 SQLite、长驻进程都可用。
-- Workers 单 isolate 内存限制为 128 MB，必须避免大内存缓存、全市场一次性
-  拉取、长时间同步任务。
-- D1 适合结构化查询，但不是大对象存储。付费版单库上限 10 GB，单行、字符串、
-  BLOB 上限 2 MB。
-- R2 适合存原始响应、PDF、快照、压缩 JSON 等大对象。不要把大 JSON 或 PDF
-  直接塞进 D1。
-- 本地 `licai` 中依赖浏览器态、Cookie 刷新、本地 redb/SQLite、PDF 转 Markdown、
-  LLM 调用的链路不适合第一阶段直接搬到 Workers。
-
-参考文档：
-
-- Workers limits: https://developers.cloudflare.com/workers/platform/limits/
-- Workers Node.js compatibility: https://developers.cloudflare.com/workers/runtime-apis/nodejs/
-- D1 limits: https://developers.cloudflare.com/d1/platform/limits/
-- R2 limits: https://developers.cloudflare.com/r2/platform/limits/
-
-## 从 `licai` 裁剪迁移的范围
-
-本地 `licai/server-rs` 目前可参考的接口边界：
-
-- 行情和搜索：`/api/kline`、`/api/suggest`、`/api/code/name`
-- 财务数据：`/api/finance/income`、`/api/finance/balance`、
-  `/api/finance/cashflow`、`/api/finance/sharebonus`、
-  `/api/finance/dividendyield`、`/api/finance/freeholders`、
-  `/api/finance/orgholders`、`/api/finance/sharechange`、
-  `/api/finance/shareadditional`
-- 公司数据：`/api/company/notices`、`/api/company/restriction`
-- 基金数据：`/api/fund/info`、`/api/fund/position`、
-  `/api/fund/constituents`、`/api/fund/share-change`、`/api/fund/rank`、
-  `/api/fund/companies`
-- 13F 数据：`/api/13f/manager/list`、`/api/13f/quarters/:id`、
-  `/api/13f/position/:filingId`
-
-第一阶段建议保留：
-
-- 搜索、代码归一化、代码到名称映射
-- 股票/基金 K 线
-- 财务三表和分红/股本变动等基础事件
-- 基金概况、净值、持仓、排行
-- 公司公告列表和 PDF 对象存储
-
-第一阶段不迁移：
-
-- `knowledge/*`
-- `company/reports/stream`
-- `report/forecast`
-- 本地新闻、研报、PDF 解析、LLM 预测
-- 浏览器自动刷新 Cookie、模拟登录、代理链路
-
-## 推荐架构
-
-### Worker 拆分
+第一批验收页面以：
 
 ```text
-stock-info/
-  web-worker       对外 API 和静态前端
-  sync-worker      Cron 定时刷新关注股票/基金数据
-  admin-worker     手动触发回填、重建索引、导入本地数据
+company.html?code=300308.SZ&from=1735689600000
 ```
 
-也可以先用一个 Worker 起步，但代码上仍按 `routes`、`services`、`sync` 拆开，
-后续需要时再拆部署。
+为基准。迁移阶段先完整搬迁页面和接口，不做“迁移一个页面就对比一次”的验收。
+等整体迁移完成后，再本地同时启动 `licai` 和 `stock-info`，集中对比页面内容、
+接口响应和图表。本地总体验收一致后再提交到 `main` 触发 Cloudflare 部署。
+对比只用于最终验收，不是长期双系统依赖。
 
-### 技术栈
+## 运行时约束
 
-- TypeScript
-- Hono
-- Zod 做 query/body 校验
-- D1 作为结构化数据库
-- R2 作为对象存储
-- Vite + Vue 做前端
-- Wrangler 管理 D1 migration、R2 binding、Cron trigger
+- Workers 是 V8 isolate 运行时，不是完整 Node.js 服务器。可以开启
+  `nodejs_compat`，但不能依赖本地文件系统、原生 SQLite、长驻进程、CDP 浏览器。
+- 免费额度适合请求时小范围补数据、低频 Cron、小批量 D1 写入，不适合全市场扫描。
+- D1 负责结构化查询数据：K 线、财报字段、公告元数据、新闻/研报元数据、同步状态。
+- R2 负责大对象或原始对象：原始响应、压缩 JSON、PDF、转换后的 Markdown、快照。
+- 浏览器态、Cookie 刷新、PDF 转 Markdown、LLM 解析等任务放在 Mac 本地或独立任务侧，
+  通过远程 D1 或受控 API 写入 Cloudflare。
 
-长期维护建议使用 Hono，而不是手写原生 Worker router。原因是后续会持续增加
-股票、基金、财务、公告、admin/sync 等接口，Hono 的路由分组、中间件和类型
-约束能降低维护成本；相对免费额度而言，它的运行开销和包体积是可接受的。
+## 最终所有权
 
-当前实现已经拆成 `Vue + Vite` 前端和 `Hono + Workers` API：静态页面由
-Wrangler `assets` 从 `web/dist` 提供，`/api/*` 继续走 Worker 路由。
+`stock-info` 是未来唯一承载项目，`licai` 只是迁移期的源代码参考和验收对照。
 
-## 当前部署策略
+最终状态：
 
-当前阶段先只保留一套 `main` 部署链路，不引入 `staging`。
+- 前端页面、样式、运行时代码都在 `stock-info/web`。
+- 对外 API、定时任务、admin 导入都在 `stock-info/src`。
+- 结构化数据在 Cloudflare D1。
+- 原始响应、Markdown、大对象在 R2。
+- Mac 本地只保留导入、加工、Cookie 刷新、PDF 转 Markdown、LLM 批处理等任务脚本。
+- 线上访问不依赖 `licai` 的服务、文件、数据库或缓存。
 
-- Git 分支：只用 `main`
-- Cloudflare 自动部署：只绑定 `main`
-- D1：`stock_info`
-- R2：`stock-info-raw`
+迁移期允许从 `licai` 复制代码，但每个功能完成后都要在 `stock-info` 内形成完整实现：
 
-这样更适合现在的状态：
+- 页面源码复制到 `stock-info/web`。
+- API 合约复制并用 TypeScript 实现。
+- 数据表、导入脚本、同步任务进入 `stock-info`。
+- 验收通过后，对应功能不再从 `licai` 读取运行时状态。
 
-- 项目还在快速迭代
-- 还没形成稳定可用版本
-- 过早维护两套环境只会增加配置和数据管理成本
-
-后续等页面、接口和数据质量稳定之后，再补预发环境更合适。
-
-### 目录结构建议
+## 总体架构
 
 ```text
+licai/
+  web/                         迁移期前端源码参考和对照服务
+  server-rs/                   迁移期接口语义参考
+
 stock-info/
+  web/                         尽量从 licai/web 迁移，不重新设计样式
   src/
-    index.ts
-    env.ts
-    routes/
-      health.ts
-      search.ts
-      kline.ts
-      finance.ts
-      fund.ts
-      notices.ts
-      admin.ts
-    services/
-      market.ts
-      kline.ts
-      finance.ts
-      fund.ts
-      notice.ts
-      sync.ts
-    adapters/
-      eastmoney.ts
-      yahoo.ts
-      sec13f.ts
-    db/
-      schema.sql
-      queries.ts
-      migrations/
-    r2/
-      objects.ts
-    shared/
-      codes.ts
-      normalize.ts
-      json.ts
-  web/
-    src/
-    vite.config.ts
-  wrangler.jsonc
+    index.ts                   Hono 入口、assets、scheduled
+    routes/                    兼容 licai 的 /api/* 路由
+    services/                  业务编排：缓存、D1、上游源、入库
+    adapters/                  Eastmoney/Xueqiu/Yahoo/公告/基金等源适配
+    db/                        D1 查询、迁移、批量 upsert
+    shared/                    http、代码归一化、日期、响应格式、限流
+    sync/                      Cron 和回填任务
+    import/                    本地直写远端 D1 的数据模型和脚本
+  migrations/                  D1 schema
+  docs/                        迁移设计和验收记录
 ```
+
+部署上先保持一个 Worker：
+
+```text
+Browser -> stock-info Worker
+  /company.html, /js/*, /css/*   -> Assets: web/dist
+  /api/*                         -> Hono routes
+  scheduled event                -> sync jobs
+```
+
+后续如果 Cron、admin 导入、公开 API 的资源隔离需求变强，再拆成：
+
+```text
+web-worker     对外页面和查询 API
+sync-worker    Cron 定时加工
+admin-worker   本地导入、回填、重建索引
+```
+
+## 数据分层
+
+### 1. 请求时临时获取并写 D1
+
+适合用户访问时按需补齐，且单次耗时可控的数据。
+
+当前优先项：
+
+- 股票/基金 K 线
+- 股票概览和实时估值
+- 公司公告最近列表
+- 搜索建议和代码名称解析
+
+处理流程：
+
+```text
+GET /api/kline
+  -> 查询 D1 是否覆盖请求区间且未过期
+  -> 未命中或过期时请求上游小范围数据
+  -> 解析为结构化 rows
+  -> 批量 upsert 到 D1
+  -> 返回 licai 兼容响应
+```
+
+要求：
+
+- 首次请求应尽量控制在 1 秒以内；如果稳定超过目标，就改为定时或 admin 回填。
+- 普通请求只补最近小窗口，不做全历史大回填。
+- 命中 D1 时应在几十毫秒级返回。
+- 错误要暴露真实上游状态，不做静默 fallback。
+
+本地已验证的 K 线路径：
+
+- `300308.SZ` 东财首次请求约 520ms。
+- 写入 D1 后同路由约 12ms。
+- 这符合“请求时取并落 D1”的第一阶段模型。
+
+### 2. Cloudflare 定时任务处理
+
+适合低频、关注列表范围、可切片处理的数据。
+
+当前优先项：
+
+- watchlist 中股票的财报三表刷新
+- watchlist 中基金净值和持仓刷新
+- 公告元数据刷新
+- 最近 K 线小窗口预热
+- 同步任务状态和失败记录
+
+处理流程：
+
+```text
+scheduled event
+  -> 创建 sync_jobs 记录
+  -> 读取 watchlist_items
+  -> 按任务类型和优先级小批量执行
+  -> 每个上游域名走并发限制
+  -> D1 upsert 结构化数据
+  -> 必要时 R2 保存原始响应
+  -> 更新 sync_jobs stats/error
+```
+
+免费额度策略：
+
+- 默认只跑关注列表，不做全市场。
+- 每次 Cron 设置最大处理数量和最大耗时。
+- 失败任务记录错误和源 URL，不无限重试。
+- 大回填必须走 admin job 或本地导入。
+
+### 3. Mac 本地加工后写入 Cloudflare
+
+适合依赖本地文件、浏览器、PDF、LLM、长任务的数据。
+
+当前优先项：
+
+- 新闻、研报元数据
+- PDF 转 Markdown
+- LLM 研报字段抽取和摘要
+- 需要 CDP/Cookie 的数据源
+- 大批量历史回填
+
+采用一种主写入方式：本地脚本直接写远端 D1。
+
+```text
+Mac 本地加工脚本
+  -> 读取本地抓取结果、PDF 转 Markdown 结果、LLM 结构化结果
+  -> 生成幂等 SQL 或批量参数
+  -> wrangler d1 execute stock_info --remote --file ...
+  -> 写入远端 D1
+```
+
+执行原则：
+
+- 本地脚本负责校验、去重、幂等 upsert、批量大小控制和导入日志。
+- 远端 D1 是结构化数据的最终落点。
+- R2 写入只在确实需要保存 Markdown 或原始大对象时引入。
+- 不把 admin ingest API 作为第一阶段方案；除非后续需要浏览器外部系统写入，再单独设计。
+- 研报 PDF 本身不必进入 Cloudflare；如果要保存处理结果，保存 Markdown 到 D1 或 R2。
+
+## 前端迁移策略
+
+原则：尽量不要重做前端。
+
+`stock-info/web` 应从 `licai/web` 迁移，而不是继续维护一套差异很大的 Vue 新页面。
+具体策略：
+
+- 复制 `licai/web/src` 中目标页面、partials、runtime、样式、构建脚本。
+- 复制 `licai/web/src/company.html`、`company-pages-runtime.ts`、`chart.ts`、
+  `legacy-runtime.ts`、`api.ts` 等页面依赖。
+- 保留页面 DOM 结构、Bootstrap/DataTables/ECharts 风格。
+- 只有当 Worker 环境要求接口路径或静态资源路径变化时，做最小适配。
+- 不优先改样式，不新增卡片化重设计，不把原页面重写成另一套 UI。
+
+第一阶段页面迁移顺序：
+
+1. `company.html`
+2. `company-finance.html`
+3. `company-notice.html`
+4. `fund.html`
+5. `fund-position.html`
+6. `research-news.html`
+
+页面迁移期间不逐页对比 `licai`。先按页面和接口清单整体迁移，等核心页面、
+共享运行时代码和后端接口全部进入 `stock-info` 后，再做集中对比验收。
+
+## 后端接口迁移策略
+
+后端只迁移 `/api/*` 合约，不迁移 Rust 运行时本身。
+
+迁移原则：
+
+- 先读 `licai/server-rs` 中对应 handler，保持参数、响应结构和错误语义一致。
+- TypeScript 代码按 `routes -> services -> adapters -> db/shared` 分层。
+- 业务源适配只在 `adapters` 中处理，上层不拼接上游 URL。
+- D1 查询和 upsert 只在 `db` 中处理，上层不写 SQL 字符串。
+- 大字段映射、指标名、分类、源配置放 JSON/config，不写在服务逻辑里。
+
+第一批接口：
+
+```text
+GET /api/kline
+GET /api/suggest
+GET /api/code/name
+GET /api/company/overview
+GET /api/company/notices
+GET /api/finance/income
+GET /api/finance/balance
+GET /api/finance/cashflow
+```
+
+后续接口：
+
+```text
+GET /api/fund/info
+GET /api/fund/position
+GET /api/fund/constituents
+GET /api/fund/rank
+GET /api/knowledge/news
+GET /api/knowledge/file
+本地导入脚本直接写远端 D1，第一阶段不提供公开 ingest API。
+```
+
+## 公共模块
+
+### HTTP 客户端
+
+需要抽一个 Worker 版公共 HTTP 层，替代零散 `fetch`。
+
+能力：
+
+- 默认浏览器 UA、Referer、Accept-Language。
+- JSON/JSONP/text/bytes 解析。
+- 错误消息保留 status 和截断 body。
+- 按域名限并发，例如：
+  - `push2his.eastmoney.com`: 1 到 2
+  - `datacenter-web.eastmoney.com`: 2
+  - `stock.xueqiu.com`: 1
+- 超时控制。
+- 可选 D1/R2 cache index。
+- 请求日志只记录高价值失败，不刷屏。
+
+不做：
+
+- 不做隐式多源 fallback。
+- 不在 HTTP 层吞错。
+- 不在 HTTP 层内置业务 URL。
+
+### 代码归一化
+
+从 `licai/server-rs/src/common.rs` 迁移为 TypeScript：
+
+- A 股：`300308.SZ`、`601138.SH`
+- 北交所：`.BJ`
+- 场内基金：`.SF`、`.ZF`
+- 场外基金：`.OF`
+- 港股：`.HK`
+- 美股：`.US`、`.O`、`.N`
+- 韩股：`.KS`、`.KQ`
+
+所有路由入口先归一化，D1 主键也使用归一化代码。
+
+### LLM client
+
+Worker 和本地脚本侧需要一个 TypeScript 版 `llm-client`，接口风格参考本地共享
+Rust `llm-client`，但不要把 Rust crate 作为运行时依赖。
+
+第一阶段只预留模块和类型，不接入新闻/研报：
+
+```text
+src/shared/llm/
+  client.ts
+  providers.ts
+  types.ts
+```
+
+后续研报解析时再实现：
+
+- 模型配置集中管理。
+- 并发限制。
+- 失败可见。
+- 可选 D1/R2 缓存。
+- 本地脚本和 Worker 内部任务使用同一请求/响应模型。
+
+## K 线数据源策略
+
+优先 Eastmoney，因为不需要 CDP。
+
+当前 Eastmoney A 股 K 线请求需要贴近东财页面请求：
+
+- `fields1=f1..f13`
+- `fields2=f51..f61`
+- `ut=fa5fd1943c7b386f172d6893dbfba10b`
+- `rtntype=6`
+- `Referer: https://quote.eastmoney.com/`
+- 浏览器 UA
+- `Cookie: nid18=1`
+
+本地 `wrangler dev --local` 已验证这组参数能返回 `300308.SZ` K 线并写入 D1。
+
+如果线上 Worker 仍被 Eastmoney 拒绝，再切 Xueqiu，但不是在 Worker 里跑 CDP。
+Xueqiu 方案：
+
+```text
+Mac 本地定时任务
+  -> 通过 CDP 打开雪球，获取有效 cookie
+  -> 生成 D1 upsert SQL 或调用 wrangler d1 execute
+  -> 写入 source_credentials
+
+Worker /api/kline
+  -> 读取存储的 Xueqiu cookie
+  -> 使用从 licai 迁移的雪球 K 线请求和解析逻辑
+  -> 写入 kline_bars
+  -> 返回兼容响应
+```
+
+Cookie 存储：
+
+```sql
+create table source_credentials (
+  source text primary key,
+  credential_type text not null,
+  payload_json text not null,
+  updated_at integer not null,
+  expires_at integer
+);
+```
+
+要求：
+
+- Cookie 过期时返回明确错误。
+- 不做 Eastmoney 失败自动切 Xueqiu；数据源切换必须是显式配置。
 
 ## D1 数据模型
 
-### `securities`
+当前已有基础表，后续按迁移补齐。
 
-证券、基金、指数、ETF 的主表。
+核心表：
 
 ```sql
-create table securities (
-  code text primary key,
-  market text not null,
-  type text not null,
-  name text not null,
-  currency text,
-  exchange text,
-  source text,
-  updated_at integer not null
-);
-
-create index idx_securities_type_name on securities(type, name);
+securities(code, market, type, name, currency, exchange_name, source, updated_at)
+security_aliases(alias, code, source, updated_at)
+kline_bars(code, period, fq, date, open, close, high, low, volume, amount, amplitude, pct_change, change_amount, turnover, source, updated_at)
+fund_nav(code, date, nav, accum_nav, daily_return, subscription_status, redemption_status, updated_at)
+financial_statements(code, statement_type, report_date, fiscal_period, payload_json, source, raw_r2_key, updated_at)
+company_notices(notice_id, code, title, publish_date, notice_type, source, pdf_r2_key, raw_r2_key, updated_at)
+watchlist_items(code, enabled, priority, tags, updated_at)
+sync_jobs(job_id, job_type, status, started_at, finished_at, error, stats_json)
 ```
 
-### `security_aliases`
-
-搜索别名、拼音、供应商原始代码映射。
+建议新增：
 
 ```sql
-create table security_aliases (
-  alias text not null,
-  code text not null,
-  source text not null,
-  updated_at integer not null,
-  primary key(alias, code, source)
-);
-
-create index idx_security_aliases_code on security_aliases(code);
-```
-
-### `kline_bars`
-
-K 线明细。只存展示和筛选需要的结构化字段，原始响应放 R2。
-
-```sql
-create table kline_bars (
-  code text not null,
-  period text not null,
-  fq text not null,
-  date text not null,
-  open real,
-  high real,
-  low real,
-  close real,
-  volume real,
-  amount real,
-  turnover real,
-  pe real,
-  pb real,
-  market_cap real,
-  source text,
-  updated_at integer not null,
-  primary key(code, period, fq, date)
-);
-
-create index idx_kline_bars_code_date on kline_bars(code, date);
-```
-
-### `fund_profiles`
-
-```sql
-create table fund_profiles (
-  code text primary key,
-  name text not null,
-  company text,
-  manager text,
-  fund_type text,
-  scale text,
-  start_date text,
-  updated_at integer not null
-);
-```
-
-### `fund_nav`
-
-```sql
-create table fund_nav (
-  code text not null,
-  date text not null,
-  nav real,
-  accum_nav real,
-  daily_return real,
-  dividend real,
-  split_ratio real,
-  updated_at integer not null,
-  primary key(code, date)
-);
-```
-
-### `fund_positions`
-
-```sql
-create table fund_positions (
-  fund_code text not null,
-  report_date text not null,
-  security_code text not null,
-  security_name text,
-  shares real,
-  market_value real,
-  nav_pct real,
-  source text,
-  updated_at integer not null,
-  primary key(fund_code, report_date, security_code)
-);
-
-create index idx_fund_positions_security on fund_positions(security_code);
-```
-
-### `fund_ranks`
-
-```sql
-create table fund_ranks (
-  snapshot_date text not null,
-  rank_type text not null,
-  fund_code text not null,
-  return_1m real,
-  return_3m real,
-  return_6m real,
-  return_1y real,
-  return_3y real,
-  scale text,
-  raw_score real,
-  updated_at integer not null,
-  primary key(snapshot_date, rank_type, fund_code)
-);
-```
-
-### `financial_statements`
-
-财务报表的期次索引。
-
-```sql
-create table financial_statements (
-  code text not null,
-  statement_type text not null,
-  report_date text not null,
-  fiscal_period text,
-  source text,
-  raw_r2_key text,
-  updated_at integer not null,
-  primary key(code, statement_type, report_date)
-);
-```
-
-### `financial_metrics`
-
-财务报表字段明细。这样可以兼容 A 股、港股、美股字段差异。
-
-```sql
-create table financial_metrics (
-  code text not null,
-  statement_type text not null,
-  report_date text not null,
-  metric_key text not null,
-  metric_label text,
-  value_num real,
-  value_text text,
-  unit text,
-  primary key(code, statement_type, report_date, metric_key)
-);
-
-create index idx_financial_metrics_lookup
-  on financial_metrics(code, metric_key, report_date);
-```
-
-### `corporate_actions`
-
-分红、送转、股本变动、限售解禁等事件。
-
-```sql
-create table corporate_actions (
-  id text primary key,
-  code text not null,
-  action_type text not null,
-  event_date text,
-  report_date text,
-  title text,
-  payload_json text,
-  source text,
-  updated_at integer not null
-);
-
-create index idx_corporate_actions_code_date on corporate_actions(code, event_date);
-```
-
-### `company_notices`
-
-公告元数据。PDF 和原始响应放 R2。
-
-```sql
-create table company_notices (
-  notice_id text primary key,
-  code text not null,
-  title text not null,
-  publish_date text,
-  notice_type text,
-  source text,
-  pdf_r2_key text,
-  raw_r2_key text,
-  updated_at integer not null
-);
-
-create index idx_company_notices_code_date on company_notices(code, publish_date);
-```
-
-### `source_cache_index`
-
-跨源缓存索引。R2 存原始响应，D1 存索引和 TTL。
-
-```sql
-create table source_cache_index (
-  cache_key text primary key,
-  source text not null,
-  url_hash text,
-  r2_key text not null,
-  status integer,
-  fetched_at integer not null,
-  expires_at integer,
-  etag text,
-  content_hash text,
-  error text
-);
-
-create index idx_source_cache_expires on source_cache_index(expires_at);
-```
-
-### `sync_jobs`
-
-```sql
-create table sync_jobs (
-  job_id text primary key,
-  job_type text not null,
-  status text not null,
-  started_at integer not null,
-  finished_at integer,
-  error text,
-  stats_json text
-);
-
-create index idx_sync_jobs_type_started on sync_jobs(job_type, started_at);
+source_cache_index(cache_key, source, url_hash, r2_key, status, fetched_at, expires_at, etag, content_hash, error)
+source_credentials(source, credential_type, payload_json, updated_at, expires_at)
+research_items(id, source, title, publish_time, item_type, url, code, tags_json, summary, md_r2_key, payload_json, updated_at)
+research_documents(id, item_id, title, publish_time, source, md_text, md_r2_key, payload_json, updated_at)
+fund_positions(fund_code, report_date, security_code, security_name, shares, market_value, nav_pct, source, updated_at)
+fund_profiles(code, name, company, manager, fund_type, scale, start_date, payload_json, updated_at)
 ```
 
 ## R2 对象布局
 
 ```text
+raw/eastmoney/kline/{code}/{period}/{fq}/{yyyymmdd}.json.gz
 raw/eastmoney/finance/{code}/{statement_type}/{report_date}.json.gz
-raw/eastmoney/kline/{code}/{period}/{fq}/{date}.json.gz
-raw/eastmoney/fund/{code}/info/{date}.html.gz
-raw/eastmoney/fund/{code}/position/{report_date}.json.gz
-raw/eastmoney/notice/{code}/{notice_id}.json.gz
-notices/{code}/{notice_id}.pdf
+raw/eastmoney/notices/{code}/{notice_id}.json.gz
+raw/xueqiu/kline/{code}/{period}/{fq}/{yyyymmdd}.json.gz
+research/md/{source}/{yyyy}/{id}.md
+research/raw/{source}/{yyyy}/{id}.json.gz
 snapshots/kline/{code}/{period}/{fq}.json.gz
-exports/d1-seed/{date}/securities.jsonl.gz
-exports/d1-seed/{date}/kline_bars.jsonl.gz
+exports/d1-seed/{date}/{table}.jsonl.gz
 ```
 
-原则：
+PDF 策略：
 
-- D1 只存结构化查询字段。
-- R2 存原始响应、PDF、快照和导入导出文件。
-- D1 中所有 R2 引用都用 `r2_key`，不要存公开 URL。
-- 对外访问 PDF 时走 Worker 鉴权后从 R2 读取或签名跳转。
+- 外部 PDF 不默认搬入 R2。
+- 本地可把 PDF 转 Markdown，然后写 D1 `md_text` 或写 R2 `research/md/*`。
+- 只有需要稳定留档的 PDF 才进入 R2。
 
-## 数据刷新策略
+## 集中本地验证流程
 
-### 第一阶段只刷新关注范围
+迁移阶段先完成页面、共享前端运行时代码、后端接口、D1 schema 和本地导入脚本。
+不要迁移一个页面就对比一次，避免把时间耗在半成品差异上。整体迁移完成后，
+再集中做本地总体验证，不直接 push 消耗 Cloudflare 构建次数。
 
-不要在 Workers 上全市场抓取。先维护一个关注列表：
-
-```sql
-create table watchlist_items (
-  code text primary key,
-  enabled integer not null default 1,
-  priority integer not null default 100,
-  tags text,
-  updated_at integer not null
-);
-```
-
-Cron 只刷新 `watchlist_items.enabled = 1` 的股票和基金。
-
-免费额度版本中，Cron 默认不执行批量同步，只记录一次 skipped job。等关注列表、
-失败重试和限流策略明确后，再打开小批量刷新。
-
-### K 线
-
-- 在线 API 先查 D1。
-- 若缺最近 1 到 5 个交易日，可以请求上游小范围补齐。
-- 完整历史回填不要在普通用户请求中做，交给 admin job 分批执行。
-- D1 写入使用批量 upsert，每批控制在较小范围，避免单次请求过长。
-
-### 财报
-
-- 每天或每周刷新关注股票的三表。
-- 财报期次低频变化，可以设置 6 到 24 小时 TTL。
-- 原始 Eastmoney 响应存 R2，解析后的字段写 `financial_metrics`。
-- 字段映射从配置文件导入，不要把大段业务字段硬编码在服务逻辑里。
-
-### 基金
-
-- 基金概况：每天刷新。
-- 基金净值：每天刷新最近数据，历史回填分批做。
-- 基金持仓：季度维度，低频刷新。
-- 基金排行：按类型每天生成快照。
-
-### 公告
-
-- 元数据进入 D1。
-- PDF 进入 R2。
-- 首版只做列表和 PDF 打开，不做正文解析和摘要。
-
-## 对外 API 设计
+`licai` 只作为迁移期对照服务；总体验收通过后，后续开发以 `stock-info` 为准。
 
 ```text
-GET /api/health
+1. 启动 licai
+   cd /Users/terry/git/licai
+   ./licai-server.sh
 
-GET /api/search?q=
-GET /api/securities/:code
+2. 启动 stock-info
+   cd /Users/terry/git/stock-info
+   npm run build
+   npm run db:migrate:local
+   npm run dev:worker
 
-GET /api/kline?code=&period=day&fq=normal&from=&to=
+3. 打开对照页面
+   licai:      http://127.0.0.1:8080/company.html?code=300308.SZ&from=1735689600000
+   stock-info: http://127.0.0.1:8788/company.html?code=300308.SZ&from=1735689600000
 
-GET /api/finance/income?code=
-GET /api/finance/balance?code=
-GET /api/finance/cashflow?code=
-GET /api/finance/actions?code=&type=
-
-GET /api/fund/info?code=
-GET /api/fund/nav?code=&from=&to=
-GET /api/fund/position?code=&reportDate=
-GET /api/fund/rank?type=&date=&page=&pageSize=
-
-GET /api/company/notices?code=&page=&pageSize=
-GET /api/company/notices/:noticeId/pdf
-
-POST /api/admin/sync
-GET /api/admin/sync/:jobId
+4. 集中对比
+   - 页面结构和样式
+   - K 线图
+   - 代码名称、行情指标
+   - 财报表格
+   - 公告列表
+   - 控件行为
+   - 网络请求状态
 ```
 
-API 响应保持稳定格式：
+验收标准：
 
-```json
-{
-  "code": 200,
-  "msg": "OK",
-  "data": {}
-}
-```
+- 已迁移页面主要内容一致。
+- 已迁移接口关键字段一致。
+- 新 Worker 版没有隐藏失败。
+- D1 命中路径和上游补齐路径都可验证。
+- 本地脚本可直接写远端 D1，并且导入可重复执行。
+- 本地通过后，再提交到 `main` 触发 Cloudflare 构建。
 
-错误要暴露真实原因，不做静默 fallback：
+## 迁移阶段
 
-```json
-{
-  "code": 502,
-  "msg": "eastmoney finance request failed: status=403",
-  "data": null
-}
-```
+### 阶段 0：收敛当前方向
 
-## 前端页面设计
+- 停止继续维护差异很大的新 `CompanyApp.vue` 页面。
+- 记录当前 Eastmoney K 线修复结果。
+- 确认 `web/dist` 由 Cloudflare build 产出，不提交构建产物。
 
-第一版只做实用工作台，不做复杂门户。
+### 阶段 1：迁移 licai company 页面
 
-页面：
+- 复制 `licai/web` 中 company 页面依赖。
+- 调整 Vite 多页面构建。
+- Worker assets 输出 `company.html` 和对应 JS/CSS。
+- 后端补齐 company 页面实际调用的 `/api/*`。
+- 暂不做逐页对比，纳入整体迁移后的集中验收。
 
-- 首页：搜索框、关注列表、最近更新状态。
-- 股票详情页：
-  - 基本信息
-  - K 线图
-  - 财务三表 tabs
-  - 分红、股本变动、限售解禁
-  - 公司公告
-- 基金详情页：
-  - 基金概况
-  - 净值走势
-  - 持仓
-  - 同类排行
-- 同步状态页：
-  - 最近 sync job
-  - 失败源和错误信息
+### 阶段 2：补齐股票接口
 
-前端可以参考 `licai/web` 的已有 Vue 页面，但不要直接搬复杂导航和知识流。
+- `/api/kline`
+- `/api/suggest`
+- `/api/code/name`
+- `/api/finance/*`
+- `/api/company/notices`
+- `/api/company/restriction`
+- 分红、股本、持有人等低频接口
 
-## 上游数据源边界
+### 阶段 3：基金接口
 
-优先使用无需浏览器态的接口：
+- 基金概况
+- 净值
+- 持仓
+- 份额变化
+- 排行
+- ETF/场内基金特殊代码归一化
 
-- Eastmoney suggest
-- Eastmoney datacenter 财务接口
-- Eastmoney 基金净值、基金 F10、基金排行
-- Eastmoney 公告接口
+### 阶段 4：定时任务和本地 D1 导入
 
-谨慎使用：
+- `sync_jobs`
+- `watchlist_items`
+- Cron 小批量刷新
+- 本地导入脚本直接写远端 D1
+- Xueqiu cookie 本地刷新并写入远端 D1
 
-- Xueqiu K 线：本地 `licai` 依赖 Cookie 和模拟刷新，在 Workers 上不稳定。
-- Yahoo K 线：部分市场可能需要 Cookie/crumb，Workers 在线请求不一定稳定。
+### 阶段 5：新闻和研报
 
-处理原则：
+- 迁移 `research-news.html` 页面。
+- 本地完成抓取、PDF 转 Markdown、LLM 处理。
+- Markdown/元数据通过本地脚本写入远端 D1，必要时 Markdown 大对象写 R2。
+- Worker 只负责查询和展示。
 
-- 在线 Worker 请求只走稳定、无需浏览器态的接口。
-- 需要 Cookie 或浏览器态的数据源，改为本地或 admin job 离线同步到 D1/R2。
-- 不添加“失败就换另一个源”的隐式 fallback。多源合并必须是显式配置和可观测状态。
+### 阶段 6：废弃 licai 运行依赖
 
-## 迁移步骤
+- 清点 `stock-info` 中仍引用 `/Users/terry/git/licai` 的脚本、文档和临时路径。
+- 把仍需要保留的本地加工能力迁移到 `stock-info/scripts` 或 `stock-info/tools`。
+- 确认线上 Worker、远端 D1/R2、本地导入脚本都不依赖 `licai` 运行态。
+- 保留 `licai` 作为历史归档或只读参考，不再作为功能入口。
 
-### 阶段 1：基础工程
+## 部署策略
 
-- 初始化 Workers TypeScript 项目。
-- 配置 `wrangler.jsonc`、D1 binding、R2 binding、Cron trigger。
-- 建立 D1 migration。
-- 实现 `/api/health`。
+当前只用 `main` 分支。
 
-验收：
+- 本地验证通过。
+- 提交到 `main`。
+- Cloudflare 从 Git 拉取源码。
+- Cloudflare build 运行 `npm run build` 生成 `web/dist`。
+- Worker 通过 `assets.directory=./web/dist` 提供页面。
+- 远端 D1 migration 手动执行，避免构建时隐式改库。
 
-- `wrangler dev` 可启动。
-- D1 migration 可本地和远端执行。
-- `/api/health` 返回当前版本、D1/R2 binding 状态。
+不要在本地直接 `wrangler deploy`，除非明确切换到 token 部署模式。
 
-### 阶段 2：搜索和证券主数据
+## 当前风险
 
-- 迁移代码归一化逻辑。
-- 实现 `securities`、`security_aliases`。
-- 实现 `/api/search`、`/api/securities/:code`。
-- 导入本地 `licai/cfg/code-name.json`、`stock-info.json` 的可用部分。
-
-验收：
-
-- 常用 A 股、港股、美股、基金代码能搜索。
-- 未命中时能请求上游并写入 D1。
-
-### 阶段 3：K 线
-
-- 实现 `kline_bars`。
-- 先支持关注列表代码。
-- 实现最近数据增量刷新。
-- 历史数据回填作为 admin job。
-
-验收：
-
-- `/api/kline` 可返回 D1 数据。
-- 缺最近数据时能补齐小范围数据。
-- 大历史回填不会阻塞普通请求。
-
-### 阶段 4：财务数据
-
-- 实现三表抓取、解析、字段映射。
-- 原始响应写 R2。
-- 结构化字段写 D1。
-
-验收：
-
-- 股票详情页能展示 income、balance、cashflow。
-- 字段映射缺失时返回可见错误或跳过记录统计，不静默成功。
-
-### 阶段 5：基金数据
-
-- 实现基金概况、净值、持仓、排行。
-- ETF 联接基金等特殊逻辑后置，先保证普通基金路径稳定。
-
-验收：
-
-- 基金详情页能展示概况、净值走势、持仓。
-- 持仓报告期可切换。
-
-### 阶段 6：公告和 R2 PDF
-
-- 实现公告元数据同步。
-- PDF 入 R2。
-- 实现 PDF 读取接口。
-
-验收：
-
-- 股票详情页能展示公告列表。
-- 点击 PDF 能打开 R2 中的对象。
-
-### 阶段 7：部署和运维
-
-- 接入 Cloudflare Access 保护 admin API。
-- 配置 Cron。
-- 增加同步失败日志和状态页。
-- 增加 D1/R2 备份导出脚本。
-
-验收：
-
-- 线上 Worker 可访问。
-- Cron 能定时刷新关注列表。
-- admin 页面能看到失败原因和最近更新时间。
-
-## 后续新闻/研报扩展预留
-
-后续如果要迁移新闻和研报，建议新增独立表，而不是复用股票行情表：
-
-```text
-documents
-document_sources
-document_security_links
-document_read_state
-document_scores
-```
-
-原始 PDF、HTML、Markdown 仍放 R2；D1 只放元数据、证券关联、阅读状态、推荐分数。
-
-不建议第一阶段迁移 `licai` 的完整 knowledge/report 逻辑，因为它当前依赖本地文件、
-SQLite/JSONL、PDF 转换脚本和 LLM cache，和 Workers 的运行模型差异较大。
+- Eastmoney K 线本地 Worker 已通，但线上 Cloudflare 出口仍可能被上游区别对待。
+- `licai/web` 是多页面 legacy/Vue 混合结构，迁移时要优先保持构建链路一致。
+- DataTables、Bootstrap、ECharts 等静态依赖路径需要逐项确认。
+- D1 写入批次和免费额度需要控制，不能把 licai 本地缓存行为原样搬到 Worker。
+- 本地导入远端 D1/R2 必须补鉴权、幂等和错误记录。

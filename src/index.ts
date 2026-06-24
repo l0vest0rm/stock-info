@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { companyRoutes } from "./routes/company";
 import { financeRoutes } from "./routes/finance";
+import { fundRoutes } from "./routes/fund";
 import { healthRoutes } from "./routes/health";
 import { klineRoutes } from "./routes/kline";
 import { searchRoutes } from "./routes/search";
@@ -19,6 +20,7 @@ app.route("/api", searchRoutes);
 app.route("/api", klineRoutes);
 app.route("/api", financeRoutes);
 app.route("/api", companyRoutes);
+app.route("/api", fundRoutes);
 
 app.notFound((c) => {
   if (c.env.ASSETS) {

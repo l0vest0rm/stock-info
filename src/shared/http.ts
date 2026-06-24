@@ -20,6 +20,11 @@ export function requireQuery(c: Context, key: string): string | Response {
 }
 
 export async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
+  const text = await fetchText(url, init);
+  return parseJsonOrJsonp(text);
+}
+
+export async function fetchText(url: string, init?: RequestInit): Promise<string> {
   const res = await fetch(url, {
     ...init,
     headers: {
@@ -32,7 +37,7 @@ export async function fetchJson(url: string, init?: RequestInit): Promise<unknow
   if (!res.ok) {
     throw new Error(`request failed: status=${res.status} body=${truncate(text)}`);
   }
-  return parseJsonOrJsonp(text);
+  return text;
 }
 
 export function parseJsonOrJsonp(text: string): unknown {

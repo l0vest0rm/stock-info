@@ -1,4 +1,4 @@
-import { fetchEastmoneyFundNav, fetchEastmoneyStockKline } from "../adapters/eastmoney";
+import { fetchEastmoneyFundNav, fetchEastmoneyStockKline, fetchYahooStockKline } from "../adapters/eastmoney";
 import {
   getFundNavRows,
   getKlineBars,
@@ -16,7 +16,7 @@ export async function loadKline(
   fq: string,
   from: string,
   to: string
-): Promise<{ code: string; source: "d1" | "eastmoney"; rows: KlineBar[] | FundNavRow[] }> {
+): Promise<{ code: string; source: "d1" | "eastmoney" | "yahoo"; rows: KlineBar[] | FundNavRow[] }> {
   const code = normalizeSecurityCode(rawCode);
   if (inferSecurityType(code) === "fund" || code.endsWith(".OF")) {
     const fundCode = code.endsWith(".OF") ? code : `${code.split(".")[0]}.OF`;
@@ -33,12 +33,31 @@ export async function loadKline(
   if (cached.length > 0 && isFreshEnough(cached[0]?.updatedAt)) {
     return { code, source: "d1", rows: cached };
   }
+  if (!isEastmoneyKlineCode(code)) {
+    const cachedGlobal = await getKlineBars(db, code, period, fq, from, to);
+    if (cachedGlobal.length > 0 && isFreshEnough(cachedGlobal[0]?.updatedAt)) {
+      return { code, source: "d1", rows: cachedGlobal };
+    }
+    const rows = await fetchYahooStockKline(code, fq)
+      .then((items) => items.filter((row) => row.date >= from && row.date <= to))
+      .catch((err) => {
+        console.warn(`yahoo kline unavailable for ${code}:`, err);
+        return [] as KlineBar[];
+      });
+    await upsertKlineBars(db, rows);
+    return { code, source: "yahoo", rows };
+  }
+
   const fetched = await fetchEastmoneyStockKline(code, period, fq, from, to);
   if (fetched.security) {
     await upsertSecurity(db, fetched.security);
   }
   await upsertKlineBars(db, fetched.rows);
   return { code, source: "eastmoney", rows: fetched.rows };
+}
+
+function isEastmoneyKlineCode(code: string): boolean {
+  return /\.(SH|SZ|BJ)$/.test(code);
 }
 
 function isFreshEnough(updatedAt: number | undefined): boolean {

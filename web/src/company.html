@@ -1,0 +1,62 @@
+<!-- @include:header -->
+  <!-- @include:company_nav -->
+  <div id="container" class="my-2">
+    <!-- @include:company_info -->
+    <div class="row">
+      <div class="col-3">
+        <div id="dateRange" class="mb-2"></div>
+      </div>
+      <div class="col-5">
+        <div class="btn-group" role="group">
+          <div>
+            <select class="form-select form-select-sm" id="klinePrice">
+              <option value="">股价前复权</option>
+              <option value="normal">股价不复权</option>
+              <option value="after">股价后复权</option>
+            </select>
+          </div>
+          <div>
+            <select class="form-select form-select-sm" id="klineOptions" multiple>
+              <option value="value">市值(亿)</option>
+              <option value="pettm">市盈率TTM</option>
+              <option value="pb">市净率(PB)</option>
+              <option value="ps">市销率(PS)</option>
+              <option value="bonus">股息率(%)</option>
+            </select>
+          </div>
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-danger dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">标记...</button>
+            <ul class="dropdown-menu">
+              <li>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="" id="marklineFinanceReportDate">
+                  <label class="form-check-label" for="marklineFinanceReportDate">标记财报发布日</label>
+                </div>
+              </li>
+              <li>
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" value="" id="marklineBonusDate">
+                  <label class="form-check-label" for="marklineBonusDate">标记分红日期</label>
+                </div>
+              </li>
+            </ul>
+          </div>
+          <input type="checkbox" class="btn-check" id="alignStart" autocomplete="off">
+          <label class="btn btn-sm btn-outline-primary" for="alignStart">对齐开始</label>
+          <input type="checkbox" class="btn-check" id="ratio" autocomplete="off">
+          <label class="btn btn-sm btn-outline-primary" for="ratio">比率</label>
+          <input type="checkbox" class="btn-check" id="candlestick" autocomplete="off">
+          <label class="btn btn-sm btn-outline-primary" for="candlestick">蜡烛图</label>
+        </div>
+      </div>
+      <div class="col-4">
+        <select class="form-select" id="codes" multiple></select>
+      </div>
+    </div>
+    <div id="kline" style="min-height: 600px; min-width: 300px;"></div>
+    <table id="position" class="display" width="100%"></table>
+    <div id="company-page-vue-root"></div>
+    <table id="correlation" class="table table-sm table-bordered table-hover"></table>
+  </div>
+  <script src="js/company-page.js"></script>
+<!-- @include:footer -->

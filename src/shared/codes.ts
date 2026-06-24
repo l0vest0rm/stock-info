@@ -45,7 +45,7 @@ export function securityMarket(code: string): string {
 
 export function inferSecurityType(code: string): string {
   const normalized = normalizeSecurityCode(code);
-  if (normalized.endsWith(".OF")) {
+  if (normalized.endsWith(".OF") || normalized.endsWith(".SF") || normalized.endsWith(".ZF")) {
     return "fund";
   }
   if (/^\d{6}\.(SH|SZ|BJ)$/.test(normalized)) {

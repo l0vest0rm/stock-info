@@ -1,0 +1,70 @@
+[
+  {
+    "label": "指数成分股",
+    "options": [
+      {"value": "1|(IS_HS300=#是#)", "label": "沪深300"},
+      {"value": "2|(IS_SZ50=#是#)", "label": "上证50"},
+      {"value": "3|(IS_ZZ500=#是#)", "label": "中证500"},
+      {"value": "4|(IS_ZZ1000=#是#)", "label": "中证1000"}
+    ]
+  },
+  {
+    "label": "市值",
+    "options": [
+      {"value": "11|(TOTAL_MARKET_CAP<5000000000)", "label": "市值小于50亿"},
+      {"value": "12|(TOTAL_MARKET_CAP>10000000000)", "label": "市值大于100亿"},
+      {"value": "12|(TOTAL_MARKET_CAP>50000000000)", "label": "市值大于500亿"}
+    ]
+  },
+  {
+    "label": "机构持股家数",
+    "options": [
+      {"value": "41|(ALLCORP_NUM>50)", "label": "机构持股家数大于50"},
+      {"value": "41|(ALLCORP_NUM>100)", "label": "机构持股家数大于100"},
+      {"value": "41|(ALLCORP_NUM>300)", "label": "机构持股家数大于300"},
+      {"value": "41|(ALLCORP_NUM>500)", "label": "机构持股家数大于500"}
+    ]
+  },
+  {
+    "label": "市盈率TTM",
+    "options": [
+      {"value": "22|(PE9>0)", "label": "市盈率TTM大于0"},
+      {"value": "21|(PE9<10)", "label": "市盈率TTM小于10"},
+      {"value": "21|(PE9<20)", "label": "市盈率TTM小于20"},
+      {"value": "21|(PE9<30)", "label": "市盈率TTM小于30"},
+      {"value": "21|(PE9<40)", "label": "市盈率TTM小于40"},
+      {"value": "21|(PE9<50)", "label": "市盈率TTM小于50"},
+      {"value": "21|(PE9<70)", "label": "市盈率TTM小于70"},
+      {"value": "21|(PE9<100)", "label": "市盈率TTM小于100"}
+    ]
+  },
+  {
+    "label": "市净率MRQ",
+    "options": [
+      {"value": "23|(PBNEWMRQ>0)", "label": "市净率MRQ大于0"},
+      {"value": "24|(PBNEWMRQ<1)", "label": "市净率MRQ小于1"},
+      {"value": "24|(PBNEWMRQ<2)", "label": "市净率MRQ小于2"},
+      {"value": "24|(PBNEWMRQ<3)", "label": "市净率MRQ小于3"}
+    ]
+  },
+  {
+    "label": "成长能力",
+    "options": [
+      {"value": "31|(NETPROFIT_YOY_RATIO>0)", "label": "净利润增长率大于0%"},
+      {"value": "31|(NETPROFIT_YOY_RATIO>5)", "label": "净利润增长率大于5%"},
+      {"value": "31|(NETPROFIT_YOY_RATIO>10)", "label": "净利润增长率大于10%"},
+      {"value": "31|(NETPROFIT_YOY_RATIO>15)", "label": "净利润增长率大于15%"},
+      {"value": "32|(NETPROFIT_GROWTHRATE_3Y>15)", "label": "净利润3年复合增长率大于15%"},
+      {"value": "34|(ZXGXL>2)", "label": "最新股息率大于2%"},
+      {"value": "34|(ZXGXL>3)", "label": "最新股息率大于3%"},
+      {"value": "34|(ZXGXL>5)", "label": "最新股息率大于5%"}
+    ]
+  },
+  {
+    "label": "股价表现",
+    "options": [
+      {"value": "51|(CHANGERATE_10DAYS<-10)", "label": "10日涨跌幅小于-10%"},
+      {"value": "51|(CHANGERATE_10DAYS>10)", "label": "10日涨跌幅大于10%"}
+    ]
+  }
+]

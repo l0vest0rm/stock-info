@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "npm run build:web && wrangler dev --local",
     "dev:worker": "wrangler dev --local",
-    "dev:web": "vite --config web/vite.config.ts",
+    "dev:web": "cd web && vite --config vite.layout.config.ts",
     "build": "npm run build:web",
-    "build:web": "vite build --config web/vite.config.ts",
+    "build:web": "cd web && node scripts/build-html.mjs && vite build --config vite.layout.config.ts && node scripts/build-vue-pages.mjs && node scripts/build-legacy-pages.mjs",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit && vue-tsc --noEmit -p web/tsconfig.json",
+    "typecheck": "tsc --noEmit",
     "db:migrate:local": "wrangler d1 migrations apply stock_info --local",
     "db:migrate:remote": "wrangler d1 migrations apply stock_info --remote"
   },
