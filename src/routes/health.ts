@@ -10,7 +10,6 @@ healthRoutes.get("/health", async (c) => {
     name: "stock-info",
     version: c.env.APP_VERSION ?? "dev",
     d1: dbCheck?.ok === 1,
-    r2: Boolean(c.env.RAW_BUCKET),
     time: new Date().toISOString(),
   });
 });

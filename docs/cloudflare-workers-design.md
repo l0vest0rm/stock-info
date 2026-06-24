@@ -92,29 +92,22 @@ stock-info/
 当前实现已经拆成 `Vue + Vite` 前端和 `Hono + Workers` API：静态页面由
 Wrangler `assets` 从 `web/dist` 提供，`/api/*` 继续走 Worker 路由。
 
-## Git 部署策略
+## 当前部署策略
 
-长期维护建议不要直接在 `main` 分支开发，也不要手工上传 `dist`。
+当前阶段先只保留一套 `main` 部署链路，不引入 `staging`。
 
-建议流程：
+- Git 分支：只用 `main`
+- Cloudflare 自动部署：只绑定 `main`
+- D1：`stock_info`
+- R2：`stock-info-raw`
 
-- `feature/*`：功能开发分支
-- `staging`：预发分支，部署到 `stock-info-staging`
-- `main`：生产分支，部署到 `stock-info`
+这样更适合现在的状态：
 
-这样做的原因：
+- 项目还在快速迭代
+- 还没形成稳定可用版本
+- 过早维护两套环境只会增加配置和数据管理成本
 
-- 半成品不会直接进入生产
-- D1 / R2 可以按环境隔离
-- Cloudflare Git 自动部署能直接复用 `wrangler.jsonc` 和 build 命令
-- 回滚、审计、排查都更清楚
-
-对应资源建议：
-
-- 生产 D1：`stock_info_prod`
-- 预发 D1：`stock_info_staging`
-- 生产 R2：`stock-info-raw-prod`
-- 预发 R2：`stock-info-raw-staging`
+后续等页面、接口和数据质量稳定之后，再补预发环境更合适。
 
 ### 目录结构建议
 

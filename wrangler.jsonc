@@ -5,52 +5,25 @@
   "compatibility_date": "2026-06-24",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   "vars": {
-    "APP_VERSION": "0.1.0"
+    "APP_VERSION": "0.1.0",
   },
   "assets": {
     "directory": "./web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/cdn-cgi/handler/scheduled"]
+    "run_worker_first": ["/api/*", "/cdn-cgi/handler/scheduled"],
   },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "stock_info_prod",
-      "database_id": "replace-with-prod-d1-database-id"
-    }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "RAW_BUCKET",
-      "bucket_name": "stock-info-raw-prod"
-    }
+      "database_name": "stock_info",
+      "database_id": "6bbdca28-28da-42c2-9186-bb57f29bb7bc",
+    },
   ],
   "triggers": {
-    "crons": ["17 1 * * *"]
+    "crons": ["17 1 * * *"],
   },
-  "env": {
-    "staging": {
-      "name": "stock-info-staging",
-      "vars": {
-        "APP_VERSION": "0.1.0-staging"
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "stock_info_staging",
-          "database_id": "replace-with-staging-d1-database-id"
-        }
-      ],
-      "r2_buckets": [
-        {
-          "binding": "RAW_BUCKET",
-          "bucket_name": "stock-info-raw-staging"
-        }
-      ]
-    }
-  }
 }
