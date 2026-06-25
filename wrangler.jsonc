@@ -9,13 +9,16 @@
   },
   "vars": {
     "APP_VERSION": "0.1.0",
+    "HTTP_PROXY_ENABLED": "0",
+    "HTTP_PROXY_DOMAINS": "",
+    "HTTP_DOMAIN_CONCURRENCY": "3",
   },
   "assets": {
     "directory": "./web/dist",
     "binding": "ASSETS",
     "html_handling": "none",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/cdn-cgi/handler/scheduled"],
+    "run_worker_first": ["/api/*", "/company-option.html", "/knowledge-config.html", "/cdn-cgi/handler/scheduled"],
   },
   "d1_databases": [
     {

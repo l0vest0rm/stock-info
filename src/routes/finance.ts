@@ -1,9 +1,10 @@
 import { Hono } from "hono";
+import financeMappings from "../../shared/finance-mappings.json";
 import { fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../adapters/eastmoney";
 import { loadFinancialStatements, parseStatementType } from "../services/finance";
-import { fail, ok, requireQuery } from "../shared/http";
+import { externalHttpOptions, fail, ok, requireQuery } from "../shared/http";
 import { normalizeSecurityCode } from "../shared/codes";
-import type { AppEnv } from "../types";
+import type { AppEnv, StatementType } from "../types";
 
 export const financeRoutes = new Hono<AppEnv>();
 
@@ -72,25 +73,69 @@ financeRoutes.get("/finance/:statementType", async (c) => {
   if (code instanceof Response) {
     return code;
   }
-  const data = await loadFinancialStatements(c.env.DB, code, statementType);
-  return ok(c, data.rows.map((row) => toLegacyFinancePayload(row.payload)));
+  const data = await loadFinancialStatements(c.env.DB, code, statementType, {
+    httpOptions: externalHttpOptions(c.env),
+  }).catch((err) => {
+    if (isUnsupportedFinanceError(err)) {
+      return { rows: [] };
+    }
+    throw err;
+  });
+  return ok(c, data.rows.map((row) => toLegacyFinancePayload(row.payload, statementType)));
 });
 
-function toLegacyFinancePayload(payload: unknown): unknown {
+type FinanceKeyRow = string[];
+
+type FinanceMappings = {
+  ignoreKeys: string[];
+  incomeKeys: FinanceKeyRow[];
+  balanceKeys: FinanceKeyRow[];
+  cashflowKeys: FinanceKeyRow[];
+};
+
+const financeConstants = financeMappings as FinanceMappings;
+const ignoredFinanceKeys = new Set(financeConstants.ignoreKeys);
+
+function toLegacyFinancePayload(payload: unknown, statementType: StatementType): unknown {
   if (!payload || typeof payload !== "object") {
     return payload;
   }
   const row = payload as Record<string, unknown>;
-  return {
+  const mapped: Record<string, unknown> = {
     ...row,
     reportDate: trimDate(row.REPORT_DATE),
     noticeDate: trimDate(row.NOTICE_DATE),
-    parentNetprofit: row.PARENT_NETPROFIT ?? null,
-    basicEps: row.BASIC_EPS ?? null,
-    totalOperateIncome: row.TOTAL_OPERATE_INCOME ?? row.OPERATE_INCOME ?? null,
-    operateIncome: row.OPERATE_INCOME ?? row.TOTAL_OPERATE_INCOME ?? null,
-    netprofit: row.NETPROFIT ?? null,
   };
+  const keys = financeKeys(statementType);
+  for (const [key, value] of Object.entries(row)) {
+    if (ignoredFinanceKeys.has(key) || key.endsWith("_YOY") || key.endsWith("_QOQ") || typeof value !== "number") {
+      continue;
+    }
+    mapped[findMappedFinanceName(keys, key)] = value;
+  }
+  if (statementType === "income") {
+    const income = numeric(mapped.operateIncome);
+    const cost = numeric(mapped.operateCost);
+    if (income !== null && cost !== null) {
+      mapped.grossProfit = income - cost;
+    }
+  }
+  return mapped;
+}
+
+function financeKeys(statementType: StatementType): FinanceKeyRow[] {
+  if (statementType === "income") return financeConstants.incomeKeys;
+  if (statementType === "balance") return financeConstants.balanceKeys;
+  return financeConstants.cashflowKeys;
+}
+
+function findMappedFinanceName(keys: FinanceKeyRow[], fieldName: string): string {
+  const matched = keys.find((row) => row.length > 2 && row[2] === fieldName);
+  return matched?.[0] ?? fieldName;
+}
+
+function numeric(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
 }
 
 function trimDate(value: unknown): string {
@@ -99,6 +144,9 @@ function trimDate(value: unknown): string {
 
 async function fetchShareChange(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
+  if (!isCnExchangeCode(normalized)) {
+    return [];
+  }
   const rows = await fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_EH_EQUITY",
     columns:
@@ -256,6 +304,14 @@ function planNumber(plan: string, marker: string): number {
   if (idx < 0) return 0;
   const match = plan.slice(idx + marker.length).match(/^\s*(\d+(?:\.\d+)?)/);
   return match ? Number(match[1]) : 0;
+}
+
+function isCnExchangeCode(code: string): boolean {
+  return /\.(SH|SZ|BJ)$/.test(normalizeSecurityCode(code));
+}
+
+function isUnsupportedFinanceError(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith("finance statement only supports CN A-share codes");
 }
 
 function num(value: unknown): number {

@@ -10,6 +10,10 @@
     "build": "npm run build:web",
     "build:web": "cd web && node scripts/build-html.mjs && vite build --config vite.layout.config.ts && node scripts/build-vue-pages.mjs && node scripts/build-legacy-pages.mjs",
     "deploy": "wrangler deploy",
+    "import:knowledge:docs": "node scripts/import-knowledge-docs.mjs",
+    "process:knowledge": "node scripts/process-knowledge-once.mjs",
+    "test:smoke:pages": "node scripts/smoke-pages.mjs",
+    "seed:knowledge:sample": "node scripts/seed-knowledge-sample.mjs",
     "typecheck": "tsc --noEmit",
     "db:migrate:local": "wrangler d1 migrations apply stock_info --local",
     "db:migrate:remote": "wrangler d1 migrations apply stock_info --remote"
@@ -23,6 +27,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260620.0",
+    "socks-proxy-agent": "^10.1.0",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.1.8",
     "wrangler": "^4.23.0"

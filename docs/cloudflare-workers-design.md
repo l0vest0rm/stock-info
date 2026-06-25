@@ -26,7 +26,8 @@ company.html?code=300308.SZ&from=1735689600000
   `nodejs_compat`，但不能依赖本地文件系统、原生 SQLite、长驻进程、CDP 浏览器。
 - 免费额度适合请求时小范围补数据、低频 Cron、小批量 D1 写入，不适合全市场扫描。
 - D1 负责结构化查询数据：K 线、财报字段、公告元数据、新闻/研报元数据、同步状态。
-- R2 负责大对象或原始对象：原始响应、压缩 JSON、PDF、转换后的 Markdown、快照。
+- R2 负责确实需要留档的大对象或原始对象：原始响应、压缩 JSON、超大 Markdown、快照。
+  研报 PDF 第一阶段不进入 Cloudflare，D1 最多保存本地转换后的 Markdown 内容。
 - 浏览器态、Cookie 刷新、PDF 转 Markdown、LLM 解析等任务放在 Mac 本地或独立任务侧，
   通过远程 D1 或受控 API 写入 Cloudflare。
 
@@ -186,7 +187,8 @@ Mac 本地加工脚本
 - 远端 D1 是结构化数据的最终落点。
 - R2 写入只在确实需要保存 Markdown 或原始大对象时引入。
 - 不把 admin ingest API 作为第一阶段方案；除非后续需要浏览器外部系统写入，再单独设计。
-- 研报 PDF 本身不必进入 Cloudflare；如果要保存处理结果，保存 Markdown 到 D1 或 R2。
+- 研报 PDF 本身不必进入 Cloudflare；第一阶段保存 Markdown 到 D1 `md_text`，
+  只有超大 Markdown 或原始响应确实需要留档时再写 R2。
 
 ## 前端迁移策略
 
@@ -405,7 +407,8 @@ exports/d1-seed/{date}/{table}.jsonl.gz
 PDF 策略：
 
 - 外部 PDF 不默认搬入 R2。
-- 本地可把 PDF 转 Markdown，然后写 D1 `md_text` 或写 R2 `research/md/*`。
+- 本地可把 PDF 转 Markdown，然后优先写 D1 `md_text`。
+- R2 `research/md/*` 只作为超大 Markdown 或长期留档的后续扩展。
 - 只有需要稳定留档的 PDF 才进入 R2。
 
 ## 集中本地验证流程
@@ -497,8 +500,8 @@ PDF 策略：
 
 - 迁移 `research-news.html` 页面。
 - 本地完成抓取、PDF 转 Markdown、LLM 处理。
-- Markdown/元数据通过本地脚本写入远端 D1，必要时 Markdown 大对象写 R2。
-- Worker 只负责查询和展示。
+- Markdown/元数据通过本地脚本写入远端 D1，PDF 不入 D1。
+- Worker 只负责查询和展示，推荐排序使用预先写入的静态分数，不做请求时 LLM 或复杂个性化排序。
 
 ### 阶段 6：废弃 licai 运行依赖
 

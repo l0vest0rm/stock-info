@@ -2,7 +2,7 @@ import {
   fetchEastmoneyFundNav,
   fetchEastmoneyStockKline,
   fetchTencentStockKline,
-  fetchYahooStockKline,
+  fetchYahooStockKlineWithProxy,
 } from "../adapters/eastmoney";
 import {
   getFundNavRows,
@@ -12,6 +12,7 @@ import {
   upsertSecurity,
 } from "../db/queries";
 import { inferSecurityType, normalizeSecurityCode } from "../shared/codes";
+import type { ExternalHttpOptions } from "../shared/http";
 import type { FundNavRow, KlineBar } from "../types";
 
 export async function loadKline(
@@ -20,7 +21,8 @@ export async function loadKline(
   period: string,
   fq: string,
   from: string,
-  to: string
+  to: string,
+  options?: { httpOptions?: ExternalHttpOptions }
 ): Promise<{ code: string; source: "d1" | "eastmoney" | "yahoo"; rows: KlineBar[] | FundNavRow[] }> {
   const code = normalizeSecurityCode(rawCode);
   if (inferSecurityType(code) === "fund" || code.endsWith(".OF")) {
@@ -43,7 +45,7 @@ export async function loadKline(
     if (cachedGlobal.length > 0 && isFreshEnough(cachedGlobal[0]?.updatedAt)) {
       return { code, source: "d1", rows: cachedGlobal };
     }
-    const rows = await fetchYahooStockKline(db, code, fq)
+    const rows = await fetchYahooStockKlineWithProxy(db, code, fq, options?.httpOptions)
       .then((items) => items.filter((row) => row.date >= from && row.date <= to))
       .catch((err) => {
         console.warn(`yahoo kline unavailable for ${code}:`, err);

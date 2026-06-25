@@ -14,6 +14,12 @@ export type LlmCacheRecord = {
   updatedAt: number;
 };
 
+export type AppKvRecord = {
+  valueJson: string;
+  expiresAt: number | null;
+  updatedAt: number;
+};
+
 export async function upsertSecurity(db: D1Database, record: SecurityRecord): Promise<void> {
   await db
     .prepare(
@@ -302,6 +308,40 @@ export async function putHttpCache(
       record.expiresAt,
       record.updatedAt
     )
+    .run();
+}
+
+export async function getAppKv(db: D1Database, key: string, now = Date.now()): Promise<AppKvRecord | null> {
+  const row = await db
+    .prepare(
+      `select value_json as valueJson, expires_at as expiresAt, updated_at as updatedAt
+       from app_kv
+       where key = ? and (expires_at is null or expires_at > ?)`
+    )
+    .bind(key, now)
+    .first<AppKvRecord>();
+  return row ?? null;
+}
+
+export async function putAppKv(
+  db: D1Database,
+  record: {
+    key: string;
+    valueJson: string;
+    expiresAt: number | null;
+    updatedAt: number;
+  }
+): Promise<void> {
+  await db
+    .prepare(
+      `insert into app_kv (key, value_json, expires_at, updated_at)
+       values (?, ?, ?, ?)
+       on conflict(key) do update set
+        value_json = excluded.value_json,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at`
+    )
+    .bind(record.key, record.valueJson, record.expiresAt, record.updatedAt)
     .run();
 }
 

@@ -45,11 +45,6 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   ]
   let knowledgeNewsSelectedSourceName = 'all'
   let knowledgeNewsSelectedTags: string[] = []
-  let knowledgeNewsActiveDocId = ''
-  let knowledgeNewsViewActiveMs = 0
-  let knowledgeNewsViewStartedAt = 0
-  let knowledgeNewsViewMaxScrollRatio = 0
-  let knowledgeNewsScrollElement: HTMLElement | null = null
 
   function knowledgeSourceTypeText(value: string): string {
     switch (value) {
@@ -187,96 +182,6 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     }) as Promise<any>
   }
 
-  function knowledgeNewsIsViewActive(): boolean {
-    return Boolean(knowledgeNewsActiveDocId) && document.visibilityState === 'visible'
-  }
-
-  function updateKnowledgeNewsViewActiveMs() {
-    if (!knowledgeNewsViewStartedAt) {
-      return
-    }
-    knowledgeNewsViewActiveMs += Math.max(0, Math.round(performance.now() - knowledgeNewsViewStartedAt))
-    knowledgeNewsViewStartedAt = 0
-  }
-
-  function resumeKnowledgeNewsViewTimer() {
-    if (knowledgeNewsIsViewActive() && !knowledgeNewsViewStartedAt) {
-      knowledgeNewsViewStartedAt = performance.now()
-    }
-  }
-
-  function pauseKnowledgeNewsViewTimer() {
-    updateKnowledgeNewsViewActiveMs()
-  }
-
-  function updateKnowledgeNewsScrollRatio() {
-    const elem = knowledgeNewsScrollElement
-    if (!elem) {
-      return
-    }
-    const scrollable = Math.max(0, elem.scrollHeight - elem.clientHeight)
-    const ratio = scrollable > 0 ? elem.scrollTop / scrollable : 1
-    knowledgeNewsViewMaxScrollRatio = Math.max(knowledgeNewsViewMaxScrollRatio, Math.min(1, Math.max(0, ratio)))
-  }
-
-  function sendKnowledgeNewsViewEvent(reason: string, useBeacon: boolean = false) {
-    if (!knowledgeNewsActiveDocId) {
-      return
-    }
-    pauseKnowledgeNewsViewTimer()
-    updateKnowledgeNewsScrollRatio()
-    const payload = {
-      docId: knowledgeNewsActiveDocId,
-      eventType: 'doc_view',
-      activeMs: knowledgeNewsViewActiveMs,
-      scrollRatio: knowledgeNewsViewMaxScrollRatio,
-      metadata: { reason, page: 'research-news' },
-    }
-    if (useBeacon && navigator.sendBeacon) {
-      const body = new Blob([JSON.stringify(payload)], { type: 'application/json' })
-      navigator.sendBeacon(`${server}/api/knowledge/doc/event`, body)
-    } else {
-      void fetchRequest({
-        url: `${server}/api/knowledge/doc/event`,
-        data: payload,
-      }).catch(() => {})
-    }
-    knowledgeNewsActiveDocId = ''
-    knowledgeNewsViewActiveMs = 0
-    knowledgeNewsViewStartedAt = 0
-    knowledgeNewsViewMaxScrollRatio = 0
-    knowledgeNewsScrollElement = null
-  }
-
-  function startKnowledgeNewsViewTracking(docId: string, contentElem: HTMLElement) {
-    sendKnowledgeNewsViewEvent('replaced')
-    knowledgeNewsActiveDocId = docId
-    knowledgeNewsViewActiveMs = 0
-    knowledgeNewsViewStartedAt = 0
-    knowledgeNewsViewMaxScrollRatio = 0
-    knowledgeNewsScrollElement = contentElem.closest('.modal-body') as HTMLElement | null || contentElem
-    knowledgeNewsScrollElement.addEventListener('scroll', updateKnowledgeNewsScrollRatio)
-    resumeKnowledgeNewsViewTimer()
-  }
-
-  function syncKnowledgeNewsFavoriteState(docId: string, favorited: boolean) {
-    knowledgeNewsRows = knowledgeNewsRows
-      .map((row) => row.docId === docId ? { ...row, favorited } : row)
-      .filter((row) => !knowledgeNewsSelectedTags.includes('favorite') || row.favorited)
-    emitKnowledgeNewsTableState()
-  }
-
-  async function toggleKnowledgeNewsFavorite(docId: string, favorited: boolean) {
-    if (!docId) {
-      return
-    }
-    const data = await fetchRequest({
-      url: `${server}/api/knowledge/doc/favorite`,
-      data: { docId, favorited },
-    }) as any
-    syncKnowledgeNewsFavoriteState(docId, Boolean(data?.favorited ?? favorited))
-  }
-
   async function renderKnowledgeNews() {
     const sourceType = (document.getElementById('knowledgeSourceType') as HTMLInputElement).value
     const source = (document.getElementById('knowledgeSourceName') as HTMLInputElement | null)?.value || 'all'
@@ -286,6 +191,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     const query = (document.getElementById('knowledgeQuery') as HTMLInputElement).value
     const pageSize = 50
     knowledgeNewsSelectedTags = selectedTags
+    knowledgeNewsSelectedSourceName = source
 
     const data = await fetchKnowledgeNewsPage({
       sourceType,
@@ -302,38 +208,10 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     emitKnowledgeNewsFiltersState()
   }
 
-  function sendKnowledgeNewsSkipFeedback(openedDocId: string) {
-    const openedIndex = knowledgeNewsRows.findIndex((row) => row.docId === openedDocId)
-    if (openedIndex <= 0) {
-      return
-    }
-    const skippedRows = knowledgeNewsRows
-      .slice(0, openedIndex)
-      .filter((row) => row.docId && row.tags.includes('unread'))
-    for (const [index, row] of skippedRows.entries()) {
-      void fetchRequest({
-        url: `${server}/api/knowledge/doc/event`,
-        data: {
-          docId: row.docId,
-          eventType: 'doc_skip',
-          activeMs: 0,
-          scrollRatio: 0,
-          metadata: {
-            page: 'research-news',
-            skippedPosition: index + 1,
-            openedDocId,
-            openedPosition: openedIndex + 1,
-          },
-        },
-      }).catch(() => {})
-    }
-  }
-
   async function showKnowledgeDocument(docID: string) {
     if (!docID) {
       return
     }
-    sendKnowledgeNewsSkipFeedback(docID)
     const data = await fetchRequest({
       url: `${server}/api/knowledge/doc`,
       params: { id: docID }
@@ -341,8 +219,6 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     const title = data && data.title ? data.title : ''
     const content = data && data.content ? data.content : ''
     const url = data && data.url ? data.url : ''
-    const isLocalNews = data && data.source_type === 'local_news'
-    const favorited = Boolean(data?.favorited)
     const meta = [
       knowledgeReportTypeText(data),
       knowledgeTargetText(data),
@@ -355,11 +231,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     document.getElementById('knowledgeDocModalTitle')!.textContent = title
     const favoriteButton = document.getElementById('knowledgeDocFavoriteBtn') as HTMLButtonElement | null
     if (favoriteButton) {
-      favoriteButton.className = `btn btn-sm me-2 ${favorited ? 'btn-warning' : 'btn-outline-warning'}${isLocalNews ? '' : ' d-none'}`
-      favoriteButton.dataset.docId = docID
-      favoriteButton.dataset.favorited = favorited ? '1' : '0'
-      favoriteButton.textContent = favorited ? '已收藏' : '收藏'
-      favoriteButton.disabled = false
+      favoriteButton.className = 'btn btn-sm btn-outline-warning d-none'
     }
     document.getElementById('knowledgeDocMeta')!.innerHTML = `${meta}${url ? ` <a class="ms-2" href="${escapeHtml(url)}" target="_blank">打开原文</a>` : ''}`
     const contentElem = document.getElementById('knowledgeDocContent')!
@@ -371,49 +243,11 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     const modal = document.getElementById('knowledgeDocModal')
     const bsModal = new (window as any).bootstrap.Modal(modal)
     bsModal.show()
-    startKnowledgeNewsViewTracking(docID, contentElem)
-    await fetchRequest({
-      url: `${server}/api/knowledge/doc/read`,
-      data: { docId: docID },
-    })
-    knowledgeNewsRows = knowledgeNewsRows
-      .map((row) => row.docId === docID ? { ...row, tags: row.tags.filter((tag) => tag !== 'unread') } : row)
-      .filter((row) => !knowledgeNewsSelectedTags.includes('unread') || row.docId !== docID)
-    emitKnowledgeNewsTableState()
   }
 
   async function onKnowledgeNewsOpenDoc(event: Event) {
     const detail = (event as CustomEvent<{docId?: string}>).detail
     await showKnowledgeDocument(detail?.docId || '')
-  }
-
-  function onKnowledgeNewsToggleFavorite(event: Event) {
-    const detail = (event as CustomEvent<{docId?: string; favorited?: boolean}>).detail
-    const docId = detail?.docId || ''
-    const row = knowledgeNewsRows.find((item) => item.docId === docId)
-    const nextFavorited = typeof detail?.favorited === 'boolean'
-      ? detail.favorited
-      : !row?.favorited
-    void toggleKnowledgeNewsFavorite(docId, nextFavorited)
-  }
-
-  function onKnowledgeDocFavoriteClick(event: Event) {
-    const button = event.currentTarget as HTMLButtonElement
-    const docId = button.dataset.docId || ''
-    const nextFavorited = button.dataset.favorited !== '1'
-    if (!docId) {
-      return
-    }
-    button.disabled = true
-    void toggleKnowledgeNewsFavorite(docId, nextFavorited)
-      .then(() => {
-        button.dataset.favorited = nextFavorited ? '1' : '0'
-        button.className = `btn btn-sm me-2 ${nextFavorited ? 'btn-warning' : 'btn-outline-warning'}`
-        button.textContent = nextFavorited ? '已收藏' : '收藏'
-      })
-      .finally(() => {
-        button.disabled = false
-      })
   }
 
   function onKnowledgeNewsPageChange(event: Event) {
@@ -468,30 +302,20 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
         renderKnowledgeNewsFirstPage()
       }
     })
-    document.getElementById('knowledgeDocModal')?.addEventListener('hidden.bs.modal', () => {
-      if (knowledgeNewsScrollElement) {
-        knowledgeNewsScrollElement.removeEventListener('scroll', updateKnowledgeNewsScrollRatio)
-      }
-      sendKnowledgeNewsViewEvent('modal_hidden')
-    })
-    document.getElementById('knowledgeDocFavoriteBtn')?.addEventListener('click', onKnowledgeDocFavoriteClick)
-    window.addEventListener('blur', pauseKnowledgeNewsViewTimer)
-    window.addEventListener('focus', resumeKnowledgeNewsViewTimer)
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        pauseKnowledgeNewsViewTimer()
-      } else {
-        resumeKnowledgeNewsViewTimer()
-      }
-    })
-    window.addEventListener('pagehide', () => sendKnowledgeNewsViewEvent('pagehide', true))
     if (!knowledgeNewsEventsBound) {
       knowledgeNewsEventsBound = true
       window.addEventListener('licai:knowledge-news-open-doc', (event) => {
         void onKnowledgeNewsOpenDoc(event)
       })
-      window.addEventListener('licai:knowledge-news-toggle-favorite', onKnowledgeNewsToggleFavorite as EventListener)
       window.addEventListener('licai:knowledge-news-page-change', onKnowledgeNewsPageChange as EventListener)
+      window.addEventListener('licai:knowledge-news-state-request', () => {
+        if (knowledgeNewsRows.length === 0) {
+          void renderKnowledgeNews()
+          return
+        }
+        emitKnowledgeNewsTableState()
+        emitKnowledgeNewsFiltersState()
+      })
     }
     renderKnowledgeNewsFirstPage()
     void loadKnowledgeSourceOptions()

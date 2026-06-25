@@ -116,6 +116,10 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   function initCompanyOption() {
     const page = document.getElementById('companyOptionPage')
     const code = currentCode()
+    if (!isLocalHost()) {
+      setCompanyOptionStatus('期权页面仅本地可用')
+      return
+    }
     if (!page || !code.endsWith('.US')) {
       if (page) {
         page.innerHTML = ''
@@ -150,7 +154,8 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
 
   function renderCompanyOptionPage() {
     if (!companyOptionChain || !Array.isArray(companyOptionChain.expirations) || companyOptionChain.expirations.length === 0) {
-      setCompanyOptionStatus('没有可用的美股期权链数据')
+      const reason = typeof (companyOptionChain as any)?.reason === 'string' ? `: ${(companyOptionChain as any).reason}` : ''
+      setCompanyOptionStatus(`没有可用的美股期权链数据${reason}`)
       renderCompanyOptionStrategy()
       return
     }
@@ -1314,6 +1319,12 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
 
   function setCompanyOptionStatus(text: string) {
     emitCompanyOptionStatus('page', text)
+  }
+
+  function isLocalHost(): boolean {
+    return window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === '0.0.0.0'
   }
 
   return initCompanyOption

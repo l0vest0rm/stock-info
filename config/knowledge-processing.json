@@ -1,0 +1,84 @@
+{
+  "database": "stock_info",
+  "remote": false,
+  "inboxDir": "data/knowledge/inbox",
+  "processedDir": "data/knowledge/processed",
+  "failedDir": "data/knowledge/failed",
+  "workDir": "data/knowledge/work",
+  "defaultSourceName": "本地导入",
+  "defaultSourceType": "local_news",
+  "defaultReportType": "news",
+  "maxMarkdownChars": 120000,
+  "llm": {
+    "enabled": false,
+    "model": "doubao-seed-2-0-mini-260215",
+    "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+    "apiKeyEnv": "VOLC_ARK_API_KEY",
+    "maxInputChars": 12000,
+    "maxTokens": 1200
+  },
+  "topicFilter": {
+    "enabled": true,
+    "name": "AI产业链",
+    "minScore": 2,
+    "uncertainMinScore": 1,
+    "uncertainMaxScore": 1,
+    "llmReview": false,
+    "llmBatchSize": 50,
+    "llmMinConfidence": 0.65,
+    "coreKeywords": [
+      "AI", "人工智能", "大模型", "LLM", "智能体", "Agent", "多模态", "推理",
+      "算力", "智算", "数据中心", "GPU", "ASIC", "AI芯片", "服务器",
+      "HBM", "DRAM", "NAND", "SSD", "存储", "半导体", "先进制程",
+      "先进封装", "CoWoS", "Chiplet", "光模块", "光通信", "CPO", "硅光",
+      "800G", "1.6T", "高速互联", "交换机", "液冷", "英伟达", "NVIDIA",
+      "寒武纪", "海光", "中际旭创", "新易盛", "工业富联"
+    ],
+    "supportKeywords": [
+      "云计算", "云厂商", "资本开支", "Capex", "国产替代", "自主可控",
+      "晶圆", "封测", "PCB", "AIPCB", "电源", "UPS", "HVDC", "IDC",
+      "训练", "inference", "Token", "模型", "开源"
+    ],
+    "denyKeywords": [
+      "酒店", "旅游", "航空", "白酒", "啤酒", "煤炭", "焦煤", "房地产",
+      "猪价", "养殖", "医药集采", "创新药", "锂电池", "光伏", "风电",
+      "券商", "银行", "保险", "消费复苏"
+    ]
+  },
+  "scoreLevels": [
+    {"level": "A", "minScore": 75},
+    {"level": "B", "minScore": 50},
+    {"level": "C", "minScore": 25},
+    {"level": "D", "minScore": 0}
+  ],
+  "sourceTypeScores": {
+    "research_report": 10,
+    "local_news": 1,
+    "web_news": 1
+  },
+  "reportTypeScores": {
+    "company_report": 12,
+    "industry_report": 8,
+    "research_report": 5,
+    "news": 0
+  },
+  "signals": [
+    {"tag": "交易噪声", "reason": "交易型资金流噪声", "score": -95, "keywords": ["主力资金净流入", "主力资金净流出", "资金净流入", "资金净流出", "净买入", "净卖出"]},
+    {"tag": "快讯噪声", "reason": "快讯噪声", "score": -45, "keywords": ["成交额", "换手率", "龙虎榜", "融资净买入", "融资净卖出"]},
+    {"tag": "超预期", "reason": "超预期", "score": 28, "keywords": ["超预期", "大超预期", "好于预期"]},
+    {"tag": "订单", "reason": "订单或客户催化", "score": 25, "keywords": ["订单落地", "大额订单", "订单高增", "客户突破", "大客户", "中标"]},
+    {"tag": "业绩", "reason": "业绩改善", "score": 22, "keywords": ["业绩增长", "业绩高增", "利润高增", "盈利修复", "扭亏", "业绩拐点"]},
+    {"tag": "价值", "reason": "价值兑现或估值修复", "score": 24, "keywords": ["自由现金流", "现金流改善", "股东回报", "分红提升", "回购", "估值修复", "低估值", "ROE提升"]},
+    {"tag": "护城河", "reason": "竞争优势强化", "score": 22, "keywords": ["护城河", "市场份额提升", "市占率提升", "龙头优势", "壁垒", "定价权", "毛利率提升"]},
+    {"tag": "AI应用", "reason": "AI应用落地", "score": 22, "keywords": ["AI应用", "智能体", "推理", "AI商业化", "AI收入"]},
+    {"tag": "产能", "reason": "产能释放", "score": 18, "keywords": ["扩产", "产能释放", "投产", "爬坡", "满产"]},
+    {"tag": "价格", "reason": "价格或供需改善", "score": 18, "keywords": ["价格上涨", "涨价", "供需改善", "库存减少", "景气上行"]},
+    {"tag": "政策", "reason": "政策催化", "score": 16, "keywords": ["政策支持", "政策催化", "补贴", "规划发布", "改革落地"]},
+    {"tag": "国产替代", "reason": "国产替代", "score": 16, "keywords": ["国产替代", "自主可控", "国产化", "信创"]},
+    {"tag": "AI算力", "reason": "AI算力主题", "score": 18, "keywords": ["AI算力", "算力", "光模块", "CPO", "GPU", "HBM", "AI芯片", "服务器", "数据中心", "存储"]},
+    {"tag": "出海", "reason": "海外增长", "score": 12, "keywords": ["出海", "海外业务", "出口超预期", "全球化"]},
+    {"tag": "评级", "reason": "评级或目标价", "score": 10, "keywords": ["买入评级", "首次覆盖", "目标价", "上调评级"]},
+    {"tag": "模板", "reason": "模板化内容", "score": -18, "keywords": ["晨会纪要", "周报", "双周报", "月报", "日报"]},
+    {"tag": "复盘", "reason": "复盘类标题", "score": -12, "keywords": ["市场回顾", "策略月报", "复盘", "震荡运行"]}
+  ]
+}

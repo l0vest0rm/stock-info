@@ -109,6 +109,7 @@ interface FetchRequestOptions {
   cacheKey?: string
   cacheTtl?: number
   relay?: boolean
+  silent?: boolean
   params?: Record<string, unknown>
   data?: unknown
   headers?: Record<string, string>
@@ -183,11 +184,12 @@ function buildFetchConfig(request: string | FetchRequestOptions): { url: string;
 
 function executeFetch(url: string, config: RequestInit, request: string | FetchRequestOptions, callback: (data: unknown) => void): void {
   const accept = typeof request === 'object' ? request.accept || '' : ''
+  const silent = typeof request === 'object' ? Boolean(request.silent) : false
 
   fetch(url, config)
     .then(resp => convertResponse(resp, accept))
     .then((resp: unknown) => {
-      handleResponse(url, resp, accept, callback)
+      handleResponse(url, resp, accept, callback, silent)
     })
     .catch((error: Error) => {
       console.error('fetchRequest,fetch Failed', error)
@@ -195,11 +197,11 @@ function executeFetch(url: string, config: RequestInit, request: string | FetchR
     })
 }
 
-function handleResponse(url: string, resp: unknown, accept: string, callback: (data: unknown) => void): void {
-  handleServerResponse(resp, callback)
+function handleResponse(url: string, resp: unknown, accept: string, callback: (data: unknown) => void, silent: boolean): void {
+  handleServerResponse(resp, callback, silent)
 }
 
-function handleServerResponse(resp: unknown, callback: (data: unknown) => void): void {
+function handleServerResponse(resp: unknown, callback: (data: unknown) => void, silent: boolean): void {
   const serverResp = resp as { code?: number; data?: unknown; msg?: string }
   switch (serverResp.code) {
     case 200:
@@ -215,6 +217,11 @@ function handleServerResponse(resp: unknown, callback: (data: unknown) => void):
       alert('<a href="recharge.html" target="_blank">账户余额不足，点击去充值</a>')
       return
     default:
+      if (silent) {
+        console.warn('fetchRequest server error', serverResp)
+        callback({ error: serverResp.msg || 'request failed', code: serverResp.code })
+        return
+      }
       alert(`${serverResp.code || ''} ${serverResp.msg || ''}`)
       return
   }

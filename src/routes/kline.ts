@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { loadKline } from "../services/kline";
-import { fail, ok, requireQuery } from "../shared/http";
+import { externalHttpOptions, fail, ok, requireQuery } from "../shared/http";
 import type { FundNavRow, KlineBar } from "../types";
 import type { AppEnv } from "../types";
 
@@ -18,7 +18,9 @@ klineRoutes.get("/kline", async (c) => {
   if (!period || !fq) {
     return fail(c, 400, "invalid period or fq parameter");
   }
-  const data = await loadKline(c.env.DB, code, period, fq, from, to);
+  const data = await loadKline(c.env.DB, code, period, fq, from, to, {
+    httpOptions: externalHttpOptions(c.env),
+  });
   return ok(c, toLegacyKlineRows(data.rows));
 });
 

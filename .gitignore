@@ -4,6 +4,7 @@ node_modules/
 dist/
 web/dist/
 data/logs/
+data/knowledge/
 *.log
 *.pid
 .DS_Store

@@ -26,11 +26,17 @@ function pageFromElement(element: HTMLElement): string {
 }
 
 function subnavItems(kind: string): NavItem[] {
+  const filterLocalOnly = (items: NavItem[]) => items.filter((item) => {
+    if (item.href === 'company-option.html') {
+      return isLocalHost()
+    }
+    return true
+  })
   switch (kind) {
     case 'companies':
       return navConfig.companiesNav
     case 'company':
-      return navConfig.companyNav
+      return filterLocalOnly(navConfig.companyNav)
     case 'fund':
       return navConfig.fundNav
     case 'index':
@@ -38,6 +44,12 @@ function subnavItems(kind: string): NavItem[] {
     default:
       return []
   }
+}
+
+function isLocalHost(): boolean {
+  return window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '0.0.0.0'
 }
 
 function topNavClass(page: string, href: string): string {

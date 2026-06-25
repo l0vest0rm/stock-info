@@ -41,6 +41,7 @@ export function createLegacyDataServices(context: DataServicesContext) {
     void fetchRequest({
       url: `${server}/api/finance/income`,
       params: { code },
+      silent: true,
     }).then((data: unknown) => {
       if (data) {
         cache[cacheKey] = data

@@ -102,7 +102,6 @@ const knowledgeNewsTagClassMap: Record<string, string> = {
   unread: 'text-bg-warning',
   pdf: 'text-bg-danger',
   local: 'text-bg-success',
-  favorite: 'text-bg-warning',
   'recommendation:A': 'text-bg-danger',
   'recommendation:B': 'text-bg-primary',
   'recommendation:C': 'text-bg-secondary',
@@ -113,7 +112,6 @@ const knowledgeNewsTagLabelMap: Record<string, string> = {
   unread: '未读',
   pdf: 'PDF',
   local: '本地',
-  favorite: '收藏',
   'recommendation:A': '推荐A',
   'recommendation:B': '推荐B',
   'recommendation:C': '推荐C',
@@ -137,7 +135,7 @@ function knowledgeNewsRemotePdfUrl(row: KnowledgeNewsTableRow) {
   }
   const lowerUrl = url.toLowerCase()
   const lowerAccessMethod = String(row.accessMethod || '').toLowerCase()
-  if (row.tags.includes('pdf') || lowerUrl.includes('.pdf') || lowerAccessMethod.includes('pdf')) {
+  if (lowerAccessMethod.includes('remote_pdf') || lowerAccessMethod === 'pdf') {
     return url
   }
   return ''
@@ -165,12 +163,6 @@ function onKnowledgeNewsTitleClick(event: Event, row: KnowledgeNewsTableRow) {
 function emitKnowledgeNewsPageChange(page: number) {
   window.dispatchEvent(new CustomEvent('licai:knowledge-news-page-change', {
     detail: { page },
-  }))
-}
-
-function emitKnowledgeNewsToggleFavorite(docId: string, favorited: boolean) {
-  window.dispatchEvent(new CustomEvent('licai:knowledge-news-toggle-favorite', {
-    detail: { docId, favorited },
   }))
 }
 
@@ -242,9 +234,6 @@ function knowledgeNewsTitleContent(row: KnowledgeNewsTableRow) {
   if (row.isLocalNews && !tags.includes('local')) {
     tags.push('local')
   }
-  if (row.favorited && !tags.includes('favorite')) {
-    tags.push('favorite')
-  }
   const recommendationTag = row.recommendationLevel ? `recommendation:${row.recommendationLevel}` : ''
   if (recommendationTag && !tags.includes(recommendationTag)) {
     tags.push(recommendationTag)
@@ -261,24 +250,12 @@ function knowledgeNewsTitleContent(row: KnowledgeNewsTableRow) {
         : row.rankScore > 0
           ? 'text-bg-secondary'
           : 'text-bg-light text-dark border'
-  const favoriteButton = row.docId && !row.isLocalNews
-    ? h('button', {
-      type: 'button',
-      class: `ms-2 btn btn-sm py-0 ${row.favorited ? 'btn-warning' : 'btn-outline-warning'}`,
-      onClick: (event: Event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        emitKnowledgeNewsToggleFavorite(row.docId, !row.favorited)
-      },
-    }, row.favorited ? '已收藏' : '收藏')
-    : null
   return [
     title,
     h('span', {
       class: `ms-2 badge ${rankClass}`,
       title: rankTitle,
     }, `分 ${row.rankScore}`),
-    favoriteButton,
     ...tags.map((tag) => h('span', {
       key: tag,
       class: `ms-2 badge ${knowledgeNewsTagClassMap[tag] || 'text-bg-secondary'}`,
@@ -327,6 +304,7 @@ const KnowledgeNewsTable = defineComponent({
 
     onMounted(() => {
       window.addEventListener('licai:knowledge-news-table-state', onState)
+      window.dispatchEvent(new CustomEvent('licai:knowledge-news-state-request'))
     })
 
     onBeforeUnmount(() => {
@@ -381,7 +359,7 @@ const KnowledgeNewsTable = defineComponent({
           h('td', row.sourceType),
           knowledgeNewsTargetCell(row),
           h('td', row.sourceName),
-          h('td', { class: row.tags.includes('unread') ? '' : 'knowledge-news-title-read' }, knowledgeNewsTitleContent(row)),
+          h('td', knowledgeNewsTitleContent(row)),
           h('td', row.discoveryMethod),
           h('td', row.accessMethod),
         ]))),
@@ -400,8 +378,6 @@ const KnowledgeNewsPage = defineComponent({
     const selectedSourceName = ref('all')
     const selectedTags = ref<string[]>([])
     const tagFilterOptions: KnowledgeNewsFilterOption[] = [
-      { value: 'unread', label: '未读' },
-      { value: 'favorite', label: '收藏' },
       { value: 'pdf', label: 'PDF' },
       { value: 'recommendation:A', label: '推荐A' },
       { value: 'recommendation:B', label: '推荐B' },
@@ -424,6 +400,7 @@ const KnowledgeNewsPage = defineComponent({
 
     onMounted(() => {
       window.addEventListener('licai:knowledge-news-filters-state', onFiltersState)
+      window.dispatchEvent(new CustomEvent('licai:knowledge-news-state-request'))
     })
 
     onBeforeUnmount(() => {
@@ -479,7 +456,6 @@ const KnowledgeNewsPage = defineComponent({
           ]),
           h('input', { id: 'knowledgeQuery', class: 'form-control form-control-sm', style: 'max-width: 360px;', placeholder: '标题、来源、目标、链接搜索' }),
           h('button', { id: 'knowledgeSearchBtn', class: 'btn btn-primary btn-sm' }, '查询'),
-          h('a', { class: 'btn btn-outline-secondary btn-sm ms-auto', href: 'knowledge-config.html' }, '采集配置'),
         ]),
         h('div', { id: 'knowledgeNewsTableRoot' }),
       ]),
