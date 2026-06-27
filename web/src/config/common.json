@@ -1,3 +1,7 @@
 {
-  "title": "index"
+  "siteName": "理财人",
+  "siteUrl": "https://tinfo.cc",
+  "title": "理财人",
+  "defaultDescription": "聚合股票、基金、研报资讯与13F数据，提供筛选、对比与研究入口。",
+  "imagePath": "/og-image.svg"
 }

@@ -34,6 +34,20 @@ export function createRouter(): Hono<AppEnv> {
   app.route("/api", knowledgeRoutes);
   app.route("/api", localDataRoutes);
 
+  app.get("/", (c) => {
+    if (!c.env.ASSETS) {
+      return fail(c, 404, "not found");
+    }
+    const url = new URL(c.req.url);
+    url.pathname = "/home.html";
+    return c.env.ASSETS.fetch(new Request(url.toString(), {
+      method: c.req.raw.method,
+      headers: c.req.raw.headers,
+    }));
+  });
+
+  app.get("/home.html", (c) => c.redirect("/", 301));
+
   app.get("/company-option.html", (c) => {
     if (!isLocalHostHeader(c.req.header("host"))) {
       return fail(c, 404, "options page is only available in local development");

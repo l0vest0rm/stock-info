@@ -10,6 +10,7 @@ const srcDir = path.join(webRoot, 'src')
 const partialsDir = path.join(srcDir, 'partials')
 const configDir = path.join(srcDir, 'config')
 const distDir = path.join(webRoot, 'dist')
+const staticDir = path.join(webRoot, 'static')
 
 const includePattern = /<!--\s*@include:([a-zA-Z0-9_-]+)\s*-->/g
 
@@ -25,6 +26,19 @@ function loadBaseConfig() {
     ...loadJson(path.join(configDir, 'common.json')),
     ...loadJson(path.join(configDir, 'navigation.json')),
   }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value)
 }
 
 function loadPartialSources() {
@@ -58,13 +72,84 @@ function renderCompaniesFilterPartial() {
   return lines.join('\n')
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
+function normalizePathname(pathname) {
+  const raw = String(pathname || '').trim()
+  if (!raw || raw === '/') {
+    return '/'
+  }
+  return raw.startsWith('/') ? raw : `/${raw}`
+}
+
+function pageUrl(config) {
+  const siteUrl = String(config.siteUrl || '').replace(/\/+$/, '')
+  const pathname = normalizePathname(config.canonicalPath || config.page)
+  return `${siteUrl}${pathname === '/' ? '' : pathname}`
+}
+
+function defaultDescription(config) {
+  const title = String(config.title || config.siteName || '').trim()
+  const fallback = String(config.defaultDescription || '').trim()
+  if (!title) {
+    return fallback
+  }
+  if (!fallback) {
+    return title
+  }
+  return `${title}，${fallback}`
+}
+
+function robotsContent(config) {
+  if (config.noindex) {
+    return 'noindex, nofollow'
+  }
+  return 'index, follow'
+}
+
+function renderMetaTags(config) {
+  const title = String(config.title || '')
+  const description = String(config.description || defaultDescription(config))
+  const canonical = pageUrl(config)
+  const imageUrl = config.imagePath ? `${String(config.siteUrl || '').replace(/\/+$/, '')}${normalizePathname(config.imagePath)}` : ''
+  const robots = robotsContent(config)
+  const keywords = String(config.keywords || '').trim()
+  const lines = [
+    '    <meta name="theme-color" content="#0b3b2e">',
+    `    <meta name="description" content="${escapeAttribute(description)}">`,
+    `    <meta name="robots" content="${escapeAttribute(robots)}">`,
+    `    <link rel="canonical" href="${escapeAttribute(canonical)}">`,
+    '    <link rel="icon" type="image/svg+xml" href="/favicon.svg">',
+    '    <link rel="manifest" href="/site.webmanifest">',
+    '    <meta property="og:type" content="website">',
+    `    <meta property="og:site_name" content="${escapeAttribute(String(config.siteName || ''))}">`,
+    `    <meta property="og:title" content="${escapeAttribute(title)}">`,
+    `    <meta property="og:description" content="${escapeAttribute(description)}">`,
+    `    <meta property="og:url" content="${escapeAttribute(canonical)}">`,
+    '    <meta name="twitter:card" content="summary_large_image">',
+    `    <meta name="twitter:title" content="${escapeAttribute(title)}">`,
+    `    <meta name="twitter:description" content="${escapeAttribute(description)}">`,
+  ]
+  if (keywords) {
+    lines.splice(3, 0, `    <meta name="keywords" content="${escapeAttribute(keywords)}">`)
+  }
+  if (imageUrl) {
+    lines.push(`    <meta property="og:image" content="${escapeAttribute(imageUrl)}">`)
+    lines.push(`    <meta name="twitter:image" content="${escapeAttribute(imageUrl)}">`)
+  }
+  return lines.join('\n')
+}
+
+function renderStructuredData(config) {
+  const items = Array.isArray(config.structuredData)
+    ? config.structuredData
+    : config.structuredData
+      ? [config.structuredData]
+      : []
+  if (items.length === 0) {
+    return ''
+  }
+  return items
+    .map((item) => `    <script type="application/ld+json">${JSON.stringify(item)}</script>`)
+    .join('\n')
 }
 
 function renderIncludes(source, partials, stack = []) {
@@ -84,6 +169,8 @@ function renderPageTemplate(source, config, partials) {
   return renderIncludes(source, partials)
     .replaceAll('__TITLE__', String(config.title || ''))
     .replaceAll('__PAGE__', String(config.page || ''))
+    .replaceAll('__META_TAGS__', renderMetaTags(config))
+    .replaceAll('__STRUCTURED_DATA__', renderStructuredData(config))
     .replaceAll('__LEGACY_RUNTIME_BLOCK__', config.legacyRuntime === false ? '' : legacyRuntimeBlock(path.basename(String(config.page || ''), '.html')))
 }
 
@@ -97,8 +184,14 @@ function compilePage(fileName, baseConfig, partials) {
     legacyRuntime: !pagesWithoutLegacyRuntime.has(basename),
     ...pageConfig,
   }
-  const template = fs.readFileSync(path.join(srcDir, fileName), 'utf8')
+  const srcPath = path.join(srcDir, fileName)
+  const template = fs.readFileSync(srcPath, 'utf8')
   fs.writeFileSync(path.join(distDir, `${basename}.html`), renderPageTemplate(template, config, partials))
+  return {
+    basename,
+    config,
+    srcPath,
+  }
 }
 
 function legacyRuntimeBlock(pageBase) {
@@ -119,6 +212,68 @@ function cleanupRemovedPages(expectedPages) {
   }
 }
 
+function copyStaticAssets() {
+  if (!fs.existsSync(staticDir)) {
+    return
+  }
+  copyDir(staticDir, distDir)
+}
+
+function copyDir(sourceDir, targetDir) {
+  fs.mkdirSync(targetDir, { recursive: true })
+  for (const item of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = path.join(sourceDir, item.name)
+    const targetPath = path.join(targetDir, item.name)
+    if (item.isDirectory()) {
+      copyDir(sourcePath, targetPath)
+      continue
+    }
+    if (!item.isFile()) {
+      continue
+    }
+    fs.copyFileSync(sourcePath, targetPath)
+  }
+}
+
+function generateRobots(baseConfig) {
+  const siteUrl = String(baseConfig.siteUrl || '').replace(/\/+$/, '')
+  const lines = [
+    'User-agent: *',
+    'Allow: /',
+    'Disallow: /api/',
+    'Disallow: /knowledge-config.html',
+    'Disallow: /company-option.html',
+    `Sitemap: ${siteUrl}/sitemap.xml`,
+    '',
+  ]
+  fs.writeFileSync(path.join(distDir, 'robots.txt'), lines.join('\n'))
+}
+
+function generateSitemap(compiledPages) {
+  const urls = compiledPages
+    .filter((page) => page.config.includeInSitemap === true && !page.config.noindex)
+    .map((page) => {
+      const stat = fs.statSync(page.srcPath)
+      return {
+        loc: pageUrl(page.config),
+        lastmod: stat.mtime.toISOString(),
+      }
+    })
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...urls.map((item) => [
+      '  <url>',
+      `    <loc>${escapeHtml(item.loc)}</loc>`,
+      `    <lastmod>${item.lastmod}</lastmod>`,
+      '  </url>',
+    ].join('\n')),
+    '</urlset>',
+    '',
+  ].join('\n')
+  fs.writeFileSync(path.join(distDir, 'sitemap.xml'), xml)
+}
+
 fs.mkdirSync(distDir, { recursive: true })
 
 const baseConfig = loadBaseConfig()
@@ -127,6 +282,10 @@ const pageFiles = fs.readdirSync(srcDir, { withFileTypes: true }).filter((item) 
 const expectedPages = new Set(pageFiles.map((item) => path.basename(item.name, '.html')))
 
 cleanupRemovedPages(expectedPages)
+copyStaticAssets()
+const compiledPages = []
 for (const item of pageFiles) {
-  compilePage(item.name, baseConfig, partials)
+  compiledPages.push(compilePage(item.name, baseConfig, partials))
 }
+generateRobots(baseConfig)
+generateSitemap(compiledPages)

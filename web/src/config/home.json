@@ -1,0 +1,27 @@
+{
+  "title": "理财人 | 股票、基金、研报资讯研究入口",
+  "description": "理财人提供股票、基金、研报资讯与13F研究入口，支持证券搜索、公司筛选、基金对比和高价值内容发现。",
+  "keywords": "股票,基金,研报,13F,投资研究,公司筛选,基金筛选",
+  "canonicalPath": "/",
+  "includeInSitemap": true,
+  "structuredData": [
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "理财人",
+      "url": "https://tinfo.cc/",
+      "description": "股票、基金、研报资讯研究入口",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://tinfo.cc/?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "理财人",
+      "url": "https://tinfo.cc/"
+    }
+  ]
+}

@@ -1,8 +1,13 @@
 import { defineComponent, h } from "vue";
 import { navConfig } from "../config/navigation";
 
+function isHomePage(page: string): boolean {
+  return page === "home.html" || page === "/" || page === "";
+}
+
 function topNavClass(page: string, href: string): string {
-  const stateClass = page === href ? "text-secondary active" : "text-white";
+  const active = href === "/" ? isHomePage(page) : page === href;
+  const stateClass = active ? "text-secondary active" : "text-white";
   return `nav-link px-2 ${stateClass}`;
 }
 
@@ -18,11 +23,11 @@ export const AppTopNav = defineComponent({
     return () =>
       h("header", { class: "p-0 bg-dark text-white" }, [
         h("div", { class: "container" }, [
-          h("div", { class: "d-flex flex-wrap align-items-center justify-content-center" }, [
+          h("div", { class: "d-flex flex-wrap align-items-center justify-content-center py-2" }, [
             h(
               "a",
-              { href: "/", class: "d-flex align-items-center mb-4 mb-lg-0 text-white text-decoration-none" },
-              [h("span", { class: "fs-4" }, "理财人tinfo.cc  |")]
+              { href: "/", class: "d-flex align-items-center mb-3 mb-lg-0 me-lg-3 text-white text-decoration-none" },
+              [h("span", { class: "fs-4 fw-semibold" }, "理财人")]
             ),
             h(
               "ul",

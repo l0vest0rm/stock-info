@@ -1,6 +1,6 @@
 {
   "nav": [
-    {"href": "index.html", "text": "首页"},
+    {"href": "/", "text": "首页"},
     {"href": "companies-filter.html", "text": "公司"},
     {"href": "funds.html", "text": "基金"},
     {"href": "research-news.html", "text": "研报资讯"},

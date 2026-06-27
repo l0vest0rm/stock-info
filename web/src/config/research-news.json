@@ -1,3 +1,7 @@
 {
-  "title": "研报资讯"
+  "title": "研报资讯 | 理财人",
+  "description": "聚合公司研报、行业报告与资讯内容，优先展示更值得看的研究材料。",
+  "keywords": "研报,资讯,公司研报,行业报告,投资研究",
+  "canonicalPath": "/research-news.html",
+  "includeInSitemap": true
 }
