@@ -34,6 +34,7 @@ type KnowledgeDocRow = {
 type KnowledgeDocsQuery = {
   sourceType: string;
   source: string;
+  code: string;
   tags: string[];
   q: string;
   page: number;
@@ -72,7 +73,7 @@ knowledgeRoutes.get("/knowledge/docs", async (c) => {
   const rows = await c.env.DB.prepare(
     `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
         d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
-        d.discovery_method, d.access_method, d.summary, d.search_text, d.metadata_json,
+        d.discovery_method, d.access_method, d.summary, d.md_text, d.search_text, d.metadata_json,
         d.recommendation_score, d.recommendation_level, d.recommendation_tags_json,
         d.recommendation_reasons_json, d.rank_score, d.source_weight, d.updated_at
        from knowledge_docs d
@@ -258,11 +259,13 @@ knowledgeRoutes.get("/knowledge/sources", async (c) => {
     .bind(...binds)
     .all<{ name: string; count: number }>();
   return ok(c, {
-    list: (rows.results ?? []).map((row) => ({
-      key: row.name,
-      name: row.name,
-      count: row.count,
-    })),
+    list: (rows.results ?? [])
+      .map((row) => ({
+        key: row.name,
+        name: displaySourceName(row.name),
+        count: row.count,
+      }))
+      .filter((row) => row.name),
   });
 });
 
@@ -284,6 +287,7 @@ function parseDocsQuery(raw: Record<string, string>): KnowledgeDocsQuery {
   return {
     sourceType: normalizeSourceType(raw.sourceType ?? ""),
     source: normalizeSource(raw.source ?? ""),
+    code: normalizeSecurityCode(raw.code ?? ""),
     tags: String(raw.tags ?? raw.tag ?? "")
       .split(",")
       .map((item) => normalizeFilter(item))
@@ -315,6 +319,17 @@ function buildKnowledgeWhere(query: KnowledgeDocsQuery): { whereSql: string; bin
   if (query.source) {
     filters.push("lower(d.source_name) = ?");
     binds.push(query.source);
+  }
+  if (query.code) {
+    filters.push(`(
+      upper(coalesce(d.target_code, '')) = ?
+      or exists (
+        select 1
+        from json_each(coalesce(json_extract(d.metadata_json, '$.stockLinks'), '[]')) stock_link
+        where upper(coalesce(json_extract(stock_link.value, '$.code'), '')) = ?
+      )
+    )`);
+    binds.push(query.code, query.code);
   }
   if (query.q) {
     const like = `%${query.q.toLowerCase()}%`;
@@ -357,7 +372,7 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow): Record<string, unknown> 
     doc_id: row.doc_id,
     source_type: row.source_type,
     report_type: row.report_type || row.source_type,
-    source_name: row.source_name || "",
+    source_name: displaySourceName(row.source_name),
     title: row.title,
     url: row.url || "",
     published_at: row.published_at || "",
@@ -366,8 +381,9 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow): Record<string, unknown> 
     target_name: target.name,
     target_code: target.code,
     discovery_method: row.discovery_method || metadata.discovery_method || "",
-    access_method: row.access_method || (isPdf(row) ? "remote_pdf" : "markdown"),
+    access_method: resolveKnowledgeAccessMethod(row),
     summary: row.summary || "",
+    content_preview: buildKnowledgePreview(row),
     metadata,
     stock_links: stockLinks,
     tags: unique(tags),
@@ -399,7 +415,7 @@ function mapFilteredDocListItem(row: KnowledgeFilteredDocRow): Record<string, un
     doc_id: row.doc_id,
     source_type: row.source_type,
     report_type: row.report_type || row.source_type,
-    source_name: row.source_name || "",
+    source_name: displaySourceName(row.source_name),
     title: row.title,
     url: row.url || "",
     published_at: row.published_at || "",
@@ -447,6 +463,10 @@ function normalizeSourceType(value: string): string {
 
 function normalizeFilter(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function normalizeSecurityCode(value: string): string {
+  return value.trim().toUpperCase();
 }
 
 function clampInteger(value: string | undefined, fallback: number, min: number, max: number): number {
@@ -546,7 +566,58 @@ function parseJsonArray(value: string | null): string[] {
   }
 }
 
-function isPdf(row: KnowledgeDocRow): boolean {
+function resolveKnowledgeAccessMethod(row: Pick<KnowledgeDocRow, "access_method" | "md_text" | "url" | "metadata_json">): string {
+  if (String(row.md_text || "").trim()) {
+    return "markdown";
+  }
+  return row.access_method || (isPdf(row) ? "remote_pdf" : "markdown");
+}
+
+function buildKnowledgePreview(row: Pick<KnowledgeDocRow, "summary" | "md_text">): string {
+  const markdown = String(row.md_text || "").trim();
+  if (markdown) {
+    return truncatePreview(markdownToPreviewText(markdown), 280);
+  }
+  return truncatePreview(String(row.summary || "").trim(), 280);
+}
+
+function markdownToPreviewText(value: string): string {
+  return value
+    .replace(/\*\*==>\s*picture\s*\[[^\]]+\]\s*intentionally omitted\s*<==\*\*/gi, " ")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/\r?\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncatePreview(value: string, max: number): string {
+  if (value.length <= max) {
+    return value;
+  }
+  return `${value.slice(0, max).trimEnd()}...`;
+}
+
+function displaySourceName(value: string | null): string {
+  const sourceName = String(value || "").trim();
+  if (!sourceName) {
+    return "";
+  }
+  return isInternalSourceName(sourceName) ? "" : sourceName;
+}
+
+function isInternalSourceName(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "本地导入" || normalized === "local import";
+}
+
+function isPdf(row: Pick<KnowledgeDocRow, "url" | "access_method" | "metadata_json">): boolean {
   return [row.url, row.access_method, row.metadata_json]
     .some((value) => String(value || "").toLowerCase().includes(".pdf"));
 }

@@ -1,15 +1,13 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
 
 type KnowledgeNewsTableRow = {
-  rawTime: string
-  fetchedTime: string
+  displayTime: string
   sourceType: string
   target: string
   sourceName: string
   title: string
   docId: string
   sourceUrl: string
-  discoveryMethod: string
   accessMethod: string
   isLocalNews: boolean
   tags: string[]
@@ -166,7 +164,6 @@ function knowledgeNewsRemotePdfUrl(row: KnowledgeNewsTableRow) {
   if (!url) {
     return ''
   }
-  const lowerUrl = url.toLowerCase()
   const lowerAccessMethod = String(row.accessMethod || '').toLowerCase()
   if (lowerAccessMethod.includes('remote_pdf') || lowerAccessMethod === 'pdf') {
     return url
@@ -359,25 +356,19 @@ const KnowledgeNewsTable = defineComponent({
       h('table', { id: 'knowledgeNews', class: 'table table-sm table-bordered table-hover align-middle' }, [
         h('thead', { class: 'table-info' }, [
           h('tr', [
-            h('th', { scope: 'col' }, '原始时间'),
-            h('th', { scope: 'col' }, '抓取时间'),
+            h('th', { scope: 'col' }, '时间'),
             h('th', { scope: 'col' }, '类型'),
             h('th', { scope: 'col', style: 'width: 220px;' }, '目标'),
             h('th', { scope: 'col' }, '来源'),
             h('th', { scope: 'col' }, '标题'),
-            h('th', { scope: 'col' }, '获取方式'),
-            h('th', { scope: 'col' }, '原文获取'),
           ]),
         ]),
         h('tbody', rows.value.map((row) => h('tr', { key: `${row.docId}-${row.title}` }, [
-          h('td', row.rawTime),
-          h('td', row.fetchedTime),
+          h('td', row.displayTime),
           h('td', row.sourceType),
           knowledgeNewsTargetCell(row),
           h('td', row.sourceName),
           h('td', knowledgeNewsTitleContent(row)),
-          h('td', row.discoveryMethod),
-          h('td', row.accessMethod),
         ]))),
       ]),
       pagination(),

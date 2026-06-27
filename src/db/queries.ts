@@ -393,3 +393,60 @@ export async function putLlmCache(
     )
     .run();
 }
+
+export async function consumeDailyLlmQuota(
+  db: D1Database,
+  key: string,
+  limit: number,
+  expiresAt: number,
+  updatedAt: number
+): Promise<{ allowed: boolean; count: number }> {
+  const row = await db
+    .prepare(
+      `insert into app_kv (key, value_json, expires_at, updated_at)
+       values (?, json_object('count', 1), ?, ?)
+       on conflict(key) do update set
+        value_json = case
+          when coalesce(cast(json_extract(app_kv.value_json, '$.count') as integer), 0) < ?
+            then json_object('count', coalesce(cast(json_extract(app_kv.value_json, '$.count') as integer), 0) + 1)
+          else app_kv.value_json
+        end,
+        expires_at = case
+          when coalesce(cast(json_extract(app_kv.value_json, '$.count') as integer), 0) < ? then excluded.expires_at
+          else app_kv.expires_at
+        end,
+        updated_at = case
+          when coalesce(cast(json_extract(app_kv.value_json, '$.count') as integer), 0) < ? then excluded.updated_at
+          else app_kv.updated_at
+        end
+       returning
+        cast(json_extract(value_json, '$.count') as integer) as count,
+        updated_at as updatedAt`
+    )
+    .bind(key, expiresAt, updatedAt, limit, limit, limit)
+    .first<{ count: number | null; updatedAt: number | null }>();
+  const count = Number(row?.count ?? 0);
+  return {
+    allowed: Number(row?.updatedAt ?? 0) === updatedAt,
+    count,
+  };
+}
+
+export async function releaseDailyLlmQuota(
+  db: D1Database,
+  key: string,
+  updatedAt: number
+): Promise<void> {
+  await db
+    .prepare(
+      `update app_kv
+       set value_json = json_object(
+             'count',
+             max(coalesce(cast(json_extract(value_json, '$.count') as integer), 0) - 1, 0)
+           ),
+           updated_at = ?
+       where key = ?`
+    )
+    .bind(updatedAt, key)
+    .run();
+}

@@ -21,7 +21,8 @@
     {"href": "company-dividend.html", "text": "分红融资"},
     {"href": "company-shares.html", "text": "股本结构"},
     {"href": "company-notice.html", "text": "公告"},
-    {"href": "company-report.html", "text": "研报"}
+    {"href": "company-report.html", "text": "研报"},
+    {"href": "company-news.html", "text": "资讯"}
   ],
   "fundNav": [
     {"href": "fund.html", "text": "基本数据"},

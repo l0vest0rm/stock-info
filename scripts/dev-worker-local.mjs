@@ -7,12 +7,39 @@ const workerPort = String(process.env.PORT || '8787')
 const httpProxyUrl = process.env.HTTP_PROXY_URL || 'http://127.0.0.1:7892'
 const httpProxyDomains = process.env.HTTP_PROXY_DOMAINS || 'yahoo.com'
 const httpDomainConcurrency = process.env.HTTP_DOMAIN_CONCURRENCY || '3'
+const llmDailyLimit = process.env.LLM_DAILY_LIMIT || '1000000'
+const passthroughVarNames = [
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'VOLC_ARK_API_KEY',
+  'VOLC_ARK_BASE_URL',
+  'LLM_API_KEY',
+  'LLM_BASE_URL',
+]
 
 const workerEnv = {
   ...process.env,
   HTTP_PROXY_URL: httpProxyUrl,
   HTTP_PROXY_DOMAINS: httpProxyDomains,
   HTTP_DOMAIN_CONCURRENCY: httpDomainConcurrency,
+}
+
+const workerVars = [
+  '--var',
+  `HTTP_PROXY_URL:${httpProxyUrl}`,
+  '--var',
+  `HTTP_PROXY_DOMAINS:${httpProxyDomains}`,
+  '--var',
+  `HTTP_DOMAIN_CONCURRENCY:${httpDomainConcurrency}`,
+  '--var',
+  `LLM_DAILY_LIMIT:${llmDailyLimit}`,
+]
+
+for (const key of passthroughVarNames) {
+  const value = process.env[key]
+  if (typeof value === 'string' && value.trim()) {
+    workerVars.push('--var', `${key}:${value.trim()}`)
+  }
 }
 
 let workerProcess = null
@@ -26,12 +53,7 @@ try {
     '--port',
     workerPort,
     '--show-interactive-dev-session=false',
-    '--var',
-    `HTTP_PROXY_URL:${httpProxyUrl}`,
-    '--var',
-    `HTTP_PROXY_DOMAINS:${httpProxyDomains}`,
-    '--var',
-    `HTTP_DOMAIN_CONCURRENCY:${httpDomainConcurrency}`,
+    ...workerVars,
   ], {
     env: workerEnv,
     stdio: 'inherit',

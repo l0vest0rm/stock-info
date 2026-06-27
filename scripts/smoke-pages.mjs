@@ -18,6 +18,7 @@ const stockPages = [
   "company-shares.html",
   "company-notice.html",
   "company-report.html",
+  "company-news.html",
   "company-report-predict.html",
   "company-option.html",
 ];

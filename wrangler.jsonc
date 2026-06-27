@@ -9,6 +9,7 @@
   },
   "vars": {
     "APP_VERSION": "0.1.0",
+    "LLM_DAILY_LIMIT": "300",
     "HTTP_PROXY_URL": "",
     "HTTP_PROXY_DOMAINS": "",
     "HTTP_DOMAIN_CONCURRENCY": "3",

@@ -55,6 +55,18 @@ type CompanyPagesRuntimeContext = {
   cashflowKeys: string[][]
 }
 
+type CompanyNewsRow = {
+  rawTime: string
+  sourceType: string
+  sourceName: string
+  title: string
+  summary: string
+  contentPreview: string
+  docId: string
+  sourceUrl: string
+  accessMethod: string
+}
+
 function mergeAnnualFinancial(target: Map<number, AnnualFinancial>, year: number, value: AnnualFinancial): void {
   const current = target.get(year) || {}
   target.set(year, {
@@ -206,6 +218,91 @@ function getActualAnnualFinancialMap(cache: Record<string, unknown>, code: strin
 
 function normalizeAStockSecurityCode(code: string): string {
   return code.replace(/\.(SH|SZ|BJ)$/i, '')
+}
+
+function normalizeKnowledgeType(item: any): string {
+  const reportType = String(item?.report_type || item?.source_type || '').trim()
+  switch (reportType) {
+    case 'local_news':
+    case 'web_news':
+    case 'news':
+      return '新闻'
+    case 'company_report':
+      return '公司研报'
+    case 'industry_report':
+      return '行业研报'
+    case 'research_report':
+      return '研报'
+    default:
+      return reportType || '-'
+  }
+}
+
+function formatKnowledgeTime(value: unknown): string {
+  const raw = String(value || '').trim()
+  if (!raw) {
+    return '-'
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw
+  }
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)
+  if (!hasTimeZone) {
+    return raw.replace('T', ' ').replace(/\.\d+$/, '').substring(0, 19)
+  }
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) {
+    return raw.replace('T', ' ').replace(/\+.*/, '').replace(/Z$/i, '').substring(0, 19)
+  }
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date)
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || ''
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
+}
+
+function openExternalUrlWithoutReferrer(url: string): void {
+  const trimmed = String(url || '').trim()
+  if (!trimmed) {
+    return
+  }
+  const link = document.createElement('a')
+  link.href = trimmed
+  link.target = '_blank'
+  link.rel = 'noreferrer noopener'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
+function openCompanyNewsDocument(row: CompanyNewsRow): void {
+  const docId = String(row.docId || '').trim()
+  const sourceUrl = String(row.sourceUrl || '').trim()
+  const accessMethod = String(row.accessMethod || '').trim().toLowerCase()
+  if (accessMethod === 'local_file' && docId) {
+    window.open(`/api/knowledge/file?id=${encodeURIComponent(docId)}`, '_blank', 'noopener')
+    return
+  }
+  if (accessMethod.includes('remote_pdf') || accessMethod === 'pdf' || /\.pdf(?:$|[?#])/i.test(sourceUrl)) {
+    openExternalUrlWithoutReferrer(sourceUrl)
+    return
+  }
+  if (docId) {
+    const url = new URL('research-news.html', window.location.href)
+    url.searchParams.set('docId', docId)
+    window.open(url.toString(), '_blank', 'noopener')
+    return
+  }
+  if (sourceUrl) {
+    openExternalUrlWithoutReferrer(sourceUrl)
+  }
 }
 
 function getResolvedProfitMap(report: any, actualFinancialMap: Map<number, AnnualFinancial>): Map<number, number> {
@@ -642,6 +739,116 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       }) as EventListener)
     }
     genCompanyReportTable(code, actualFinancialMap)
+  }
+}
+
+export function createCompanyNewsInitializer(context: CompanyPagesRuntimeContext) {
+  const { server, fetchRequest, getCode } = context
+
+  let companyNewsCurrentPage = 1
+  let companyNewsHasNext = false
+  let companyNewsTotal = 0
+  let companyNewsRows: CompanyNewsRow[] = []
+  let companyNewsEventsBound = false
+
+  function emitCompanyNewsState(patch: Record<string, unknown>) {
+    window.dispatchEvent(new CustomEvent('licai:company-news-state', { detail: patch }))
+  }
+
+  function companyNewsLoadingStatus(page: number): string {
+    return page <= 1 ? '正在加载资讯...' : `正在加载第 ${page} 页资讯...`
+  }
+
+  function companyNewsLoadedStatus(page: number, count: number): string {
+    return count > 0 ? `已加载 ${count} 条资讯，第 ${page} 页` : `暂无资讯，第 ${page} 页为空`
+  }
+
+  async function renderCompanyNews() {
+    const code = getCode()
+    const pageSize = 20
+    emitCompanyNewsState({
+      rows: companyNewsRows,
+      currentPage: companyNewsCurrentPage,
+      hasNext: companyNewsHasNext,
+      total: companyNewsTotal,
+      status: companyNewsLoadingStatus(companyNewsCurrentPage),
+      error: false,
+    })
+    try {
+      const data = await fetchRequest({
+        url: `${server}/api/knowledge/docs`,
+        params: {
+          code,
+          page: companyNewsCurrentPage,
+          pageSize,
+        },
+      }) as any
+      const list = Array.isArray(data?.list) ? data.list : []
+      companyNewsTotal = Number.isFinite(Number(data?.total)) ? Number(data.total) : list.length
+      companyNewsRows = list.map((item: any) => ({
+        rawTime: formatKnowledgeTime(item.event_time || item.published_at || item.fetched_at),
+        sourceType: normalizeKnowledgeType(item),
+        sourceName: String(item.source_name || ''),
+        title: String(item.title || ''),
+        summary: String(item.summary || ''),
+        contentPreview: String(item.content_preview || item.summary || ''),
+        docId: String(item.doc_id || ''),
+        sourceUrl: String(item.url || ''),
+        accessMethod: String(item.access_method || ''),
+      }))
+      companyNewsHasNext = list.length >= pageSize
+      emitCompanyNewsState({
+        rows: companyNewsRows,
+        currentPage: companyNewsCurrentPage,
+        hasNext: companyNewsHasNext,
+        total: companyNewsTotal,
+        status: companyNewsLoadedStatus(companyNewsCurrentPage, companyNewsRows.length),
+        error: false,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      companyNewsRows = []
+      companyNewsHasNext = false
+      companyNewsTotal = 0
+      emitCompanyNewsState({
+        rows: [],
+        currentPage: companyNewsCurrentPage,
+        hasNext: false,
+        total: 0,
+        status: message || '资讯加载失败',
+        error: true,
+      })
+    }
+  }
+
+  function onCompanyNewsPageChange(event: Event) {
+    const page = Number((event as CustomEvent<{ page?: number }>).detail?.page)
+    if (!Number.isInteger(page) || page < 1 || page === companyNewsCurrentPage) {
+      return
+    }
+    companyNewsCurrentPage = page
+    void renderCompanyNews()
+  }
+
+  function onCompanyNewsOpenDoc(event: Event) {
+    const row = (event as CustomEvent<CompanyNewsRow>).detail
+    if (!row) {
+      return
+    }
+    openCompanyNewsDocument(row)
+  }
+
+  return function initCompanyNews() {
+    companyNewsCurrentPage = 1
+    companyNewsRows = []
+    companyNewsHasNext = false
+    companyNewsTotal = 0
+    if (!companyNewsEventsBound) {
+      companyNewsEventsBound = true
+      window.addEventListener('licai:company-news-page-change', onCompanyNewsPageChange as EventListener)
+      window.addEventListener('licai:company-news-open-doc', onCompanyNewsOpenDoc as EventListener)
+    }
+    void renderCompanyNews()
   }
 }
 

@@ -109,6 +109,11 @@ const pageEntries = [
     fileName: 'js/company-report-page.js',
   },
   {
+    entry: 'src/modules/company/pages/company-news-page.ts',
+    globalName: 'LicaiCompanyNewsPage',
+    fileName: 'js/company-news-page.js',
+  },
+  {
     entry: 'src/modules/company/pages/company-finance-page.ts',
     globalName: 'LicaiCompanyFinancePage',
     fileName: 'js/company-finance-page.js',

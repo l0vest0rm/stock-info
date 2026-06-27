@@ -282,12 +282,14 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
         cashflowKeys: context.cashflowKeys,
       })
     }
+    case 'company-news.html':
     case 'company-report.html':
     case 'company-shares.html':
     case 'company.html': {
       const analysisTaskQueue = await getAnalysisTaskQueue(context)
       const {
         createCompanyInitializer,
+        createCompanyNewsInitializer,
         createCompanyReportInitializer,
         createCompanySharesInitializer,
       } = await import('../../modules/company/runtime/company-pages-runtime')
@@ -295,6 +297,9 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
         ...context,
         analysisTaskQueue,
       })
+      if (page === 'company-news.html') {
+        return createCompanyNewsInitializer(companyPagesContext)
+      }
       if (page === 'company-report.html') {
         return createCompanyReportInitializer(companyPagesContext)
       }

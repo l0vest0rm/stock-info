@@ -13,15 +13,13 @@ type KnowledgeNewsRuntimeContext = {
 }
 
 type KnowledgeNewsTableRow = {
-  rawTime: string
-  fetchedTime: string
+  displayTime: string
   sourceType: string
   target: string
   sourceName: string
   title: string
   docId: string
   sourceUrl: string
-  discoveryMethod: string
   accessMethod: string
   isLocalNews: boolean
   tags: string[]
@@ -145,6 +143,14 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
   }
 
+  function knowledgeDisplayTime(item: any): string {
+    const primary = formatKnowledgeTime(item.event_time || item.published_at)
+    if (primary !== '-') {
+      return primary
+    }
+    return formatKnowledgeTime(item.fetched_at)
+  }
+
   function emitKnowledgeNewsTableState() {
     window.dispatchEvent(new CustomEvent('licai:knowledge-news-table-state', {
       detail: {
@@ -186,15 +192,13 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     const docId = String(item.doc_id || '')
     const tags = normalizeKnowledgeNewsTags(item.tags)
     return {
-      rawTime: formatKnowledgeTime(item.event_time || item.published_at),
-      fetchedTime: formatKnowledgeTime(item.fetched_at),
+      displayTime: knowledgeDisplayTime(item),
       sourceType: knowledgeReportTypeText(item),
       target: knowledgeTargetText(item),
       sourceName: String(item.source_name || ''),
       title: String(item.title || ''),
       docId,
       sourceUrl: String(item.url || ''),
-      discoveryMethod: String(item.discovery_method || item.metadata?.discovery_method || ''),
       accessMethod: String(item.access_method || ''),
       isLocalNews: item.source_type === 'local_news',
       tags,
@@ -366,10 +370,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       knowledgeReportTypeText(data),
       knowledgeTargetText(data),
       data.source_name,
-      `原始时间 ${formatKnowledgeTime(data.event_time || data.published_at)}`,
-      `抓取时间 ${formatKnowledgeTime(data.fetched_at)}`,
-      `获取方式 ${data.discovery_method || data.metadata?.discovery_method || '-'}`,
-      `原文获取 ${data.access_method || '-'}`
+      `时间 ${knowledgeDisplayTime(data)}`,
     ].filter((value) => value && value !== '-').map(escapeHtml).join(' / ')
     document.getElementById('knowledgeDocModalTitle')!.textContent = title
     const favoriteButton = document.getElementById('knowledgeDocFavoriteBtn') as HTMLButtonElement | null
