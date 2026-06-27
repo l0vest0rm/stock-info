@@ -19,14 +19,11 @@
 
 | 变量 | 含义 |
 | --- | --- |
-| `HTTP_PROXY_ENABLED` | Worker http client 是否启用代理转发 |
-| `HTTP_PROXY_URL` | Worker 访问外部域名时使用的本地转发器地址，本地通常是 `http://127.0.0.1:8791` |
+| `HTTP_PROXY_URL` | Worker 访问外部域名时使用的真实代理地址，本地通常是 `http://127.0.0.1:7892` 或 `socks5://127.0.0.1:7892` |
 | `HTTP_PROXY_DOMAINS` | 需要走代理的目标域名列表，例如 `yahoo.com` |
 | `HTTP_DOMAIN_CONCURRENCY` | 单个目标域名最大并发，默认 `3` |
-| `PROXY_URL` | Mac 本地转发器使用的上游代理，例如 `PROXY 127.0.0.1:7892` |
-| `PROXY_DOMAINS` | Mac 本地转发器内部允许走上游代理的域名 |
 
-`HTTP_PROXY_*` 是 Worker/http client 配置；`PROXY_*` 是本地转发器配置。两者不要混用。
+`HTTP_PROXY_*` 是 Worker/http client 的统一配置。本地和线上逻辑一致，只是变量值不同。
 
 ### 统一 HTTP Client
 
@@ -208,28 +205,67 @@ download pdf/html/news
 默认的一次性处理入口：
 
 ```text
-npm run process:knowledge
+./process-knowledge.sh
 ```
 
-脚本默认扫描 `data/knowledge/inbox`，处理新增的 `.json`、`.jsonl`、`.md`、`.txt`、
-`.pdf` 文件，生成导入 JSONL，写入 D1，然后把成功文件移动到
-`data/knowledge/processed`。失败文件移动到 `data/knowledge/failed` 并保留错误日志。
-默认写本地 D1；需要写远端时用 `npm run process:knowledge -- --remote`，或在
+脚本会先调用东财 `reportapi.eastmoney.com/report/list` 抓取个股研报和行业研报列表，
+写入 `/Users/terry/git/data/reports`，再处理 `/Users/terry/git/data/reports` 和
+`/Users/terry/git/data/news` 目录及其子目录里的新增 `.json`、`.jsonl`、
+`.md`、`.txt`、`.pdf` 文件，生成导入 JSONL，写入 D1，然后把成功文件移动到
+`/Users/terry/git/data/stock-info/knowledge/processed`。失败文件移动到
+`/Users/terry/git/data/stock-info/knowledge/failed` 并保留错误日志。
+默认写本地 D1；需要写远端时用 `./process-knowledge.sh --remote`，或在
 `config/knowledge-processing.json` 中把 `remote` 改为 `true`。
+
+默认每次按上次处理水位继续推进，避免每天执行时反复从头扫描同一批历史 backlog：
+
+```text
+./process-knowledge.sh
+```
+
+默认不按运行时长截断，而是按来源日期限制处理窗口：新闻只处理最近
+`maxNewsAgeDays` 天，研报只处理最近 `maxReportAgeDays` 天。当前默认是新闻 14 天、
+研报 60 天；这个窗口在 `config/knowledge-processing.json` 里调整。日期优先从文件路径/
+文件名里的 `YYYY-MM-DD` 或 `YYYYMMDD` 推断，取不到时使用文件 mtime。超出窗口的历史文件
+本次跳过并留在原目录，不会被移动或入库。
+
+东财研报列表抓取有单独断点：
+`/Users/terry/git/data/stock-info/knowledge/state/eastmoney-report-fetch-state.json`
+会记录上次成功抓取的 `lastEndTime`。正常重复执行时从 `lastEndTime - overlapDays`
+开始抓，默认只重叠 1 天，避免接口延迟或当天补发；只有首次执行或长期未执行时，才最多
+回看 `eastmoneyReports.lookbackDays` 天，未单独配置时跟随 `maxReportAgeDays`。
+
+本地文件扫描也有断点：成功处理的源文件会移动到 `processed`，失败文件移动到 `failed`；
+同时 `/Users/terry/git/data/stock-info/knowledge/state/local-scan-state.json` 会记录上次成功
+扫描的开始时间。下一次只处理这个时间点之后变化的目录和文件；如果脚本中途失败，不推进
+这个扫描时间水位，下一次还能继续处理本轮未完整完成的变化。
+
+重复执行时还会按 D1 中已有的 `doc_id` 去重：`knowledge_docs` 和
+`knowledge_filtered_docs` 任一表里已存在的文档都会跳过。这样东财当天列表或本地新闻
+再次出现时，不会重复做 PDF 转 Markdown、主题过滤和导入；整文件都是已处理文档时会直接
+归档到 `processed`。
+
+项目不长期依赖 `licai` 的数据库。日常新增新闻/研报必须由 `stock-info` 自己的采集
+或本地加工流程产出。
 
 为了控制处理时间、D1 写入和 Cloudflare 免费额度，入库前默认启用 `AI产业链` 主题过滤。
 脚本会先用本地关键词过滤，只保留大模型、算力、AI 芯片、服务器、数据中心、存储、
 半导体、先进封装、光模块/CPO 等相关内容。不相关文件会移动到 `processed`，
 但不会写入 D1。
 
+每次本地执行都会在 `/Users/terry/git/data/stock-info/knowledge/reviews` 写一份
+`topic-filter-*.md` 和 `topic-filter-*.jsonl`，其中包含保留和被过滤掉的标题、分数、
+命中原因和源文件路径，用来复核过滤规则是否过严或过松。Cloudflare 线上页面只查询 D1，
+因此只会看到过滤后入库的内容。
+
 LLM 增强默认关闭。需要本地批量抽取摘要、标签和推荐分时，先配置 API key，再设置
-`KNOWLEDGE_PROCESS_LLM=1 npm run process:knowledge`；这样不会在普通无参数执行时消耗
+`KNOWLEDGE_PROCESS_LLM=1 ./process-knowledge.sh`；这样不会在普通无参数执行时消耗
 模型额度。
 
 对“本地关键词不确定”的内容，可以启用豆包 mini 做主题复核：
 
 ```text
-KNOWLEDGE_PROCESS_TOPIC_LLM=1 npm run process:knowledge
+KNOWLEDGE_PROCESS_TOPIC_LLM=1 ./process-knowledge.sh
 ```
 
 默认模型配置在 `config/knowledge-processing.json`：`doubao-seed-2-0-mini-260215`，

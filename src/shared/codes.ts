@@ -77,6 +77,12 @@ export function eastmoneySecId(code: string): string | null {
   if (suffix === "BJ") {
     return `0.${base}`;
   }
+  if (suffix === "HK") {
+    return `116.${base}`;
+  }
+  if (suffix === "US") {
+    return `105.${base}`;
+  }
   return null;
 }
 

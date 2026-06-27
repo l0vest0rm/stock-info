@@ -9,8 +9,6 @@ export type Bindings = {
   VOLC_ARK_BASE_URL?: string;
   LLM_API_KEY?: string;
   LLM_BASE_URL?: string;
-  LOCAL_FETCH_PROXY_URL?: string;
-  HTTP_PROXY_ENABLED?: string;
   HTTP_PROXY_URL?: string;
   HTTP_PROXY_DOMAINS?: string;
   HTTP_DOMAIN_CONCURRENCY?: string;

@@ -9,7 +9,7 @@
   },
   "vars": {
     "APP_VERSION": "0.1.0",
-    "HTTP_PROXY_ENABLED": "0",
+    "HTTP_PROXY_URL": "",
     "HTTP_PROXY_DOMAINS": "",
     "HTTP_DOMAIN_CONCURRENCY": "3",
   },

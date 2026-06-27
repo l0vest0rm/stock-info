@@ -11,16 +11,58 @@ if (!args.file) {
 }
 
 const now = Date.now();
+const maxMarkdownChars = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_MARKDOWN_CHARS, 30000);
+const maxSearchTextChars = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SEARCH_TEXT_CHARS, 12000);
+const maxSqlBatchBytes = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES, 700000);
 const docs = loadDocs(args.file);
 if (docs.length === 0) {
   throw new Error(`no knowledge docs found in ${args.file}`);
 }
 
-const sql = [
-  ...docs.flatMap((doc) => {
-    const item = normalizeDoc(doc);
-    return [
-      `insert into knowledge_docs (
+const batches = buildSqlBatches(docs.map((doc) => statementsForDoc(normalizeDoc(doc))));
+let imported = 0;
+
+for (let index = 0; index < batches.length; index += 1) {
+  const sql = batches[index].statements.join("\n");
+  const dir = mkdtempSync(join(tmpdir(), "stock-info-knowledge-import-"));
+  const sqlFile = join(dir, "import.sql");
+  try {
+    writeFileSync(sqlFile, sql);
+    executeWrangler(sqlFile);
+    imported += batches[index].docs;
+    console.error(`[knowledge-import] imported batch ${index + 1}/${batches.length} docs=${batches[index].docs}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function executeWrangler(sqlFile) {
+  try {
+    execFileSync(
+      "npx",
+      [
+        "wrangler",
+        "d1",
+        "execute",
+        args.database,
+        args.remote ? "--remote" : "--local",
+        "--file",
+        sqlFile,
+      ],
+      { stdio: "pipe", encoding: "utf8" }
+    );
+  } catch (err) {
+    if (err.stdout) process.stderr.write(err.stdout);
+    if (err.stderr) process.stderr.write(err.stderr);
+    throw err;
+  }
+}
+
+console.log(JSON.stringify({ imported, batches: batches.length, maxMarkdownChars }, null, 2));
+
+function statementsForDoc(item) {
+  return [
+    `insert into knowledge_docs (
         doc_id, source_type, report_type, source_name, title, url, published_at, fetched_at,
         event_time, target_name, target_code, discovery_method, access_method, summary, md_text,
         search_text, metadata_json, recommendation_score, recommendation_level,
@@ -58,33 +100,44 @@ const sql = [
         rank_score=excluded.rank_score,
         source_weight=excluded.source_weight,
         updated_at=excluded.updated_at;`,
-      `delete from knowledge_doc_tags where doc_id = ${q(item.docId)};`,
-      ...item.tags.map((tag) =>
-        `insert into knowledge_doc_tags (doc_id, tag) values (${q(item.docId)}, ${q(tag.toLowerCase())});`
-      ),
-    ];
-  }),
-].join("\n");
+    `delete from knowledge_doc_tags where doc_id = ${q(item.docId)};`,
+    ...item.tags.map((tag) =>
+      `insert into knowledge_doc_tags (doc_id, tag) values (${q(item.docId)}, ${q(tag.toLowerCase())});`
+    ),
+    ...item.stockAliases.map((alias) =>
+      `insert into knowledge_stock_aliases (alias, code, name, source, updated_at)
+         values (${q(alias.alias.toLowerCase())}, ${q(alias.code)}, ${q(alias.name)}, ${q(alias.source)}, ${item.updatedAt})
+         on conflict(alias) do update set
+           code=excluded.code,
+           name=excluded.name,
+           source=excluded.source,
+           updated_at=excluded.updated_at;`
+    ),
+  ];
+}
 
-const dir = mkdtempSync(join(tmpdir(), "stock-info-knowledge-import-"));
-const sqlFile = join(dir, "import.sql");
-try {
-  writeFileSync(sqlFile, sql);
-  execFileSync(
-    "npx",
-    [
-      "wrangler",
-      "d1",
-      "execute",
-      args.database,
-      args.remote ? "--remote" : "--local",
-      "--file",
-      sqlFile,
-    ],
-    { stdio: "inherit" }
-  );
-} finally {
-  rmSync(dir, { recursive: true, force: true });
+function buildSqlBatches(docStatements) {
+  const batches = [];
+  let current = [];
+  let currentBytes = 0;
+  let currentDocs = 0;
+  for (const statements of docStatements) {
+    const sql = statements.join("\n");
+    const bytes = Buffer.byteLength(sql);
+    if (current.length > 0 && currentBytes + bytes > maxSqlBatchBytes) {
+      batches.push({ statements: current, docs: currentDocs });
+      current = [];
+      currentBytes = 0;
+      currentDocs = 0;
+    }
+    current.push(...statements);
+    currentBytes += bytes;
+    currentDocs += 1;
+  }
+  if (current.length > 0) {
+    batches.push({ statements: current, docs: currentDocs });
+  }
+  return batches;
 }
 
 function parseArgs(argv) {
@@ -157,7 +210,14 @@ function normalizeDoc(raw) {
   const sourceType = text((raw.sourceType ?? raw.source_type) || "research_report");
   const reportType = text((raw.reportType ?? raw.report_type) || sourceType);
   const summary = text(raw.summary);
-  const mdText = text(raw.mdText ?? raw.md_text ?? raw.markdown);
+  const rawMdText = text(raw.mdText ?? raw.md_text ?? raw.markdown);
+  const mdText = truncate(rawMdText, maxMarkdownChars);
+  const metadata = object(raw.metadata ?? raw.metadata_json);
+  if (rawMdText.length > mdText.length) {
+    metadata.markdownTruncated = true;
+    metadata.originalMarkdownChars = rawMdText.length;
+    metadata.importedMarkdownChars = mdText.length;
+  }
   const tags = unique(array(raw.tags).map(text));
   return {
     docId,
@@ -175,8 +235,8 @@ function normalizeDoc(raw) {
     accessMethod: text(raw.accessMethod ?? raw.access_method ?? "markdown"),
     summary,
     mdText,
-    searchText: text(raw.searchText ?? raw.search_text) || [title, summary, mdText.slice(0, 4000), tags.join(" ")].join(" "),
-    metadata: object(raw.metadata ?? raw.metadata_json),
+    searchText: truncate(text(raw.searchText ?? raw.search_text) || [title, summary, mdText.slice(0, 4000), tags.join(" ")].join(" "), maxSearchTextChars),
+    metadata,
     recommendationScore: integer(raw.recommendationScore ?? raw.recommendation_score, 0),
     recommendationLevel: text(raw.recommendationLevel ?? raw.recommendation_level),
     recommendationReasons: array(raw.recommendationReasons ?? raw.recommendation_reasons).map(text),
@@ -184,7 +244,44 @@ function normalizeDoc(raw) {
     rankScore: integer(raw.rankScore ?? raw.rank_score ?? raw.recommendationScore ?? raw.recommendation_score, 0),
     sourceWeight: integer(raw.sourceWeight ?? raw.source_weight, 0),
     updatedAt: integer(raw.updatedAt ?? raw.updated_at, now),
+    stockAliases: extractStockAliases({
+      targetName: text(raw.targetName ?? raw.target_name),
+      targetCode: text(raw.targetCode ?? raw.target_code),
+      metadata,
+    }),
   };
+}
+
+function extractStockAliases({ targetName, targetCode, metadata }) {
+  const links = Array.isArray(metadata.stockLinks) ? metadata.stockLinks : [];
+  const aliases = [];
+  const push = (alias, code, name, source) => {
+    const normalizedAlias = text(alias);
+    const normalizedCode = text(code);
+    if (!normalizedAlias || !normalizedCode) return;
+    aliases.push({
+      alias: normalizedAlias,
+      code: normalizedCode,
+      name: text(name),
+      source: text(source) || "knowledge_import",
+    });
+  };
+  push(targetName, targetCode, targetName, "target");
+  push(targetCode, targetCode, targetName, "target");
+  for (const link of links) {
+    push(link?.name, link?.code, link?.name, "doc_metadata");
+    push(link?.code, link?.code, link?.name, "doc_metadata");
+    for (const alias of array(link?.aliases)) {
+      push(alias, link?.code, link?.name, "doc_metadata");
+    }
+  }
+  const seen = new Set();
+  return aliases.filter((item) => {
+    const key = `${item.alias.toLowerCase()}|${item.code}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function text(value) {
@@ -213,6 +310,15 @@ function object(value) {
 function integer(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function truncate(value, max) {
+  return value.length > max ? value.slice(0, max) : value;
 }
 
 function unique(values) {

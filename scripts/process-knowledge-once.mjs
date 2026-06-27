@@ -12,31 +12,96 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
+const sharedDataRoot = "/Users/terry/git/data";
 const args = parseArgs(process.argv.slice(2));
 const config = loadConfig(args.config);
 const dbTarget = args.remote ?? envBoolean("KNOWLEDGE_PROCESS_REMOTE") ?? Boolean(config.remote);
-const inboxDir = resolve(root, args.inboxDir || config.inboxDir || "data/knowledge/inbox");
-const processedDir = resolve(root, config.processedDir || "data/knowledge/processed");
-const failedDir = resolve(root, config.failedDir || "data/knowledge/failed");
-const workDir = resolve(root, config.workDir || "data/knowledge/work");
+const inputDirs = resolveInputDirs(args.inboxDir, config);
+const processedDir = resolve(root, config.processedDir || `${sharedDataRoot}/stock-info/knowledge/processed`);
+const failedDir = resolve(root, config.failedDir || `${sharedDataRoot}/stock-info/knowledge/failed`);
+const workDir = resolve(root, config.workDir || `${sharedDataRoot}/stock-info/knowledge/work`);
+const reviewDir = resolve(root, config.reviewDir || `${sharedDataRoot}/stock-info/knowledge/reviews`);
+const stateDir = resolve(root, config.stateDir || `${sharedDataRoot}/stock-info/knowledge/state`);
+const remotePdfCacheDir = join(workDir, "remote-pdf");
+const markdownCacheDir = join(workDir, "markdown-cache");
+const llmCacheDir = join(stateDir, "llm-cache");
 const now = new Date();
+const runStartedAt = Date.now();
+const scanStartedAtMs = runStartedAt;
+const maxNewsAgeDays = nonNegativeInteger(process.env.KNOWLEDGE_PROCESS_MAX_NEWS_DAYS ?? config.maxNewsAgeDays, 14);
+const maxReportAgeDays = nonNegativeInteger(process.env.KNOWLEDGE_PROCESS_MAX_REPORT_DAYS ?? config.maxReportAgeDays, 60);
+const stateFile = resolve(stateDir, config.scanStateFile || "local-scan-state.json");
+const scanState = loadScanState(stateFile);
+const scanWatermark = resolveScanWatermark(scanState);
+const changedSinceMs = scanWatermark.ms;
+let lastProcessedFile = "";
 
-for (const dir of [inboxDir, processedDir, failedDir, workDir]) {
+for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmCacheDir]) {
   mkdirSync(dir, { recursive: true });
 }
 
-const files = listInputFiles(inboxDir);
+const existingDocIds = loadExistingDocIds(config);
+const inputScans = inputDirs.map((dir) => listInputFiles(dir, config, changedSinceMs));
+const allFiles = inputScans.flatMap((scan) => scan.files);
+const skippedByAge = inputScans.reduce((sum, scan) => sum + scan.skippedByAge, 0);
+const skippedUnchangedFiles = inputScans.reduce((sum, scan) => sum + scan.skippedUnchangedFiles, 0);
+const skippedUnchangedDirs = inputScans.reduce((sum, scan) => sum + scan.skippedUnchangedDirs, 0);
+const files = allFiles.slice().sort();
+if (files.length === 0 && inputDirs.length === 0) {
+  throw new Error("missing input dirs: expected configured news/reports directories");
+}
+logProgress("discovered input files", {
+  totalPending: allFiles.length,
+  skippedByAge,
+  skippedUnchangedFiles,
+  skippedUnchangedDirs,
+  selected: files.length,
+  changedSince: changedSinceMs ? new Date(changedSinceMs).toISOString() : "",
+  changedSinceSource: scanWatermark.source,
+  maxNewsAgeDays,
+  maxReportAgeDays,
+  existingDocs: existingDocIds.size,
+  ...countFilesByExtension(allFiles),
+  inputDirs,
+});
 const results = [];
 const fileBatches = [];
+let skippedExistingDocs = 0;
 
+let scannedFiles = 0;
 for (const file of files) {
+  scannedFiles += 1;
+  if (scannedFiles === 1 || scannedFiles % 25 === 0 || extname(file).toLowerCase() === ".pdf") {
+    logProgress("normalizing input", {
+      current: scannedFiles,
+      total: files.length,
+      file: relativeInputPath(file),
+    });
+  }
   try {
     const fileDocs = await processInputFile(file, config);
-    fileBatches.push({ file, docs: fileDocs });
+    const newDocs = fileDocs.filter((doc) => !existingDocIds.has(doc.docId));
+    const skipped = fileDocs.length - newDocs.length;
+    skippedExistingDocs += skipped;
+    if (skipped > 0) {
+      logProgress("skipped existing docs", {
+        file: relativeInputPath(file),
+        skipped,
+        remaining: newDocs.length,
+      });
+    }
+    if (newDocs.length === 0) {
+      moveToDir(file, processedDir);
+      results.push({ file, status: "skipped_existing", docs: 0, skippedExisting: skipped });
+      lastProcessedFile = file;
+      continue;
+    }
+    fileBatches.push({ file, docs: newDocs });
+    lastProcessedFile = file;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     writeFileSync(`${file}.error.log`, `${message}\n`);
@@ -45,33 +110,53 @@ for (const file of files) {
       moveToDir(`${file}.error.log`, failedDir);
     }
     results.push({ file, status: "failed", error: message });
+    lastProcessedFile = file;
   }
 }
 
+logProgress("evaluating topic filter", {
+  docs: fileBatches.reduce((sum, batch) => sum + batch.docs.length, 0),
+});
 const topicDecisions = await evaluateTopics(fileBatches.flatMap((batch) => batch.docs), config);
 const docs = [];
 let skippedByTopic = 0;
+const topicReviewRows = [];
+const filteredDocs = [];
+const processedFilesToArchive = [];
 
+let processedDocs = 0;
 for (const batch of fileBatches) {
   try {
     const keptDocs = [];
     for (const rawDoc of batch.docs) {
+      processedDocs += 1;
       const topic = topicDecisions.get(rawDoc.docId) || { keep: true, method: "missing", score: 0, reasons: [] };
+      topicReviewRows.push(topicReviewRow(rawDoc, batch.file, topic));
       if (!topic.keep) {
         skippedByTopic += 1;
+        filteredDocs.push(filteredDocRow(rawDoc, batch.file, topic));
         continue;
       }
+      if (processedDocs === 1 || processedDocs % 25 === 0 || isPdfDoc(rawDoc)) {
+        logProgress("processing kept doc", {
+          current: processedDocs,
+          title: rawDoc.title,
+          accessMethod: rawDoc.accessMethod,
+        });
+      }
+      const materializedDoc = await materializePdfIfNeeded(rawDoc, batch.file, config);
       const doc = await enrichWithLlmIfEnabled({
-        ...rawDoc,
+        ...materializedDoc,
         metadata: {
-          ...rawDoc.metadata,
+          ...materializedDoc.metadata,
           topicFilter: topic,
         },
       }, config);
-      keptDocs.push(doc);
+      keptDocs.push(withStockLinkMetadata(doc));
     }
     docs.push(...keptDocs);
-    moveToDir(batch.file, processedDir);
+    processedFilesToArchive.push(batch.file);
+    lastProcessedFile = batch.file;
     results.push({ file: batch.file, status: "processed", docs: keptDocs.length, skipped: batch.docs.length - keptDocs.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -81,9 +166,36 @@ for (const batch of fileBatches) {
       moveToDir(`${batch.file}.error.log`, failedDir);
     }
     results.push({ file: batch.file, status: "failed", error: message });
+    lastProcessedFile = batch.file;
   }
 }
 
+const topicReview = writeTopicReview(topicReviewRows, config);
+logProgress("topic filter done", {
+  kept: docs.length,
+  filtered: filteredDocs.length,
+  review: topicReview.mdFile,
+});
+let filteredImported = 0;
+if (filteredDocs.length > 0) {
+  const filteredImportFile = join(workDir, `knowledge-filtered-${formatRunTime(now)}.jsonl`);
+  writeFileSync(filteredImportFile, `${filteredDocs.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  execFileSync(
+    "npm",
+    [
+      "run",
+      "import:knowledge:filtered",
+      "--",
+      "--file",
+      filteredImportFile,
+      dbTarget ? "--remote" : "--local",
+      "--database",
+      config.database || "stock_info",
+    ],
+    { cwd: root, stdio: "inherit" }
+  );
+  filteredImported = filteredDocs.length;
+}
 const uniqueDocs = uniqueByDocId(docs);
 let imported = 0;
 if (uniqueDocs.length > 0) {
@@ -106,18 +218,48 @@ if (uniqueDocs.length > 0) {
   imported = uniqueDocs.length;
 }
 
+for (const file of processedFilesToArchive) {
+  if (existsSync(file)) {
+    moveToDir(file, processedDir);
+  }
+}
+
+saveScanState(stateFile, {
+  lastFile: lastProcessedFile || scanState.lastFile || "",
+  lastRelativeFile: lastProcessedFile ? relativeInputPath(lastProcessedFile) : scanState.lastRelativeFile || "",
+  lastCompletedScanStartedAtMs: scanStartedAtMs,
+  lastCompletedScanStartedAt: new Date(scanStartedAtMs).toISOString(),
+  completedAt: new Date().toISOString(),
+});
+
 console.log(JSON.stringify({
-  inboxDir,
+  inputDirs,
   database: config.database || "stock_info",
   remote: dbTarget,
-  files: files.length,
+  totalPending: allFiles.length,
+  skippedByAge,
+  skippedUnchangedFiles,
+  skippedUnchangedDirs,
+  selectedFiles: files.length,
+  normalizedFiles: scannedFiles,
+  skippedExistingDocs,
+  changedSince: changedSinceMs ? new Date(changedSinceMs).toISOString() : "",
+  changedSinceSource: scanWatermark.source,
+  maxNewsAgeDays,
+  maxReportAgeDays,
+  nextScanWatermark: new Date(scanStartedAtMs).toISOString(),
+  elapsedSeconds: Math.round((Date.now() - runStartedAt) / 1000),
   imported,
+  filteredImported,
   skippedByTopic,
+  topicReview,
+  filteredOutPreview: topicReview.filteredOutPreview,
   results: results.map((item) => ({
     file: basename(item.file),
     status: item.status,
     docs: item.docs || 0,
     skipped: item.skipped || 0,
+    skippedExisting: item.skippedExisting || 0,
     error: item.error || undefined,
   })),
 }, null, 2));
@@ -128,15 +270,15 @@ async function processInputFile(file, cfg) {
     return loadJsonDocs(file).map((item) => normalizeInputDoc(item, file, cfg));
   }
   if (ext === ".pdf") {
-    const markdown = convertPdfToMarkdown(file, cfg);
     return [normalizeInputDoc({
       title: titleFromFilename(file),
       sourceType: "research_report",
       reportType: "research_report",
       sourceName: cfg.defaultSourceName,
-      accessMethod: "markdown",
-      markdown,
-      metadata: { originalFile: basename(file), pdfStored: false },
+      accessMethod: "local_pdf_pending",
+      summary: titleFromFilename(file),
+      markdown: "",
+      metadata: { originalFile: basename(file), pdfStored: false, localPdfPath: file },
       tags: ["pdf"],
     }, file, cfg)];
   }
@@ -156,13 +298,14 @@ async function processInputFile(file, cfg) {
 }
 
 function normalizeInputDoc(raw, file, cfg) {
-  const title = text(raw.title) || titleFromFilename(file);
-  const markdown = text(raw.mdText ?? raw.md_text ?? raw.markdown ?? raw.content ?? raw.body);
-  const summary = text(raw.summary) || summarize(markdown);
-  const sourceType = text((raw.sourceType ?? raw.source_type) || inferSourceType(raw, file, cfg));
-  const reportType = text((raw.reportType ?? raw.report_type) || inferReportType(sourceType, raw, file));
+  const normalizedRaw = normalizeRawInput(raw, file);
+  const title = text(normalizedRaw.title) || titleFromFilename(file);
+  const markdown = text(normalizedRaw.mdText ?? normalizedRaw.md_text ?? normalizedRaw.markdown ?? normalizedRaw.content ?? normalizedRaw.body);
+  const summary = text(normalizedRaw.summary) || summarize(markdown);
+  const sourceType = text((normalizedRaw.sourceType ?? normalizedRaw.source_type) || inferSourceType(normalizedRaw, file, cfg));
+  const reportType = text((normalizedRaw.reportType ?? normalizedRaw.report_type) || inferReportType(sourceType, normalizedRaw, file));
   const baseTags = unique([
-    ...array(raw.tags).map(text),
+    ...array(normalizedRaw.tags).map(text),
     ...(extname(file).toLowerCase() === ".pdf" ? ["pdf"] : []),
   ]);
   const scoring = scoreDocument({
@@ -174,38 +317,247 @@ function normalizeInputDoc(raw, file, cfg) {
     tags: baseTags,
   }, cfg);
   const tags = unique([...baseTags, ...scoring.tags]);
-  const recommendationScore = integer(raw.recommendationScore ?? raw.recommendation_score, scoring.score);
-  const recommendationLevel = text(raw.recommendationLevel ?? raw.recommendation_level) || levelForScore(recommendationScore, cfg);
+  const recommendationScore = integer(normalizedRaw.recommendationScore ?? normalizedRaw.recommendation_score, scoring.score);
   return {
-    docId: text(raw.docId ?? raw.doc_id ?? raw.id) || makeDocId(raw, file),
+    docId: text(normalizedRaw.docId ?? normalizedRaw.doc_id ?? normalizedRaw.id) || makeDocId(normalizedRaw, file),
     sourceType,
     reportType,
-    sourceName: text(raw.sourceName ?? raw.source_name) || cfg.defaultSourceName || "",
+    sourceName: text(normalizedRaw.sourceName ?? normalizedRaw.source_name) || cfg.defaultSourceName || "",
     title,
-    url: text(raw.url),
-    publishedAt: text(raw.publishedAt ?? raw.published_at ?? raw.date),
-    fetchedAt: text(raw.fetchedAt ?? raw.fetched_at) || now.toISOString(),
-    eventTime: text(raw.eventTime ?? raw.event_time ?? raw.publishedAt ?? raw.published_at ?? raw.date),
-    targetName: text(raw.targetName ?? raw.target_name),
-    targetCode: text(raw.targetCode ?? raw.target_code),
-    discoveryMethod: text(raw.discoveryMethod ?? raw.discovery_method) || "local_process_once",
-    accessMethod: text(raw.accessMethod ?? raw.access_method) || "markdown",
+    url: text(normalizedRaw.url),
+    publishedAt: text(normalizedRaw.publishedAt ?? normalizedRaw.published_at ?? normalizedRaw.date),
+    fetchedAt: text(normalizedRaw.fetchedAt ?? normalizedRaw.fetched_at) || now.toISOString(),
+    eventTime: text(normalizedRaw.eventTime ?? normalizedRaw.event_time ?? normalizedRaw.publishedAt ?? normalizedRaw.published_at ?? normalizedRaw.date),
+    targetName: text(normalizedRaw.targetName ?? normalizedRaw.target_name),
+    targetCode: text(normalizedRaw.targetCode ?? normalizedRaw.target_code),
+    discoveryMethod: text(normalizedRaw.discoveryMethod ?? normalizedRaw.discovery_method) || "local_process_once",
+    accessMethod: text(normalizedRaw.accessMethod ?? normalizedRaw.access_method) || "markdown",
     summary,
     markdown: truncate(markdown, integer(cfg.maxMarkdownChars, 120000)),
     tags,
     metadata: {
-      ...object(raw.metadata ?? raw.metadata_json),
+      ...object(normalizedRaw.metadata ?? normalizedRaw.metadata_json),
       processedAt: now.toISOString(),
       inputFile: basename(file),
       pdfStored: false,
     },
     recommendationScore,
-    recommendationLevel,
-    recommendationReasons: array(raw.recommendationReasons ?? raw.recommendation_reasons).map(text).filter(Boolean).length > 0
-      ? array(raw.recommendationReasons ?? raw.recommendation_reasons).map(text).filter(Boolean)
+    recommendationLevel: "",
+    recommendationReasons: array(normalizedRaw.recommendationReasons ?? normalizedRaw.recommendation_reasons).map(text).filter(Boolean).length > 0
+      ? array(normalizedRaw.recommendationReasons ?? normalizedRaw.recommendation_reasons).map(text).filter(Boolean)
       : scoring.reasons,
-    rankScore: integer(raw.rankScore ?? raw.rank_score, recommendationScore),
-    sourceWeight: integer(raw.sourceWeight ?? raw.source_weight, 0),
+    rankScore: integer(normalizedRaw.rankScore ?? normalizedRaw.rank_score, recommendationScore),
+    sourceWeight: integer(normalizedRaw.sourceWeight ?? normalizedRaw.source_weight, 0),
+  };
+}
+
+function normalizeRawInput(raw, file) {
+  const ext = extname(file).toLowerCase();
+  const contentObject = object(raw.content);
+  const stockItems = array(raw.stockInfo ?? raw.stock_info);
+  const stockNames = unique(stockItems.map((item) => text(item?.name)));
+  const stockCodes = unique([
+    ...stockItems.map((item) => text(item?.symbol)),
+    ...array(raw.stock_codes).map(text),
+  ]);
+  const htmlBody = text(contentObject.text ?? raw.content_html);
+  const body = text(raw.markdown ?? raw.mdText ?? raw.md_text ?? raw.body)
+    || stripHtml(htmlBody)
+    || text(raw.text);
+  const publishedAt = normalizeDate(raw.publishedAt ?? raw.published_at ?? raw.publish_time ?? raw.time ?? raw.date);
+  const isTencentNews = ext === ".json" && (raw.dedupe_title || raw.stockInfo || htmlBody);
+  if (!isTencentNews) {
+    return {
+      ...raw,
+      content: body || raw.content,
+    };
+  }
+  const primaryTarget = resolveTencentPrimaryTarget(raw, stockItems);
+  return {
+    ...raw,
+    docId: text(raw.docId ?? raw.doc_id) || (raw.id ? stableKnowledgeDocId(`tencent_stock_news|${raw.id}`) : ""),
+    title: text(raw.title ?? raw.dedupe_title),
+    sourceType: text(raw.sourceType ?? raw.source_type) || "local_news",
+    reportType: text(raw.reportType ?? raw.report_type) || "news",
+    sourceName: text(raw.sourceName ?? raw.source_name ?? raw.source) || "腾讯自选股",
+    publishedAt,
+    eventTime: publishedAt,
+    targetName: primaryTarget.name,
+    targetCode: primaryTarget.code,
+    content: body,
+    tags: unique(array(raw.tags).map(text)),
+    metadata: {
+      ...object(raw.metadata ?? raw.metadata_json),
+      source: "tencent_stock_news",
+      newsId: text(raw.id),
+      stockNames,
+      stockCodes,
+      originalFile: basename(file),
+    },
+  };
+}
+
+function resolveTencentPrimaryTarget(raw, stockItems) {
+  const explicitName = text(raw.targetName ?? raw.target_name);
+  const explicitCode = text(raw.targetCode ?? raw.target_code);
+  if (explicitName || explicitCode) {
+    return { name: explicitName, code: explicitCode };
+  }
+  const title = text(raw.title ?? raw.dedupe_title);
+  const candidates = stockItems
+    .map((item) => ({
+      name: text(item?.name),
+      code: text(item?.symbol),
+    }))
+    .filter((item) => item.name || item.code);
+  if (candidates.length === 1 && isDirectSecurityCandidate(candidates[0])) {
+    return candidates[0];
+  }
+  const titleMatched = candidates.find((item) => {
+    const baseName = securityBaseName(item.name);
+    return baseName && isDirectSecurityCandidate(item) && title.includes(baseName);
+  });
+  return titleMatched || { name: "", code: "" };
+}
+
+function isDirectSecurityCandidate(item) {
+  const name = text(item.name);
+  const code = text(item.code).toLowerCase();
+  if (!name && !code) return false;
+  if (code.startsWith("pt")) return false;
+  return !/(ETF|LOF|QDII|概念|指数|板块|主题|基金)/i.test(name);
+}
+
+function securityBaseName(name) {
+  return text(name)
+    .replace(/\.(SH|SZ|US|HK|BJ|PT)$/i, "")
+    .replace(/-(SW|W|B|S|R)$/i, "")
+    .trim();
+}
+
+async function materializePdfIfNeeded(doc, file, cfg) {
+  const url = text(doc.url);
+  const accessMethod = text(doc.accessMethod ?? doc.access_method).toLowerCase();
+  if (url && url.toLowerCase().includes(".pdf") && accessMethod.includes("remote_pdf")) {
+    const pdfFile = await downloadRemotePdf(url, doc, cfg);
+    const markdown = convertPdfToMarkdownCached(pdfFile, doc.docId || sha256(url), cfg);
+    return withStockLinkMetadata({
+      ...doc,
+      accessMethod: "markdown_from_remote_pdf",
+      markdown,
+      summary: doc.summary || summarize(markdown),
+      metadata: {
+        ...doc.metadata,
+        pdfStored: false,
+        remotePdfMaterialized: true,
+        remotePdfUrl: url,
+        remotePdfWorkFile: basename(pdfFile),
+      },
+    });
+  }
+  if (accessMethod === "local_pdf_pending" || extname(file).toLowerCase() === ".pdf") {
+    const markdown = convertPdfToMarkdownCached(file, doc.docId || sha256(file), cfg);
+    return withStockLinkMetadata({
+      ...doc,
+      accessMethod: "markdown_from_local_pdf",
+      markdown,
+      summary: doc.summary || summarize(markdown),
+      metadata: {
+        ...doc.metadata,
+        pdfStored: false,
+        localPdfMaterialized: true,
+      },
+    });
+  }
+  return withStockLinkMetadata(doc);
+}
+
+async function downloadRemotePdf(url, doc, cfg) {
+  const file = join(remotePdfCacheDir, `${safeFilename(doc.docId || sha256(url))}.pdf`);
+  if (existsSync(file)) {
+    const stat = statSync(file);
+    if (stat.size >= 1000) {
+      logProgress("reusing downloaded remote pdf", { title: doc.title, file: basename(file) });
+      return file;
+    }
+  }
+  logProgress("downloading remote pdf", { title: doc.title, url });
+  const headers = {
+    Referer: cfg.eastmoneyReports?.referer || "https://data.eastmoney.com/report/",
+    "User-Agent": cfg.eastmoneyReports?.userAgent || "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
+    Accept: "application/pdf,*/*",
+  };
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`remote pdf download failed: status=${response.status} url=${url} body=${body.slice(0, 200)}`);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length < 1000) {
+    throw new Error(`remote pdf download is too small: bytes=${bytes.length} url=${url}`);
+  }
+  writeFileSync(file, bytes);
+  return file;
+}
+
+function withStockLinkMetadata(doc) {
+  const stockLinks = extractStockLinks(doc);
+  return {
+    ...doc,
+    metadata: {
+      ...doc.metadata,
+      stockLinks,
+    },
+  };
+}
+
+function extractStockLinks(doc) {
+  const metadata = object(doc.metadata);
+  const links = [];
+  const push = ({ code, name, aliases = [] }) => {
+    const normalizedCode = normalizeStockCode(code);
+    const normalizedName = text(name);
+    if (!normalizedCode && !normalizedName) return;
+    links.push({
+      code: normalizedCode,
+      name: normalizedName,
+      aliases: unique([
+        normalizedCode,
+        normalizedCode ? bareStockCode(normalizedCode) : "",
+        normalizedName,
+        ...array(aliases).map(text),
+      ]),
+    });
+  };
+  push({ code: doc.targetCode, name: doc.targetName });
+  const stockNames = array(metadata.stockNames);
+  const stockCodes = array(metadata.stockCodes);
+  for (let i = 0; i < Math.max(stockNames.length, stockCodes.length); i += 1) {
+    push({ code: stockCodes[i], name: stockNames[i] });
+  }
+  const raw = object(metadata.raw);
+  push({ code: raw.stockCode, name: raw.stockName });
+  const seen = new Set();
+  return links.filter((item) => {
+    const key = `${item.code}|${item.name}`;
+    if ((!item.code && !item.name) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function filteredDocRow(doc, file, topic) {
+  return {
+    doc: {
+      ...doc,
+      metadata: {
+        ...doc.metadata,
+        topicFilter: topic,
+        stockLinks: extractStockLinks(doc),
+      },
+    },
+    filter: topic,
+    file: relativeInputPath(file),
   };
 }
 
@@ -244,11 +596,46 @@ except Exception:
     text = "\\n\\n".join(pages)
 out.write_text(text, encoding="utf-8")
 `;
-  const result = spawnSync(python, ["-c", code, file, out], { encoding: "utf8" });
+  const timeoutMs = integer(cfg.pdfConversionTimeoutMs, 120000);
+  const result = spawnSync(python, ["-c", code, file, out], { encoding: "utf8", timeout: timeoutMs });
+  if (result.error) {
+    throw new Error(`pdf to markdown failed: ${result.error.message}`);
+  }
+  if (result.signal === "SIGTERM") {
+    throw new Error(`pdf to markdown timed out after ${timeoutMs}ms: ${file}`);
+  }
   if (result.status !== 0) {
     throw new Error(`pdf to markdown failed: ${result.stdout.trim()} ${result.stderr.trim()}`.trim());
   }
   return readFileSync(out, "utf8");
+}
+
+function convertPdfToMarkdownCached(file, cacheKey, cfg) {
+  const sourceStat = statSync(file);
+  const key = safeFilename(cacheKey || file);
+  const mdFile = join(markdownCacheDir, `${key}.md`);
+  const metaFile = join(markdownCacheDir, `${key}.json`);
+  const sourceFingerprint = {
+    file,
+    mtimeMs: sourceStat.mtimeMs,
+    size: sourceStat.size,
+  };
+  const cachedMeta = readJsonFile(metaFile);
+  if (
+    existsSync(mdFile)
+    && cachedMeta
+    && cachedMeta.file === sourceFingerprint.file
+    && cachedMeta.mtimeMs === sourceFingerprint.mtimeMs
+    && cachedMeta.size === sourceFingerprint.size
+  ) {
+    logProgress("reusing converted markdown", { file: basename(mdFile), source: relativeInputPath(file) });
+    return readFileSync(mdFile, "utf8");
+  }
+  logProgress("converting pdf to markdown", { file: relativeInputPath(file), cacheKey: key });
+  const markdown = convertPdfToMarkdown(file, cfg);
+  writeFileSync(mdFile, markdown, "utf8");
+  writeFileSync(metaFile, `${JSON.stringify(sourceFingerprint, null, 2)}\n`);
+  return markdown;
 }
 
 function scoreDocument(doc, cfg) {
@@ -285,7 +672,18 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
   const baseUrl = (process.env.LLM_BASE_URL || llm.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
   const model = process.env.KNOWLEDGE_PROCESS_LLM_MODEL || llm.model || "gpt-5.4-mini";
   const content = truncate(doc.markdown || doc.summary || "", integer(llm.maxInputChars, 12000));
-  const parsed = await requestLlmJson({
+  const cacheKey = [
+    "knowledge_enrich",
+    model,
+    doc.docId || "",
+    sha256(JSON.stringify({
+      title: doc.title,
+      sourceType: doc.sourceType,
+      reportType: doc.reportType,
+      content,
+    })),
+  ].join("|");
+  const parsed = await requestLlmJsonCached(cacheKey, {
     baseUrl,
     apiKey,
     model,
@@ -309,7 +707,7 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
     targetName: text(parsed.targetName) || doc.targetName,
     targetCode: text(parsed.targetCode) || doc.targetCode,
     recommendationScore: nextScore,
-    recommendationLevel: levelForScore(nextScore, cfg),
+    recommendationLevel: "",
     recommendationReasons: array(parsed.recommendationReasons).map(text).filter(Boolean).length > 0
       ? array(parsed.recommendationReasons).map(text).filter(Boolean)
       : doc.recommendationReasons,
@@ -470,6 +868,18 @@ async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user 
   return parsed;
 }
 
+async function requestLlmJsonCached(cacheKey, request) {
+  const file = join(llmCacheDir, `${safeFilename(cacheKey)}.json`);
+  const cached = readJsonFile(file);
+  if (cached?.cacheKey === cacheKey && cached?.response && typeof cached.response === "object") {
+    logProgress("reusing llm cache", { cacheKey: safeFilename(cacheKey) });
+    return cached.response;
+  }
+  const response = await requestLlmJson(request);
+  writeFileSync(file, `${JSON.stringify({ cacheKey, response }, null, 2)}\n`);
+  return response;
+}
+
 function extractLlmText(body) {
   const content = body?.choices?.[0]?.message?.content;
   if (typeof content === "string") return content;
@@ -489,28 +899,273 @@ function parseJsonObjectFromText(value) {
   }
 }
 
-function levelForScore(score, cfg) {
-  const levels = array(cfg.scoreLevels).slice().sort((a, b) => integer(b.minScore, 0) - integer(a.minScore, 0));
-  const matched = levels.find((item) => score >= integer(item.minScore, 0));
-  return text(matched?.level) || "";
+function isPdfDoc(doc) {
+  return String(doc.accessMethod || "").toLowerCase().includes("pdf")
+    || String(doc.url || "").toLowerCase().includes(".pdf")
+    || array(doc.tags).map(text).some((tag) => tag.toLowerCase() === "pdf");
 }
 
-function listInputFiles(dir) {
-  return readdirSync(dir)
-    .map((name) => join(dir, name))
-    .filter((file) => statSync(file).isFile())
-    .filter((file) => [".json", ".jsonl", ".md", ".txt", ".pdf"].includes(extname(file).toLowerCase()))
-    .sort();
+function topicReviewRow(doc, file, topic) {
+  return {
+    keep: Boolean(topic.keep),
+    title: doc.title,
+    sourceType: doc.sourceType,
+    reportType: doc.reportType,
+    sourceName: doc.sourceName,
+    targetName: doc.targetName,
+    targetCode: doc.targetCode,
+    publishedAt: doc.publishedAt,
+    score: integer(topic.score, 0),
+    method: text(topic.method),
+    confidence: topic.confidence ?? undefined,
+    reasons: array(topic.reasons).map(text).filter(Boolean),
+    docId: doc.docId,
+    file: relativeInputPath(file),
+  };
+}
+
+function writeTopicReview(rows, cfg) {
+  const runId = formatRunTime(now);
+  const jsonlFile = join(reviewDir, `topic-filter-${runId}.jsonl`);
+  const mdFile = join(reviewDir, `topic-filter-${runId}.md`);
+  const kept = rows.filter((row) => row.keep);
+  const filteredOut = rows.filter((row) => !row.keep);
+  writeFileSync(jsonlFile, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  writeFileSync(mdFile, [
+    `# Topic Filter Review ${runId}`,
+    "",
+    `- kept: ${kept.length}`,
+    `- filtered_out: ${filteredOut.length}`,
+    "",
+    "## Filtered Out",
+    ...filteredOut.map((row) => `- ${row.title} | ${row.sourceType}/${row.reportType} | score=${row.score} | ${row.reasons.join("; ") || row.method}`),
+    "",
+    "## Kept",
+    ...kept.map((row) => `- ${row.title} | ${row.sourceType}/${row.reportType} | score=${row.score} | ${row.reasons.join("; ") || row.method}`),
+    "",
+  ].join("\n"));
+  return {
+    jsonlFile,
+    mdFile,
+    kept: kept.length,
+    filteredOut: filteredOut.length,
+    filteredOutPreview: filteredOut
+      .slice(0, integer(cfg.filterReviewPreviewLimit, 50))
+      .map((row) => row.title),
+  };
+}
+
+function listInputFiles(dir, cfg, changedSinceMs = 0) {
+  if (!existsSync(dir)) return { files: [], skippedByAge: 0, skippedUnchangedFiles: 0, skippedUnchangedDirs: 0 };
+  const supportedExts = new Set(array(cfg.supportedExtensions).length > 0
+    ? array(cfg.supportedExtensions).map((item) => text(item).toLowerCase())
+    : [".json", ".jsonl", ".md", ".txt", ".pdf"]);
+  const files = [];
+  let skippedByAge = 0;
+  let skippedUnchangedFiles = 0;
+  let skippedUnchangedDirs = 0;
+  const stack = [{ path: dir, depth: 0 }];
+  while (stack.length > 0) {
+    const currentItem = stack.pop();
+    const current = currentItem.path;
+    for (const name of readdirSync(current)) {
+      if (name.startsWith(".")) continue;
+      const path = join(current, name);
+      const stat = statSync(path);
+      if (stat.isDirectory()) {
+        if (changedSinceMs > 0 && currentItem.depth > 0 && stat.mtimeMs <= changedSinceMs) {
+          skippedUnchangedDirs += 1;
+          continue;
+        }
+        stack.push({ path, depth: currentItem.depth + 1 });
+        continue;
+      }
+      if (stat.isFile() && supportedExts.has(extname(path).toLowerCase())) {
+        if (changedSinceMs > 0 && stat.mtimeMs <= changedSinceMs) {
+          skippedUnchangedFiles += 1;
+          continue;
+        }
+        if (isOlderThanSourceWindow(path, dir, stat)) {
+          skippedByAge += 1;
+          continue;
+        }
+        files.push(path);
+      }
+    }
+  }
+  return { files: files.sort(), skippedByAge, skippedUnchangedFiles, skippedUnchangedDirs };
+}
+
+function isOlderThanSourceWindow(file, inputDir, stat) {
+  const kind = inferInputKind(file, inputDir);
+  const maxAgeDays = kind === "news" ? maxNewsAgeDays : maxReportAgeDays;
+  if (!maxAgeDays) return false;
+  const sourceDate = inferSourceDate(file, stat);
+  if (!sourceDate) return false;
+  return sourceDate < startOfLocalDay(addDays(now, -maxAgeDays));
+}
+
+function inferInputKind(file, inputDir) {
+  const owner = basename(inputDir).toLowerCase();
+  if (owner.includes("news")) return "news";
+  if (owner.includes("report")) return "report";
+  const normalized = file.toLowerCase();
+  if (normalized.includes("/news/")) return "news";
+  if (normalized.includes("/reports/")) return "report";
+  const ext = extname(file).toLowerCase();
+  return ext === ".pdf" ? "report" : "news";
+}
+
+function inferSourceDate(file, stat) {
+  const fromPath = latestDateFromText(file);
+  if (fromPath) return startOfLocalDay(fromPath);
+  return stat?.mtime instanceof Date ? startOfLocalDay(stat.mtime) : null;
+}
+
+function latestDateFromText(value) {
+  const dates = [];
+  const raw = text(value);
+  for (const match of raw.matchAll(/(20\d{2})[-_/年.](\d{1,2})[-_/月.](\d{1,2})日?/g)) {
+    const date = validLocalDate(Number(match[1]), Number(match[2]), Number(match[3]));
+    if (date) dates.push(date);
+  }
+  for (const match of raw.matchAll(/(20\d{2})(\d{2})(\d{2})/g)) {
+    const date = validLocalDate(Number(match[1]), Number(match[2]), Number(match[3]));
+    if (date) dates.push(date);
+  }
+  if (dates.length === 0) return null;
+  return dates.sort((a, b) => b.getTime() - a.getTime())[0];
+}
+
+function validLocalDate(year, month, day) {
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+function startOfLocalDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function loadScanState(file) {
+  if (!existsSync(file)) {
+    return {};
+  }
+  try {
+    return object(readFileSync(file, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function readJsonFile(file) {
+  if (!existsSync(file)) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function resolveScanWatermark(state) {
+  const explicit = nonNegativeInteger(state.lastCompletedScanStartedAtMs, 0);
+  if (explicit > 0) {
+    return { ms: explicit, source: "lastCompletedScanStartedAtMs" };
+  }
+  const legacyCompletedAt = Date.parse(text(state.completedAt));
+  if (Number.isFinite(legacyCompletedAt) && legacyCompletedAt > 0) {
+    return { ms: legacyCompletedAt, source: "legacyCompletedAt" };
+  }
+  return { ms: 0, source: "none" };
+}
+
+function saveScanState(file, patch) {
+  mkdirSync(dirname(file), { recursive: true });
+  const next = {
+    ...loadScanState(file),
+    ...patch,
+  };
+  writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
+}
+
+function loadExistingDocIds(cfg) {
+  const ids = new Set();
+  for (const table of ["knowledge_docs", "knowledge_filtered_docs"]) {
+    for (const id of queryExistingDocIds(table, cfg)) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+function queryExistingDocIds(table, cfg) {
+  try {
+    const stdout = execFileSync(
+      "npx",
+      [
+        "wrangler",
+        "d1",
+        "execute",
+        cfg.database || "stock_info",
+        dbTarget ? "--remote" : "--local",
+        "--command",
+        `select doc_id from ${table};`,
+        "--json",
+      ],
+      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 50 * 1024 * 1024 }
+    );
+    const parsed = JSON.parse(stdout);
+    return array(parsed?.[0]?.results).map((row) => text(row.doc_id)).filter(Boolean);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logProgress("existing doc lookup skipped", { table, error: message });
+    return [];
+  }
+}
+
+function resolveInputDirs(argInboxDir, cfg) {
+  if (argInboxDir) {
+    return [resolve(root, argInboxDir)].filter((dir) => existsSync(dir));
+  }
+  const configured = array(cfg.inputDirs).length > 0 ? array(cfg.inputDirs) : [
+    `${sharedDataRoot}/news`,
+    `${sharedDataRoot}/reports`,
+  ];
+  const dirs = configured
+    .map((dir) => resolve(root, text(dir)))
+    .filter((dir) => existsSync(dir));
+  const legacyInbox = text(cfg.inboxDir) ? resolve(root, cfg.inboxDir) : "";
+  if (dirs.length === 0 && legacyInbox && existsSync(legacyInbox)) {
+    return [legacyInbox];
+  }
+  return dirs;
 }
 
 function moveToDir(file, dir) {
-  const target = uniquePath(join(dir, basename(file)));
+  const target = uniquePath(join(dir, relativeInputPath(file)));
+  mkdirSync(dirname(target), { recursive: true });
   try {
     renameSync(file, target);
   } catch {
     copyFileSync(file, target);
     rmSync(file, { force: true });
   }
+}
+
+function relativeInputPath(file) {
+  const owner = inputDirs
+    .slice()
+    .sort((a, b) => b.length - a.length)
+    .find((dir) => file === dir || file.startsWith(`${dir}/`));
+  return owner ? relative(owner, file) : basename(file);
 }
 
 function uniquePath(path) {
@@ -544,7 +1199,11 @@ function makeDocId(raw, file) {
     text(raw.publishedAt ?? raw.published_at ?? raw.date),
     basename(file),
   ].join("|");
-  return `local:${sha256(stable).slice(0, 24)}`;
+  return stableKnowledgeDocId(stable);
+}
+
+function stableKnowledgeDocId(value) {
+  return `k_${sha256(String(value || "")).slice(0, 24)}`;
 }
 
 function titleFromMarkdown(markdown) {
@@ -554,6 +1213,79 @@ function titleFromMarkdown(markdown) {
 
 function titleFromFilename(file) {
   return basename(file, extname(file)).replace(/[_-]+/g, " ").trim();
+}
+
+function stripHtml(value) {
+  return text(value)
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/p\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function normalizeDate(value) {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value === "number") {
+    const ms = value > 10_000_000_000 ? value : value * 1000;
+    return new Date(ms).toISOString();
+  }
+  const raw = text(value);
+  if (/^\d+$/.test(raw)) {
+    const parsed = Number(raw);
+    const ms = parsed > 10_000_000_000 ? parsed : parsed * 1000;
+    return new Date(ms).toISOString();
+  }
+  return raw;
+}
+
+function countFilesByExtension(files) {
+  const counts = {};
+  for (const file of files) {
+    const ext = extname(file).toLowerCase() || "(none)";
+    counts[`ext_${ext.replace(/[^a-z0-9]+/g, "_")}`] = (counts[`ext_${ext.replace(/[^a-z0-9]+/g, "_")}`] || 0) + 1;
+  }
+  return counts;
+}
+
+function logProgress(message, fields = {}) {
+  const details = Object.entries(fields)
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ");
+  console.error(`[knowledge] ${new Date().toISOString()} ${message}${details ? ` ${details}` : ""}`);
+}
+
+function formatLogValue(value) {
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (value && typeof value === "object") return JSON.stringify(value);
+  return String(value ?? "");
+}
+
+function normalizeStockCode(value) {
+  const raw = text(value);
+  if (!raw) return "";
+  const lower = raw.toLowerCase();
+  const match = lower.match(/(?:^|[^0-9])([036]\d{5})(?:[^0-9]|$)/);
+  if (match) {
+    return `${match[1]}.${match[1].startsWith("6") ? "SH" : "SZ"}`;
+  }
+  const suffixMatch = raw.match(/^(\d{6})\.(SH|SZ)$/i);
+  if (suffixMatch) {
+    return `${suffixMatch[1]}.${suffixMatch[2].toUpperCase()}`;
+  }
+  return raw.toUpperCase();
+}
+
+function bareStockCode(value) {
+  return text(value).split(".")[0];
+}
+
+function safeFilename(value) {
+  return text(value).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "file";
 }
 
 function summarize(markdown) {
@@ -634,6 +1366,11 @@ function object(value) {
 function integer(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function nonNegativeInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 function unique(values) {

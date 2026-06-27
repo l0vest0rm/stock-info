@@ -118,38 +118,14 @@ async function fetchTextViaProxy(
   headers: Record<string, string>;
   text: string;
 }> {
-  const headers = normalizeOutgoingHeaders(init?.headers, options);
-  const res = await fetch(proxyUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      url,
-      method: init?.method ?? "GET",
-      headers,
-      body: typeof init?.body === "string" ? init.body : undefined,
-    }),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`proxy request failed: status=${res.status} body=${truncate(text)}`);
-  }
-  const parsed = JSON.parse(text) as {
-    status?: number;
-    headers?: Record<string, string>;
-    bodyText?: string;
-  };
-  const status = parsed.status ?? 502;
-  const bodyText = parsed.bodyText ?? "";
-  if (status < 200 || status >= 300) {
-    throw new Error(`request failed: status=${status} body=${truncate(bodyText)}`);
-  }
-  return { status, headers: parsed.headers ?? {}, text: bodyText };
+  const normalizedProxyUrl = normalizeProxyUrl(proxyUrl);
+  return fetchTextViaHttpProxy(normalizedProxyUrl, url, init, options);
 }
 
 export function externalHttpOptions(env: Partial<Bindings>): ExternalHttpOptions {
   return {
-    proxyEnabled: isTruthy(env.HTTP_PROXY_ENABLED) || Boolean(env.LOCAL_FETCH_PROXY_URL),
-    proxyUrl: env.HTTP_PROXY_URL || env.LOCAL_FETCH_PROXY_URL,
+    proxyEnabled: Boolean(env.HTTP_PROXY_URL),
+    proxyUrl: env.HTTP_PROXY_URL,
     proxyDomains: parseDomains(env.HTTP_PROXY_DOMAINS),
     domainConcurrency: positiveInt(env.HTTP_DOMAIN_CONCURRENCY) ?? 3,
   };
@@ -181,9 +157,39 @@ function positiveInt(value: string | undefined): number | undefined {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function isTruthy(value: string | undefined): boolean {
-  const text = String(value || "").trim().toLowerCase();
-  return text === "1" || text === "true" || text === "yes" || text === "on";
+function normalizeProxyUrl(value: string): string {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  const httpMatch = text.match(/^PROXY\s+(.+)$/i);
+  if (httpMatch) {
+    return `http://${httpMatch[1].trim()}`;
+  }
+  if (/^https?:\/\//i.test(text)) {
+    return text;
+  }
+  return `http://${text}`;
+}
+
+async function fetchTextViaHttpProxy(
+  proxyUrl: string,
+  url: string,
+  init?: RequestInit,
+  options?: ExternalHttpOptions
+): Promise<{ status: number; headers: Record<string, string>; text: string }> {
+  const { ProxyAgent, fetch: undiciFetch } = await import("undici");
+  const res = await undiciFetch(url, {
+    method: init?.method ?? "GET",
+    headers: normalizeOutgoingHeaders(init?.headers, options),
+    body: typeof init?.body === "string" ? init.body : undefined,
+    dispatcher: new ProxyAgent(proxyUrl),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`request failed: status=${res.status} body=${truncate(text)}`);
+  }
+  return { status: res.status, headers: Object.fromEntries(res.headers.entries()), text };
 }
 
 async function runWithDomainLimit<T>(host: string, concurrency: number, fn: () => Promise<T>): Promise<T> {

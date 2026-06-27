@@ -1,3 +1,4 @@
+import financeMappings from "../../shared/finance-mappings.json";
 import { bareCode, eastmoneySecId, inferSecurityType, normalizeSecurityCode, securityMarket, securitySuffix } from "../shared/codes";
 import { getAppKv, putAppKv } from "../db/queries";
 import { cachedFetchJson, cachedFetchText, numberOrNull } from "../shared/http";
@@ -41,6 +42,12 @@ type EastmoneyFinanceResponse = {
     data?: Record<string, unknown>[];
   };
 };
+
+type FinanceMappings = {
+  bankCodes?: string[];
+};
+
+const bankCodeSet = new Set(((financeMappings as FinanceMappings).bankCodes ?? []).map((code) => normalizeSecurityCode(code)));
 
 type EastmoneyOverviewResponse = {
   data?: {
@@ -429,7 +436,7 @@ export async function fetchEastmoneyFinance(
   if (!/\.(SH|SZ|BJ)$/.test(normalized)) {
     throw new Error(`finance statement only supports CN A-share codes in the MVP: ${code}`);
   }
-  const reportType = financeReportType(statementType);
+  const reportType = financeReportType(statementType, normalized);
   const url = new URL("https://datacenter.eastmoney.com/securities/api/data/get");
   url.searchParams.set("type", `RPT_F10_FINANCE_${reportType}`);
   url.searchParams.set("sty", financeStyle(statementType, reportType));
@@ -1245,14 +1252,15 @@ function eastmoneyFqt(fq: string): string {
   }
 }
 
-function financeReportType(statementType: StatementType): string {
+function financeReportType(statementType: StatementType, code: string): string {
+  const isBank = bankCodeSet.has(normalizeSecurityCode(code));
   switch (statementType) {
     case "income":
-      return "GINCOMEQC";
+      return isBank ? "BINCOMEQC" : "GINCOMEQC";
     case "balance":
-      return "GBALANCE";
+      return isBank ? "BBALANCE" : "GBALANCE";
     case "cashflow":
-      return "GCASHFLOWQC";
+      return isBank ? "BCASHFLOWQC" : "GCASHFLOWQC";
   }
 }
 

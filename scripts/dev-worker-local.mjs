@@ -1,0 +1,66 @@
+#!/usr/bin/env node
+
+import { spawn } from 'node:child_process'
+import process from 'node:process'
+
+const workerPort = String(process.env.PORT || '8787')
+const httpProxyUrl = process.env.HTTP_PROXY_URL || 'http://127.0.0.1:7892'
+const httpProxyDomains = process.env.HTTP_PROXY_DOMAINS || 'yahoo.com'
+const httpDomainConcurrency = process.env.HTTP_DOMAIN_CONCURRENCY || '3'
+
+const workerEnv = {
+  ...process.env,
+  HTTP_PROXY_URL: httpProxyUrl,
+  HTTP_PROXY_DOMAINS: httpProxyDomains,
+  HTTP_DOMAIN_CONCURRENCY: httpDomainConcurrency,
+}
+
+let workerProcess = null
+let shuttingDown = false
+
+try {
+  workerProcess = spawn('npx', [
+    'wrangler',
+    'dev',
+    '--local',
+    '--port',
+    workerPort,
+    '--show-interactive-dev-session=false',
+    '--var',
+    `HTTP_PROXY_URL:${httpProxyUrl}`,
+    '--var',
+    `HTTP_PROXY_DOMAINS:${httpProxyDomains}`,
+    '--var',
+    `HTTP_DOMAIN_CONCURRENCY:${httpDomainConcurrency}`,
+  ], {
+    env: workerEnv,
+    stdio: 'inherit',
+  })
+} catch (error) {
+  shuttingDown = true
+  throw error
+}
+
+const terminate = () => {
+  if (shuttingDown) {
+    return
+  }
+  shuttingDown = true
+  workerProcess?.kill('SIGTERM')
+}
+
+process.on('SIGINT', terminate)
+process.on('SIGTERM', terminate)
+
+const workerExitCode = await new Promise((resolve) => {
+  workerProcess.on('exit', (code, signal) => {
+    terminate()
+    if (signal) {
+      resolve(1)
+      return
+    }
+    resolve(code ?? 0)
+  })
+})
+
+process.exit(workerExitCode)

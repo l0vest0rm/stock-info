@@ -9,7 +9,7 @@ export default defineConfig({
   build: {
     emptyOutDir: false,
     lib: {
-      entry: resolve(__dirname, 'src/layout.ts'),
+      entry: resolve(__dirname, 'src/app/layout/index.ts'),
       formats: ['iife'],
       name: 'LicaiLayout',
       fileName: () => 'js/layout.js',

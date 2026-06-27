@@ -5,6 +5,8 @@ dist/
 web/dist/
 data/logs/
 data/knowledge/
+news/
+reports/
 *.log
 *.pid
 .DS_Store
