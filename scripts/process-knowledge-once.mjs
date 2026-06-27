@@ -20,27 +20,39 @@ const sharedDataRoot = "/Users/terry/git/data";
 const args = parseArgs(process.argv.slice(2));
 const config = loadConfig(args.config);
 const dbTarget = args.remote ?? envBoolean("KNOWLEDGE_PROCESS_REMOTE") ?? Boolean(config.remote);
-const inputDirs = resolveInputDirs(args.inboxDir, config);
 const processedDir = resolve(root, config.processedDir || `${sharedDataRoot}/stock-info/knowledge/processed`);
 const failedDir = resolve(root, config.failedDir || `${sharedDataRoot}/stock-info/knowledge/failed`);
 const workDir = resolve(root, config.workDir || `${sharedDataRoot}/stock-info/knowledge/work`);
 const reviewDir = resolve(root, config.reviewDir || `${sharedDataRoot}/stock-info/knowledge/reviews`);
 const stateDir = resolve(root, config.stateDir || `${sharedDataRoot}/stock-info/knowledge/state`);
+const inputDirs = resolveInputDirs(args.inboxDir, config, args.extraInputs);
 const remotePdfCacheDir = join(workDir, "remote-pdf");
 const markdownCacheDir = join(workDir, "markdown-cache");
 const llmCacheDir = join(stateDir, "llm-cache");
+const llmReviewDir = join(reviewDir, "llm-topic-review");
 const now = new Date();
+const runId = formatRunTime(now);
 const runStartedAt = Date.now();
 const scanStartedAtMs = runStartedAt;
-const maxNewsAgeDays = nonNegativeInteger(process.env.KNOWLEDGE_PROCESS_MAX_NEWS_DAYS ?? config.maxNewsAgeDays, 14);
-const maxReportAgeDays = nonNegativeInteger(process.env.KNOWLEDGE_PROCESS_MAX_REPORT_DAYS ?? config.maxReportAgeDays, 60);
+const archiveProcessed = args.archiveProcessed || envBoolean("KNOWLEDGE_PROCESS_ARCHIVE_PROCESSED") || false;
+const disableAgeLimit = args.disableAgeLimit || envBoolean("KNOWLEDGE_PROCESS_DISABLE_AGE_LIMIT") || false;
+const docProcessingConcurrency = Math.max(
+  1,
+  integer(process.env.KNOWLEDGE_PROCESS_DOC_CONCURRENCY ?? config.docProcessingConcurrency, 4)
+);
+const maxNewsAgeDays = disableAgeLimit
+  ? 0
+  : nonNegativeInteger(process.env.KNOWLEDGE_PROCESS_MAX_NEWS_DAYS ?? config.maxNewsAgeDays, 14);
+const maxReportAgeDays = disableAgeLimit
+  ? 0
+  : nonNegativeInteger(process.env.KNOWLEDGE_PROCESS_MAX_REPORT_DAYS ?? config.maxReportAgeDays, 60);
 const stateFile = resolve(stateDir, config.scanStateFile || "local-scan-state.json");
 const scanState = loadScanState(stateFile);
-const scanWatermark = resolveScanWatermark(scanState);
+const scanWatermark = args.fullRescan ? { ms: 0, source: "fullRescan" } : resolveScanWatermark(scanState);
 const changedSinceMs = scanWatermark.ms;
 let lastProcessedFile = "";
 
-for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmCacheDir]) {
+for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmCacheDir, llmReviewDir]) {
   mkdirSync(dir, { recursive: true });
 }
 
@@ -95,7 +107,7 @@ for (const file of files) {
       });
     }
     if (newDocs.length === 0) {
-      moveToDir(file, processedDir);
+      archiveProcessedFile(file);
       results.push({ file, status: "skipped_existing", docs: 0, skippedExisting: skipped });
       lastProcessedFile = file;
       continue;
@@ -117,7 +129,8 @@ for (const file of files) {
 logProgress("evaluating topic filter", {
   docs: fileBatches.reduce((sum, batch) => sum + batch.docs.length, 0),
 });
-const topicDecisions = await evaluateTopics(fileBatches.flatMap((batch) => batch.docs), config);
+const topicEvaluation = await evaluateTopics(fileBatches.flatMap((batch) => batch.docs), config);
+const topicDecisions = topicEvaluation.decisions;
 const docs = [];
 let skippedByTopic = 0;
 const topicReviewRows = [];
@@ -127,7 +140,7 @@ const processedFilesToArchive = [];
 let processedDocs = 0;
 for (const batch of fileBatches) {
   try {
-    const keptDocs = [];
+    const keptInputs = [];
     for (const rawDoc of batch.docs) {
       processedDocs += 1;
       const topic = topicDecisions.get(rawDoc.docId) || { keep: true, method: "missing", score: 0, reasons: [] };
@@ -137,9 +150,16 @@ for (const batch of fileBatches) {
         filteredDocs.push(filteredDocRow(rawDoc, batch.file, topic));
         continue;
       }
-      if (processedDocs === 1 || processedDocs % 25 === 0 || isPdfDoc(rawDoc)) {
+      keptInputs.push({
+        rawDoc,
+        topic,
+        current: processedDocs,
+      });
+    }
+    const keptDocs = await mapWithConcurrency(keptInputs, docProcessingConcurrency, async ({ rawDoc, topic, current }) => {
+      if (current === 1 || current % 25 === 0 || isPdfDoc(rawDoc)) {
         logProgress("processing kept doc", {
-          current: processedDocs,
+          current,
           title: rawDoc.title,
           accessMethod: rawDoc.accessMethod,
         });
@@ -152,8 +172,8 @@ for (const batch of fileBatches) {
           topicFilter: topic,
         },
       }, config);
-      keptDocs.push(withStockLinkMetadata(doc));
-    }
+      return withStockLinkMetadata(doc);
+    });
     docs.push(...keptDocs);
     processedFilesToArchive.push(batch.file);
     lastProcessedFile = batch.file;
@@ -171,13 +191,17 @@ for (const batch of fileBatches) {
 }
 
 const topicReview = writeTopicReview(topicReviewRows, config);
+const llmTopicReview = writeLlmTopicReview(topicEvaluation.auditRows, config);
 logProgress("topic filter done", {
   kept: docs.length,
   filtered: filteredDocs.length,
   review: topicReview.mdFile,
+  llmReview: llmTopicReview.jsonlFile,
 });
 let filteredImported = 0;
-if (filteredDocs.length > 0) {
+const filteredReviewImportEnabled = envBoolean("KNOWLEDGE_FILTERED_IMPORT_ENABLED")
+  ?? Boolean(config.filteredReviewImport?.enabled);
+if (filteredDocs.length > 0 && filteredReviewImportEnabled) {
   const filteredImportFile = join(workDir, `knowledge-filtered-${formatRunTime(now)}.jsonl`);
   writeFileSync(filteredImportFile, `${filteredDocs.map((row) => JSON.stringify(row)).join("\n")}\n`);
   execFileSync(
@@ -217,11 +241,11 @@ if (uniqueDocs.length > 0) {
   );
   imported = uniqueDocs.length;
 }
+const storageCleanup = pruneKnowledgeStorage(config);
+const storageReport = runKnowledgeStorageReport(config);
 
 for (const file of processedFilesToArchive) {
-  if (existsSync(file)) {
-    moveToDir(file, processedDir);
-  }
+  archiveProcessedFile(file);
 }
 
 saveScanState(stateFile, {
@@ -251,6 +275,9 @@ console.log(JSON.stringify({
   elapsedSeconds: Math.round((Date.now() - runStartedAt) / 1000),
   imported,
   filteredImported,
+  filteredImportEnabled: filteredReviewImportEnabled,
+  storageCleanup,
+  storageReport,
   skippedByTopic,
   topicReview,
   filteredOutPreview: topicReview.filteredOutPreview,
@@ -263,6 +290,37 @@ console.log(JSON.stringify({
     error: item.error || undefined,
   })),
 }, null, 2));
+
+function runKnowledgeStorageReport(cfg) {
+  try {
+    execFileSync(
+      "npm",
+      [
+        "run",
+        "stats:knowledge:storage",
+        "--",
+        dbTarget ? "--remote" : "--local",
+        "--database",
+        cfg.database || "stock_info",
+      ],
+      { cwd: root, stdio: "inherit" }
+    );
+    return {
+      ok: true,
+      database: cfg.database || "stock_info",
+      remote: dbTarget,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[knowledge-storage] failed to report storage stats: ${message}`);
+    return {
+      ok: false,
+      database: cfg.database || "stock_info",
+      remote: dbTarget,
+      error: message,
+    };
+  }
+}
 
 async function processInputFile(file, cfg) {
   const ext = extname(file).toLowerCase();
@@ -373,13 +431,17 @@ function normalizeRawInput(raw, file) {
     };
   }
   const primaryTarget = resolveTencentPrimaryTarget(raw, stockItems);
+  const sourceName = text(raw.sourceName ?? raw.source_name ?? raw.source) || "腾讯自选股";
+  const title = text(raw.title ?? raw.dedupe_title);
+  const dedupeBody = normalizeTencentNewsDedupeBody(body);
   return {
     ...raw,
-    docId: text(raw.docId ?? raw.doc_id) || (raw.id ? stableKnowledgeDocId(`tencent_stock_news|${raw.id}`) : ""),
-    title: text(raw.title ?? raw.dedupe_title),
+    docId: text(raw.docId ?? raw.doc_id)
+      || stableKnowledgeDocId(`tencent_stock_news|${sourceName}|${title}|${dedupeBody}`),
+    title,
     sourceType: text(raw.sourceType ?? raw.source_type) || "local_news",
     reportType: text(raw.reportType ?? raw.report_type) || "news",
-    sourceName: text(raw.sourceName ?? raw.source_name ?? raw.source) || "腾讯自选股",
+    sourceName,
     publishedAt,
     eventTime: publishedAt,
     targetName: primaryTarget.name,
@@ -390,6 +452,7 @@ function normalizeRawInput(raw, file) {
       ...object(raw.metadata ?? raw.metadata_json),
       source: "tencent_stock_news",
       newsId: text(raw.id),
+      dedupeSignature: stableKnowledgeDocId(`tencent_stock_news|${sourceName}|${title}|${dedupeBody}`),
       stockNames,
       stockCodes,
       originalFile: basename(file),
@@ -521,12 +584,7 @@ function extractStockLinks(doc) {
     links.push({
       code: normalizedCode,
       name: normalizedName,
-      aliases: unique([
-        normalizedCode,
-        normalizedCode ? bareStockCode(normalizedCode) : "",
-        normalizedName,
-        ...array(aliases).map(text),
-      ]),
+      aliases: buildSecurityAliases(normalizedName, normalizedCode, array(aliases).map(text)),
     });
   };
   push({ code: doc.targetCode, name: doc.targetName });
@@ -617,6 +675,7 @@ function convertPdfToMarkdownCached(file, cacheKey, cfg) {
   const metaFile = join(markdownCacheDir, `${key}.json`);
   const sourceFingerprint = {
     file,
+    basename: basename(file),
     mtimeMs: sourceStat.mtimeMs,
     size: sourceStat.size,
   };
@@ -624,9 +683,7 @@ function convertPdfToMarkdownCached(file, cacheKey, cfg) {
   if (
     existsSync(mdFile)
     && cachedMeta
-    && cachedMeta.file === sourceFingerprint.file
-    && cachedMeta.mtimeMs === sourceFingerprint.mtimeMs
-    && cachedMeta.size === sourceFingerprint.size
+    && isMatchingMarkdownCacheMeta(cachedMeta, sourceFingerprint)
   ) {
     logProgress("reusing converted markdown", { file: basename(mdFile), source: relativeInputPath(file) });
     return readFileSync(mdFile, "utf8");
@@ -722,12 +779,13 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
 
 async function evaluateTopics(docsToFilter, cfg) {
   const decisions = new Map();
+  const auditRows = [];
   const filter = cfg.topicFilter || {};
   if (!filter.enabled) {
     for (const doc of docsToFilter) {
       decisions.set(doc.docId, { keep: true, method: "disabled", score: 0, reasons: [] });
     }
-    return decisions;
+    return { decisions, auditRows };
   }
   const uncertainDocs = [];
   for (const doc of docsToFilter) {
@@ -750,7 +808,7 @@ async function evaluateTopics(docsToFilter, cfg) {
     for (const item of uncertainDocs) {
       decisions.set(item.doc.docId, { keep: false, method: "local", ...item.local });
     }
-    return decisions;
+    return { decisions, auditRows };
   }
 
   const llm = cfg.llm || {};
@@ -759,58 +817,98 @@ async function evaluateTopics(docsToFilter, cfg) {
     for (const item of uncertainDocs) {
       decisions.set(item.doc.docId, { keep: false, method: "local_missing_llm_key", ...item.local });
     }
-    return decisions;
+    return { decisions, auditRows };
   }
 
   const batchSize = Math.max(1, integer(filter.llmBatchSize, 50));
   for (let offset = 0; offset < uncertainDocs.length; offset += batchSize) {
     const batch = uncertainDocs.slice(offset, offset + batchSize);
-    const llmDecisions = await reviewTopicBatchWithLlm(batch.map((item, index) => ({
+    const batchItems = batch.map((item, index) => ({
       index,
       title: item.doc.title,
       summary: item.doc.summary,
       sourceType: item.doc.sourceType,
       reportType: item.doc.reportType,
       tags: item.doc.tags,
-    })), cfg);
+    }));
+    const llmBatch = await reviewTopicBatchWithLlm(batchItems, cfg, {
+      batchIndex: Math.floor(offset / batchSize),
+      totalBatches: Math.ceil(uncertainDocs.length / batchSize),
+    });
+    const llmDecisions = llmBatch.decisions;
     for (const [index, item] of batch.entries()) {
       const result = llmDecisions.get(index);
       const confidence = Number(result?.confidence);
       const keep = Boolean(result?.isAi) && Number.isFinite(confidence)
         && confidence >= Number(filter.llmMinConfidence ?? 0.65);
-      decisions.set(item.doc.docId, {
+      const decision = {
         keep,
         method: "llm_batch",
         score: item.local.score,
         reasons: [...item.local.reasons, text(result?.reason)].filter(Boolean),
         confidence: Number.isFinite(confidence) ? confidence : 0,
         model: process.env.KNOWLEDGE_PROCESS_LLM_MODEL || llm.model || "doubao-seed-2-0-mini-260215",
+      };
+      decisions.set(item.doc.docId, decision);
+      auditRows.push({
+        runId,
+        batchIndex: llmBatch.batchIndex,
+        totalBatches: llmBatch.totalBatches,
+        promptVersion: "ai-topic-batch-v2",
+        source: "topic_filter_uncertain",
+        docId: item.doc.docId,
+        title: item.doc.title,
+        sourceType: item.doc.sourceType,
+        reportType: item.doc.reportType,
+        localScore: item.local.score,
+        localReasons: item.local.reasons,
+        llmModel: llmBatch.model,
+        llmCached: llmBatch.cached,
+        llmConfidence: Number.isFinite(confidence) ? confidence : 0,
+        llmIsAi: Boolean(result?.isAi),
+        llmReason: text(result?.reason),
+        finalKeep: keep,
+        finalMethod: decision.method,
+        finalReasons: decision.reasons,
+        input: batchItems[index],
+        prompt: llmBatch.prompt,
+        rawResult: result ?? null,
       });
     }
   }
-  return decisions;
+  return { decisions, auditRows };
 }
 
-async function reviewTopicBatchWithLlm(items, cfg) {
-  const filter = cfg.topicFilter || {};
+async function reviewTopicBatchWithLlm(items, cfg, context = {}) {
   const llm = cfg.llm || {};
   const apiKey = process.env[llm.apiKeyEnv || "VOLC_ARK_API_KEY"] || process.env.LLM_API_KEY;
   const model = process.env.KNOWLEDGE_PROCESS_LLM_MODEL || llm.model || "doubao-seed-2-0-mini-260215";
-  const parsed = await requestLlmJson({
-    baseUrl: (process.env.LLM_BASE_URL || llm.baseUrl || "https://ark.cn-beijing.volces.com/api/v3").replace(/\/$/, ""),
-    apiKey,
-    model,
-    maxTokens: Math.max(300, items.length * 80),
+  const prompt = {
     system: "你是金融资讯主题分类器。只输出严格 JSON，不要 Markdown。",
     user: [
       "批量判断以下新闻或研报是否主要属于 AI 产业链。",
-      "AI 产业链包括：大模型、AI应用、算力、GPU/ASIC/AI芯片、服务器、数据中心、存储/HBM/DRAM/NAND、半导体、先进封装、光模块/CPO/硅光、高速互联、液冷、电源、国产替代等。",
+      "AI 产业链包括：大模型、AI应用、算力、GPU/ASIC/AI芯片、服务器、数据中心、存储/HBM/DRAM/NAND、半导体、先进封装、光模块/CPO/硅光、高速互联、液冷、电源、国产替代、PCB/AIPCB 等核心硬件与配套环节。",
       "只根据标题、摘要、类型和已有标签判断，不要扩展联想。",
       "输出 JSON：{\"items\":[{\"index\":number,\"isAi\":boolean,\"confidence\":number,\"reason\":string}]}。",
       "待判断列表：",
       JSON.stringify(items),
     ].join("\n"),
-  });
+  };
+  const request = {
+    baseUrl: (process.env.LLM_BASE_URL || llm.baseUrl || "https://ark.cn-beijing.volces.com/api/v3").replace(/\/$/, ""),
+    apiKey,
+    model,
+    maxTokens: Math.max(300, items.length * 80),
+    ...prompt,
+  };
+  const cacheKey = sha256(JSON.stringify({
+    kind: "topic-filter-llm-review",
+    model,
+    items,
+    prompt,
+  }));
+  const cachedResponse = await requestLlmJsonCached(cacheKey, request);
+  const parsed = cachedResponse.response;
   const decisions = new Map();
   for (const item of array(parsed.items)) {
     const index = Number(item?.index);
@@ -818,7 +916,14 @@ async function reviewTopicBatchWithLlm(items, cfg) {
       decisions.set(index, item);
     }
   }
-  return decisions;
+  return {
+    decisions,
+    model,
+    cached: cachedResponse.cached,
+    prompt,
+    batchIndex: integer(context.batchIndex, 0),
+    totalBatches: integer(context.totalBatches, 1),
+  };
 }
 
 function evaluateTopicLocally(doc, filter) {
@@ -873,11 +978,11 @@ async function requestLlmJsonCached(cacheKey, request) {
   const cached = readJsonFile(file);
   if (cached?.cacheKey === cacheKey && cached?.response && typeof cached.response === "object") {
     logProgress("reusing llm cache", { cacheKey: safeFilename(cacheKey) });
-    return cached.response;
+    return { response: cached.response, cached: true };
   }
   const response = await requestLlmJson(request);
   writeFileSync(file, `${JSON.stringify({ cacheKey, response }, null, 2)}\n`);
-  return response;
+  return { response, cached: false };
 }
 
 function extractLlmText(body) {
@@ -925,7 +1030,6 @@ function topicReviewRow(doc, file, topic) {
 }
 
 function writeTopicReview(rows, cfg) {
-  const runId = formatRunTime(now);
   const jsonlFile = join(reviewDir, `topic-filter-${runId}.jsonl`);
   const mdFile = join(reviewDir, `topic-filter-${runId}.md`);
   const kept = rows.filter((row) => row.keep);
@@ -953,6 +1057,53 @@ function writeTopicReview(rows, cfg) {
       .slice(0, integer(cfg.filterReviewPreviewLimit, 50))
       .map((row) => row.title),
   };
+}
+
+function writeLlmTopicReview(rows) {
+  const jsonlFile = join(llmReviewDir, `topic-filter-llm-${runId}.jsonl`);
+  if (rows.length === 0) {
+    writeFileSync(jsonlFile, "");
+    return { jsonlFile, rows: 0 };
+  }
+  writeFileSync(jsonlFile, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  return { jsonlFile, rows: rows.length };
+}
+
+function pruneKnowledgeStorage(cfg) {
+  const retention = object(cfg.storageRetention);
+  const filteredConfig = object(cfg.filteredReviewImport);
+  const cleanup = {
+    enabled: Boolean(retention.enabled),
+    knowledgeDocsMaxAgeDays: integer(retention.knowledgeDocsMaxAgeDays, 0),
+    filteredPurged: false,
+  };
+  const statements = [];
+  if (filteredConfig.enabled === false && Boolean(filteredConfig.purgeExisting)) {
+    statements.push("delete from knowledge_filtered_docs;");
+    cleanup.filteredPurged = true;
+  }
+  const maxAgeDays = integer(retention.knowledgeDocsMaxAgeDays, 0);
+  if (Boolean(retention.enabled) && maxAgeDays > 0) {
+    const cutoffIso = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+    cleanup.cutoffIso = cutoffIso;
+    statements.push(
+      `delete from knowledge_doc_tags where doc_id in (
+        select doc_id from knowledge_docs
+        where coalesce(event_time, published_at, fetched_at, '') != ''
+          and datetime(coalesce(event_time, published_at, fetched_at)) < datetime('${cutoffIso}')
+      );`
+    );
+    statements.push(
+      `delete from knowledge_docs
+        where coalesce(event_time, published_at, fetched_at, '') != ''
+          and datetime(coalesce(event_time, published_at, fetched_at)) < datetime('${cutoffIso}');`
+    );
+  }
+  if (statements.length === 0) {
+    return cleanup;
+  }
+  executeWranglerSql(statements.join("\n"), cfg);
+  return cleanup;
 }
 
 function listInputFiles(dir, cfg, changedSinceMs = 0) {
@@ -1108,20 +1259,7 @@ function loadExistingDocIds(cfg) {
 
 function queryExistingDocIds(table, cfg) {
   try {
-    const stdout = execFileSync(
-      "npx",
-      [
-        "wrangler",
-        "d1",
-        "execute",
-        cfg.database || "stock_info",
-        dbTarget ? "--remote" : "--local",
-        "--command",
-        `select doc_id from ${table};`,
-        "--json",
-      ],
-      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 50 * 1024 * 1024 }
-    );
+    const stdout = executeWranglerSql(`select doc_id from ${table};`, cfg, { json: true });
     const parsed = JSON.parse(stdout);
     return array(parsed?.[0]?.results).map((row) => text(row.doc_id)).filter(Boolean);
   } catch (err) {
@@ -1131,9 +1269,41 @@ function queryExistingDocIds(table, cfg) {
   }
 }
 
-function resolveInputDirs(argInboxDir, cfg) {
+function executeWranglerSql(sql, cfg, options = {}) {
+  return execFileSync(
+    "npx",
+    [
+      "wrangler",
+      "d1",
+      "execute",
+      cfg.database || "stock_info",
+      dbTarget ? "--remote" : "--local",
+      "--command",
+      sql,
+      ...(options.json ? ["--json"] : []),
+    ],
+    { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 50 * 1024 * 1024 }
+  );
+}
+
+function isUnderDir(file, dir) {
+  const rel = relative(dir, file);
+  return rel === "" || (!rel.startsWith("..") && !rel.startsWith("../") && rel !== "..");
+}
+
+function isMatchingMarkdownCacheMeta(cachedMeta, sourceFingerprint) {
+  if (!cachedMeta || typeof cachedMeta !== "object") return false;
+  const sameStats = cachedMeta.mtimeMs === sourceFingerprint.mtimeMs && cachedMeta.size === sourceFingerprint.size;
+  if (!sameStats) return false;
+  if (cachedMeta.file === sourceFingerprint.file) return true;
+  if (text(cachedMeta.basename) && cachedMeta.basename === sourceFingerprint.basename) return true;
+  return basename(text(cachedMeta.file)) === sourceFingerprint.basename;
+}
+
+function resolveInputDirs(argInboxDir, cfg, extraInputDirs = []) {
+  const extraDirs = array(extraInputDirs).map((dir) => resolve(root, text(dir))).filter((dir) => existsSync(dir));
   if (argInboxDir) {
-    return [resolve(root, argInboxDir)].filter((dir) => existsSync(dir));
+    return unique([resolve(root, argInboxDir), ...extraDirs].filter((dir) => existsSync(dir)));
   }
   const configured = array(cfg.inputDirs).length > 0 ? array(cfg.inputDirs) : [
     `${sharedDataRoot}/news`,
@@ -1143,10 +1313,17 @@ function resolveInputDirs(argInboxDir, cfg) {
     .map((dir) => resolve(root, text(dir)))
     .filter((dir) => existsSync(dir));
   const legacyInbox = text(cfg.inboxDir) ? resolve(root, cfg.inboxDir) : "";
-  if (dirs.length === 0 && legacyInbox && existsSync(legacyInbox)) {
-    return [legacyInbox];
+  const baseDirs = dirs.length === 0 && legacyInbox && existsSync(legacyInbox)
+    ? [legacyInbox]
+    : dirs;
+  return unique(baseDirs.concat(extraDirs));
+}
+
+function archiveProcessedFile(file) {
+  if (!archiveProcessed || !existsSync(file) || isUnderDir(file, processedDir)) {
+    return;
   }
-  return dirs;
+  moveToDir(file, processedDir);
 }
 
 function moveToDir(file, dir) {
@@ -1268,6 +1445,11 @@ function formatLogValue(value) {
 function normalizeStockCode(value) {
   const raw = text(value);
   if (!raw) return "";
+  const upper = raw.toUpperCase();
+  const usMatch = upper.match(/^US([A-Z0-9.-]+)\.(OQ|NQ|N|AMEX|PK|OB)$/);
+  if (usMatch) {
+    return `${usMatch[1]}.US`;
+  }
   const lower = raw.toLowerCase();
   const match = lower.match(/(?:^|[^0-9])([036]\d{5})(?:[^0-9]|$)/);
   if (match) {
@@ -1284,6 +1466,25 @@ function bareStockCode(value) {
   return text(value).split(".")[0];
 }
 
+function buildSecurityAliases(name, code, aliases = []) {
+  const baseName = securityBaseName(name);
+  const shortName = stripSecuritySuffix(baseName);
+  return unique([
+    code,
+    code ? bareStockCode(code) : "",
+    name,
+    baseName,
+    shortName,
+    ...array(aliases).map(text),
+  ]);
+}
+
+function stripSecuritySuffix(name) {
+  return text(name)
+    .replace(/(股份有限公司|集团有限公司|控股有限公司|科技有限公司|股份|集团|控股|科技)$/u, "")
+    .trim();
+}
+
 function safeFilename(value) {
   return text(value).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "file";
 }
@@ -1296,6 +1497,38 @@ function summarize(markdown) {
     .slice(0, 240);
 }
 
+function normalizeTencentNewsDedupeBody(value) {
+  return stripTencentLeadNoise(text(value))
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim()
+    .slice(0, 1200);
+}
+
+function isIgnorableTencentLeadLine(value) {
+  return /^作者[丨|｜:：\s]/.test(value)
+    || /^(公众号|点击上方|来源|原标题)/.test(value)
+    || /加星标/.test(value);
+}
+
+function stripTencentLeadNoise(value) {
+  let normalized = text(value).trim();
+  normalized = normalized.replace(/^作者[丨|｜:：\s]*[^\s，。,；;:：]{1,40}\s*/u, "");
+  normalized = normalized.replace(/^(公众号|点击上方)[^。！？!?]{0,80}[。！？!?]?\s*/u, "");
+  normalized = normalized.replace(/^来源[：:]\s*[^\s]+\s*/u, "");
+  normalized = normalized.replace(/^原标题[：:]\s*/u, "");
+  if (isIgnorableTencentLeadLine(normalized)) {
+    const lines = normalized
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    while (lines.length > 0 && isIgnorableTencentLeadLine(lines[0])) {
+      lines.shift();
+    }
+    normalized = lines.join(" ");
+  }
+  return normalized.replace(/\s+/g, " ");
+}
+
 function uniqueByDocId(items) {
   const map = new Map();
   for (const item of items) {
@@ -1304,19 +1537,52 @@ function uniqueByDocId(items) {
   return [...map.values()];
 }
 
+async function mapWithConcurrency(items, concurrency, iteratee) {
+  if (items.length === 0) return [];
+  const limit = Math.max(1, Math.min(concurrency, items.length));
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      if (currentIndex >= items.length) {
+        return;
+      }
+      results[currentIndex] = await iteratee(items[currentIndex], currentIndex);
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+  return results;
+}
+
 function loadConfig(path) {
   const file = resolve(root, path || "config/knowledge-processing.json");
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
 function parseArgs(argv) {
-  const parsed = { config: "", inboxDir: "", remote: undefined };
+  const parsed = {
+    config: "",
+    inboxDir: "",
+    extraInputs: [],
+    remote: undefined,
+    archiveProcessed: false,
+    fullRescan: false,
+    disableAgeLimit: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--config") parsed.config = requireValue(argv, ++i, arg);
     else if (arg === "--inbox") parsed.inboxDir = requireValue(argv, ++i, arg);
+    else if (arg === "--extra-input") parsed.extraInputs.push(requireValue(argv, ++i, arg));
     else if (arg === "--remote") parsed.remote = true;
     else if (arg === "--local") parsed.remote = false;
+    else if (arg === "--archive-processed") parsed.archiveProcessed = true;
+    else if (arg === "--full-rescan") parsed.fullRescan = true;
+    else if (arg === "--no-age-limit") parsed.disableAgeLimit = true;
     else throw new Error(`unknown argument: ${arg}`);
   }
   return parsed;

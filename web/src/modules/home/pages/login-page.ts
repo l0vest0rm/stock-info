@@ -9,7 +9,7 @@ const LoginPage = defineComponent({
           h('div', { class: 'col-12 col-md-8 col-lg-6 col-xl-5' }, [
             h('div', { class: 'card shadow-2-strong', style: 'border-radius: 1rem;' }, [
               h('div', { class: 'card-body p-5 text-center' }, [
-                h('h3', { class: 'mb-5' }, '理财人'),
+                h('h3', { class: 'mb-5' }, '投研社'),
                 h('div', { class: 'form-floating mb-3' }, [
                   h('input', { id: 'floatingInput', type: 'email', class: 'form-control', placeholder: 'name@example.com' }),
                   h('label', { for: 'floatingInput' }, 'Email address'),
@@ -37,4 +37,3 @@ const root = document.getElementById('login-vue-root')
 if (root) {
   createApp(LoginPage).mount(root)
 }
-

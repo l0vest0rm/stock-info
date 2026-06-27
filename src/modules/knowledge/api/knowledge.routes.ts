@@ -69,30 +69,13 @@ type KnowledgeFilteredDocRow = {
 knowledgeRoutes.get("/knowledge/docs", async (c) => {
   const query = parseDocsQuery(c.req.query());
   const { whereSql, binds } = buildKnowledgeWhere(query);
-  const offset = (query.page - 1) * query.pageSize;
-  const rows = await c.env.DB.prepare(
-    `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
-        d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
-        d.discovery_method, d.access_method, d.summary, d.md_text, d.search_text, d.metadata_json,
-        d.recommendation_score, d.recommendation_level, d.recommendation_tags_json,
-        d.recommendation_reasons_json, d.rank_score, d.source_weight, d.updated_at
-       from knowledge_docs d
-       ${whereSql}
-       order by d.rank_score desc, coalesce(d.event_time, d.published_at, d.fetched_at) desc, d.doc_id desc
-       limit ? offset ?`
-  )
-    .bind(...binds, query.pageSize, offset)
-    .all<KnowledgeDocRow>();
-  const total = await c.env.DB.prepare(
-    `select count(*) as count from knowledge_docs d ${whereSql}`
-  )
-    .bind(...binds)
-    .first<{ count: number }>();
+  const deduped = await listKnowledgeDocsDeduped(c.env.DB, query, whereSql, binds);
   return ok(c, {
     page: query.page,
     page_size: query.pageSize,
-    total: total?.count ?? 0,
-    list: (rows.results ?? []).map(mapKnowledgeDocListItem),
+    total: deduped.total,
+    has_next: deduped.hasNext,
+    list: deduped.list,
   });
 });
 
@@ -498,10 +481,14 @@ function stockLinksFromMetadata(metadata: Record<string, unknown>, targetName: s
     .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
     .map((item) => ({
       name: String(item.name || ""),
-      code: String(item.code || ""),
-      aliases: Array.isArray(item.aliases)
-        ? item.aliases.map((alias) => String(alias || "").trim()).filter(Boolean)
-        : [],
+      code: normalizeKnowledgeStockCode(String(item.code || "")),
+      aliases: buildSecurityAliases(
+        String(item.name || ""),
+        normalizeKnowledgeStockCode(String(item.code || "")),
+        Array.isArray(item.aliases)
+          ? item.aliases.map((alias) => String(alias || "").trim()).filter(Boolean)
+          : [],
+      ),
     }))
     .filter((item) => item.name || item.code);
 }
@@ -524,6 +511,38 @@ function securityBaseName(name: string): string {
     .replace(/\.(SH|SZ|US|HK|BJ|PT)$/i, "")
     .replace(/-(SW|W|B|S|R)$/i, "")
     .trim();
+}
+
+function buildSecurityAliases(name: string, code: string, aliases: string[]): string[] {
+  const baseName = securityBaseName(name);
+  const shortName = stripSecuritySuffix(baseName);
+  const bareCode = String(code || "").split(".")[0];
+  return unique([
+    name,
+    code,
+    bareCode,
+    baseName,
+    shortName,
+    ...aliases,
+  ]);
+}
+
+function stripSecuritySuffix(name: string): string {
+  return String(name || "")
+    .replace(/(股份有限公司|集团有限公司|控股有限公司|科技有限公司|股份|集团|控股|科技)$/u, "")
+    .trim();
+}
+
+function normalizeKnowledgeStockCode(code: string): string {
+  const raw = String(code || "").trim().toUpperCase();
+  if (!raw) {
+    return "";
+  }
+  const usMatch = raw.match(/^US([A-Z0-9.-]+)\.(?:OQ|NQ|N|AMEX|PK|OB)$/);
+  if (usMatch) {
+    return `${usMatch[1]}.US`;
+  }
+  return raw;
 }
 
 function sanitizeKnowledgeDisplayTags(tags: string[], stockLinks: Array<Record<string, unknown>>): string[] {
@@ -620,6 +639,111 @@ function isInternalSourceName(value: string): boolean {
 function isPdf(row: Pick<KnowledgeDocRow, "url" | "access_method" | "metadata_json">): boolean {
   return [row.url, row.access_method, row.metadata_json]
     .some((value) => String(value || "").toLowerCase().includes(".pdf"));
+}
+
+async function listKnowledgeDocsDeduped(
+  db: AppEnv["Bindings"]["DB"],
+  query: KnowledgeDocsQuery,
+  whereSql: string,
+  binds: unknown[],
+): Promise<{ list: Record<string, unknown>[]; total: number; hasNext: boolean }> {
+  const startIndex = Math.max(0, (query.page - 1) * query.pageSize);
+  const endExclusive = startIndex + query.pageSize + 1;
+  const batchSize = Math.min(Math.max(query.pageSize * 4, 100), 400);
+  const uniqueRows: Record<string, unknown>[] = [];
+  const seen = new Set<string>();
+  let offset = 0;
+  let exhausted = false;
+
+  while (uniqueRows.length < endExclusive && !exhausted) {
+    const rows = await db.prepare(
+      `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
+          d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
+          d.discovery_method, d.access_method, d.summary, d.md_text, d.search_text, d.metadata_json,
+          d.recommendation_score, d.recommendation_level, d.recommendation_tags_json,
+          d.recommendation_reasons_json, d.rank_score, d.source_weight, d.updated_at
+         from knowledge_docs d
+         ${whereSql}
+         order by d.rank_score desc, coalesce(d.event_time, d.published_at, d.fetched_at) desc, d.doc_id desc
+         limit ? offset ?`
+    )
+      .bind(...binds, batchSize, offset)
+      .all<KnowledgeDocRow>();
+    const batch = rows.results ?? [];
+    if (batch.length === 0) {
+      exhausted = true;
+      break;
+    }
+    for (const row of batch) {
+      const item = mapKnowledgeDocListItem(row);
+      const dedupeKey = knowledgeDocDedupeKey(item);
+      if (seen.has(dedupeKey)) {
+        continue;
+      }
+      seen.add(dedupeKey);
+      uniqueRows.push(item);
+    }
+    offset += batch.length;
+    if (batch.length < batchSize) {
+      exhausted = true;
+    }
+  }
+
+  const hasNext = uniqueRows.length > startIndex + query.pageSize || !exhausted;
+  return {
+    list: uniqueRows.slice(startIndex, startIndex + query.pageSize),
+    total: exhausted ? Math.max(uniqueRows.length, startIndex) : startIndex + uniqueRows.length,
+    hasNext,
+  };
+}
+
+function knowledgeDocDedupeKey(item: Record<string, unknown>): string {
+  const metadata = objectRecord(item.metadata);
+  const source = String(metadata.source || "");
+  const sourceName = String(item.source_name || "").trim().toLowerCase();
+  const title = String(item.title || "").trim().toLowerCase();
+  const preview = normalizeKnowledgeDedupeText(
+    String(item.content_preview || item.summary || "").slice(0, 320)
+  ).slice(0, 180);
+  if (source === "tencent_stock_news") {
+    return `tencent|${sourceName}|${title}|${preview}`;
+  }
+  return String(item.doc_id || "");
+}
+
+function normalizeKnowledgeDedupeText(value: string): string {
+  return stripKnowledgeLeadNoise(String(value || ""))
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isIgnorableKnowledgeLeadLine(value: string): boolean {
+  return /^作者[丨|｜:：\s]/.test(value)
+    || /^(公众号|点击上方|来源|原标题)/.test(value)
+    || /加星标/.test(value);
+}
+
+function stripKnowledgeLeadNoise(value: string): string {
+  let normalized = String(value || "").trim();
+  normalized = normalized.replace(/^作者[丨|｜:：\s]*[^\s，。,；;:：]{1,40}\s*/u, "");
+  normalized = normalized.replace(/^(公众号|点击上方)[^。！？!?]{0,80}[。！？!?]?\s*/u, "");
+  normalized = normalized.replace(/^来源[：:]\s*[^\s]+\s*/u, "");
+  normalized = normalized.replace(/^原标题[：:]\s*/u, "");
+  if (isIgnorableKnowledgeLeadLine(normalized)) {
+    const lines = normalized.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    while (lines.length > 0 && isIgnorableKnowledgeLeadLine(lines[0])) {
+      lines.shift();
+    }
+    normalized = lines.join(" ");
+  }
+  return normalized.replace(/\s+/g, " ");
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 function unique(values: string[]): string[] {

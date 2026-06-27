@@ -4,11 +4,13 @@ type KnowledgeNewsTableRow = {
   displayTime: string
   sourceType: string
   target: string
+  targetCode: string
   sourceName: string
   title: string
   docId: string
   sourceUrl: string
   accessMethod: string
+  stockLinks: Array<{ name: string; code: string }>
   isLocalNews: boolean
   tags: string[]
   favorited: boolean
@@ -59,6 +61,16 @@ const knowledgeNewsTargetStyle = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+#knowledgeNews .knowledge-news-target-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+#knowledgeNews .knowledge-news-target-link:hover,
+#knowledgeNews .knowledge-news-target-link:focus {
+  text-decoration: underline;
 }
 
 #knowledgeNews .knowledge-news-target-tooltip {
@@ -278,8 +290,33 @@ function knowledgeNewsTitleContent(row: KnowledgeNewsTableRow) {
 }
 
 function knowledgeNewsTargetCell(row: KnowledgeNewsTableRow) {
+  const links = row.stockLinks.filter((item) => item.code)
+  const fallbackLink = row.targetCode
+    ? [{ code: row.targetCode, name: row.target || row.targetCode }]
+    : []
+  const resolvedLinks = (links.length > 0 ? links : fallbackLink)
+    .map((item) => ({
+      code: item.code,
+      label: item.name && item.code ? `${item.name} (${item.code})` : (item.name || item.code),
+    }))
+    .filter((item) => item.label)
   return h('td', { class: 'knowledge-news-target-cell' }, [
-    h('span', { class: 'knowledge-news-target-text', title: row.target }, row.target),
+    resolvedLinks.length > 0
+      ? h('span', { class: 'knowledge-news-target-text', title: row.target }, resolvedLinks.flatMap((item, index) => {
+        const parts = [
+          h('a', {
+            href: `company.html?code=${encodeURIComponent(item.code)}`,
+            class: 'knowledge-news-target-link',
+            target: '_blank',
+            rel: 'noopener',
+          }, item.label),
+        ]
+        if (index < resolvedLinks.length - 1) {
+          parts.push(' / ')
+        }
+        return parts
+      }))
+      : h('span', { class: 'knowledge-news-target-text', title: row.target }, row.target),
     row.target && row.target !== '-'
       ? h('div', { class: 'knowledge-news-target-tooltip' }, row.target)
       : null,

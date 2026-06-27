@@ -27,7 +27,7 @@ export const AppTopNav = defineComponent({
             h(
               "a",
               { href: "/", class: "d-flex align-items-center mb-3 mb-lg-0 me-lg-3 text-white text-decoration-none" },
-              [h("span", { class: "fs-4 fw-semibold" }, "理财人")]
+              [h("span", { class: "fs-4 fw-semibold" }, "投研社")]
             ),
             h(
               "ul",

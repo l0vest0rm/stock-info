@@ -8,7 +8,7 @@ export const AppFooter = defineComponent({
       h("div", { class: "container" }, [
         h("footer", { class: "row g-4 py-5 mt-5 border-top" }, [
           h("div", { class: "col-lg-5" }, [
-            h("h5", { class: "mb-3" }, "理财人"),
+            h("h5", { class: "mb-3" }, "投研社"),
             h("p", { class: "text-muted mb-2" }, "股票、基金、研报资讯研究入口。适合先收敛候选标的，再进入详细页面继续研究。"),
             h("p", { class: "small text-muted mb-0" }, "内容仅供研究参考，不构成投资建议。"),
           ]),

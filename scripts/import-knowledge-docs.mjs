@@ -269,9 +269,10 @@ function extractStockAliases({ targetName, targetCode, metadata }) {
   push(targetName, targetCode, targetName, "target");
   push(targetCode, targetCode, targetName, "target");
   for (const link of links) {
+    const derivedAliases = buildSecurityAliases(link?.name, link?.code, array(link?.aliases));
     push(link?.name, link?.code, link?.name, "doc_metadata");
     push(link?.code, link?.code, link?.name, "doc_metadata");
-    for (const alias of array(link?.aliases)) {
+    for (const alias of derivedAliases) {
       push(alias, link?.code, link?.name, "doc_metadata");
     }
   }
@@ -286,6 +287,16 @@ function extractStockAliases({ targetName, targetCode, metadata }) {
 
 function text(value) {
   return String(value ?? "").trim();
+}
+
+function normalizeKnowledgeStockCode(value) {
+  const raw = text(value).toUpperCase();
+  if (!raw) return "";
+  const usMatch = raw.match(/^US([A-Z0-9.-]+)\.(OQ|NQ|N|AMEX|PK|OB)$/);
+  if (usMatch) {
+    return `${usMatch[1]}.US`;
+  }
+  return raw;
 }
 
 function array(value) {
@@ -323,6 +334,38 @@ function truncate(value, max) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function securityBaseName(name) {
+  return text(name)
+    .replace(/\.(SH|SZ|US|HK|BJ|PT)$/i, "")
+    .replace(/-(SW|W|B|S|R)$/i, "")
+    .trim();
+}
+
+function stripSecuritySuffix(name) {
+  return text(name)
+    .replace(/(股份有限公司|集团有限公司|控股有限公司|科技有限公司|股份|集团|控股|科技)$/u, "")
+    .trim();
+}
+
+function bareStockCode(value) {
+  return text(value).split(".")[0];
+}
+
+function buildSecurityAliases(name, code, aliases = []) {
+  const normalizedName = text(name);
+  const normalizedCode = normalizeKnowledgeStockCode(code);
+  const baseName = securityBaseName(normalizedName);
+  const shortName = stripSecuritySuffix(baseName);
+  return unique([
+    normalizedName,
+    normalizedCode,
+    bareStockCode(normalizedCode),
+    baseName,
+    shortName,
+    ...array(aliases).map(text),
+  ]);
 }
 
 function q(value) {

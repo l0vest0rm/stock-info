@@ -16,11 +16,13 @@ type KnowledgeNewsTableRow = {
   displayTime: string
   sourceType: string
   target: string
+  targetCode: string
   sourceName: string
   title: string
   docId: string
   sourceUrl: string
   accessMethod: string
+  stockLinks: Array<{ name: string; code: string }>
   isLocalNews: boolean
   tags: string[]
   favorited: boolean
@@ -188,18 +190,65 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     return tags
   }
 
+  function normalizeKnowledgeNewsDedupeText(value: unknown): string {
+    return String(value || '')
+      .replace(/^作者[丨|｜:：\s]*[^\s，。,；;:：]{1,40}\s*/u, '')
+      .replace(/^(公众号|点击上方)[^。！？!?]{0,80}[。！？!?]?\s*/u, '')
+      .replace(/^来源[：:]\s*[^\s]+\s*/u, '')
+      .replace(/^原标题[：:]\s*/u, '')
+      .replace(/[^\p{L}\p{N}]+/gu, '')
+      .trim()
+      .toLowerCase()
+  }
+
+  function knowledgeNewsDedupeKey(item: any): string {
+    const metadata = item && item.metadata && typeof item.metadata === 'object' ? item.metadata : {}
+    const source = String((metadata as any).source || '').trim().toLowerCase()
+    if (source !== 'tencent_stock_news') {
+      return String(item?.doc_id || '')
+    }
+    const sourceName = String(item?.source_name || '').trim().toLowerCase()
+    const title = String(item?.title || '').trim().toLowerCase()
+    const preview = normalizeKnowledgeNewsDedupeText(String(item?.content_preview || item?.summary || '').slice(0, 320)).slice(0, 180)
+    return `tencent|${sourceName}|${title}|${preview}`
+  }
+
+  function dedupeKnowledgeNewsItems(items: any[]): any[] {
+    const seen = new Set<string>()
+    const deduped: any[] = []
+    for (const item of items) {
+      const key = knowledgeNewsDedupeKey(item)
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      deduped.push(item)
+    }
+    return deduped
+  }
+
   function mapKnowledgeNewsRow(item: any): KnowledgeNewsTableRow {
     const docId = String(item.doc_id || '')
     const tags = normalizeKnowledgeNewsTags(item.tags)
+    const stockLinks = Array.isArray(item.stock_links)
+      ? item.stock_links
+        .map((link: any) => ({
+          name: String(link?.name || '').trim(),
+          code: String(link?.code || '').trim(),
+        }))
+        .filter((link: { name: string; code: string }) => link.name || link.code)
+      : []
     return {
       displayTime: knowledgeDisplayTime(item),
       sourceType: knowledgeReportTypeText(item),
       target: knowledgeTargetText(item),
+      targetCode: String(item.target_code || ''),
       sourceName: String(item.source_name || ''),
       title: String(item.title || ''),
       docId,
       sourceUrl: String(item.url || ''),
       accessMethod: String(item.access_method || ''),
+      stockLinks,
       isLocalNews: item.source_type === 'local_news',
       tags,
       favorited: Boolean(item.favorited),
@@ -238,9 +287,11 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
         page: knowledgeNewsCurrentPage,
         pageSize
       })
-    const list = data && data.list ? data.list : []
+    const list = data && data.list ? dedupeKnowledgeNewsItems(data.list) : []
     knowledgeNewsRows = list.map((item: any): KnowledgeNewsTableRow => mapKnowledgeNewsRow(item))
-    knowledgeNewsHasNext = list.length >= pageSize
+    knowledgeNewsHasNext = typeof data?.has_next === 'boolean'
+      ? data.has_next
+      : list.length >= pageSize
     emitKnowledgeNewsTableState()
     emitKnowledgeNewsFiltersState()
   }

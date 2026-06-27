@@ -14,6 +14,7 @@
     "import:knowledge:docs": "node scripts/import-knowledge-docs.mjs",
     "import:knowledge:filtered": "node scripts/import-filtered-knowledge-docs.mjs",
     "process:knowledge": "node scripts/process-knowledge-once.mjs",
+    "stats:knowledge:storage": "node scripts/report-knowledge-storage.mjs",
     "test:smoke:pages": "node scripts/smoke-pages.mjs",
     "seed:knowledge:sample": "node scripts/seed-knowledge-sample.mjs",
     "typecheck": "tsc --noEmit",

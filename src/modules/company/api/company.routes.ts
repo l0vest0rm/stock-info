@@ -33,6 +33,11 @@ type ReportForecastProgress = {
   title: string;
 };
 
+type ReportForecastStreamEvent = {
+  progress?: ReportForecastProgress;
+  items?: Array<Record<string, unknown>>;
+};
+
 type SinaCompanyReport = {
   title: string;
   url: string;
@@ -42,7 +47,8 @@ type SinaCompanyReport = {
 };
 
 const REPORT_SOURCE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-const REPORT_SOURCE_CACHE_VERSION = "v2";
+const REPORT_SOURCE_CACHE_VERSION = "v3";
+const REPORT_PAGE_SIZE = 10;
 const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
@@ -146,15 +152,20 @@ companyRoutes.get("/company/reports/stream", async (c) => {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const items = await getCompanyReportsWithProgress(c, code, page, (progress) => {
-          controller.enqueue(
-            encodeSseData({
-              type: "progress",
-              completed: progress.completed,
-              total: progress.total,
-              title: progress.title,
-            })
-          );
+        const items = await getCompanyReportsWithProgress(c, code, page, (event) => {
+          if (event.progress) {
+            controller.enqueue(
+              encodeSseData({
+                type: "progress",
+                completed: event.progress.completed,
+                total: event.progress.total,
+                title: event.progress.title,
+              })
+            );
+          }
+          if (event.items) {
+            controller.enqueue(encodeSseData({ type: "partial", data: event.items }));
+          }
         });
         controller.enqueue(encodeSseData({ type: "result", data: items }));
       } catch (error) {
@@ -272,7 +283,7 @@ async function fetchEastmoneyCompanyReports(
   const params: Record<string, string> = {
     cb: "jQuery",
     industryCode: "*",
-    pageSize: "10",
+    pageSize: String(REPORT_PAGE_SIZE),
     industry: "*",
     rating: "*",
     ratingChange: "*",
@@ -339,13 +350,13 @@ async function getCompanyReportsWithProgress(
   c: Context<AppEnv>,
   code: string,
   page: number,
-  onProgress: (progress: ReportForecastProgress) => void
+  onProgress: (event: ReportForecastStreamEvent) => void
 ): Promise<Array<Record<string, unknown>>> {
   let items = await getCompanyReportsSource(c, code, page);
   if (page === 1) {
     await ensureReportForecastsForItemsWithProgress(c, code, items, onProgress);
   } else {
-    onProgress({ completed: 0, total: 0, title: "" });
+    onProgress({ progress: { completed: 0, total: 0, title: "" } });
   }
   items = await annotateReportItemsWithForecasts(c, items);
   return items;
@@ -369,7 +380,8 @@ async function getCompanyReportsSource(
     fetchEastmoneyCompanyReports(c, normalized, page),
     fetchSinaCompanyReportsLite(c, normalized, page).catch(() => []),
   ]);
-  const merged = filterRecentCompanyReports(mergeCompanyReportsPreferPrimary(eastmoneyItems, sinaItems));
+  const merged = filterRecentCompanyReports(mergeCompanyReportsPreferPrimary(eastmoneyItems, sinaItems))
+    .slice(0, REPORT_PAGE_SIZE);
   await writeAppJson(c.env.DB, cacheKey, merged, REPORT_SOURCE_CACHE_TTL_MS);
   return merged;
 }
@@ -404,7 +416,7 @@ async function ensureReportForecastsForItemsWithProgress(
   c: Context<AppEnv>,
   code: string,
   items: Array<Record<string, unknown>>,
-  onProgress: (progress: ReportForecastProgress) => void
+  onProgress: (event: ReportForecastStreamEvent) => void
 ): Promise<void> {
   const normalized = normalizeSecurityCode(code);
   const candidates = items
@@ -412,16 +424,22 @@ async function ensureReportForecastsForItemsWithProgress(
     .filter((item) => !Array.isArray(item.forecasts) || item.forecasts.length === 0)
     .filter((item) => reportNeedsLlmExtraction(item))
     .slice(0, REPORT_FORECAST_MAX_CALLS);
-  onProgress({ completed: 0, total: candidates.length, title: "" });
+  onProgress({
+    progress: { completed: 0, total: candidates.length, title: "" },
+    items: await annotateReportItemsWithForecasts(c, items),
+  });
   for (let index = 0; index < candidates.length; index += 1) {
     const item = candidates[index];
     try {
       await ensureSingleReportForecast(c, normalized, item);
     } finally {
       onProgress({
-        completed: index + 1,
-        total: candidates.length,
-        title: text(item.title),
+        progress: {
+          completed: index + 1,
+          total: candidates.length,
+          title: text(item.title),
+        },
+        items: await annotateReportItemsWithForecasts(c, items),
       });
     }
   }

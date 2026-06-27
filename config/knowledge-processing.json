@@ -8,8 +8,17 @@
   "workDir": "/Users/terry/git/data/stock-info/knowledge/work",
   "reviewDir": "/Users/terry/git/data/stock-info/knowledge/reviews",
   "stateDir": "/Users/terry/git/data/stock-info/knowledge/state",
+  "filteredReviewImport": {
+    "enabled": false,
+    "purgeExisting": true
+  },
+  "storageRetention": {
+    "enabled": true,
+    "knowledgeDocsMaxAgeDays": 90
+  },
   "importBatchSize": 200,
   "filterReviewPreviewLimit": 50,
+  "docProcessingConcurrency": 4,
   "maxNewsAgeDays": 14,
   "maxReportAgeDays": 60,
   "pdfConversionTimeoutMs": 120000,
@@ -30,7 +39,7 @@
   "defaultReportType": "news",
   "maxMarkdownChars": 30000,
   "llm": {
-    "enabled": false,
+    "enabled": true,
     "model": "doubao-seed-2-0-mini-260215",
     "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
     "apiKeyEnv": "VOLC_ARK_API_KEY",
@@ -43,7 +52,7 @@
     "minScore": 2,
     "uncertainMinScore": 1,
     "uncertainMaxScore": 1,
-    "llmReview": false,
+    "llmReview": true,
     "llmBatchSize": 50,
     "llmMinConfidence": 0.65,
     "coreKeywords": [
@@ -51,12 +60,13 @@
       "算力", "智算", "数据中心", "GPU", "ASIC", "AI芯片", "服务器",
       "HBM", "DRAM", "NAND", "SSD", "存储", "半导体", "先进制程",
       "先进封装", "CoWoS", "Chiplet", "光模块", "光通信", "CPO", "硅光",
-      "800G", "1.6T", "高速互联", "交换机", "液冷", "英伟达", "NVIDIA",
+      "800G", "1.6T", "高速互联", "交换机", "液冷", "PCB", "AIPCB",
+      "英伟达", "NVIDIA",
       "寒武纪", "海光", "中际旭创", "新易盛", "工业富联"
     ],
     "supportKeywords": [
       "云计算", "云厂商", "资本开支", "Capex", "国产替代", "自主可控",
-      "晶圆", "封测", "PCB", "AIPCB", "电源", "UPS", "HVDC", "IDC",
+      "晶圆", "封测", "电源", "UPS", "HVDC", "IDC",
       "训练", "inference", "Token", "模型", "开源"
     ],
     "denyKeywords": [

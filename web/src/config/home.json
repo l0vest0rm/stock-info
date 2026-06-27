@@ -1,6 +1,6 @@
 {
-  "title": "理财人 | 股票、基金、研报资讯研究入口",
-  "description": "理财人提供股票、基金、研报资讯与13F研究入口，支持证券搜索、公司筛选、基金对比和高价值内容发现。",
+  "title": "投研社 | 股票、基金、研报资讯研究入口",
+  "description": "投研社提供股票、基金、研报资讯与13F研究入口，支持证券搜索、公司筛选、基金对比和高价值内容发现。",
   "keywords": "股票,基金,研报,13F,投资研究,公司筛选,基金筛选",
   "canonicalPath": "/",
   "includeInSitemap": true,
@@ -8,7 +8,7 @@
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      "name": "理财人",
+      "name": "投研社",
       "url": "https://tinfo.cc/",
       "description": "股票、基金、研报资讯研究入口",
       "potentialAction": {
@@ -20,7 +20,7 @@
     {
       "@context": "https://schema.org",
       "@type": "Organization",
-      "name": "理财人",
+      "name": "投研社",
       "url": "https://tinfo.cc/"
     }
   ]

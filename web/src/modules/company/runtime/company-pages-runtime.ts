@@ -398,6 +398,8 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   let companyReportEventsBound = false
   let companyReportActualFinancialMap: Map<number, AnnualFinancial> | null = null
   let companyReportStream: EventSource | null = null
+  let valuationChart: any | null = null
+  let valuationChartResizeBound = false
 
   function emitCompanyReportState(patch: any): boolean {
     window.dispatchEvent(new CustomEvent('licai:company-report-state', { detail: patch || {} }))
@@ -533,6 +535,19 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     })
   }
 
+  function renderCompanyReportRowsPartial(items: any[], actualFinancialMap: Map<number, AnnualFinancial>): void {
+    const pageSize = 10
+    emitCompanyReportState({
+      rows: mapCompanyReportRows(items, actualFinancialMap),
+      currentPage: companyReportCurrentPage,
+      hasNext: items.length >= pageSize,
+      error: false,
+    })
+    requestAnimationFrame(() => {
+      bindCompanyReportActionLinks()
+    })
+  }
+
   function genCompanyReportTable(code: string, actualFinancialMap: Map<number, AnnualFinancial>) {
     closeCompanyReportStream()
     emitCompanyReportState({
@@ -562,6 +577,12 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
             status: companyReportProgressStatus(Number(payload.completed || 0), Number(payload.total || 0), String(payload.title || '')),
             error: false,
           })
+          return
+        }
+        if (payload.type === 'partial') {
+          const items = Array.isArray(payload.data) ? payload.data : []
+          renderCompanyReportRowsPartial(items, actualFinancialMap)
+          void drawValuationTrendChart(code, actualFinancialMap, items)
           return
         }
         if (payload.type === 'error') {
@@ -622,13 +643,19 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
 
   async function drawValuationTrendChart(code: string, actualFinancialMap: Map<number, AnnualFinancial>, prefetchedReports?: any[]) {
     try {
+      const chartDom = document.getElementById('valuationChart')
+      if (!chartDom) {
+        return
+      }
+      valuationChart = valuationChart || echarts.getInstanceByDom(chartDom) || echarts.init(chartDom)
       const response = Array.isArray(prefetchedReports)
         ? prefetchedReports
         : await fetchRequest(companyReportRequestUrl(code, 1)) as any[]
       if (!response || response.length === 0) {
+        valuationChart.clear()
         return
       }
-      const reports = response.sort((a, b) => {
+      const reports = [...response].sort((a, b) => {
         const dateA = new Date(a.publishDate || a.ts * 1000).getTime()
         const dateB = new Date(b.publishDate || b.ts * 1000).getTime()
         return dateA - dateB
@@ -638,25 +665,40 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       const profit2026Data: (number | null)[] = []
       const profit2027Data: (number | null)[] = []
       const profit2028Data: (number | null)[] = []
+      let hasForecastData = false
       for (const report of reports) {
         const date = report.publishDate ? report.publishDate.substring(0, 10) : toDateString(report.ts)
         dates.push(date)
         const profitMap = getResolvedProfitMap(report, actualFinancialMap)
-        profit2025Data.push(profitMap.get(2025) ?? null)
-        profit2026Data.push(profitMap.get(2026) ?? null)
-        profit2027Data.push(profitMap.get(2027) ?? null)
-        profit2028Data.push(profitMap.get(2028) ?? null)
+        const value2025 = profitMap.get(2025) ?? null
+        const value2026 = profitMap.get(2026) ?? null
+        const value2027 = profitMap.get(2027) ?? null
+        const value2028 = profitMap.get(2028) ?? null
+        profit2025Data.push(value2025)
+        profit2026Data.push(value2026)
+        profit2027Data.push(value2027)
+        profit2028Data.push(value2028)
+        if (value2025 !== null || value2026 !== null || value2027 !== null || value2028 !== null) {
+          hasForecastData = true
+        }
       }
-      const chartDom = document.getElementById('valuationChart')
-      if (!chartDom) {
-        return
-      }
-      const myChart = echarts.init(chartDom)
-      myChart.setOption({
+      valuationChart.setOption({
         title: {
           text: `${getCodeNameMap()[code] || code} 净利润预测趋势图`,
           left: 'center',
         },
+        graphic: hasForecastData
+          ? []
+          : [{
+              type: 'text',
+              left: 'center',
+              top: 'middle',
+              style: {
+                text: '正在补充预测数据...',
+                fill: '#6c757d',
+                fontSize: 14,
+              },
+            }],
         tooltip: {
           trigger: 'axis',
           formatter(params: any) {
@@ -698,10 +740,13 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
           { name: '2027净利润', type: 'line', data: profit2027Data, connectNulls: true, symbol: 'circle', symbolSize: 6 },
           { name: '2028净利润', type: 'line', data: profit2028Data, connectNulls: true, symbol: 'circle', symbolSize: 6 },
         ],
-      })
-      window.addEventListener('resize', () => {
-        myChart.resize()
-      })
+      }, true)
+      if (!valuationChartResizeBound) {
+        valuationChartResizeBound = true
+        window.addEventListener('resize', () => {
+          valuationChart?.resize()
+        })
+      }
     } catch (error) {
       console.error('Failed to draw valuation trend chart:', error)
     }
