@@ -7,9 +7,6 @@ export const AppFooter = defineComponent({
       h("div", { class: "container" }, [
         h("footer", { class: "row row-cols-5 py-5 my-5 border-top" }, [
           h("div", { class: "col" }),
-          h("div", { class: "col-3" }, [
-            h("a", { href: "https://beian.miit.gov.cn/", target: "_blank" }, "京ICP备20020159号-1"),
-          ]),
           h("div", { class: "col" }, [
             h("h5", "Section"),
             h("ul", { class: "nav flex-column" }, [
