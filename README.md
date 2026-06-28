@@ -54,7 +54,7 @@ curl -s 'http://localhost:8787/api/kline?code=600519&from=2026-06-01&to=2026-06-
 当前先只用 `main`。
 
 - 本地开发完成后，直接 push 到 `main`
-- Cloudflare 只绑定 `main` 自动部署
+- 生产发布统一走本机 token 部署脚本
 - 等功能稳定后，再考虑加 `staging`
 
 ## Cloudflare 部署前配置
@@ -77,7 +77,7 @@ curl -s 'http://localhost:8787/api/kline?code=600519&from=2026-06-01&to=2026-06-
 npm run db:migrate:remote
 ```
 
-## Cloudflare Git 部署建议
+## Cloudflare 手动部署建议
 
 不要手工上传 `dist`。这个项目包含：
 
@@ -86,20 +86,19 @@ npm run db:migrate:remote
 - D1 binding
 - `wrangler.jsonc` 环境配置
 
-更合适的是让 Cloudflare 直接连 Git 仓库构建和部署。
+当前生产发布建议是在本机先构建，再通过 `CLOUDFLARE_API_TOKEN` 手动部署。
 
 ### 当前建议的 Cloudflare 配置
 
-在 Cloudflare Workers 控制台只配置一套生产自动部署：
+- 关闭或删除 Cloudflare 上现有的 `stock-info` Git 自动部署，避免和手动部署互相覆盖
+- 确认 `tinfo.cc` 这个 zone 在同一个 Cloudflare 账号下
+- 确认 token 具备 Worker deploy、D1 migration 和域名路由相关权限
+- `wrangler.jsonc` 中生产域名使用 `tinfo.cc` custom domain
 
-- Branch: `main`
-- Build command: `npm install --no-audit --no-fund --ignore-scripts && npm run build`
-- Deploy command: `npx wrangler deploy`
-
-如果你想把类型检查也放进 CI，可以把 build command 改成：
+### 本地手动部署前准备
 
 ```bash
-npm install --no-audit --no-fund --ignore-scripts && npm run typecheck && npm run build
+export CLOUDFLARE_API_TOKEN=...
 ```
 
 ### 本地手动部署
@@ -108,6 +107,50 @@ npm install --no-audit --no-fund --ignore-scripts && npm run typecheck && npm ru
 npm run deploy
 ```
 
+脚本会按下面顺序执行：
+
+- `npm run typecheck`
+- `npm run build`
+- `wrangler deploy --dry-run`
+- 检查 `wrangler.jsonc` 中配置的 R2 buckets 是否已存在
+- `wrangler d1 migrations apply stock_info --remote`
+- `wrangler deploy`
+- `curl https://tinfo.cc/api/health`
+
+只做打包检查但不真正上线：
+
+```bash
+./deploy-cloudflare.sh --dry-run-only
+```
+
+跳过远端 migration：
+
+```bash
+./deploy-cloudflare.sh --skip-migrate
+```
+
+首发时如果还没创建 R2 bucket，可以显式让脚本创建：
+
+```bash
+./deploy-cloudflare.sh --create-missing-r2
+```
+
+### 回退
+
+直接回到上一版：
+
+```bash
+npm run rollback:cloudflare
+```
+
+指定 Worker version 回退：
+
+```bash
+./rollback-cloudflare.sh <version-id>
+```
+
+注意：Cloudflare Worker 可以回退版本，但 D1 不会自动回退，所以 migration 需要保持向前兼容。
+
 ## 免费额度策略
 
 - 不做全市场抓取。
@@ -115,4 +158,4 @@ npm run deploy
 - 未命中时只补当前查询目标。
 - Cron 当前只记录 skipped job，不执行批量同步。
 - 财务数据默认只抓近 5 年报表日期窗口。
-- 原始响应和 PDF 暂不入库；后续真需要对象存储时再补 R2。
+- 需要留档的超大 Markdown 等对象可以进 R2，但仍应优先让 Worker 请求路径只读 D1/R2，不做在线重处理。

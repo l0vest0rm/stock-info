@@ -9,6 +9,7 @@ type KnowledgeNewsTableRow = {
   title: string
   docId: string
   sourceUrl: string
+  contentUrl: string
   accessMethod: string
   stockLinks: Array<{ name: string; code: string }>
   isLocalNews: boolean
@@ -495,7 +496,9 @@ const KnowledgeNewsPage = defineComponent({
               ])),
             ]),
           ]),
-          h('input', { id: 'knowledgeQuery', class: 'form-control form-control-sm', style: 'max-width: 360px;', placeholder: '标题、来源、目标、链接搜索' }),
+          h('div', { 'data-knowledge-query-control': 'true', class: 'd-flex gap-2' }, [
+            h('input', { id: 'knowledgeQuery', class: 'form-control form-control-sm', style: 'max-width: 360px;', placeholder: '标题、来源、目标、链接搜索' }),
+          ]),
           h('button', { id: 'knowledgeSearchBtn', class: 'btn btn-primary btn-sm' }, '查询'),
         ]),
         h('div', { id: 'knowledgeNewsTableRoot' }),

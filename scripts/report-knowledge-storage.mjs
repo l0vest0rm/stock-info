@@ -113,13 +113,15 @@ function knowledgeTableStatsSql() {
       ${s("title")} + ${s("url")} + ${s("published_at")} + ${s("fetched_at")} +
       ${s("event_time")} + ${s("target_name")} + ${s("target_code")} +
       ${s("discovery_method")} + ${s("access_method")} + ${s("summary")} +
-      ${s("md_text")} + ${s("search_text")} + ${s("metadata_json")} +
+      ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
+      ${s("content_encoding")} + ${s("content_sha256")} + ${s("content_preview")} +
+      ${s("metadata_json")} +
       ${s("recommendation_level")} + ${s("recommendation_tags_json")} +
       ${s("recommendation_reasons_json")} + 40
     ) as approxBytes,
-    sum(${s("md_text")}) as markdownBytes,
+    sum(coalesce(content_bytes, 0)) as markdownBytes,
     sum(${s("metadata_json")}) as metadataBytes,
-    sum(${s("search_text")}) as searchBytes
+    0 as searchBytes
   from knowledge_docs`);
   }
   if (existingTables.has("knowledge_filtered_docs")) {
@@ -131,11 +133,12 @@ function knowledgeTableStatsSql() {
       ${s("doc_id")} + ${s("source_type")} + ${s("report_type")} + ${s("source_name")} +
       ${s("title")} + ${s("url")} + ${s("published_at")} + ${s("fetched_at")} +
       ${s("event_time")} + ${s("target_name")} + ${s("target_code")} +
-      ${s("summary")} + ${s("md_text")} + ${s("metadata_json")} +
+      ${s("summary")} + ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
+      ${s("content_encoding")} + ${s("content_sha256")} + ${s("content_preview")} + ${s("metadata_json")} +
       ${s("filter_method")} + ${s("filter_reasons_json")} + ${s("source_file")} +
       ${s("reviewed_status")} + 24
     ) as approxBytes,
-    sum(${s("md_text")}) as markdownBytes,
+    sum(coalesce(content_bytes, 0)) as markdownBytes,
     sum(${s("metadata_json")}) as metadataBytes,
     0 as searchBytes
   from knowledge_filtered_docs`);
@@ -230,13 +233,15 @@ select
     ${s("title")} + ${s("url")} + ${s("published_at")} + ${s("fetched_at")} +
     ${s("event_time")} + ${s("target_name")} + ${s("target_code")} +
     ${s("discovery_method")} + ${s("access_method")} + ${s("summary")} +
-    ${s("md_text")} + ${s("search_text")} + ${s("metadata_json")} +
+    ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
+    ${s("content_encoding")} + ${s("content_sha256")} + ${s("content_preview")} +
+    ${s("metadata_json")} +
     ${s("recommendation_level")} + ${s("recommendation_tags_json")} +
     ${s("recommendation_reasons_json")} + 40
   ) as approxBytes,
-  sum(${s("md_text")}) as markdownBytes,
+  sum(coalesce(content_bytes, 0)) as markdownBytes,
   sum(${s("metadata_json")}) as metadataBytes,
-  sum(${s("search_text")}) as searchBytes
+  0 as searchBytes
 from knowledge_docs
 group by 1
 order by approxBytes desc, rowCount desc, category asc
@@ -263,11 +268,12 @@ select
     ${s("doc_id")} + ${s("source_type")} + ${s("report_type")} + ${s("source_name")} +
     ${s("title")} + ${s("url")} + ${s("published_at")} + ${s("fetched_at")} +
     ${s("event_time")} + ${s("target_name")} + ${s("target_code")} +
-    ${s("summary")} + ${s("md_text")} + ${s("metadata_json")} +
+    ${s("summary")} + ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
+    ${s("content_encoding")} + ${s("content_sha256")} + ${s("content_preview")} + ${s("metadata_json")} +
     ${s("filter_method")} + ${s("filter_reasons_json")} + ${s("source_file")} +
     ${s("reviewed_status")} + 24
   ) as approxBytes,
-  sum(${s("md_text")}) as markdownBytes
+  sum(coalesce(content_bytes, 0)) as markdownBytes
 from knowledge_filtered_docs
 group by 1
 order by approxBytes desc, rowCount desc, status asc

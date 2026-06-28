@@ -21,6 +21,7 @@ type KnowledgeNewsTableRow = {
   title: string
   docId: string
   sourceUrl: string
+  contentUrl: string
   accessMethod: string
   stockLinks: Array<{ name: string; code: string }>
   isLocalNews: boolean
@@ -44,6 +45,11 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   let knowledgeNewsCurrentDocId = ''
   let knowledgeNewsCurrentDocFiltered = false
   let knowledgeNewsModalInstance: any = null
+
+  function isLocalKnowledgeNewsHost() {
+    const hostname = window.location.hostname.toLowerCase()
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  }
 
   function readKnowledgeDocStateFromUrl() {
     const url = new URL(window.location.href)
@@ -247,6 +253,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       title: String(item.title || ''),
       docId,
       sourceUrl: String(item.url || ''),
+      contentUrl: String(item.content_url || ''),
       accessMethod: String(item.access_method || ''),
       stockLinks,
       isLocalNews: item.source_type === 'local_news',
@@ -269,7 +276,8 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     const selectedTags = Array.from(document.querySelectorAll<HTMLInputElement>('#knowledgeTagFilters input[name="knowledgeTagFilter"]:checked'))
       .map((input) => input.value)
       .filter(Boolean)
-    const query = (document.getElementById('knowledgeQuery') as HTMLInputElement).value
+    const queryInput = document.getElementById('knowledgeQuery') as HTMLInputElement | null
+    const query = isLocalKnowledgeNewsHost() ? (queryInput?.value || '') : ''
     const pageSize = 50
     knowledgeNewsSelectedTags = selectedTags
     knowledgeNewsSelectedSourceName = source
@@ -312,6 +320,18 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       return ''
     }
     return url
+  }
+
+  async function fetchKnowledgeDocumentContent(data: any) {
+    const contentUrl = String(data && data.content_url ? data.content_url : '').trim()
+    if (!contentUrl) {
+      return String(data && data.summary ? data.summary : '')
+    }
+    const response = await fetch(contentUrl, { credentials: 'omit' })
+    if (!response.ok) {
+      throw new Error(`正文加载失败: HTTP ${response.status}`)
+    }
+    return response.text()
   }
 
   async function keepFilteredDocument(docID: string) {
@@ -415,7 +435,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       params: { id: docID }
     }) as any
     const title = data && data.title ? data.title : ''
-    const content = data && data.content ? data.content : ''
+    const content = await fetchKnowledgeDocumentContent(data)
     const url = knowledgeNewsOriginalUrl(data)
     const meta = [
       knowledgeReportTypeText(data),
@@ -513,7 +533,12 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     })
     document.getElementById('knowledgeSourceName')?.addEventListener('change', renderKnowledgeNewsFirstPage)
     document.getElementById('knowledgeTagFilters')?.addEventListener('change', renderKnowledgeNewsFirstPage)
-    document.getElementById('knowledgeQuery')?.addEventListener('keydown', (event) => {
+    const queryInput = document.getElementById('knowledgeQuery') as HTMLInputElement | null
+    if (queryInput && !isLocalKnowledgeNewsHost()) {
+      queryInput.closest('[data-knowledge-query-control]')?.classList.add('d-none')
+      queryInput.value = ''
+    }
+    queryInput?.addEventListener('keydown', (event) => {
       if ((event as KeyboardEvent).key === 'Enter') {
         renderKnowledgeNewsFirstPage()
       }

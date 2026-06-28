@@ -13,6 +13,8 @@
     "HTTP_PROXY_URL": "",
     "HTTP_PROXY_DOMAINS": "",
     "HTTP_DOMAIN_CONCURRENCY": "3",
+    "KNOWLEDGE_CONTENT_PUBLIC_BASE_URL": "https://content.tinfo.cc",
+    "KNOWLEDGE_ALLOW_TEXT_SEARCH": "false",
   },
   "assets": {
     "directory": "./web/dist",
@@ -21,11 +23,23 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/", "/home.html", "/api/*", "/company-option.html", "/knowledge-config.html", "/cdn-cgi/handler/scheduled"],
   },
+  "routes": [
+    {
+      "pattern": "tinfo.cc",
+      "custom_domain": true,
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "stock_info",
       "database_id": "6bbdca28-28da-42c2-9186-bb57f29bb7bc",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "KNOWLEDGE_CONTENT_BUCKET",
+      "bucket_name": "stock-info-knowledge-content",
     },
   ],
   "triggers": {

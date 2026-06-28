@@ -10,11 +10,14 @@
     "dev:web": "cd web && vite --config vite.layout.config.ts",
     "build": "npm run build:web",
     "build:web": "cd web && node scripts/build-html.mjs && vite build --config vite.layout.config.ts && node scripts/build-vue-pages.mjs && node scripts/build-legacy-pages.mjs",
-    "deploy": "wrangler deploy",
+    "deploy": "./deploy-cloudflare.sh",
+    "deploy:cloudflare": "./deploy-cloudflare.sh",
+    "rollback:cloudflare": "./rollback-cloudflare.sh",
     "import:knowledge:docs": "node scripts/import-knowledge-docs.mjs",
     "import:knowledge:filtered": "node scripts/import-filtered-knowledge-docs.mjs",
     "process:knowledge": "node scripts/process-knowledge-once.mjs",
     "stats:knowledge:storage": "node scripts/report-knowledge-storage.mjs",
+    "check:cloudflare:token": "node scripts/verify-cloudflare-token.mjs",
     "test:smoke:pages": "node scripts/smoke-pages.mjs",
     "seed:knowledge:sample": "node scripts/seed-knowledge-sample.mjs",
     "typecheck": "tsc --noEmit",
@@ -22,6 +25,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply stock_info --remote"
   },
   "dependencies": {
+    "@m2ai/shared-llm-client": "file:../shared-ts/llm-client",
     "@vitejs/plugin-vue": "^6.0.3",
     "echarts": "^6.0.0",
     "hono": "^4.12.27",

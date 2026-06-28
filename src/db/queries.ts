@@ -8,12 +8,6 @@ export type HttpCacheRecord = {
   updatedAt: number;
 };
 
-export type LlmCacheRecord = {
-  responseJson: string;
-  expiresAt: number;
-  updatedAt: number;
-};
-
 export type AppKvRecord = {
   valueJson: string;
   expiresAt: number | null;
@@ -342,55 +336,6 @@ export async function putAppKv(
         updated_at = excluded.updated_at`
     )
     .bind(record.key, record.valueJson, record.expiresAt, record.updatedAt)
-    .run();
-}
-
-export async function getLlmCache(db: D1Database, cacheKey: string, now = Date.now()): Promise<LlmCacheRecord | null> {
-  const row = await db
-    .prepare(
-      `select response_json as responseJson, expires_at as expiresAt, updated_at as updatedAt
-       from llm_cache
-       where cache_key = ? and expires_at > ?`
-    )
-    .bind(cacheKey, now)
-    .first<LlmCacheRecord>();
-  return row ?? null;
-}
-
-export async function putLlmCache(
-  db: D1Database,
-  record: {
-    cacheKey: string;
-    provider: string;
-    model: string;
-    requestJson: string;
-    responseJson: string;
-    expiresAt: number;
-    updatedAt: number;
-  }
-): Promise<void> {
-  await db
-    .prepare(
-      `insert into llm_cache
-        (cache_key, provider, model, request_json, response_json, expires_at, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?)
-       on conflict(cache_key) do update set
-        provider = excluded.provider,
-        model = excluded.model,
-        request_json = excluded.request_json,
-        response_json = excluded.response_json,
-        expires_at = excluded.expires_at,
-        updated_at = excluded.updated_at`
-    )
-    .bind(
-      record.cacheKey,
-      record.provider,
-      record.model,
-      record.requestJson,
-      record.responseJson,
-      record.expiresAt,
-      record.updatedAt
-    )
     .run();
 }
 

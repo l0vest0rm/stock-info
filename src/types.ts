@@ -2,7 +2,10 @@ export type Bindings = {
   ASSETS: Fetcher;
   DB: D1Database;
   RAW_BUCKET?: R2Bucket;
+  KNOWLEDGE_CONTENT_BUCKET?: R2Bucket;
   APP_VERSION?: string;
+  KNOWLEDGE_CONTENT_PUBLIC_BASE_URL?: string;
+  KNOWLEDGE_ALLOW_TEXT_SEARCH?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   VOLC_ARK_API_KEY?: string;

@@ -516,12 +516,15 @@ PDF 策略：
 
 - 本地验证通过。
 - 提交到 `main`。
-- Cloudflare 从 Git 拉取源码。
-- Cloudflare build 运行 `npm run build` 生成 `web/dist`。
+- Cloudflare 上关闭 `stock-info` 的 Git 自动部署，避免和本机手动发布互相覆盖。
+- 本机执行 `./deploy-cloudflare.sh`，在本地完成 `typecheck`、`build`、`wrangler deploy --dry-run`。
+- 脚本会读取 `wrangler.jsonc` 里的 `r2_buckets`，正式发布前逐个校验 bucket 是否存在；只有显式传 `--create-missing-r2` 才会代为创建。
+- 远端 D1 migration 通过脚本显式执行。
+- 再执行正式 `wrangler deploy`。
 - Worker 通过 `assets.directory=./web/dist` 提供页面。
-- 远端 D1 migration 手动执行，避免构建时隐式改库。
+- 生产域名通过 `wrangler.jsonc` 中的 `routes[].custom_domain=true` 绑定到 `tinfo.cc`。
 
-不要在本地直接 `wrangler deploy`，除非明确切换到 token 部署模式。
+当前已经明确切换到 token 部署模式。不要再保留第二条 Git 自动部署链路。
 
 ## 当前风险
 

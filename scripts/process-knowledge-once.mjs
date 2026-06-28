@@ -14,6 +14,11 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import {
+  SharedLlmClient,
+  SQLiteLlmCacheStore,
+  createResponsesProvider,
+} from "@m2ai/shared-llm-client/sqlite";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const sharedDataRoot = "/Users/terry/git/data";
@@ -28,8 +33,9 @@ const stateDir = resolve(root, config.stateDir || `${sharedDataRoot}/stock-info/
 const inputDirs = resolveInputDirs(args.inboxDir, config, args.extraInputs);
 const remotePdfCacheDir = join(workDir, "remote-pdf");
 const markdownCacheDir = join(workDir, "markdown-cache");
-const llmCacheDir = join(stateDir, "llm-cache");
+const llmCacheDbPath = join(stateDir, "llm-cache.sqlite");
 const llmReviewDir = join(reviewDir, "llm-topic-review");
+const importSyncFile = resolve(stateDir, config.importSyncFile || "knowledge-remote-sync.jsonl");
 const now = new Date();
 const runId = formatRunTime(now);
 const runStartedAt = Date.now();
@@ -51,12 +57,16 @@ const scanState = loadScanState(stateFile);
 const scanWatermark = args.fullRescan ? { ms: 0, source: "fullRescan" } : resolveScanWatermark(scanState);
 const changedSinceMs = scanWatermark.ms;
 let lastProcessedFile = "";
+const importTarget = {
+  target: dbTarget ? "remote" : "local",
+  database: config.database || "stock_info",
+};
 
-for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmCacheDir, llmReviewDir]) {
+for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmReviewDir]) {
   mkdirSync(dir, { recursive: true });
 }
 
-const existingDocIds = loadExistingDocIds(config);
+const importSyncState = args.fullRescan ? new Map() : loadImportSyncState(importSyncFile, importTarget);
 const inputScans = inputDirs.map((dir) => listInputFiles(dir, config, changedSinceMs));
 const allFiles = inputScans.flatMap((scan) => scan.files);
 const skippedByAge = inputScans.reduce((sum, scan) => sum + scan.skippedByAge, 0);
@@ -76,13 +86,13 @@ logProgress("discovered input files", {
   changedSinceSource: scanWatermark.source,
   maxNewsAgeDays,
   maxReportAgeDays,
-  existingDocs: existingDocIds.size,
+  syncedDocs: importSyncState.size,
   ...countFilesByExtension(allFiles),
   inputDirs,
 });
 const results = [];
 const fileBatches = [];
-let skippedExistingDocs = 0;
+let skippedImportedDocs = 0;
 
 let scannedFiles = 0;
 for (const file of files) {
@@ -96,11 +106,12 @@ for (const file of files) {
   }
   try {
     const fileDocs = await processInputFile(file, config);
-    const newDocs = fileDocs.filter((doc) => !existingDocIds.has(doc.docId));
+    const currentSourceFingerprint = sourceFingerprint(file);
+    const newDocs = fileDocs.filter((doc) => !isDocAlreadySynced(doc.docId, currentSourceFingerprint, importSyncState));
     const skipped = fileDocs.length - newDocs.length;
-    skippedExistingDocs += skipped;
+    skippedImportedDocs += skipped;
     if (skipped > 0) {
-      logProgress("skipped existing docs", {
+      logProgress("skipped synced docs", {
         file: relativeInputPath(file),
         skipped,
         remaining: newDocs.length,
@@ -108,7 +119,7 @@ for (const file of files) {
     }
     if (newDocs.length === 0) {
       archiveProcessedFile(file);
-      results.push({ file, status: "skipped_existing", docs: 0, skippedExisting: skipped });
+      results.push({ file, status: "skipped_synced", docs: 0, skippedExisting: skipped });
       lastProcessedFile = file;
       continue;
     }
@@ -203,6 +214,7 @@ const filteredReviewImportEnabled = envBoolean("KNOWLEDGE_FILTERED_IMPORT_ENABLE
   ?? Boolean(config.filteredReviewImport?.enabled);
 if (filteredDocs.length > 0 && filteredReviewImportEnabled) {
   const filteredImportFile = join(workDir, `knowledge-filtered-${formatRunTime(now)}.jsonl`);
+  const filteredResultFile = join(workDir, `knowledge-filtered-result-${formatRunTime(now)}.json`);
   writeFileSync(filteredImportFile, `${filteredDocs.map((row) => JSON.stringify(row)).join("\n")}\n`);
   execFileSync(
     "npm",
@@ -212,18 +224,25 @@ if (filteredDocs.length > 0 && filteredReviewImportEnabled) {
       "--",
       "--file",
       filteredImportFile,
+      "--result-file",
+      filteredResultFile,
+      "--sync-file",
+      importSyncFile,
       dbTarget ? "--remote" : "--local",
       "--database",
       config.database || "stock_info",
     ],
     { cwd: root, stdio: "inherit" }
   );
+  const filteredEntries = readImportResults(filteredResultFile);
+  mergeImportSyncState(importSyncState, filteredEntries, importTarget);
   filteredImported = filteredDocs.length;
 }
 const uniqueDocs = uniqueByDocId(docs);
 let imported = 0;
 if (uniqueDocs.length > 0) {
   const importFile = join(workDir, `knowledge-import-${formatRunTime(now)}.jsonl`);
+  const importResultFile = join(workDir, `knowledge-import-result-${formatRunTime(now)}.json`);
   writeFileSync(importFile, `${uniqueDocs.map((doc) => JSON.stringify(doc)).join("\n")}\n`);
   execFileSync(
     "npm",
@@ -233,12 +252,18 @@ if (uniqueDocs.length > 0) {
       "--",
       "--file",
       importFile,
+      "--result-file",
+      importResultFile,
+      "--sync-file",
+      importSyncFile,
       dbTarget ? "--remote" : "--local",
       "--database",
       config.database || "stock_info",
     ],
     { cwd: root, stdio: "inherit" }
   );
+  const importedEntries = readImportResults(importResultFile);
+  mergeImportSyncState(importSyncState, importedEntries, importTarget);
   imported = uniqueDocs.length;
 }
 const storageCleanup = pruneKnowledgeStorage(config);
@@ -266,7 +291,7 @@ console.log(JSON.stringify({
   skippedUnchangedDirs,
   selectedFiles: files.length,
   normalizedFiles: scannedFiles,
-  skippedExistingDocs,
+  skippedImportedDocs,
   changedSince: changedSinceMs ? new Date(changedSinceMs).toISOString() : "",
   changedSinceSource: scanWatermark.source,
   maxNewsAgeDays,
@@ -324,8 +349,9 @@ function runKnowledgeStorageReport(cfg) {
 
 async function processInputFile(file, cfg) {
   const ext = extname(file).toLowerCase();
+  const fingerprint = sourceFingerprint(file);
   if (ext === ".json" || ext === ".jsonl") {
-    return loadJsonDocs(file).map((item) => normalizeInputDoc(item, file, cfg));
+    return loadJsonDocs(file).map((item) => normalizeInputDoc(item, file, cfg, fingerprint));
   }
   if (ext === ".pdf") {
     return [normalizeInputDoc({
@@ -338,7 +364,7 @@ async function processInputFile(file, cfg) {
       markdown: "",
       metadata: { originalFile: basename(file), pdfStored: false, localPdfPath: file },
       tags: ["pdf"],
-    }, file, cfg)];
+    }, file, cfg, fingerprint)];
   }
   if (ext === ".md" || ext === ".txt") {
     const markdown = readFileSync(file, "utf8");
@@ -350,12 +376,12 @@ async function processInputFile(file, cfg) {
       accessMethod: "markdown",
       markdown,
       metadata: { originalFile: basename(file) },
-    }, file, cfg)];
+    }, file, cfg, fingerprint)];
   }
   throw new Error(`unsupported input file: ${file}`);
 }
 
-function normalizeInputDoc(raw, file, cfg) {
+function normalizeInputDoc(raw, file, cfg, fingerprint = sourceFingerprint(file)) {
   const normalizedRaw = normalizeRawInput(raw, file);
   const title = text(normalizedRaw.title) || titleFromFilename(file);
   const markdown = text(normalizedRaw.mdText ?? normalizedRaw.md_text ?? normalizedRaw.markdown ?? normalizedRaw.content ?? normalizedRaw.body);
@@ -397,6 +423,9 @@ function normalizeInputDoc(raw, file, cfg) {
       ...object(normalizedRaw.metadata ?? normalizedRaw.metadata_json),
       processedAt: now.toISOString(),
       inputFile: basename(file),
+      inputRelativeFile: fingerprint.sourceFile,
+      sourceMtimeMs: fingerprint.sourceMtimeMs,
+      sourceSize: fingerprint.sourceSize,
       pdfStored: false,
     },
     recommendationScore,
@@ -740,7 +769,7 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
       content,
     })),
   ].join("|");
-  const parsed = await requestLlmJsonCached(cacheKey, {
+  const llmResult = await requestLlmJsonCached(cacheKey, {
     baseUrl,
     apiKey,
     model,
@@ -756,6 +785,7 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
       content,
     ].join("\n"),
   });
+  const parsed = llmResult.response;
   const nextScore = integer(parsed.recommendationScore, doc.recommendationScore);
   return {
     ...doc,
@@ -945,51 +975,29 @@ function matchedKeywords(haystack, keywords) {
 }
 
 async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user }) {
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      max_tokens: maxTokens,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+  const provider = inferProvider(baseUrl, model);
+  const client = getLocalLlmClient(provider, baseUrl, apiKey);
+  const result = await client.generateText({
+    provider,
+    model,
+    instructions: system,
+    input: [{ role: "user", content: [{ type: "input_text", text: user }] }],
+    temperature: 0,
+    maxOutputTokens: maxTokens,
   });
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(`LLM request failed: status=${response.status} body=${JSON.stringify(body).slice(0, 300)}`);
-  }
-  const textBody = extractLlmText(body);
-  const parsed = parseJsonObjectFromText(textBody);
+  const parsed = parseJsonObjectFromText(result.text);
   if (!parsed) {
-    throw new Error(`LLM response is not JSON: ${textBody.slice(0, 300)}`);
+    throw new Error(`LLM response is not JSON: ${result.text.slice(0, 300)}`);
   }
-  return parsed;
+  return { response: parsed, cached: result.cached };
 }
 
 async function requestLlmJsonCached(cacheKey, request) {
-  const file = join(llmCacheDir, `${safeFilename(cacheKey)}.json`);
-  const cached = readJsonFile(file);
-  if (cached?.cacheKey === cacheKey && cached?.response && typeof cached.response === "object") {
+  const result = await requestLlmJson(request);
+  if (result.cached) {
     logProgress("reusing llm cache", { cacheKey: safeFilename(cacheKey) });
-    return { response: cached.response, cached: true };
   }
-  const response = await requestLlmJson(request);
-  writeFileSync(file, `${JSON.stringify({ cacheKey, response }, null, 2)}\n`);
-  return { response, cached: false };
-}
-
-function extractLlmText(body) {
-  const content = body?.choices?.[0]?.message?.content;
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) return content.map((item) => item?.text || "").join("");
-  return "";
+  return result;
 }
 
 function parseJsonObjectFromText(value) {
@@ -1002,6 +1010,35 @@ function parseJsonObjectFromText(value) {
   } catch {
     return null;
   }
+}
+
+const localLlmClients = new Map();
+
+function getLocalLlmClient(provider, baseUrl, apiKey) {
+  const key = `${provider}::${baseUrl}::${apiKey}`;
+  if (!localLlmClients.has(key)) {
+    localLlmClients.set(
+      key,
+      new SharedLlmClient({
+        cacheStore: new SQLiteLlmCacheStore(llmCacheDbPath),
+        providers: {
+          [provider]: createResponsesProvider({
+            name: provider,
+            baseUrl,
+            apiKey,
+          }),
+        },
+        providerConcurrency: { [provider]: 3 },
+      }),
+    );
+  }
+  return localLlmClients.get(key);
+}
+
+function inferProvider(baseUrl, model) {
+  return model.startsWith("doubao-") || baseUrl.toLowerCase().includes("volces.com") || baseUrl.toLowerCase().includes("ark.")
+    ? "doubao"
+    : "openai";
 }
 
 function isPdfDoc(doc) {
@@ -1247,28 +1284,6 @@ function saveScanState(file, patch) {
   writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
 }
 
-function loadExistingDocIds(cfg) {
-  const ids = new Set();
-  for (const table of ["knowledge_docs", "knowledge_filtered_docs"]) {
-    for (const id of queryExistingDocIds(table, cfg)) {
-      ids.add(id);
-    }
-  }
-  return ids;
-}
-
-function queryExistingDocIds(table, cfg) {
-  try {
-    const stdout = executeWranglerSql(`select doc_id from ${table};`, cfg, { json: true });
-    const parsed = JSON.parse(stdout);
-    return array(parsed?.[0]?.results).map((row) => text(row.doc_id)).filter(Boolean);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logProgress("existing doc lookup skipped", { table, error: message });
-    return [];
-  }
-}
-
 function executeWranglerSql(sql, cfg, options = {}) {
   return execFileSync(
     "npx",
@@ -1284,6 +1299,80 @@ function executeWranglerSql(sql, cfg, options = {}) {
     ],
     { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 50 * 1024 * 1024 }
   );
+}
+
+function sourceFingerprint(file) {
+  const stat = statSync(file);
+  return {
+    sourceFile: relativeInputPath(file),
+    sourceMtimeMs: Math.trunc(stat.mtimeMs),
+    sourceSize: stat.size,
+  };
+}
+
+function loadImportSyncState(file, target) {
+  const map = new Map();
+  if (!existsSync(file)) {
+    return map;
+  }
+  const lines = readFileSync(file, "utf8").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      if (text(entry.target) !== target.target || text(entry.database) !== target.database) {
+        continue;
+      }
+      const docId = text(entry.docId);
+      if (!docId) {
+        continue;
+      }
+      map.set(docId, entry);
+    } catch {
+      continue;
+    }
+  }
+  return map;
+}
+
+function isDocAlreadySynced(docId, fingerprint, syncState) {
+  const entry = syncState.get(text(docId));
+  if (!entry) {
+    return false;
+  }
+  if (!entry.hasD1) {
+    return false;
+  }
+  return text(entry.sourceFile) === text(fingerprint.sourceFile)
+    && integer(entry.sourceMtimeMs, -1) === integer(fingerprint.sourceMtimeMs, -2)
+    && integer(entry.sourceSize, -1) === integer(fingerprint.sourceSize, -2);
+}
+
+function readImportResults(file) {
+  if (!existsSync(file)) {
+    return [];
+  }
+  const body = readFileSync(file, "utf8").trim();
+  if (!body) {
+    return [];
+  }
+  if (body.startsWith("[")) {
+    const parsed = readJsonFile(file);
+    return Array.isArray(parsed) ? parsed : [];
+  }
+  return body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
+}
+
+function mergeImportSyncState(syncState, entries, target) {
+  for (const entry of entries) {
+    if (text(entry.target) !== target.target || text(entry.database) !== target.database) {
+      continue;
+    }
+    const docId = text(entry.docId);
+    if (!docId) {
+      continue;
+    }
+    syncState.set(docId, entry);
+  }
 }
 
 function isUnderDir(file, dir) {

@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildContentOptions, prepareKnowledgeContentAsync } from "./knowledge-content-r2.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.file) {
@@ -11,15 +12,19 @@ if (!args.file) {
 }
 
 const now = Date.now();
-const maxMarkdownChars = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_MARKDOWN_CHARS, 30000);
-const maxSearchTextChars = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SEARCH_TEXT_CHARS, 12000);
 const maxSqlBatchBytes = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES, 700000);
+const contentOptions = buildContentOptions(args);
 const docs = loadDocs(args.file);
 if (docs.length === 0) {
   throw new Error(`no knowledge docs found in ${args.file}`);
 }
 
-const batches = buildSqlBatches(docs.map((doc) => statementsForDoc(normalizeDoc(doc))));
+const normalizedDocs = await mapWithConcurrency(docs, contentOptions.uploadConcurrency, async (doc) => {
+  const normalized = await normalizeDoc(doc);
+  appendSyncEntries(buildSyncEntries([normalized], { hasD1: false, hasR2: Boolean(normalized.contentKey) }));
+  return normalized;
+});
+const batches = buildSqlBatches(normalizedDocs);
 let imported = 0;
 
 for (let index = 0; index < batches.length; index += 1) {
@@ -30,6 +35,8 @@ for (let index = 0; index < batches.length; index += 1) {
     writeFileSync(sqlFile, sql);
     executeWrangler(sqlFile);
     imported += batches[index].docs;
+    appendImportResults(args.resultFile, buildImportResults(batches[index].items));
+    appendSyncEntries(buildSyncEntries(batches[index].items, { hasD1: true, hasR2: true }));
     console.error(`[knowledge-import] imported batch ${index + 1}/${batches.length} docs=${batches[index].docs}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -58,20 +65,23 @@ function executeWrangler(sqlFile) {
   }
 }
 
-console.log(JSON.stringify({ imported, batches: batches.length, maxMarkdownChars }, null, 2));
+console.log(JSON.stringify({ imported, batches: batches.length, contentBucket: contentOptions.bucket }, null, 2));
 
 function statementsForDoc(item) {
   return [
     `insert into knowledge_docs (
         doc_id, source_type, report_type, source_name, title, url, published_at, fetched_at,
-        event_time, target_name, target_code, discovery_method, access_method, summary, md_text,
-        search_text, metadata_json, recommendation_score, recommendation_level,
+        event_time, target_name, target_code, discovery_method, access_method, summary,
+        content_key, content_url, content_type, content_encoding, content_bytes, content_sha256,
+        content_preview, metadata_json, recommendation_score, recommendation_level,
         recommendation_tags_json, recommendation_reasons_json, rank_score, source_weight, updated_at
       ) values (
         ${q(item.docId)}, ${q(item.sourceType)}, ${q(item.reportType)}, ${q(item.sourceName)},
         ${q(item.title)}, ${q(item.url)}, ${q(item.publishedAt)}, ${q(item.fetchedAt)},
         ${q(item.eventTime)}, ${q(item.targetName)}, ${q(item.targetCode)}, ${q(item.discoveryMethod)},
-        ${q(item.accessMethod)}, ${q(item.summary)}, ${q(item.mdText)}, ${q(item.searchText)},
+        ${q(item.accessMethod)}, ${q(item.summary)}, ${q(item.contentKey)}, ${q(item.contentUrl)},
+        ${q(item.contentType)}, ${q(item.contentEncoding)}, ${item.contentBytes}, ${q(item.contentSha256)},
+        ${q(item.contentPreview)},
         ${q(JSON.stringify(item.metadata))}, ${item.recommendationScore}, ${q(item.recommendationLevel)},
         ${q(JSON.stringify(item.tags))}, ${q(JSON.stringify(item.recommendationReasons))},
         ${item.rankScore}, ${item.sourceWeight}, ${item.updatedAt}
@@ -90,8 +100,13 @@ function statementsForDoc(item) {
         discovery_method=excluded.discovery_method,
         access_method=excluded.access_method,
         summary=excluded.summary,
-        md_text=excluded.md_text,
-        search_text=excluded.search_text,
+        content_key=excluded.content_key,
+        content_url=excluded.content_url,
+        content_type=excluded.content_type,
+        content_encoding=excluded.content_encoding,
+        content_bytes=excluded.content_bytes,
+        content_sha256=excluded.content_sha256,
+        content_preview=excluded.content_preview,
         metadata_json=excluded.metadata_json,
         recommendation_score=excluded.recommendation_score,
         recommendation_level=excluded.recommendation_level,
@@ -116,26 +131,30 @@ function statementsForDoc(item) {
   ];
 }
 
-function buildSqlBatches(docStatements) {
+function buildSqlBatches(items) {
   const batches = [];
   let current = [];
   let currentBytes = 0;
   let currentDocs = 0;
-  for (const statements of docStatements) {
+  let currentItems = [];
+  for (const item of items) {
+    const statements = statementsForDoc(item);
     const sql = statements.join("\n");
     const bytes = Buffer.byteLength(sql);
     if (current.length > 0 && currentBytes + bytes > maxSqlBatchBytes) {
-      batches.push({ statements: current, docs: currentDocs });
+      batches.push({ statements: current, docs: currentDocs, items: currentItems });
       current = [];
       currentBytes = 0;
       currentDocs = 0;
+      currentItems = [];
     }
     current.push(...statements);
     currentBytes += bytes;
     currentDocs += 1;
+    currentItems.push(item);
   }
   if (current.length > 0) {
-    batches.push({ statements: current, docs: currentDocs });
+    batches.push({ statements: current, docs: currentDocs, items: currentItems });
   }
   return batches;
 }
@@ -145,6 +164,8 @@ function parseArgs(argv) {
     database: "stock_info",
     file: "",
     remote: false,
+    resultFile: "",
+    syncFile: "",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -156,6 +177,14 @@ function parseArgs(argv) {
       parsed.database = requireValue(argv, ++i, arg);
     } else if (arg === "--file") {
       parsed.file = requireValue(argv, ++i, arg);
+    } else if (arg === "--content-bucket") {
+      parsed.contentBucket = requireValue(argv, ++i, arg);
+    } else if (arg === "--content-public-base-url") {
+      parsed.contentPublicBaseUrl = requireValue(argv, ++i, arg);
+    } else if (arg === "--result-file") {
+      parsed.resultFile = requireValue(argv, ++i, arg);
+    } else if (arg === "--sync-file") {
+      parsed.syncFile = requireValue(argv, ++i, arg);
     } else if (!parsed.file) {
       parsed.file = arg;
     } else {
@@ -174,8 +203,69 @@ function requireValue(argv, index, flag) {
 }
 
 function usage() {
-  console.error("Usage: node scripts/import-knowledge-docs.mjs --file docs.jsonl [--remote] [--database stock_info]");
+  console.error("Usage: node scripts/import-knowledge-docs.mjs --file docs.jsonl [--remote] [--database stock_info] [--content-bucket bucket] [--content-public-base-url url] [--result-file file.jsonl] [--sync-file file.jsonl]");
   process.exit(1);
+}
+
+function buildImportResults(items) {
+  const importedAt = new Date().toISOString();
+  return items.map((item) => ({
+    scope: "knowledge_docs",
+    docId: item.docId,
+    database: args.database,
+    target: args.remote ? "remote" : "local",
+    importedAt,
+    sourceFile: text(item.metadata?.inputRelativeFile),
+    sourceMtimeMs: integer(item.metadata?.sourceMtimeMs, 0),
+    sourceSize: integer(item.metadata?.sourceSize, 0),
+    contentKey: item.contentKey,
+    contentUrl: item.contentUrl,
+    contentType: item.contentType,
+    contentEncoding: item.contentEncoding,
+    contentBytes: item.contentBytes,
+    contentSha256: item.contentSha256,
+    contentBucket: contentOptions.bucket,
+    hasD1: true,
+    hasR2: Boolean(item.contentKey),
+  }));
+}
+
+function appendImportResults(file, entries) {
+  if (!file || entries.length === 0) {
+    return;
+  }
+  writeFileSync(file, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, { flag: "a" });
+}
+
+function buildSyncEntries(items, overrides = {}) {
+  const importedAt = new Date().toISOString();
+  return items.map((item) => ({
+    scope: "knowledge_docs",
+    docId: item.docId,
+    database: args.database,
+    target: args.remote ? "remote" : "local",
+    importedAt,
+    sourceFile: text(item.metadata?.inputRelativeFile),
+    sourceMtimeMs: integer(item.metadata?.sourceMtimeMs, 0),
+    sourceSize: integer(item.metadata?.sourceSize, 0),
+    contentKey: item.contentKey,
+    contentUrl: item.contentUrl,
+    contentType: item.contentType,
+    contentEncoding: item.contentEncoding,
+    contentBytes: item.contentBytes,
+    contentSha256: item.contentSha256,
+    contentBucket: contentOptions.bucket,
+    hasD1: false,
+    hasR2: Boolean(item.contentKey),
+    ...overrides,
+  }));
+}
+
+function appendSyncEntries(entries) {
+  if (!args.syncFile || entries.length === 0) {
+    return;
+  }
+  writeFileSync(args.syncFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, { flag: "a" });
 }
 
 function loadDocs(file) {
@@ -198,7 +288,7 @@ function loadDocs(file) {
     .map((line) => JSON.parse(line));
 }
 
-function normalizeDoc(raw) {
+async function normalizeDoc(raw) {
   const docId = text(raw.docId ?? raw.doc_id ?? raw.id);
   const title = text(raw.title);
   if (!docId) {
@@ -211,13 +301,13 @@ function normalizeDoc(raw) {
   const reportType = text((raw.reportType ?? raw.report_type) || sourceType);
   const summary = text(raw.summary);
   const rawMdText = text(raw.mdText ?? raw.md_text ?? raw.markdown);
-  const mdText = truncate(rawMdText, maxMarkdownChars);
   const metadata = object(raw.metadata ?? raw.metadata_json);
-  if (rawMdText.length > mdText.length) {
-    metadata.markdownTruncated = true;
-    metadata.originalMarkdownChars = rawMdText.length;
-    metadata.importedMarkdownChars = mdText.length;
-  }
+  const content = await prepareKnowledgeContentAsync({
+    docId,
+    markdown: rawMdText,
+    remote: args.remote,
+    options: contentOptions,
+  });
   const tags = unique(array(raw.tags).map(text));
   return {
     docId,
@@ -232,10 +322,9 @@ function normalizeDoc(raw) {
     targetName: text(raw.targetName ?? raw.target_name),
     targetCode: text(raw.targetCode ?? raw.target_code),
     discoveryMethod: text(raw.discoveryMethod ?? raw.discovery_method ?? "local_import"),
-    accessMethod: text(raw.accessMethod ?? raw.access_method ?? "markdown"),
+    accessMethod: content.contentKey ? "markdown" : text(raw.accessMethod ?? raw.access_method ?? "markdown"),
     summary,
-    mdText,
-    searchText: truncate(text(raw.searchText ?? raw.search_text) || [title, summary, mdText.slice(0, 4000), tags.join(" ")].join(" "), maxSearchTextChars),
+    ...content,
     metadata,
     recommendationScore: integer(raw.recommendationScore ?? raw.recommendation_score, 0),
     recommendationLevel: text(raw.recommendationLevel ?? raw.recommendation_level),
@@ -328,8 +417,21 @@ function positiveInteger(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function truncate(value, max) {
-  return value.length > max ? value.slice(0, max) : value;
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+      if ((index + 1) % 25 === 0 || index + 1 === items.length) {
+        console.error(`[knowledge-import] prepared content ${index + 1}/${items.length}`);
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function unique(values) {
