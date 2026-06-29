@@ -8,6 +8,9 @@ import { buildContentOptions, prepareKnowledgeContentAsync } from "./knowledge-c
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.file) usage();
+if (args.remote && !args.uploadContentRemote) {
+  throw new Error("remote filtered knowledge import requires --upload-content-remote; use scripts/import-filtered-knowledge-docs-remote.mjs");
+}
 
 const now = Date.now();
 const maxSqlBatchBytes = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES, 700000);
@@ -17,8 +20,23 @@ if (rows.length === 0) {
   console.log(JSON.stringify({ imported: 0, file: args.file }, null, 2));
   process.exit(0);
 }
+const syncTarget = { scope: "knowledge_filtered_docs", target: args.remote ? "remote" : "local", database: args.database };
+const syncState = loadSyncState(args.syncFile, syncTarget);
+const pendingRows = [];
+let skippedSynced = 0;
+for (const row of rows) {
+  if (isFilteredRowAlreadySynced(row, syncState, { requireR2: args.uploadContentRemote })) {
+    skippedSynced += 1;
+    continue;
+  }
+  pendingRows.push(row);
+}
+if (pendingRows.length === 0) {
+  console.log(JSON.stringify({ imported: 0, skippedSynced, file: args.file }, null, 2));
+  process.exit(0);
+}
 
-const normalizedRows = await mapWithConcurrency(rows, contentOptions.uploadConcurrency, async (row) => {
+const normalizedRows = await mapWithConcurrency(pendingRows, contentOptions.uploadConcurrency, async (row) => {
   const normalized = await normalizeRow(row);
   appendSyncEntries(buildSyncEntries([normalized], { hasD1: false, hasR2: Boolean(normalized.contentKey) }));
   return normalized;
@@ -64,7 +82,7 @@ function executeWrangler(sqlFile) {
   }
 }
 
-console.log(JSON.stringify({ imported, batches: batches.length, contentBucket: contentOptions.bucket }, null, 2));
+console.log(JSON.stringify({ imported, skippedSynced, batches: batches.length, contentBucket: contentOptions.bucket }, null, 2));
 
 function statementForRow(item) {
   return `insert into knowledge_filtered_docs (
@@ -179,11 +197,12 @@ async function normalizeRow(raw) {
 }
 
 function parseArgs(argv) {
-  const parsed = { database: "stock_info", file: "", remote: false, resultFile: "", syncFile: "" };
+  const parsed = { database: "stock_info", file: "", remote: false, uploadContentRemote: false, resultFile: "", syncFile: "" };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--remote") parsed.remote = true;
     else if (arg === "--local") parsed.remote = false;
+    else if (arg === "--upload-content-remote") parsed.uploadContentRemote = true;
     else if (arg === "--database") parsed.database = requireValue(argv, ++i, arg);
     else if (arg === "--file") parsed.file = requireValue(argv, ++i, arg);
     else if (arg === "--content-bucket") parsed.contentBucket = requireValue(argv, ++i, arg);
@@ -202,6 +221,49 @@ function loadRows(file) {
   return body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
 }
 
+function loadSyncState(file, target) {
+  const map = new Map();
+  if (!file) {
+    return map;
+  }
+  try {
+    const body = readFileSync(file, "utf8");
+    for (const line of body.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)) {
+      const entry = JSON.parse(line);
+      if (text(entry.scope) !== target.scope || text(entry.target) !== target.target || text(entry.database) !== target.database) {
+        continue;
+      }
+      const docId = text(entry.docId);
+      if (!docId) {
+        continue;
+      }
+      map.set(docId, entry);
+    }
+  } catch {
+    return map;
+  }
+  return map;
+}
+
+function isFilteredRowAlreadySynced(raw, syncState, options = {}) {
+  const doc = raw.doc || raw;
+  const docId = text(doc.docId ?? doc.doc_id ?? raw.docId ?? raw.doc_id);
+  if (!docId) {
+    return false;
+  }
+  const entry = syncState.get(docId);
+  if (!entry || !entry.hasD1) {
+    return false;
+  }
+  if (options.requireR2 && !entry.hasR2) {
+    return false;
+  }
+  const metadata = object(doc.metadata ?? doc.metadata_json);
+  return text(entry.sourceFile) === text(raw.file ?? raw.sourceFile ?? raw.source_file ?? metadata.inputRelativeFile)
+    && integer(entry.sourceMtimeMs, -1) === integer(metadata.sourceMtimeMs, -2)
+    && integer(entry.sourceSize, -1) === integer(metadata.sourceSize, -2);
+}
+
 function requireValue(argv, index, flag) {
   const value = argv[index];
   if (!value) throw new Error(`missing value for ${flag}`);
@@ -209,7 +271,7 @@ function requireValue(argv, index, flag) {
 }
 
 function usage() {
-  console.error("Usage: node scripts/import-filtered-knowledge-docs.mjs --file filtered.jsonl [--remote] [--database stock_info] [--content-bucket bucket] [--content-public-base-url url] [--result-file file.jsonl] [--sync-file file.jsonl]");
+  console.error("Usage: node scripts/import-filtered-knowledge-docs.mjs --file filtered.jsonl [--remote|--local] [--upload-content-remote] [--database stock_info] [--content-bucket bucket] [--content-public-base-url url] [--result-file file.jsonl] [--sync-file file.jsonl]");
   process.exit(1);
 }
 

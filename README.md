@@ -38,6 +38,65 @@ chmod +x ./start-local.sh
 第一步用 `--omit=optional` 跳过容易卡住的可选依赖构建；第二步补齐
 `rollup` 的平台包，但禁用安装脚本，避免 `fsevents` 之类的可选包拖慢安装。
 
+## 知识处理脚本
+
+知识处理现在分成“本地处理”和“远端导入”两步，避免本地处理时直接上传 Cloudflare。
+
+### `./process-knowledge-local-full.sh`
+
+用途：本地全量重跑知识处理。
+
+它会做这些事：
+
+- 调用 `scripts/process-knowledge-local-full.mjs`
+- 以本地模式运行 `process-knowledge-once.mjs`
+- 执行 `full-rescan`
+- 忽略年龄限制
+- 把 `processedDir` 也作为额外输入目录重新扫描
+- 结果写入本地 D1，并把正文内容保存为本地 `localfs:` 内容键
+- 更新本地同步状态文件 `knowledge-remote-sync.jsonl`
+
+适合什么时候用：
+
+- 想在本地完整重建一次知识库
+- 想重新生成最新的 `knowledge-import-*.jsonl`
+- 不想在这一步触发 Cloudflare R2 上传
+
+### `./import-knowledge-docs-remote-latest.sh`
+
+用途：把最近一次生成的 `knowledge-import-*.jsonl` 导入远端。
+
+它会做这些事：
+
+- 自动读取 `config/knowledge-processing.json` 里的 `workDir`、`stateDir`、`database`
+- 自动选取 `workDir` 中最新的 `knowledge-import-*.jsonl`
+- 调用远端专用导入脚本
+- 上传正文内容到 Cloudflare R2
+- 写入远端 D1
+- 把导入结果和同步状态写回 `knowledge-remote-sync.jsonl`
+- 如果本地同步状态里已经记录过同一份源文件指纹，则直接跳过，避免重复上传和重复写 D1
+
+适合什么时候用：
+
+- 本地 `process-knowledge-local-full.sh` 跑完以后
+- 想把最近一批正式同步到 Cloudflare
+
+### `./import-filtered-knowledge-docs-remote-latest.sh`
+
+用途：把最近一次生成的 `knowledge-filtered-*.jsonl` 导入远端复核表。
+
+它会做这些事：
+
+- 自动选取 `workDir` 中最新的 `knowledge-filtered-*.jsonl`
+- 上传相关正文到 Cloudflare R2
+- 写入远端 `knowledge_filtered_docs`
+- 同样复用本地同步状态文件，已同步的同源文档会跳过
+
+适合什么时候用：
+
+- 你启用了 filtered docs 导入
+- 想把筛掉的候选也同步到远端做人工复核
+
 ## 验证
 
 ```bash

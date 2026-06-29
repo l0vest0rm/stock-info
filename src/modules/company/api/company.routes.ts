@@ -6,6 +6,7 @@ import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
 import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
 import { requestLlmText, type SupportedLlmModel } from "../../../shared/llm-client";
+import { REPORT_ANALYZE_SYSTEM_PROMPT, REPORT_ANALYZE_USER_PROMPT } from "../../../generated/prompt-text";
 import type { AppEnv, CompanyOverview, KlineBar } from "../../../types";
 
 export const companyRoutes = new Hono<AppEnv>();
@@ -53,37 +54,6 @@ const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
 const REPORT_LLM_MODEL: SupportedLlmModel = "doubao-seed-2-0-mini-260215";
-const REPORT_ANALYZE_SYSTEM_PROMPT =
-  "你是一名证券研究员助手。请从研报正文中只提取公司未来几年年度业绩预测相关内容。只能提取文中明确给出的信息，不能自行推断。输出必须是一个 JSON 对象。只保留未来年度预测字段：营收、归母净利润、EPS、PE。营收和净利润统一换算为亿元，EPS 和 PE 保持数值。只提取年度预测，不提取季度实际、季度预测、历史已披露业绩。如果没有明确的年度预测，就返回空数组。";
-const REPORT_ANALYZE_USER_PROMPT = `请从下面研报中只提取“未来年度业绩预测”信息，并严格输出 JSON：
-{
-  "forecasts": [
-    {
-      "year": 2026,
-      "revenue": 0,
-      "netProfit": 0,
-      "eps": 0,
-      "pe": 0
-    }
-  ]
-}
-
-规则：
-1. 只保留文中明确出现的“年度预测年份”，例如“预计 2026-2028 年”“Forecast 2026E/2027E/2028E”“我们预计公司2026年归母净利润为...”。
-2. 严禁把季度实际、季度预测、历史已披露业绩当成 forecasts。
-3. 如果同一篇研报里同时出现“季度实际/历史业绩”和“年度预测”，必须优先提取年度预测；不要被前面的季度实际数字干扰。
-4. 优先提取带有“预计、预测、我们预计、Forecast、E、2026-2028年、对应PE”等表述的年度预测句子或预测表格。
-5. revenue/netProfit 单位统一为亿元；如果原文是万元、百万元、十亿元等，需要换算成亿元。
-6. 如果某个字段文中没有明确给出，就返回 null，不要猜。
-7. 如果研报只给了 EPS/PE，没有给营收或净利润，也照样保留。
-8. forecasts 按年份升序排列；如果完全没有有效预测，返回空数组。
-9. 自检一遍：forecasts 中每个数字都必须对应“全年/年度预测”，不能是单季实际值。
-10. 只输出 JSON，不要输出解释。
-
-标题：{{TITLE}}
-
-正文：
-{{CONTENT}}`;
 
 companyRoutes.get("/company/overview", async (c) => {
   const code = requireQuery(c, "code");

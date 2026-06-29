@@ -10,6 +10,9 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.file) {
   usage();
 }
+if (args.remote && !args.uploadContentRemote) {
+  throw new Error("remote knowledge import requires --upload-content-remote; use scripts/import-knowledge-docs-remote.mjs");
+}
 
 const now = Date.now();
 const maxSqlBatchBytes = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES, 700000);
@@ -18,8 +21,23 @@ const docs = loadDocs(args.file);
 if (docs.length === 0) {
   throw new Error(`no knowledge docs found in ${args.file}`);
 }
+const syncTarget = { scope: "knowledge_docs", target: args.remote ? "remote" : "local", database: args.database };
+const syncState = loadSyncState(args.syncFile, syncTarget);
+const pendingDocs = [];
+let skippedSynced = 0;
+for (const doc of docs) {
+  if (isDocAlreadySynced(doc, syncState, { requireR2: args.uploadContentRemote })) {
+    skippedSynced += 1;
+    continue;
+  }
+  pendingDocs.push(doc);
+}
+if (pendingDocs.length === 0) {
+  console.log(JSON.stringify({ imported: 0, skippedSynced, batches: 0, contentBucket: contentOptions.bucket }, null, 2));
+  process.exit(0);
+}
 
-const normalizedDocs = await mapWithConcurrency(docs, contentOptions.uploadConcurrency, async (doc) => {
+const normalizedDocs = await mapWithConcurrency(pendingDocs, contentOptions.uploadConcurrency, async (doc) => {
   const normalized = await normalizeDoc(doc);
   appendSyncEntries(buildSyncEntries([normalized], { hasD1: false, hasR2: Boolean(normalized.contentKey) }));
   return normalized;
@@ -65,7 +83,7 @@ function executeWrangler(sqlFile) {
   }
 }
 
-console.log(JSON.stringify({ imported, batches: batches.length, contentBucket: contentOptions.bucket }, null, 2));
+console.log(JSON.stringify({ imported, skippedSynced, batches: batches.length, contentBucket: contentOptions.bucket }, null, 2));
 
 function statementsForDoc(item) {
   return [
@@ -164,6 +182,7 @@ function parseArgs(argv) {
     database: "stock_info",
     file: "",
     remote: false,
+    uploadContentRemote: false,
     resultFile: "",
     syncFile: "",
   };
@@ -173,6 +192,8 @@ function parseArgs(argv) {
       parsed.remote = true;
     } else if (arg === "--local") {
       parsed.remote = false;
+    } else if (arg === "--upload-content-remote") {
+      parsed.uploadContentRemote = true;
     } else if (arg === "--database") {
       parsed.database = requireValue(argv, ++i, arg);
     } else if (arg === "--file") {
@@ -203,7 +224,7 @@ function requireValue(argv, index, flag) {
 }
 
 function usage() {
-  console.error("Usage: node scripts/import-knowledge-docs.mjs --file docs.jsonl [--remote] [--database stock_info] [--content-bucket bucket] [--content-public-base-url url] [--result-file file.jsonl] [--sync-file file.jsonl]");
+  console.error("Usage: node scripts/import-knowledge-docs.mjs --file docs.jsonl [--remote|--local] [--upload-content-remote] [--database stock_info] [--content-bucket bucket] [--content-public-base-url url] [--result-file file.jsonl] [--sync-file file.jsonl]");
   process.exit(1);
 }
 
@@ -286,6 +307,47 @@ function loadDocs(file) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => JSON.parse(line));
+}
+
+function loadSyncState(file, target) {
+  const map = new Map();
+  if (!file) {
+    return map;
+  }
+  try {
+    const body = readFileSync(file, "utf8");
+    for (const line of body.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)) {
+      const entry = JSON.parse(line);
+      if (text(entry.scope) !== target.scope || text(entry.target) !== target.target || text(entry.database) !== target.database) {
+        continue;
+      }
+      const docId = text(entry.docId);
+      if (!docId) {
+        continue;
+      }
+      map.set(docId, entry);
+    }
+  } catch {
+    return map;
+  }
+  return map;
+}
+
+function isDocAlreadySynced(raw, syncState, options = {}) {
+  const docId = text(raw.docId ?? raw.doc_id ?? raw.id);
+  if (!docId) {
+    return false;
+  }
+  const entry = syncState.get(docId);
+  if (!entry || !entry.hasD1) {
+    return false;
+  }
+  if (options.requireR2 && !entry.hasR2) {
+    return false;
+  }
+  return text(entry.sourceFile) === text(raw.metadata?.inputRelativeFile)
+    && integer(entry.sourceMtimeMs, -1) === integer(raw.metadata?.sourceMtimeMs, -2)
+    && integer(entry.sourceSize, -1) === integer(raw.metadata?.sourceSize, -2);
 }
 
 async function normalizeDoc(raw) {

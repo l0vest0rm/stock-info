@@ -215,7 +215,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     }
     const sourceName = String(item?.source_name || '').trim().toLowerCase()
     const title = String(item?.title || '').trim().toLowerCase()
-    const preview = normalizeKnowledgeNewsDedupeText(String(item?.content_preview || item?.summary || '').slice(0, 320)).slice(0, 180)
+    const preview = normalizeKnowledgeNewsDedupeText(String(item?.content_preview || item?.title || '').slice(0, 320)).slice(0, 180)
     return `tencent|${sourceName}|${title}|${preview}`
   }
 
@@ -325,7 +325,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   async function fetchKnowledgeDocumentContent(data: any) {
     const contentUrl = String(data && data.content_url ? data.content_url : '').trim()
     if (!contentUrl) {
-      return String(data && data.summary ? data.summary : '')
+      return String(data && data.title ? data.title : '')
     }
     const response = await fetch(contentUrl, { credentials: 'omit' })
     if (!response.ok) {

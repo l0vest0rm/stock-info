@@ -39,7 +39,7 @@
   "defaultReportType": "news",
   "maxMarkdownChars": 30000,
   "llm": {
-    "enabled": true,
+    "enabled": false,
     "model": "doubao-seed-2-0-mini-260215",
     "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
     "apiKeyEnv": "VOLC_ARK_API_KEY",
@@ -52,8 +52,8 @@
     "minScore": 2,
     "uncertainMinScore": 1,
     "uncertainMaxScore": 1,
-    "llmReview": true,
-    "llmBatchSize": 50,
+    "llmReview": false,
+    "llmBatchSize": 10,
     "llmMinConfidence": 0.65,
     "coreKeywords": [
       "AI", "人工智能", "大模型", "LLM", "智能体", "Agent", "多模态", "推理",

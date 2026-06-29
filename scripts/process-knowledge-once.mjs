@@ -19,6 +19,13 @@ import {
   SQLiteLlmCacheStore,
   createResponsesProvider,
 } from "@m2ai/shared-llm-client/sqlite";
+import { parseKnowledgeFilename } from "./lib/knowledge-filename-parser.mjs";
+import {
+  KNOWLEDGE_ENRICH_SYSTEM_PROMPT,
+  KNOWLEDGE_ENRICH_USER_PROMPT,
+  TOPIC_BATCH_SYSTEM_PROMPT,
+  TOPIC_BATCH_USER_PROMPT,
+} from "./generated/prompt-text.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const sharedDataRoot = "/Users/terry/git/data";
@@ -35,6 +42,7 @@ const remotePdfCacheDir = join(workDir, "remote-pdf");
 const markdownCacheDir = join(workDir, "markdown-cache");
 const llmCacheDbPath = join(stateDir, "llm-cache.sqlite");
 const llmReviewDir = join(reviewDir, "llm-topic-review");
+const localLlmClients = new Map();
 const importSyncFile = resolve(stateDir, config.importSyncFile || "knowledge-remote-sync.jsonl");
 const now = new Date();
 const runId = formatRunTime(now);
@@ -176,13 +184,14 @@ for (const batch of fileBatches) {
         });
       }
       const materializedDoc = await materializePdfIfNeeded(rawDoc, batch.file, config);
-      const doc = await enrichWithLlmIfEnabled({
+      const finalizedDoc = finalizeDocForImport({
         ...materializedDoc,
         metadata: {
           ...materializedDoc.metadata,
           topicFilter: topic,
         },
       }, config);
+      const doc = await enrichWithLlmIfEnabled(finalizedDoc, config);
       return withStockLinkMetadata(doc);
     });
     docs.push(...keptDocs);
@@ -220,7 +229,7 @@ if (filteredDocs.length > 0 && filteredReviewImportEnabled) {
     "npm",
     [
       "run",
-      "import:knowledge:filtered",
+      dbTarget ? "import:knowledge:filtered:remote" : "import:knowledge:filtered",
       "--",
       "--file",
       filteredImportFile,
@@ -248,7 +257,7 @@ if (uniqueDocs.length > 0) {
     "npm",
     [
       "run",
-      "import:knowledge:docs",
+      dbTarget ? "import:knowledge:docs:remote" : "import:knowledge:docs",
       "--",
       "--file",
       importFile,
@@ -354,15 +363,32 @@ async function processInputFile(file, cfg) {
     return loadJsonDocs(file).map((item) => normalizeInputDoc(item, file, cfg, fingerprint));
   }
   if (ext === ".pdf") {
+    const parsed = parseKnowledgeFilename(file);
     return [normalizeInputDoc({
-      title: titleFromFilename(file),
+      docId: legacyPdfDocId(file),
+      title: parsed.title,
       sourceType: "research_report",
-      reportType: "research_report",
-      sourceName: cfg.defaultSourceName,
+      reportType: parsed.reportType,
+      sourceName: parsed.sourceName || cfg.defaultSourceName,
       accessMethod: "local_pdf_pending",
-      summary: titleFromFilename(file),
+      publishedAt: parsed.publishedAt,
+      eventTime: parsed.publishedAt,
+      targetName: parsed.targetName,
+      targetCode: parsed.targetCode,
+      summary: parsed.title,
       markdown: "",
-      metadata: { originalFile: basename(file), pdfStored: false, localPdfPath: file },
+      metadata: {
+        originalFile: basename(file),
+        pdfStored: false,
+        localPdfPath: file,
+        filenameParse: {
+          publishedAt: parsed.publishedAt,
+          sourceName: parsed.sourceName,
+          targetName: parsed.targetName,
+          targetCode: parsed.targetCode,
+          reportType: parsed.reportType,
+        },
+      },
       tags: ["pdf"],
     }, file, cfg, fingerprint)];
   }
@@ -385,23 +411,12 @@ function normalizeInputDoc(raw, file, cfg, fingerprint = sourceFingerprint(file)
   const normalizedRaw = normalizeRawInput(raw, file);
   const title = text(normalizedRaw.title) || titleFromFilename(file);
   const markdown = text(normalizedRaw.mdText ?? normalizedRaw.md_text ?? normalizedRaw.markdown ?? normalizedRaw.content ?? normalizedRaw.body);
-  const summary = text(normalizedRaw.summary) || summarize(markdown);
   const sourceType = text((normalizedRaw.sourceType ?? normalizedRaw.source_type) || inferSourceType(normalizedRaw, file, cfg));
   const reportType = text((normalizedRaw.reportType ?? normalizedRaw.report_type) || inferReportType(sourceType, normalizedRaw, file));
-  const baseTags = unique([
+  const tags = unique([
     ...array(normalizedRaw.tags).map(text),
     ...(extname(file).toLowerCase() === ".pdf" ? ["pdf"] : []),
   ]);
-  const scoring = scoreDocument({
-    title,
-    summary,
-    markdown,
-    sourceType,
-    reportType,
-    tags: baseTags,
-  }, cfg);
-  const tags = unique([...baseTags, ...scoring.tags]);
-  const recommendationScore = integer(normalizedRaw.recommendationScore ?? normalizedRaw.recommendation_score, scoring.score);
   return {
     docId: text(normalizedRaw.docId ?? normalizedRaw.doc_id ?? normalizedRaw.id) || makeDocId(normalizedRaw, file),
     sourceType,
@@ -416,7 +431,7 @@ function normalizeInputDoc(raw, file, cfg, fingerprint = sourceFingerprint(file)
     targetCode: text(normalizedRaw.targetCode ?? normalizedRaw.target_code),
     discoveryMethod: text(normalizedRaw.discoveryMethod ?? normalizedRaw.discovery_method) || "local_process_once",
     accessMethod: text(normalizedRaw.accessMethod ?? normalizedRaw.access_method) || "markdown",
-    summary,
+    summary: text(normalizedRaw.summary),
     markdown: truncate(markdown, integer(cfg.maxMarkdownChars, 120000)),
     tags,
     metadata: {
@@ -428,13 +443,39 @@ function normalizeInputDoc(raw, file, cfg, fingerprint = sourceFingerprint(file)
       sourceSize: fingerprint.sourceSize,
       pdfStored: false,
     },
-    recommendationScore,
+    recommendationScore: integer(normalizedRaw.recommendationScore ?? normalizedRaw.recommendation_score, 0),
     recommendationLevel: "",
-    recommendationReasons: array(normalizedRaw.recommendationReasons ?? normalizedRaw.recommendation_reasons).map(text).filter(Boolean).length > 0
-      ? array(normalizedRaw.recommendationReasons ?? normalizedRaw.recommendation_reasons).map(text).filter(Boolean)
-      : scoring.reasons,
-    rankScore: integer(normalizedRaw.rankScore ?? normalizedRaw.rank_score, recommendationScore),
+    recommendationReasons: array(normalizedRaw.recommendationReasons ?? normalizedRaw.recommendation_reasons).map(text).filter(Boolean),
+    rankScore: integer(normalizedRaw.rankScore ?? normalizedRaw.rank_score, 0),
     sourceWeight: integer(normalizedRaw.sourceWeight ?? normalizedRaw.source_weight, 0),
+  };
+}
+
+function finalizeDocForImport(doc, cfg) {
+  const summary = text(doc.summary);
+  const scoring = scoreDocument({
+    title: doc.title,
+    summary,
+    markdown: text(doc.markdown),
+    sourceType: doc.sourceType,
+    reportType: doc.reportType,
+    tags: array(doc.tags),
+  }, cfg);
+  const explicitRecommendationScore = Number(doc.recommendationScore);
+  const recommendationScore = Number.isFinite(explicitRecommendationScore)
+    ? integer(doc.recommendationScore, 0)
+    : scoring.score;
+  const recommendationReasons = array(doc.recommendationReasons).map(text).filter(Boolean);
+  const explicitRankScore = Number(doc.rankScore);
+  return {
+    ...doc,
+    summary,
+    tags: unique([...array(doc.tags).map(text), ...scoring.tags]),
+    recommendationScore,
+    recommendationReasons: recommendationReasons.length > 0 ? recommendationReasons : scoring.reasons,
+    rankScore: Number.isFinite(explicitRankScore)
+      ? integer(doc.rankScore, recommendationScore)
+      : recommendationScore,
   };
 }
 
@@ -537,7 +578,7 @@ async function materializePdfIfNeeded(doc, file, cfg) {
       ...doc,
       accessMethod: "markdown_from_remote_pdf",
       markdown,
-      summary: doc.summary || summarize(markdown),
+      summary: text(doc.summary),
       metadata: {
         ...doc.metadata,
         pdfStored: false,
@@ -553,7 +594,7 @@ async function materializePdfIfNeeded(doc, file, cfg) {
       ...doc,
       accessMethod: "markdown_from_local_pdf",
       markdown,
-      summary: doc.summary || summarize(markdown),
+      summary: text(doc.summary),
       metadata: {
         ...doc.metadata,
         pdfStored: false,
@@ -733,7 +774,7 @@ function scoreDocument(doc, cfg) {
   for (const tag of doc.tags) {
     score += integer(cfg.tagScores?.[tag], 0);
   }
-  const haystack = `${doc.title}\n${doc.summary}\n${doc.markdown.slice(0, 8000)}`.toLowerCase();
+  const haystack = `${doc.title}\n${doc.markdown.slice(0, 8000)}`.toLowerCase();
   for (const signal of array(cfg.signals)) {
     const keywords = array(signal.keywords);
     if (keywords.some((keyword) => haystack.includes(text(keyword).toLowerCase()))) {
@@ -774,16 +815,12 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
     apiKey,
     model,
     maxTokens: integer(llm.maxTokens, 1200),
-    system: "你是金融研报和新闻结构化助手。只输出严格 JSON，不要 Markdown。",
-    user: [
-      "请从以下内容提取公开资讯展示字段。",
-      "输出 JSON 字段：summary:string,tags:string[],recommendationScore:number,recommendationReasons:string[],targetName:string,targetCode:string。",
-      "recommendationScore 取 0-100，面向公开研报资讯推荐质量，不做个性化。",
-      `标题：${doc.title}`,
-      `类型：${doc.sourceType}/${doc.reportType}`,
-      "内容：",
-      content,
-    ].join("\n"),
+    system: KNOWLEDGE_ENRICH_SYSTEM_PROMPT,
+    user: KNOWLEDGE_ENRICH_USER_PROMPT
+      .replace("{{TITLE}}", doc.title)
+      .replace("{{SOURCE_TYPE}}", doc.sourceType)
+      .replace("{{REPORT_TYPE}}", doc.reportType)
+      .replace("{{CONTENT}}", content),
   });
   const parsed = llmResult.response;
   const nextScore = integer(parsed.recommendationScore, doc.recommendationScore);
@@ -841,8 +878,8 @@ async function evaluateTopics(docsToFilter, cfg) {
     return { decisions, auditRows };
   }
 
-  const llm = cfg.llm || {};
-  const apiKey = process.env[llm.apiKeyEnv || "VOLC_ARK_API_KEY"] || process.env.LLM_API_KEY;
+  const llmRequest = resolveTopicFilterLlmRequest(cfg);
+  const apiKey = llmRequest.apiKey;
   if (!apiKey) {
     for (const item of uncertainDocs) {
       decisions.set(item.doc.docId, { keep: false, method: "local_missing_llm_key", ...item.local });
@@ -856,10 +893,6 @@ async function evaluateTopics(docsToFilter, cfg) {
     const batchItems = batch.map((item, index) => ({
       index,
       title: item.doc.title,
-      summary: item.doc.summary,
-      sourceType: item.doc.sourceType,
-      reportType: item.doc.reportType,
-      tags: item.doc.tags,
     }));
     const llmBatch = await reviewTopicBatchWithLlm(batchItems, cfg, {
       batchIndex: Math.floor(offset / batchSize),
@@ -877,7 +910,7 @@ async function evaluateTopics(docsToFilter, cfg) {
         score: item.local.score,
         reasons: [...item.local.reasons, text(result?.reason)].filter(Boolean),
         confidence: Number.isFinite(confidence) ? confidence : 0,
-        model: process.env.KNOWLEDGE_PROCESS_LLM_MODEL || llm.model || "doubao-seed-2-0-mini-260215",
+        model: llmBatch.model,
       };
       decisions.set(item.doc.docId, decision);
       auditRows.push({
@@ -910,25 +943,17 @@ async function evaluateTopics(docsToFilter, cfg) {
 }
 
 async function reviewTopicBatchWithLlm(items, cfg, context = {}) {
-  const llm = cfg.llm || {};
-  const apiKey = process.env[llm.apiKeyEnv || "VOLC_ARK_API_KEY"] || process.env.LLM_API_KEY;
-  const model = process.env.KNOWLEDGE_PROCESS_LLM_MODEL || llm.model || "doubao-seed-2-0-mini-260215";
+  const llmRequest = resolveTopicFilterLlmRequest(cfg);
+  const { apiKey, model } = llmRequest;
   const prompt = {
-    system: "你是金融资讯主题分类器。只输出严格 JSON，不要 Markdown。",
-    user: [
-      "批量判断以下新闻或研报是否主要属于 AI 产业链。",
-      "AI 产业链包括：大模型、AI应用、算力、GPU/ASIC/AI芯片、服务器、数据中心、存储/HBM/DRAM/NAND、半导体、先进封装、光模块/CPO/硅光、高速互联、液冷、电源、国产替代、PCB/AIPCB 等核心硬件与配套环节。",
-      "只根据标题、摘要、类型和已有标签判断，不要扩展联想。",
-      "输出 JSON：{\"items\":[{\"index\":number,\"isAi\":boolean,\"confidence\":number,\"reason\":string}]}。",
-      "待判断列表：",
-      JSON.stringify(items),
-    ].join("\n"),
+    system: TOPIC_BATCH_SYSTEM_PROMPT,
+    user: TOPIC_BATCH_USER_PROMPT.replace("{{ITEMS_JSON}}", JSON.stringify(items)),
   };
   const request = {
-    baseUrl: (process.env.LLM_BASE_URL || llm.baseUrl || "https://ark.cn-beijing.volces.com/api/v3").replace(/\/$/, ""),
+    baseUrl: llmRequest.baseUrl,
     apiKey,
     model,
-    maxTokens: Math.max(300, items.length * 80),
+    maxTokens: Math.max(1200, items.length * 120),
     ...prompt,
   };
   const cacheKey = sha256(JSON.stringify({
@@ -957,7 +982,7 @@ async function reviewTopicBatchWithLlm(items, cfg, context = {}) {
 }
 
 function evaluateTopicLocally(doc, filter) {
-  const haystack = `${doc.title}\n${doc.summary}\n${doc.tags.join(" ")}\n${doc.markdown.slice(0, 12000)}`.toLowerCase();
+  const haystack = text(doc.title).toLowerCase();
   const matchedCore = matchedKeywords(haystack, filter.coreKeywords);
   const matchedSupport = matchedKeywords(haystack, filter.supportKeywords);
   const matchedDeny = matchedKeywords(haystack, filter.denyKeywords);
@@ -977,17 +1002,32 @@ function matchedKeywords(haystack, keywords) {
 async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user }) {
   const provider = inferProvider(baseUrl, model);
   const client = getLocalLlmClient(provider, baseUrl, apiKey);
-  const result = await client.generateText({
+  const request = {
     provider,
     model,
     instructions: system,
     input: [{ role: "user", content: [{ type: "input_text", text: user }] }],
     temperature: 0,
     maxOutputTokens: maxTokens,
-  });
-  const parsed = parseJsonObjectFromText(result.text);
+  };
+  let result = await client.generateText(request);
+  let parsed = parseJsonObjectFromText(result.text);
+  if (!parsed && shouldRetryJsonRequest(result)) {
+    logProgress("retrying llm json request after empty or incomplete output", {
+      provider,
+      model,
+      maxTokens,
+    });
+    result = await client.generateText({
+      ...request,
+      maxOutputTokens: Math.max(maxTokens * 2, 2400),
+      cacheEnabled: false,
+    });
+    parsed = parseJsonObjectFromText(result.text);
+  }
   if (!parsed) {
-    throw new Error(`LLM response is not JSON: ${result.text.slice(0, 300)}`);
+    const responseStatus = text(result.raw?.status || result.raw?.incomplete_details?.reason);
+    throw new Error(`LLM response is not JSON: status=${responseStatus || "unknown"} text=${result.text.slice(0, 300)}`);
   }
   return { response: parsed, cached: result.cached };
 }
@@ -1012,7 +1052,12 @@ function parseJsonObjectFromText(value) {
   }
 }
 
-const localLlmClients = new Map();
+function shouldRetryJsonRequest(result) {
+  const raw = result?.raw;
+  return !result?.text
+    || raw?.status === "incomplete"
+    || Boolean(raw?.incomplete_details?.reason);
+}
 
 function getLocalLlmClient(provider, baseUrl, apiKey) {
   const key = `${provider}::${baseUrl}::${apiKey}`;
@@ -1039,6 +1084,34 @@ function inferProvider(baseUrl, model) {
   return model.startsWith("doubao-") || baseUrl.toLowerCase().includes("volces.com") || baseUrl.toLowerCase().includes("ark.")
     ? "doubao"
     : "openai";
+}
+
+function resolveTopicFilterLlmRequest(cfg) {
+  const llm = cfg.llm || {};
+  const filter = cfg.topicFilter || {};
+  const envModel = process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_MODEL || process.env.KNOWLEDGE_PROCESS_LLM_MODEL;
+  const model = text(envModel || filter.llmModel || "gpt-5.4-mini");
+  const provider = inferProvider(
+    text(process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_BASE_URL || process.env.LLM_BASE_URL || filter.llmBaseUrl || llm.baseUrl || ""),
+    model,
+  );
+  const defaultBaseUrl = provider === "doubao"
+    ? "https://ark.cn-beijing.volces.com/api/v3"
+    : "https://api.openai.com/v1";
+  const baseUrl = text(
+    process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_BASE_URL
+      || process.env.LLM_BASE_URL
+      || filter.llmBaseUrl
+      || (provider === "doubao" ? llm.baseUrl : process.env.OPENAI_BASE_URL)
+      || defaultBaseUrl,
+  ).replace(/\/$/, "");
+  const apiKeyEnv = text(
+    process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_API_KEY_ENV
+      || filter.llmApiKeyEnv
+      || (provider === "doubao" ? "VOLC_ARK_API_KEY" : "OPENAI_API_KEY"),
+  );
+  const apiKey = process.env[apiKeyEnv] || process.env.LLM_API_KEY || "";
+  return { provider, model, baseUrl, apiKeyEnv, apiKey };
 }
 
 function isPdfDoc(doc) {
@@ -1479,6 +1552,16 @@ function titleFromMarkdown(markdown) {
 
 function titleFromFilename(file) {
   return basename(file, extname(file)).replace(/[_-]+/g, " ").trim();
+}
+
+function legacyPdfDocId(file) {
+  const stable = [
+    "",
+    titleFromFilename(file),
+    "",
+    basename(file),
+  ].join("|");
+  return stableKnowledgeDocId(stable);
 }
 
 function stripHtml(value) {

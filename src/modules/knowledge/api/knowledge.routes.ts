@@ -3,6 +3,7 @@ import { fail, ok } from '../../../shared/http';
 import type { AppEnv } from '../../../types';
 
 export const knowledgeRoutes = new Hono<AppEnv>();
+const LOCAL_CONTENT_KEY_PREFIX = "localfs:";
 
 type KnowledgeDocRow = {
   doc_id: string;
@@ -139,10 +140,9 @@ knowledgeRoutes.get("/knowledge/filtered", async (c) => {
       or lower(coalesce(source_name, '')) like ?
       or lower(coalesce(target_name, '')) like ?
       or lower(coalesce(target_code, '')) like ?
-      or lower(coalesce(summary, '')) like ?
       or lower(coalesce(url, '')) like ?
     )`);
-    binds.push(like, like, like, like, like, like);
+    binds.push(like, like, like, like, like);
   }
   const whereSql = `where ${filters.join(" and ")}`;
   const offset = (page - 1) * pageSize;
@@ -311,6 +311,19 @@ knowledgeRoutes.get("/knowledge/content", async (c) => {
   if (!key) {
     return fail(c, 400, "missing content key");
   }
+  if (key.startsWith(LOCAL_CONTENT_KEY_PREFIX)) {
+    const filePath = key.slice(LOCAL_CONTENT_KEY_PREFIX.length);
+    const body = await readLocalKnowledgeContent(filePath);
+    if (body == null) {
+      return fail(c, 404, `knowledge local content not found: ${filePath}`);
+    }
+    return new Response(body, {
+      headers: {
+        "content-type": "text/markdown; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  }
   if (!c.env.KNOWLEDGE_CONTENT_BUCKET) {
     return fail(c, 500, "knowledge content bucket is not configured");
   }
@@ -381,6 +394,19 @@ function isLocalRequest(request: Request | string): boolean {
   ) || (typeof request !== "string" && !(request as Request & { cf?: unknown }).cf);
 }
 
+async function readLocalKnowledgeContent(filePath: string): Promise<string | null> {
+  try {
+    const processObject = (globalThis as { process?: { getBuiltinModule?: (name: string) => any } }).process;
+    const fsModule = processObject?.getBuiltinModule?.("node:fs/promises");
+    if (!fsModule?.readFile) {
+      return null;
+    }
+    return await fsModule.readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
 function normalizeSource(value: string): string {
   const normalized = normalizeFilter(value);
   return normalized === "all" ? "" : normalized;
@@ -425,11 +451,10 @@ function buildKnowledgeWhere(query: KnowledgeDocsQuery): { whereSql: string; bin
       or lower(coalesce(d.source_name, '')) like ?
       or lower(coalesce(d.target_name, '')) like ?
       or lower(coalesce(d.target_code, '')) like ?
-      or lower(coalesce(d.summary, '')) like ?
       or lower(coalesce(d.content_preview, '')) like ?
       or lower(coalesce(d.url, '')) like ?
     )`);
-    binds.push(like, like, like, like, like, like, like);
+    binds.push(like, like, like, like, like, like);
   }
   for (const tag of query.tags) {
     if (tag.startsWith("recommendation:")) {
@@ -709,12 +734,12 @@ function resolveKnowledgeAccessMethod(row: Pick<KnowledgeDocRow, "access_method"
   return row.access_method || (isPdf(row) ? "remote_pdf" : "markdown");
 }
 
-function buildKnowledgePreview(row: Pick<KnowledgeDocRow, "summary" | "content_preview">): string {
+function buildKnowledgePreview(row: Pick<KnowledgeDocRow, "summary" | "content_preview" | "title">): string {
   const preview = String(row.content_preview || "").trim();
   if (preview) {
     return truncatePreview(preview, 280);
   }
-  return truncatePreview(String(row.summary || "").trim(), 280);
+  return truncatePreview(String(row.title || "").trim(), 280);
 }
 
 function truncatePreview(value: string, max: number): string {
@@ -806,7 +831,7 @@ function knowledgeDocDedupeKey(item: Record<string, unknown>): string {
   const sourceName = String(item.source_name || "").trim().toLowerCase();
   const title = String(item.title || "").trim().toLowerCase();
   const preview = normalizeKnowledgeDedupeText(
-    String(item.content_preview || item.summary || "").slice(0, 320)
+    String(item.content_preview || item.title || "").slice(0, 320)
   ).slice(0, 180);
   if (source === "tencent_stock_news") {
     return `tencent|${sourceName}|${title}|${preview}`;
