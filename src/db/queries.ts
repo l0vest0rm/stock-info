@@ -1,4 +1,4 @@
-import type { FinancialStatement, FundNavRow, KlineBar, SecurityRecord } from "../types";
+import type { SecurityRecord } from "../types";
 
 export type HttpCacheRecord = {
   status: number;
@@ -15,9 +15,8 @@ export type AppKvRecord = {
 };
 
 export async function upsertSecurity(db: D1Database, record: SecurityRecord): Promise<void> {
-  await db
-    .prepare(
-      `insert into securities
+  const upsert = db.prepare(
+    `insert into securities
         (code, market, type, name, currency, exchange_name, source, updated_at)
        values (?, ?, ?, ?, ?, ?, ?, ?)
        on conflict(code) do update set
@@ -28,8 +27,17 @@ export async function upsertSecurity(db: D1Database, record: SecurityRecord): Pr
         exchange_name = excluded.exchange_name,
         source = excluded.source,
         updated_at = excluded.updated_at`
-    )
-    .bind(
+  );
+  const prefixDelete = db.prepare("delete from security_search_prefixes where code = ?");
+  const prefixInsert = db.prepare(
+    `insert into security_search_prefixes (prefix, code, priority)
+     values (?, ?, ?)
+     on conflict(prefix, code) do update set
+       priority = min(security_search_prefixes.priority, excluded.priority)`
+  );
+  const prefixRows = buildSecuritySearchPrefixes(record);
+  await db.batch([
+    upsert.bind(
       record.code,
       record.market,
       record.type,
@@ -38,8 +46,10 @@ export async function upsertSecurity(db: D1Database, record: SecurityRecord): Pr
       record.exchangeName ?? null,
       record.source ?? null,
       record.updatedAt
-    )
-    .run();
+    ),
+    prefixDelete.bind(record.code),
+    ...prefixRows.map((row) => prefixInsert.bind(row.prefix, record.code, row.priority)),
+  ]);
 }
 
 export async function findSecurity(db: D1Database, code: string): Promise<SecurityRecord | null> {
@@ -55,201 +65,69 @@ export async function findSecurity(db: D1Database, code: string): Promise<Securi
 }
 
 export async function searchLocalSecurities(db: D1Database, q: string): Promise<SecurityRecord[]> {
-  const like = `%${q}%`;
+  const normalized = normalizeSecuritySearchText(q);
+  if (!normalized) {
+    return [];
+  }
   const result = await db
     .prepare(
-      `select code, market, type, name, currency, exchange_name as exchangeName,
-        source, updated_at as updatedAt
+      `select securities.code, securities.market, securities.type, securities.name,
+        securities.currency, securities.exchange_name as exchangeName,
+        securities.source, securities.updated_at as updatedAt
        from securities
-       where code like ? or name like ?
-       order by updated_at desc
+       join security_search_prefixes on security_search_prefixes.code = securities.code
+       where security_search_prefixes.prefix = ?
+       order by
+         case
+           when lower(securities.code) = ? then 0
+           when lower(case
+             when instr(securities.code, '.') > 0
+               then substr(securities.code, 1, instr(securities.code, '.') - 1)
+             else securities.code
+           end) = ? then 1
+           when lower(securities.name) = ? then 2
+           when lower(replace(securities.name, ' ', '')) = ? then 3
+           else 4
+         end asc,
+         security_search_prefixes.priority asc,
+         securities.updated_at desc
        limit 10`
     )
-    .bind(like, like)
+    .bind(normalized, normalized, normalized, normalized, normalized)
     .all<SecurityRecord>();
   return result.results ?? [];
 }
 
-export async function upsertKlineBars(db: D1Database, rows: KlineBar[]): Promise<void> {
-  if (rows.length === 0) {
-    return;
-  }
-  const stmt = db.prepare(
-    `insert into kline_bars
-      (code, period, fq, date, open, close, high, low, volume, amount, amplitude,
-       pct_change, change_amount, turnover, source, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     on conflict(code, period, fq, date) do update set
-       open = excluded.open,
-       close = excluded.close,
-       high = excluded.high,
-       low = excluded.low,
-       volume = excluded.volume,
-       amount = excluded.amount,
-       amplitude = excluded.amplitude,
-       pct_change = excluded.pct_change,
-       change_amount = excluded.change_amount,
-       turnover = excluded.turnover,
-       source = excluded.source,
-       updated_at = excluded.updated_at`
-  );
-  await db.batch(
-    rows.map((row) =>
-      stmt.bind(
-        row.code,
-        row.period,
-        row.fq,
-        row.date,
-        row.open,
-        row.close,
-        row.high,
-        row.low,
-        row.volume,
-        row.amount,
-        row.amplitude,
-        row.pctChange,
-        row.changeAmount,
-        row.turnover,
-        row.source,
-        row.updatedAt
-      )
-    )
-  );
-}
-
-export async function getKlineBars(
-  db: D1Database,
-  code: string,
-  period: string,
-  fq: string,
-  from: string,
-  to: string
-): Promise<KlineBar[]> {
-  const result = await db
-    .prepare(
-      `select code, period, fq, date, open, close, high, low, volume, amount, amplitude,
-        pct_change as pctChange, change_amount as changeAmount, turnover, source,
-        updated_at as updatedAt
-       from kline_bars
-       where code = ? and period = ? and fq = ? and date >= ? and date <= ?
-       order by date asc`
-    )
-    .bind(code, period, fq, from, to)
-    .all<KlineBar>();
-  return result.results ?? [];
-}
-
-export async function upsertFundNav(db: D1Database, rows: FundNavRow[]): Promise<void> {
-  if (rows.length === 0) {
-    return;
-  }
-  const stmt = db.prepare(
-    `insert into fund_nav
-      (code, date, nav, accum_nav, daily_return, subscription_status, redemption_status, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?)
-     on conflict(code, date) do update set
-       nav = excluded.nav,
-       accum_nav = excluded.accum_nav,
-       daily_return = excluded.daily_return,
-       subscription_status = excluded.subscription_status,
-       redemption_status = excluded.redemption_status,
-       updated_at = excluded.updated_at`
-  );
-  await db.batch(
-    rows.map((row) =>
-      stmt.bind(
-        row.code,
-        row.date,
-        row.nav,
-        row.accumNav,
-        row.dailyReturn,
-        row.subscriptionStatus,
-        row.redemptionStatus,
-        row.updatedAt
-      )
-    )
-  );
-}
-
-export async function getFundNavRows(
-  db: D1Database,
-  code: string,
-  from: string,
-  to: string
-): Promise<FundNavRow[]> {
-  const result = await db
-    .prepare(
-      `select code, date, nav, accum_nav as accumNav, daily_return as dailyReturn,
-        subscription_status as subscriptionStatus, redemption_status as redemptionStatus,
-        updated_at as updatedAt
-       from fund_nav
-       where code = ? and date >= ? and date <= ?
-       order by date asc`
-    )
-    .bind(code, from, to)
-    .all<FundNavRow>();
-  return result.results ?? [];
-}
-
-export async function upsertFinancialStatements(
-  db: D1Database,
-  rows: FinancialStatement[]
-): Promise<void> {
-  if (rows.length === 0) {
-    return;
-  }
-  const stmt = db.prepare(
-    `insert into financial_statements
-      (code, statement_type, report_date, fiscal_period, payload_json, source, raw_r2_key, updated_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?)
-     on conflict(code, statement_type, report_date) do update set
-       fiscal_period = excluded.fiscal_period,
-       payload_json = excluded.payload_json,
-       source = excluded.source,
-       raw_r2_key = excluded.raw_r2_key,
-       updated_at = excluded.updated_at`
-  );
-  await db.batch(
-    rows.map((row) =>
-      stmt.bind(
-        row.code,
-        row.statementType,
-        row.reportDate,
-        row.fiscalPeriod,
-        JSON.stringify(row.payload),
-        row.source,
-        row.rawR2Key,
-        row.updatedAt
-      )
-    )
-  );
-}
-
-export async function getFinancialStatements(
-  db: D1Database,
-  code: string,
-  statementType: string
-): Promise<FinancialStatement[]> {
-  const result = await db
-    .prepare(
-      `select code, statement_type as statementType, report_date as reportDate,
-        fiscal_period as fiscalPeriod, payload_json as payloadJson, source,
-        raw_r2_key as rawR2Key, updated_at as updatedAt
-       from financial_statements
-       where code = ? and statement_type = ?
-       order by report_date desc
-       limit 16`
-    )
-    .bind(code, statementType)
-    .all<
-      Omit<FinancialStatement, "payload"> & {
-        payloadJson: string;
+function buildSecuritySearchPrefixes(record: SecurityRecord): Array<{ prefix: string; priority: number }> {
+  const terms = [
+    { value: normalizeSecuritySearchText(record.code), priority: 0 },
+    { value: normalizeSecuritySearchText(bareSecurityCode(record.code)), priority: 0 },
+    { value: normalizeSecuritySearchText(record.name), priority: 1 },
+    { value: normalizeSecuritySearchText(String(record.name || "").replace(/\s+/g, "")), priority: 2 },
+  ].filter((item) => item.value);
+  const seen = new Set<string>();
+  const rows: Array<{ prefix: string; priority: number }> = [];
+  for (const term of terms) {
+    const maxLength = Math.min(term.value.length, 24);
+    for (let index = 1; index <= maxLength; index += 1) {
+      const prefix = term.value.slice(0, index);
+      const key = `${prefix}|${term.priority}`;
+      if (seen.has(key)) {
+        continue;
       }
-    >();
-  return (result.results ?? []).map((row) => ({
-    ...row,
-    payload: JSON.parse(row.payloadJson),
-  }));
+      seen.add(key);
+      rows.push({ prefix, priority: term.priority });
+    }
+  }
+  return rows;
+}
+
+function normalizeSecuritySearchText(value: string): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function bareSecurityCode(code: string): string {
+  return String(code || "").trim().split(".")[0] || "";
 }
 
 export async function getHttpCache(db: D1Database, cacheKey: string, now = Date.now()): Promise<HttpCacheRecord | null> {

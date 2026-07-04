@@ -1,7 +1,12 @@
 import financeMappings from "../../shared/finance-mappings.json";
+import {
+  financialStatementsCacheTtlMs,
+  marketDataCacheExpiresAtMsForCode,
+  marketDataCacheTtlMsForCode,
+} from "../shared/cache-policy";
 import { bareCode, eastmoneySecId, inferSecurityType, normalizeSecurityCode, securityMarket, securitySuffix } from "../shared/codes";
 import { getAppKv, putAppKv } from "../db/queries";
-import { cachedFetchJson, cachedFetchText, numberOrNull } from "../shared/http";
+import { cachedFetchJson, cachedFetchText, numberOrNull, parseJsonOrJsonp } from "../shared/http";
 import type { ExternalHttpOptions } from "../shared/http";
 import type { CompanyNotice, CompanyOverview, FinancialStatement, FundNavRow, KlineBar, SecurityRecord, StatementType } from "../types";
 
@@ -116,6 +121,34 @@ type YahooTimeseriesResponse = {
   };
 };
 
+type YahooOptionResponse = {
+  optionChain?: {
+    error?: { code?: string; description?: string } | null;
+    result?: Array<{
+      underlyingSymbol?: string;
+      expirationDates?: number[];
+      quote?: {
+        regularMarketPrice?: number;
+      };
+      options?: Array<{
+        expirationDate?: number;
+        calls?: YahooOptionContract[];
+        puts?: YahooOptionContract[];
+      }>;
+    }>;
+  };
+};
+
+type YahooOptionContract = {
+  contractSymbol?: string;
+  strike?: number;
+  lastPrice?: number;
+  bid?: number;
+  ask?: number;
+  volume?: number;
+  openInterest?: number;
+};
+
 type YahooTimeseriesResult = {
   meta?: {
     type?: string[];
@@ -191,11 +224,34 @@ export type USOptionChain = {
   expirations: USOptionExpiration[];
 };
 
+export type USOptionExpirationSummary = {
+  date: string;
+  strikeCount: number;
+};
+
+export type USOptionChainSummary = {
+  code: string;
+  symbol: string;
+  currentPrice: number;
+  updatedAt: number;
+  expirations: USOptionExpirationSummary[];
+  strikes: number[];
+};
+
 type USOptionChainMeta = {
   code: string;
   symbol: string;
   currentPrice: number;
   expirationDates: string[];
+};
+
+type USOptionChainSummaryMeta = {
+  code: string;
+  symbol: string;
+  currentPrice: number;
+  updatedAt: number;
+  expirations: USOptionExpirationSummary[];
+  strikes: number[];
 };
 
 type USOptionExpirationMeta = {
@@ -351,7 +407,7 @@ export async function fetchEastmoneyStockKline(
       "User-Agent":
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
     },
-  }, 6 * 60 * 60 * 1000)) as EastmoneyStockKlineResponse;
+  }, marketDataCacheTtlMsForCode(normalized))) as EastmoneyStockKlineResponse;
   const now = Date.now();
   const security = body.data?.name
     ? ({
@@ -397,34 +453,43 @@ export async function fetchEastmoneyFundNav(
   const normalized = normalizeSecurityCode(code).endsWith(".OF")
     ? normalizeSecurityCode(code)
     : `${bareCode(code)}.OF`;
-  const url = new URL("https://api.fund.eastmoney.com/f10/lsjz");
-  url.searchParams.set("callback", "jQuery");
-  url.searchParams.set("fundCode", bareCode(normalized));
-  url.searchParams.set("pageIndex", "1");
-  url.searchParams.set("pageSize", String(pageSize));
-  url.searchParams.set("startDate", from);
-  url.searchParams.set("endDate", to);
-  url.searchParams.set("_", String(Date.now()));
-  const body = (await cachedFetchJson(db, url.toString(), {
-    headers: { Referer: "https://fundf10.eastmoney.com/" },
-  }, 6 * 60 * 60 * 1000)) as EastmoneyFundNavResponse;
-  if (body.ErrCode && body.ErrCode !== 0) {
-    throw new Error(`eastmoney fund nav error: code=${body.ErrCode} msg=${body.ErrMsg ?? ""}`);
-  }
   const now = Date.now();
-  return (body.Data?.LSJZList ?? [])
-    .map((item) => ({
-      code: normalized,
-      date: item.FSRQ ?? "",
-      nav: numberOrNull(item.DWJZ),
-      accumNav: numberOrNull(item.LJJZ),
-      dailyReturn: numberOrNull(item.JZZZL),
-      subscriptionStatus: item.SGZT ?? null,
-      redemptionStatus: item.SHZT ?? null,
-      updatedAt: now,
-    }))
-    .filter((row) => row.date)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const rows: FundNavRow[] = [];
+  let pageIndex = 1;
+  while (true) {
+    const url = new URL("https://api.fund.eastmoney.com/f10/lsjz");
+    url.searchParams.set("callback", "jQuery");
+    url.searchParams.set("fundCode", bareCode(normalized));
+    url.searchParams.set("pageIndex", String(pageIndex));
+    url.searchParams.set("pageSize", String(pageSize));
+    url.searchParams.set("startDate", from);
+    url.searchParams.set("endDate", to);
+    url.searchParams.set("_", String(now));
+    const body = (await cachedFetchJson(db, url.toString(), {
+      headers: { Referer: "https://fundf10.eastmoney.com/" },
+    }, marketDataCacheTtlMsForCode(normalized))) as EastmoneyFundNavResponse;
+    if (body.ErrCode && body.ErrCode !== 0) {
+      throw new Error(`eastmoney fund nav error: code=${body.ErrCode} msg=${body.ErrMsg ?? ""}`);
+    }
+    const pageRows = (body.Data?.LSJZList ?? [])
+      .map((item) => ({
+        code: normalized,
+        date: item.FSRQ ?? "",
+        nav: numberOrNull(item.DWJZ),
+        accumNav: numberOrNull(item.LJJZ),
+        dailyReturn: numberOrNull(item.JZZZL),
+        subscriptionStatus: item.SGZT ?? null,
+        redemptionStatus: item.SHZT ?? null,
+        updatedAt: now,
+      }))
+      .filter((row) => row.date);
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) {
+      break;
+    }
+    pageIndex += 1;
+  }
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function fetchEastmoneyFinance(
@@ -452,7 +517,9 @@ export async function fetchEastmoneyFinance(
   url.searchParams.set("client", "PC");
   const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://emweb.securities.eastmoney.com/" },
-  }, 24 * 60 * 60 * 1000)) as EastmoneyFinanceResponse;
+  }, 24 * 60 * 60 * 1000, {
+    resolveCacheTtlMs: ({ text }) => ttlForEastmoneyFinancialResponse(text),
+  })) as EastmoneyFinanceResponse;
   const now = Date.now();
   const statements: FinancialStatement[] = [];
   for (const row of body.result?.data ?? []) {
@@ -488,7 +555,10 @@ export async function fetchYahooFinance(
   url.searchParams.set("period2", String(yahooStablePeriod2()));
   const body = (await cachedFetchJson(db, url.toString(), {
     headers: yahooFinanceHeaders(symbol),
-  }, 24 * 60 * 60 * 1000, httpOptions)) as YahooTimeseriesResponse;
+  }, 24 * 60 * 60 * 1000, {
+    ...httpOptions,
+    resolveCacheTtlMs: ({ text }) => ttlForYahooFinancialResponse(text),
+  })) as YahooTimeseriesResponse;
   const error = body.timeseries?.error;
   if (error) {
     throw new Error(`yahoo finance error: code=${error.code ?? ""} description=${error.description ?? ""}`);
@@ -551,6 +621,41 @@ export async function fetchEastmoneyDataRows(
   return body.result?.data ?? [];
 }
 
+function ttlForEastmoneyFinancialResponse(text: string): number {
+  try {
+    const body = parseJsonOrJsonp(text) as EastmoneyFinanceResponse;
+    const rows = (body.result?.data ?? [])
+      .map((row) => ({ reportDate: trimDate(row.REPORT_DATE) }))
+      .filter((row) => row.reportDate);
+    return financialStatementsCacheTtlMs(rows);
+  } catch {
+    return 24 * 60 * 60 * 1000;
+  }
+}
+
+function ttlForYahooFinancialResponse(text: string): number {
+  try {
+    const body = parseJsonOrJsonp(text) as YahooTimeseriesResponse;
+    const reportDates = new Set<string>();
+    for (const result of body.timeseries?.result ?? []) {
+      for (const value of Object.values(result)) {
+        if (!Array.isArray(value)) {
+          continue;
+        }
+        for (const point of value as YahooTimeseriesPoint[]) {
+          const reportDate = trimDate(point?.asOfDate);
+          if (reportDate) {
+            reportDates.add(reportDate);
+          }
+        }
+      }
+    }
+    return financialStatementsCacheTtlMs([...reportDates].sort().reverse().map((reportDate) => ({ reportDate })));
+  } catch {
+    return 24 * 60 * 60 * 1000;
+  }
+}
+
 export async function fetchEastmoneyText(
   db: D1Database,
   url: string,
@@ -592,7 +697,7 @@ export async function fetchYahooStockKlineWithProxy(
       "Sec-Fetch-Mode": "cors",
       "Sec-Fetch-Site": "same-site",
     },
-  }, 6 * 60 * 60 * 1000, httpOptions)) as YahooChartResponse;
+  }, marketDataCacheTtlMsForCode(normalized), httpOptions)) as YahooChartResponse;
   const error = body.chart?.error;
   if (error) {
     throw new Error(`yahoo chart error: code=${error.code ?? ""} description=${error.description ?? ""}`);
@@ -658,8 +763,32 @@ export async function fetchNasdaqUSOptionChain(
   if (!code.endsWith(".US") || !symbol) {
     return empty;
   }
+  const summary = await fetchUSOptionChainSummary(db, code, httpOptions);
+  const expirations: USOptionExpiration[] = [];
+  for (const expiration of summary.expirations) {
+    expirations.push(await fetchUSOptionExpiration(db, code, expiration.date, httpOptions));
+  }
+  return {
+    code,
+    symbol: summary.symbol,
+    currentPrice: summary.currentPrice,
+    expirations,
+  };
+}
 
-  const cached = await getCachedUSOptionChain(db, `nasdaq.options.chain.${code}`);
+export async function fetchUSOptionChainSummary(
+  db: D1Database,
+  rawCode: string,
+  httpOptions?: ExternalHttpOptions
+): Promise<USOptionChainSummary> {
+  const code = normalizeSecurityCode(rawCode);
+  const symbol = code.replace(/\.US$/, "");
+  const empty: USOptionChainSummary = { code, symbol, currentPrice: 0, updatedAt: Date.now(), expirations: [], strikes: [] };
+  if (!code.endsWith(".US") || !symbol) {
+    return empty;
+  }
+  const prefix = `us.options.chain.v2.${code}`;
+  const cached = await getCachedUSOptionChainSummary(db, prefix);
   if (cached) {
     return cached;
   }
@@ -667,17 +796,67 @@ export async function fetchNasdaqUSOptionChain(
   let lastError: unknown = null;
   for (const assetClass of ["stocks", "etf"]) {
     try {
-      const chain = await fetchNasdaqUSOptionChainForAsset(db, code, symbol, assetClass, httpOptions);
-      if (chain.expirations.length > 0) {
-        await putCachedUSOptionChain(db, `nasdaq.options.chain.${code}`, chain);
-        return chain;
+      const firstPage = await fetchNasdaqUSOptionChainRange(db, code, symbol, assetClass, "", "", httpOptions);
+      const ranges = nasdaqOptionDateRanges(firstPage);
+      const updatedAt = Date.now();
+      const expirationMap = new Map<string, USOptionExpiration>();
+      const strikeSet = new Set<number>();
+      const currentPrice = parseNasdaqNumber(firstPage.data?.lastTrade);
+      const pages = ranges.length > 0 ? ranges : [{ fromDate: "", toDate: "" }];
+      for (const range of pages) {
+        const page = range.fromDate && range.toDate
+          ? await fetchNasdaqUSOptionChainRange(db, code, symbol, assetClass, range.fromDate, range.toDate, httpOptions)
+          : firstPage
+        const chain = normalizeNasdaqUSOptionChain(code, symbol, page)
+        for (const expiration of chain.expirations) {
+          expirationMap.set(expiration.date, expiration)
+          await putCachedUSOptionExpiration(db, prefix, expiration.date, expiration, updatedAt)
+          for (const contract of expiration.calls) strikeSet.add(contract.strike)
+          for (const contract of expiration.puts) strikeSet.add(contract.strike)
+        }
       }
-      return chain;
+      const expirations = Array.from(expirationMap.values())
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .map((expiration) => ({
+          date: expiration.date,
+          strikeCount: new Set(expiration.calls.concat(expiration.puts).map((item) => item.strike)).size,
+        }))
+      const summary: USOptionChainSummary = {
+        code,
+        symbol,
+        currentPrice,
+        updatedAt,
+        expirations,
+        strikes: Array.from(strikeSet).sort((a, b) => a - b),
+      }
+      await putCachedUSOptionChainSummary(db, prefix, summary)
+      return summary
     } catch (err) {
-      lastError = err;
+      lastError = err
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(`nasdaq option chain empty for ${code}`);
+  throw lastError instanceof Error ? lastError : new Error(`nasdaq option summary empty for ${code}`)
+}
+
+export async function fetchUSOptionExpiration(
+  db: D1Database,
+  rawCode: string,
+  expirationDate: string,
+  httpOptions?: ExternalHttpOptions
+): Promise<USOptionExpiration> {
+  const code = normalizeSecurityCode(rawCode);
+  const symbol = code.replace(/\.US$/, "");
+  const prefix = `us.options.chain.v2.${code}`;
+  const cached = await getCachedUSOptionExpiration(db, prefix, expirationDate);
+  if (cached) {
+    return cached;
+  }
+  const summary = await fetchUSOptionChainSummary(db, code, httpOptions);
+  const refetched = await getCachedUSOptionExpiration(db, prefix, expirationDate);
+  if (refetched) {
+    return refetched;
+  }
+  throw new Error(`option expiration not found for ${code}: ${expirationDate} (${summary.expirations.length} expirations cached)`);
 }
 
 async function fetchNasdaqUSOptionChainForAsset(
@@ -774,10 +953,10 @@ async function fetchNasdaqUSOptionChainPage(
   }
   const parsed = (await cachedFetchJson(db, url.toString(), {
     headers: nasdaqOptionHeaders(assetClass, symbol),
-  }, 30 * 60 * 1000, {
+  }, marketDataCacheTtlMsForCode(code), {
     ...httpOptions,
     cacheKey: `nasdaq:options:${assetClass}:${symbol}:${fromDate}:${toDate}:${limit}:${offset}`,
-    cacheTtlMs: 30 * 60 * 1000,
+    cacheTtlMs: marketDataCacheTtlMsForCode(code),
   })) as NasdaqOptionChainResponse;
   if (!parsed.data) {
     throw new Error(`nasdaq option chain empty for ${code} assetClass=${assetClass}`);
@@ -822,6 +1001,28 @@ function nasdaqOptionDateBounds(parsed: NasdaqOptionChainResponse): [string, str
     }
   }
   return [fromDate, toDate];
+}
+
+function nasdaqOptionDateRanges(parsed: NasdaqOptionChainResponse): Array<{ fromDate: string; toDate: string }> {
+  const ranges: Array<{ fromDate: string; toDate: string }> = [];
+  const seen = new Set<string>();
+  for (const item of parsed.data?.filterlist?.fromdate?.filter ?? []) {
+    const value = String(item.value ?? "").trim();
+    if (!value || value.toLowerCase() === "all") {
+      continue;
+    }
+    const [fromDate, toDate] = value.split("|").map((part) => part.trim());
+    if (!fromDate || !toDate) {
+      continue;
+    }
+    const key = `${fromDate}|${toDate}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    ranges.push({ fromDate, toDate });
+  }
+  return ranges;
 }
 
 function normalizeNasdaqUSOptionChain(
@@ -876,6 +1077,124 @@ function normalizeNasdaqUSOptionChain(
     currentPrice: parseNasdaqNumber(data.lastTrade),
     expirations: [...expirations.values()],
   };
+}
+
+async function fetchYahooUSOptionMetadata(
+  db: D1Database,
+  symbol: string,
+  httpOptions?: ExternalHttpOptions
+): Promise<{ symbol: string; currentPrice: number; expirationDates: number[] }> {
+  const parsed = await fetchYahooUSOptionPage(db, symbol, null, httpOptions);
+  const result = parsed.optionChain?.result?.[0];
+  if (!result) {
+    throw new Error(`yahoo option metadata empty for ${symbol}`);
+  }
+  return {
+    symbol: String(result.underlyingSymbol || symbol).toUpperCase(),
+    currentPrice: Number(result.quote?.regularMarketPrice ?? 0) || 0,
+    expirationDates: Array.isArray(result.expirationDates) ? result.expirationDates.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0) : [],
+  };
+}
+
+async function fetchYahooUSOptionExpirationAndCache(
+  db: D1Database,
+  prefix: string,
+  code: string,
+  symbol: string,
+  timestamp: number,
+  updatedAt: number,
+  httpOptions?: ExternalHttpOptions
+): Promise<USOptionExpiration> {
+  const parsed = await fetchYahooUSOptionPage(db, symbol, timestamp, httpOptions);
+  const result = parsed.optionChain?.result?.[0];
+  const option = result?.options?.[0];
+  if (!option) {
+    throw new Error(`yahoo option expiration empty for ${code} timestamp=${timestamp}`);
+  }
+  const expiration = normalizeYahooUSOptionExpiration(symbol, option, timestamp);
+  await putCachedUSOptionExpiration(db, prefix, expiration.date, expiration, updatedAt);
+  return expiration;
+}
+
+async function fetchYahooUSOptionPage(
+  db: D1Database,
+  symbol: string,
+  timestamp: number | null,
+  httpOptions?: ExternalHttpOptions
+): Promise<YahooOptionResponse> {
+  const url = new URL(`https://query2.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`);
+  if (timestamp) {
+    url.searchParams.set("date", String(timestamp));
+  }
+  const parsed = (await cachedFetchJson(db, url.toString(), {
+    headers: yahooHeaders(`https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/options/`),
+  }, marketDataCacheTtlMsForCode(`${symbol}.US`), {
+    ...httpOptions,
+    cacheKey: `yahoo:options:v2:${symbol}:${timestamp || "base"}`,
+    cacheTtlMs: marketDataCacheTtlMsForCode(`${symbol}.US`),
+  })) as YahooOptionResponse;
+  const error = parsed.optionChain?.error;
+  if (error?.description || error?.code) {
+    throw new Error(`yahoo option error for ${symbol}: ${error.code || ""} ${error.description || ""}`.trim());
+  }
+  if (!parsed.optionChain?.result?.[0]) {
+    throw new Error(`yahoo option result empty for ${symbol}`);
+  }
+  return parsed;
+}
+
+function normalizeYahooUSOptionExpiration(
+  symbol: string,
+  option: { expirationDate?: number; calls?: YahooOptionContract[]; puts?: YahooOptionContract[] },
+  fallbackTimestamp: number
+): USOptionExpiration {
+  const expirationTimestamp = Number(option.expirationDate ?? fallbackTimestamp) || fallbackTimestamp;
+  const date = formatYahooExpirationDate(expirationTimestamp);
+  return {
+    date,
+    calls: normalizeYahooUSOptionContracts(symbol, date, "call", option.calls),
+    puts: normalizeYahooUSOptionContracts(symbol, date, "put", option.puts),
+  };
+}
+
+function normalizeYahooUSOptionContracts(
+  symbol: string,
+  expiration: string,
+  type: "call" | "put",
+  contracts: YahooOptionContract[] | undefined
+): USOptionContract[] {
+  const result: USOptionContract[] = [];
+  for (const contract of contracts ?? []) {
+    const strike = Number(contract.strike ?? 0);
+    if (!Number.isFinite(strike) || strike <= 0) {
+      continue;
+    }
+    const bid = Number(contract.bid ?? 0) || 0;
+    const ask = Number(contract.ask ?? 0) || 0;
+    const last = Number(contract.lastPrice ?? 0) || 0;
+    result.push({
+      symbol: String(contract.contractSymbol || `${symbol}-${type}-${expiration}-${strike}`),
+      type,
+      expiration,
+      strike,
+      last,
+      bid,
+      ask,
+      price: bid > 0 && ask > 0 ? (bid + ask) / 2 : bid || ask || last,
+      volume: Math.trunc(Number(contract.volume ?? 0) || 0),
+      openInterest: Math.trunc(Number(contract.openInterest ?? 0) || 0),
+    });
+  }
+  return result.sort((a, b) => a.strike - b.strike);
+}
+
+function formatYahooExpirationDate(timestamp: number): string {
+  return new Date(timestamp * 1000).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function buildNasdaqUSOptionContract(
@@ -988,9 +1307,59 @@ async function getCachedUSOptionChain(db: D1Database, prefix: string): Promise<U
   };
 }
 
+async function getCachedUSOptionChainSummary(db: D1Database, prefix: string): Promise<USOptionChainSummary | null> {
+  const row = await getAppKv(db, `${prefix}.summary`);
+  if (!row) {
+    return null;
+  }
+  return JSON.parse(row.valueJson) as USOptionChainSummary;
+}
+
+async function putCachedUSOptionChainSummary(db: D1Database, prefix: string, summary: USOptionChainSummary): Promise<void> {
+  const expiresAt = marketDataCacheExpiresAtMsForCode(summary.code, summary.updatedAt);
+  const meta: USOptionChainSummaryMeta = {
+    code: summary.code,
+    symbol: summary.symbol,
+    currentPrice: summary.currentPrice,
+    updatedAt: summary.updatedAt,
+    expirations: summary.expirations,
+    strikes: summary.strikes,
+  };
+  await putAppKv(db, {
+    key: `${prefix}.summary`,
+    valueJson: JSON.stringify(meta),
+    expiresAt,
+    updatedAt: summary.updatedAt,
+  });
+}
+
+async function getCachedUSOptionExpiration(db: D1Database, prefix: string, date: string): Promise<USOptionExpiration | null> {
+  const row = await getAppKv(db, `${prefix}.expiration.${date}`);
+  if (!row) {
+    return null;
+  }
+  return JSON.parse(row.valueJson) as USOptionExpiration;
+}
+
+async function putCachedUSOptionExpiration(
+  db: D1Database,
+  prefix: string,
+  date: string,
+  expiration: USOptionExpiration,
+  updatedAt: number
+): Promise<void> {
+  const code = optionChainCodeFromPrefix(prefix);
+  await putAppKv(db, {
+    key: `${prefix}.expiration.${date}`,
+    valueJson: JSON.stringify(expiration),
+    expiresAt: marketDataCacheExpiresAtMsForCode(code, updatedAt),
+    updatedAt,
+  });
+}
+
 async function putCachedUSOptionChain(db: D1Database, prefix: string, chain: USOptionChain): Promise<void> {
   const now = Date.now();
-  const expiresAt = now + 30 * 60 * 1000;
+  const expiresAt = marketDataCacheExpiresAtMsForCode(chain.code, now);
   const meta: USOptionChainMeta = {
     code: chain.code,
     symbol: chain.symbol,
@@ -1034,6 +1403,10 @@ async function putCachedUSOptionChain(db: D1Database, prefix: string, chain: USO
       });
     }
   }
+}
+
+function optionChainCodeFromPrefix(prefix: string): string {
+  return prefix.replace(/^us\.options\.chain\.v2\./, "");
 }
 
 function chunkArray<T>(items: T[], size: number): T[][] {
@@ -1178,7 +1551,7 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
   url.searchParams.set("fields", "f43,f57,f58,f116,f162,f167,f168,f169,f170");
   const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://quote.eastmoney.com/" },
-  }, 10 * 60 * 1000)) as EastmoneyOverviewResponse;
+  }, marketDataCacheTtlMsForCode(normalized))) as EastmoneyOverviewResponse;
   const data = body.data ?? {};
   const latestPriceRaw = numberOrNull(data.f43);
   const changeAmountRaw = numberOrNull(data.f169);

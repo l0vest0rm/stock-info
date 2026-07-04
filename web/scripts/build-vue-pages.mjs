@@ -4,6 +4,11 @@ import { build, defineConfig } from 'vite'
 
 const pageEntries = [
   {
+    entry: 'src/modules/company/pages/company-option-theta-page.ts',
+    globalName: 'LicaiCompanyOptionThetaPage',
+    fileName: 'js/company-option-theta-page.js',
+  },
+  {
     entry: 'src/modules/company/pages/company-option-page.ts',
     globalName: 'LicaiCompanyOptionPage',
     fileName: 'js/company-option-page.js',

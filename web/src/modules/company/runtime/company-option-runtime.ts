@@ -42,10 +42,25 @@ interface CompanyOptionExpiration {
   puts: CompanyOptionContract[]
 }
 
-interface CompanyOptionChain {
+interface CompanyOptionChainSummaryExpiration {
+  date: string
+  strikeCount: number
+}
+
+interface CompanyOptionChainSummary {
   code: string
   symbol: string
   currentPrice: number
+  updatedAt?: number
+  expirations: CompanyOptionChainSummaryExpiration[]
+  strikes?: number[]
+}
+
+interface CompanyOptionContractsResponse {
+  code: string
+  symbol: string
+  currentPrice: number
+  updatedAt?: number
   expirations: CompanyOptionExpiration[]
 }
 
@@ -103,11 +118,29 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
     echarts,
   } = context
 
-  let companyOptionChain: CompanyOptionChain | null = null
+  let companyOptionSummary: CompanyOptionChainSummary | null = null
+  let companyOptionExpirationMap = new Map<string, CompanyOptionExpiration>()
+  let companyOptionSelectedExpiration = ''
   let companyOptionLegs: CompanyOptionLeg[] = []
   let companyOptionLegSeq = 1
   let companyOptionCompareStrategies: CompanyOptionCompareStrategy[] = []
   let companyOptionCompareInitialized = false
+  let companyOptionExpirationLoads = new Map<string, Promise<CompanyOptionExpiration | null>>()
+
+  function companyOptionDebug(label: string, extra?: Record<string, unknown>) {
+    try {
+      console.info('[company-option-debug]', label, JSON.stringify({
+        legs: companyOptionLegs.map((leg) => ({
+          id: leg.id,
+          side: leg.side,
+          quantity: leg.quantity,
+          type: leg.type,
+          strike: leg.strike,
+        })),
+        ...extra,
+      }))
+    } catch {}
+  }
 
   function currentCode(): string {
     return context.getCode()
@@ -127,24 +160,28 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
       return
     }
 
-    setCompanyOptionStatus('加载期权链...')
+    setCompanyOptionStatus('加载期权到期日...')
     fetchRequest({
-      url: `${server}/api/options/us`,
+      url: `${server}/api/options/us/summary`,
       params: {code},
-      cacheKey: `us-option-chain-${code}`,
+      cacheKey: `us-option-chain-summary-${code}`,
       cacheTtl: 30 * 60 * 1000
     }).then((data: any) => {
-      companyOptionChain = data as CompanyOptionChain
+      companyOptionSummary = data as CompanyOptionChainSummary
+      companyOptionExpirationMap = new Map<string, CompanyOptionExpiration>()
+      companyOptionExpirationLoads = new Map<string, Promise<CompanyOptionExpiration | null>>()
+      companyOptionSelectedExpiration = ''
       companyOptionLegs = []
       renderCompanyOptionPage()
     })
 
-    document.getElementById('optionExpirationFilter')?.addEventListener('change', renderCompanyOptionChainTable)
+    document.getElementById('optionExpirationFilter')?.addEventListener('change', onCompanyOptionExpirationChange)
     document.getElementById('optionTypeFilter')?.addEventListener('change', renderCompanyOptionChainTable)
     document.getElementById('optionChainTable')?.addEventListener('click', onCompanyOptionChainClick)
     document.getElementById('optionStrategyTable')?.addEventListener('click', onCompanyOptionStrategyClick)
     document.getElementById('optionStrategyTable')?.addEventListener('change', onCompanyOptionStrategyChange)
     document.getElementById('optionStrategyTable')?.addEventListener('input', onCompanyOptionStrategyChange)
+    document.getElementById('optionStrategyTable')?.addEventListener('focusout', onCompanyOptionStrategyFocusOut, true)
     document.getElementById('optionAddCurrentStrategyBtn')?.addEventListener('click', onCompanyOptionAddCurrentStrategy)
     document.getElementById('optionCopyCompareLinkBtn')?.addEventListener('click', onCompanyOptionCopyCompareLink)
     document.getElementById('optionCompareCapital')?.addEventListener('change', onCompanyOptionCompareInputChange)
@@ -153,23 +190,20 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   }
 
   function renderCompanyOptionPage() {
-    if (!companyOptionChain || !Array.isArray(companyOptionChain.expirations) || companyOptionChain.expirations.length === 0) {
-      const reason = typeof (companyOptionChain as any)?.reason === 'string' ? `: ${(companyOptionChain as any).reason}` : ''
+    if (!companyOptionSummary || !Array.isArray(companyOptionSummary.expirations) || companyOptionSummary.expirations.length === 0) {
+      const reason = typeof (companyOptionSummary as any)?.reason === 'string' ? `: ${(companyOptionSummary as any).reason}` : ''
       setCompanyOptionStatus(`没有可用的美股期权链数据${reason}`)
+      emitCompanyOptionChainRows([])
       renderCompanyOptionStrategy()
       return
     }
 
     const priceElem = document.getElementById('currentPrice')
-    if (priceElem && companyOptionChain.currentPrice > 0) {
-      priceElem.textContent = companyOptionChain.currentPrice.toString()
+    if (priceElem && companyOptionSummary.currentPrice > 0) {
+      priceElem.textContent = companyOptionSummary.currentPrice.toString()
     }
-    const expirationFilterRenderedByVue = renderCompanyOptionExpirationFilter()
-    if (expirationFilterRenderedByVue) {
-      requestAnimationFrame(renderCompanyOptionChainTable)
-    } else {
-      renderCompanyOptionChainTable()
-    }
+    renderCompanyOptionExpirationFilter()
+    emitCompanyOptionChainRows([])
     renderCompanyOptionStrategy()
     const compareControlsRenderedByVue = initCompanyOptionCompareFromQuery()
     if (compareControlsRenderedByVue) {
@@ -177,49 +211,67 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
     } else {
       renderCompanyOptionCompare()
     }
-    setCompanyOptionStatus(`${companyOptionChain.symbol} 共 ${companyOptionChain.expirations.length} 个到期日，当前价 ${companyOptionFormatNumber(companyOptionChain.currentPrice)}`)
+    setCompanyOptionStatus(`${companyOptionSummary.symbol} 共 ${companyOptionSummary.expirations.length} 个到期日，当前价 ${companyOptionFormatNumber(companyOptionSummary.currentPrice)}；请选择到期日后加载合约`)
   }
 
   function renderCompanyOptionExpirationFilter(): boolean {
     const select = document.getElementById('optionExpirationFilter') as HTMLSelectElement | null
-    if (!select || !companyOptionChain) {
+    if (!select || !companyOptionSummary) {
       return false
     }
     const options = [
-      {value: 'all', text: '全部到期日'},
-      ...companyOptionChain.expirations.map((item) => ({
+      {value: '', text: '请选择到期日'},
+      ...companyOptionSummary.expirations.map((item) => ({
         value: item.date,
         text: companyOptionExpirationOptionText(item.date),
       })),
     ]
-    const selected = companyOptionChain.expirations[0]?.date || 'all'
+    const selected = companyOptionSelectedExpiration
     emitCompanyOptionExpirations(options, selected)
     return true
   }
 
-  function renderCompanyOptionChainTable() {
-    const table = document.getElementById('optionChainTable') as HTMLTableElement | null
-    if (!table || !companyOptionChain) {
+  async function onCompanyOptionExpirationChange() {
+    const expirationFilter = (document.getElementById('optionExpirationFilter') as HTMLSelectElement | null)?.value || ''
+    companyOptionSelectedExpiration = expirationFilter
+    if (!expirationFilter) {
+      emitCompanyOptionChainRows([])
+      if (companyOptionSummary) {
+        setCompanyOptionStatus(`${companyOptionSummary.symbol} 共 ${companyOptionSummary.expirations.length} 个到期日，当前价 ${companyOptionFormatNumber(companyOptionSummary.currentPrice)}；请选择到期日后加载合约`)
+      }
       return
     }
-    const expirationFilter = (document.getElementById('optionExpirationFilter') as HTMLSelectElement | null)?.value || 'all'
+    await ensureCompanyOptionExpirationLoaded(expirationFilter)
+    renderCompanyOptionChainTable()
+  }
+
+  function renderCompanyOptionChainTable() {
+    const table = document.getElementById('optionChainTable') as HTMLTableElement | null
+    if (!table || !companyOptionSummary) {
+      return
+    }
+    const expirationFilter = (document.getElementById('optionExpirationFilter') as HTMLSelectElement | null)?.value || ''
     const typeFilter = (document.getElementById('optionTypeFilter') as HTMLSelectElement | null)?.value || 'all'
+    if (!expirationFilter) {
+      emitCompanyOptionChainRows([])
+      return
+    }
+    const expiration = companyOptionExpirationMap.get(expirationFilter)
+    if (!expiration) {
+      emitCompanyOptionChainRows([])
+      return
+    }
     const currentPrice = companyOptionCurrentPrice()
     const options: CompanyOptionContract[] = []
 
-    for (const expiration of companyOptionChain.expirations) {
-      if (expirationFilter !== 'all' && expiration.date !== expirationFilter) {
-        continue
+    if (typeFilter === 'all' || typeFilter === 'call') {
+      for (const option of expiration.calls) {
+        options.push(option)
       }
-      if (typeFilter === 'all' || typeFilter === 'call') {
-        for (const option of expiration.calls) {
-          options.push(option)
-        }
-      }
-      if (typeFilter === 'all' || typeFilter === 'put') {
-        for (const option of expiration.puts) {
-          options.push(option)
-        }
+    }
+    if (typeFilter === 'all' || typeFilter === 'put') {
+      for (const option of expiration.puts) {
+        options.push(option)
       }
     }
     const closestSymbols = companyOptionClosestSymbols(options, currentPrice)
@@ -227,6 +279,49 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
 
     emitCompanyOptionChainRows(chainRows)
     requestAnimationFrame(() => companyOptionScrollToClosestRow(table))
+  }
+
+  async function ensureCompanyOptionExpirationLoaded(expirationDate: string): Promise<CompanyOptionExpiration | null> {
+    const cached = companyOptionExpirationMap.get(expirationDate)
+    if (cached) {
+      return cached
+    }
+    const loading = companyOptionExpirationLoads.get(expirationDate)
+    if (loading) {
+      return loading
+    }
+    const code = currentCode()
+    const loadPromise = (async () => {
+      setCompanyOptionStatus(`加载 ${companyOptionFormatExpirationDate(expirationDate)} 合约...`)
+      const data = await fetchRequest({
+      url: `${server}/api/options/us/contracts`,
+      params: {
+        code,
+        expirations: expirationDate,
+      },
+      cacheKey: `us-option-chain-contracts-${code}-${expirationDate}`,
+      cacheTtl: 30 * 60 * 1000,
+      }) as CompanyOptionContractsResponse
+      if (companyOptionSummary && data?.currentPrice > 0) {
+        companyOptionSummary.currentPrice = data.currentPrice
+        const priceElem = document.getElementById('currentPrice')
+        if (priceElem) {
+          priceElem.textContent = data.currentPrice.toString()
+        }
+      }
+      for (const expiration of data?.expirations || []) {
+        companyOptionExpirationMap.set(expiration.date, expiration)
+      }
+      const loaded = companyOptionExpirationMap.get(expirationDate) || null
+      if (loaded && companyOptionSummary) {
+        setCompanyOptionStatus(`${companyOptionSummary.symbol} ${companyOptionFormatExpirationDate(expirationDate)} 已加载 ${loaded.calls.length + loaded.puts.length} 个合约，当前价 ${companyOptionFormatNumber(companyOptionCurrentPrice())}`)
+      }
+      return loaded
+    })().finally(() => {
+      companyOptionExpirationLoads.delete(expirationDate)
+    })
+    companyOptionExpirationLoads.set(expirationDate, loadPromise)
+    return loadPromise
   }
 
   function companyOptionClosestSymbols(options: CompanyOptionContract[], currentPrice: number): Set<string> {
@@ -299,10 +394,32 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
     </tr>`
   }
 
+  function companyOptionStrategyRow(leg: ReturnType<typeof companyOptionStrategyLegRows>[number]): string {
+    const sideOptions = [
+      {value: 'buy', text: '买入'},
+      {value: 'sell', text: '卖出'},
+    ].map((option) => `<option value="${option.value}"${leg.side === option.value ? ' selected' : ''}>${option.text}</option>`).join('')
+    return `<tr>
+      <td>
+        <select class="form-select form-select-sm" data-action="update-option-leg" data-field="side" data-id="${leg.id}">
+          ${sideOptions}
+        </select>
+      </td>
+      <td>
+        <input class="form-control form-control-sm text-end" type="number" min="1" step="1" value="${leg.quantity}" data-action="update-option-leg" data-field="quantity" data-id="${leg.id}">
+      </td>
+      <td>${escapeHtml(leg.type === 'call' ? 'Call' : 'Put')}</td>
+      <td>${escapeHtml(leg.expiration)}</td>
+      <td class="text-end">${escapeHtml(leg.strike)}</td>
+      <td class="text-end">${escapeHtml(leg.price)}</td>
+      <td><button type="button" class="btn btn-sm btn-outline-danger" data-action="remove-option-leg" data-id="${leg.id}">移除</button></td>
+    </tr>`
+  }
+
   function onCompanyOptionChainClick(event: Event) {
     const target = event.target as HTMLElement
     const button = target.closest('button[data-action="add-option-leg"]') as HTMLButtonElement | null
-    if (!button || !companyOptionChain) {
+    if (!button || !companyOptionSummary) {
       return
     }
     const option = findCompanyOptionContract(button.dataset.symbol || '')
@@ -319,10 +436,10 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   }
 
   function findCompanyOptionContract(symbol: string): CompanyOptionContract | null {
-    if (!companyOptionChain) {
+    if (companyOptionExpirationMap.size === 0) {
       return null
     }
-    for (const expiration of companyOptionChain.expirations) {
+    for (const expiration of companyOptionExpirationMap.values()) {
       for (const option of expiration.calls.concat(expiration.puts)) {
         if (option.symbol === symbol) {
           return option
@@ -361,12 +478,58 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
       const quantity = parseInt(input.value, 10)
       leg.quantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 1
     }
+    companyOptionDebug('strategy-change', {
+      eventType: event.type,
+      id,
+      field,
+      inputValue: input.value,
+    })
     if (event.type === 'input') {
       renderCompanyOptionStrategySummary()
       renderCompanyOptionPayoffChart()
       return
     }
-    renderCompanyOptionStrategy()
+    renderCompanyOptionStrategySummary()
+    renderCompanyOptionPayoffChart()
+  }
+
+  function onCompanyOptionStrategyFocusOut(event: Event) {
+    const target = event.target as HTMLElement | null
+    if (!target?.closest('[data-action="update-option-leg"]')) {
+      return
+    }
+    companyOptionDebug('strategy-focusout', {
+      targetTag: target.tagName,
+      targetValue: (target as HTMLInputElement | HTMLSelectElement).value,
+    })
+    syncCompanyOptionLegsFromDom()
+    renderCompanyOptionStrategySummary()
+    renderCompanyOptionPayoffChart()
+  }
+
+  function syncCompanyOptionLegsFromDom() {
+    const table = document.getElementById('optionStrategyTable') as HTMLTableElement | null
+    if (!table || companyOptionLegs.length === 0) {
+      return
+    }
+    const domLegs: Array<Record<string, unknown>> = []
+    for (const leg of companyOptionLegs) {
+      const sideInput = table.querySelector(`[data-action="update-option-leg"][data-field="side"][data-id="${leg.id}"]`) as HTMLSelectElement | null
+      if (sideInput) {
+        leg.side = sideInput.value === 'sell' ? 'sell' : 'buy'
+      }
+      const quantityInput = table.querySelector(`[data-action="update-option-leg"][data-field="quantity"][data-id="${leg.id}"]`) as HTMLInputElement | null
+      if (quantityInput) {
+        const quantity = parseInt(quantityInput.value, 10)
+        leg.quantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 1
+      }
+      domLegs.push({
+        id: leg.id,
+        domSide: sideInput?.value,
+        domQuantity: quantityInput?.value,
+      })
+    }
+    companyOptionDebug('sync-dom', {domLegs})
   }
 
   function renderCompanyOptionStrategy() {
@@ -375,12 +538,24 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
       return
     }
     if (companyOptionLegs.length === 0) {
-      emitCompanyOptionStrategyLegs([])
+      table.innerHTML = `<thead class="table-info"><tr><th>已选组合</th></tr></thead><tbody><tr><td class="text-muted">从左侧期权链加入合约</td></tr></tbody>`
       setCompanyOptionStrategySummary('')
       renderCompanyOptionPayoffChart()
       return
     }
-    emitCompanyOptionStrategyLegs(companyOptionStrategyLegRows())
+    const rows = companyOptionStrategyLegRows().map((leg) => companyOptionStrategyRow(leg)).join('')
+    table.innerHTML = `<thead class="table-info">
+      <tr>
+        <th>买卖</th>
+        <th>张数</th>
+        <th>方向</th>
+        <th>到期日</th>
+        <th class="text-end">行权价</th>
+        <th class="text-end">权利金</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>`
     renderCompanyOptionStrategySummary()
     renderCompanyOptionPayoffChart()
   }
@@ -398,6 +573,7 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   }
 
   function renderCompanyOptionStrategySummary() {
+    syncCompanyOptionLegsFromDom()
     const premium = companyOptionLegs.reduce((sum, leg) => sum + (leg.side === 'buy' ? -1 : 1) * leg.price * leg.quantity * 100, 0)
     const currentPrice = companyOptionCurrentPrice()
     const breakEvenText = companyOptionBreakEvenPoints(companyOptionPayoffData(currentPrice))
@@ -407,10 +583,13 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
         const ratioText = Math.abs(ratio).toFixed(2)
         return `${companyOptionFormatNumber(price)} (${direction}${direction === '当前价' ? '' : ' ' + ratioText + '%'})`
       })
-    setCompanyOptionStrategySummary(`净权利金: ${companyOptionFormatNumber(premium)}${breakEvenText.length > 0 ? '；盈亏平衡: ' + breakEvenText.join('，') : ''}`)
+    const summaryText = `净权利金: ${companyOptionFormatNumber(premium)}${breakEvenText.length > 0 ? '；盈亏平衡: ' + breakEvenText.join('，') : ''}`
+    companyOptionDebug('strategy-summary', {summaryText, premium})
+    setCompanyOptionStrategySummary(summaryText)
   }
 
   function renderCompanyOptionPayoffChart() {
+    syncCompanyOptionLegsFromDom()
     const currentPrice = companyOptionCurrentPrice()
     if (companyOptionLegs.length === 0 || currentPrice <= 0) {
       setCompanyOptionChartOption('optionsLineChart', {
@@ -570,8 +749,8 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   }
 
   function companyOptionCurrentPrice(): number {
-    if (companyOptionChain?.currentPrice) {
-      return companyOptionChain.currentPrice
+    if (companyOptionSummary?.currentPrice) {
+      return companyOptionSummary.currentPrice
     }
     const text = document.getElementById('currentPrice')?.textContent || ''
     const value = parseFloat(text.replace(/,/g, ''))
@@ -620,7 +799,7 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   }
 
   function initCompanyOptionCompareFromQuery(): boolean {
-    if (companyOptionCompareInitialized || !companyOptionChain) {
+    if (companyOptionCompareInitialized || !companyOptionSummary) {
       return false
     }
     companyOptionCompareInitialized = true
@@ -642,6 +821,7 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
       setCompanyOptionCompareStatus('请先从期权链加入合约')
       return
     }
+    syncCompanyOptionLegsFromDom()
     const nameInput = document.getElementById('optionCompareStrategyName') as HTMLInputElement | null
     const name = (nameInput?.value || '').trim() || companyOptionDefaultStrategyName(companyOptionLegs)
     companyOptionCompareStrategies.push({
@@ -660,6 +840,7 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   }
 
   function onCompanyOptionCopyCompareLink() {
+    syncCompanyOptionLegsFromDom()
     const url = companyOptionReplaceCompareUrl()
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(url).then(() => {
@@ -692,9 +873,9 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
     companyOptionReplaceCompareUrl()
   }
 
-  function renderCompanyOptionCompare() {
+  async function renderCompanyOptionCompare() {
     const table = document.getElementById('optionCompareTable') as HTMLTableElement | null
-    if (!table || !companyOptionChain) {
+    if (!table || !companyOptionSummary) {
       return
     }
     const capital = companyOptionCompareCapital()
@@ -709,6 +890,7 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
       return
     }
 
+    await ensureCompanyOptionCompareExpirationsLoaded()
     const results = companyOptionCompareStrategies.map((strategy) => companyOptionAnalyzeCompareStrategy(strategy, capital, scenarioPrices))
     if (!emitCompanyOptionCompareTable(companyOptionCompareTableView(results, scenarioPrices))) {
       const priceHeads = scenarioPrices.map((price) => `<th class="text-end">${companyOptionFormatNumber(price)}</th>`).join('')
@@ -730,6 +912,29 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
     }
     renderCompanyOptionCompareChart(results)
     setCompanyOptionCompareStatus(`对比 ${results.length} 个策略，资金量 ${companyOptionFormatCompactMoney(capital)}`)
+  }
+
+  async function ensureCompanyOptionCompareExpirationsLoaded() {
+    const expirationValues = new Set<string>()
+    for (const strategy of companyOptionCompareStrategies) {
+      const strategyExpiration = typeof strategy.expiration === 'string' ? strategy.expiration.trim() : ''
+      if (strategyExpiration) {
+        expirationValues.add(strategyExpiration)
+      }
+      for (const leg of strategy.legs) {
+        const legExpiration = typeof leg.expiration === 'string' ? leg.expiration.trim() : ''
+        if (legExpiration) {
+          expirationValues.add(legExpiration)
+        }
+      }
+    }
+    const pending = Array.from(expirationValues)
+      .filter((value) => value !== '' && value.toLowerCase() !== 'all')
+      .filter((value) => !companyOptionFindExpiration(value))
+    if (pending.length === 0) {
+      return
+    }
+    await Promise.all(pending.map((value) => ensureCompanyOptionExpirationLoaded(value)))
   }
 
   function companyOptionCompareTableView(results: CompanyOptionCompareResult[], scenarioPrices: number[]) {
@@ -812,7 +1017,7 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   }
 
   function renderCompanyOptionCompareChart(results: CompanyOptionCompareResult[]) {
-    if (!companyOptionChain) {
+    if (!companyOptionSummary) {
       return
     }
     const validResults = results.filter((result) => !result.error)
@@ -1037,19 +1242,19 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
   }
 
   function companyOptionFindExpiration(value: string): CompanyOptionExpiration | null {
-    if (!companyOptionChain || companyOptionChain.expirations.length === 0) {
+    if (!companyOptionSummary || companyOptionSummary.expirations.length === 0) {
       return null
     }
     const normalized = value.trim().toLowerCase()
     if (normalized === '' || normalized === 'all') {
-      return companyOptionChain.expirations[0]
+      return null
     }
-    for (const expiration of companyOptionChain.expirations) {
+    for (const expiration of companyOptionExpirationMap.values()) {
       if (expiration.date.toLowerCase() === normalized || companyOptionFormatExpirationDate(expiration.date).toLowerCase() === normalized) {
         return expiration
       }
     }
-    const matches = companyOptionChain.expirations.filter((expiration) => expiration.date.toLowerCase().includes(normalized) || companyOptionFormatExpirationDate(expiration.date).includes(normalized))
+    const matches = Array.from(companyOptionExpirationMap.values()).filter((expiration) => expiration.date.toLowerCase().includes(normalized) || companyOptionFormatExpirationDate(expiration.date).includes(normalized))
     return matches.length === 1 ? matches[0] : null
   }
 
@@ -1167,6 +1372,32 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
     return `${companyOptionExpirationSummary(legs.map((leg) => leg.expiration || ''))} ${companyOptionLegNameSummary(legs)}`.trim()
   }
 
+  function companyOptionCurrentStrategyForCompare(): CompanyOptionCompareStrategy | null {
+    if (companyOptionLegs.length === 0) {
+      return null
+    }
+    const nameInput = document.getElementById('optionCompareStrategyName') as HTMLInputElement | null
+    const legs = companyOptionLegs.map((leg) => ({
+      side: leg.side,
+      quantity: leg.quantity,
+      type: leg.type,
+      strike: leg.strike,
+      expiration: leg.expiration
+    }))
+    return {
+      name: (nameInput?.value || '').trim() || companyOptionDefaultStrategyName(companyOptionLegs),
+      legs,
+    }
+  }
+
+  function companyOptionStrategiesForUrl(): CompanyOptionCompareStrategy[] {
+    if (companyOptionCompareStrategies.length > 0) {
+      return companyOptionCompareStrategies
+    }
+    const currentStrategy = companyOptionCurrentStrategyForCompare()
+    return currentStrategy ? [currentStrategy] : []
+  }
+
   function companyOptionExpirationSummary(expirations: string[]): string {
     const values = expirations
       .map((expiration) => expiration.trim())
@@ -1182,12 +1413,13 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
 
   function companyOptionReplaceCompareUrl(): string {
     const url = new URL(window.location.href)
+    const strategies = companyOptionStrategiesForUrl()
     url.searchParams.set('code', currentCode())
     url.searchParams.set('v', 'breakeven-summary')
     url.searchParams.set('capital', String(companyOptionCompareCapital()))
     url.searchParams.set('prices', companyOptionCompareScenarioPrices().join(','))
-    if (companyOptionCompareStrategies.length > 0) {
-      url.searchParams.set('strategies', companyOptionBase64UrlEncode(JSON.stringify(companyOptionCompareStrategies)))
+    if (strategies.length > 0) {
+      url.searchParams.set('strategies', companyOptionBase64UrlEncode(JSON.stringify(strategies)))
     } else {
       url.searchParams.delete('strategies')
     }
@@ -1275,32 +1507,25 @@ export function createCompanyOptionInitializer(context: CompanyOptionRuntimeCont
     return true
   }
 
-  function emitCompanyOptionStrategySummary(text: string): boolean {
-    window.dispatchEvent(new CustomEvent('licai:company-option-strategy-summary', {detail: {text}}))
-    return true
-  }
-
-  function emitCompanyOptionStrategyLegs(legs: ReturnType<typeof companyOptionStrategyLegRows>): boolean {
-    window.dispatchEvent(new CustomEvent('licai:company-option-strategy-legs', {detail: {legs}}))
-    return true
-  }
-
   function emitCompanyOptionCompareTable(detail: ReturnType<typeof companyOptionCompareTableView> | {scenarioPrices: string[], rows: unknown[]}): boolean {
     window.dispatchEvent(new CustomEvent('licai:company-option-compare-table', {detail}))
     return true
   }
 
-  function emitCompanyOptionChartOption(id: string, option: EChartsOption): boolean {
-    window.dispatchEvent(new CustomEvent('licai:company-option-chart-option', {detail: {id, option}}))
-    return true
-  }
-
   function setCompanyOptionChartOption(id: string, option: EChartsOption) {
-    emitCompanyOptionChartOption(id, option)
+    const chartDom = document.getElementById(id)
+    if (!chartDom) {
+      return
+    }
+    echarts.dispose(chartDom)
+    echarts.init(chartDom).setOption(option || {xAxis: {type: 'value'}, yAxis: {type: 'value'}, series: []})
   }
 
   function setCompanyOptionStrategySummary(text: string) {
-    emitCompanyOptionStrategySummary(text)
+    const summary = document.getElementById('optionStrategyPremium')
+    if (summary) {
+      summary.textContent = text
+    }
   }
 
   function setCompanyOptionCompareControls(detail: {capital?: string, prices?: string, strategyName?: string, strategyNamePlaceholder?: string}): boolean {

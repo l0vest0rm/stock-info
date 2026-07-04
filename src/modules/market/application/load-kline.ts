@@ -3,75 +3,85 @@ import {
   fetchEastmoneyStockKline,
   fetchTencentStockKline,
 } from "../../../adapters/eastmoney";
+import { upsertSecurity } from "../../../db/queries";
 import {
-  getFundNavRows,
-  getKlineBars,
-  upsertFundNav,
-  upsertKlineBars,
-  upsertSecurity,
-} from "../../../db/queries";
+  fullKlineHistoryStartDate,
+  getFundNavSnapshot,
+  getKlineSnapshot,
+  putFundNavSnapshot,
+  putKlineSnapshot,
+  sliceFundNavRows,
+  sliceKlineRows,
+  snapshotCoversRange,
+} from "../../../storage/market-data";
 import { inferSecurityType, normalizeSecurityCode } from "../../../shared/codes";
+import { marketDataCacheExpiresAtMsForCode } from "../../../shared/cache-policy";
 import type { ExternalHttpOptions } from "../../../shared/http";
-import type { FundNavRow, KlineBar } from "../../../types";
+import type { Bindings, FundNavRow, KlineBar } from "../../../types";
 
 export async function loadKline(
-  db: D1Database,
+  env: Pick<Bindings, "DB" | "MARKET_DATA_BUCKET">,
   rawCode: string,
   period: string,
   fq: string,
   from: string,
   to: string,
   options?: { httpOptions?: ExternalHttpOptions }
-): Promise<{ code: string; source: "d1" | "eastmoney" | "yahoo"; rows: KlineBar[] | FundNavRow[] }> {
+): Promise<{ code: string; source: "r2" | "eastmoney" | "yahoo"; rows: KlineBar[] | FundNavRow[] }> {
+  if (period !== "day") {
+    throw new Error(`unsupported kline period: ${period}`);
+  }
   const code = normalizeSecurityCode(rawCode);
   if (inferSecurityType(code) === "fund" || code.endsWith(".OF")) {
     const fundCode = code.endsWith(".OF") ? code : `${code.split(".")[0]}.OF`;
-    const cached = await getFundNavRows(db, fundCode, from, to);
-    if (cached.length > 0 && isFreshEnough(cached[0]?.updatedAt)) {
-      return { code: fundCode, source: "d1", rows: cached };
+    const snapshot = await getFundNavSnapshot(env, fundCode);
+    if (snapshot && isFreshEnough(fundCode, snapshot.updatedAt) && snapshotCoversRange(snapshot, from, to)) {
+      return { code: fundCode, source: "r2", rows: sliceFundNavRows(snapshot.rows, from, to) };
     }
-    const rows = await fetchEastmoneyFundNav(db, fundCode, from, to);
-    await upsertFundNav(db, rows);
-    return { code: fundCode, source: "eastmoney", rows };
+    const historyRows = await fetchEastmoneyFundNav(env.DB, fundCode, fullKlineHistoryStartDate(), to);
+    if (historyRows.length > 0) {
+      await putFundNavSnapshot(env, fundCode, historyRows);
+    }
+    return { code: fundCode, source: "eastmoney", rows: sliceFundNavRows(historyRows, from, to) };
   }
 
-  const cached = await getKlineBars(db, code, period, fq, from, to);
-  if (cached.length > 0 && isFreshEnough(cached[0]?.updatedAt)) {
-    return { code, source: "d1", rows: cached };
+  const snapshot = await getKlineSnapshot(env, code, fq);
+  if (snapshot && isFreshEnough(code, snapshot.updatedAt) && snapshotCoversRange(snapshot, from, to)) {
+    return { code, source: "r2", rows: sliceKlineRows(snapshot.rows, from, to) };
   }
   if (!isEastmoneyKlineCode(code)) {
-    const cachedGlobal = await getKlineBars(db, code, period, fq, from, to);
-    if (cachedGlobal.length > 0 && isFreshEnough(cachedGlobal[0]?.updatedAt)) {
-      return { code, source: "d1", rows: cachedGlobal };
-    }
-    const fetched = await fetchEastmoneyStockKline(db, code, period, fq, from, to)
+    const fetched = await fetchEastmoneyStockKline(env.DB, code, period, fq, fullKlineHistoryStartDate(), to)
       .then((result) => result)
       .catch((err) => {
         console.warn(`eastmoney kline unavailable for ${code}:`, err);
         return { rows: [] as KlineBar[] };
       });
-    await upsertKlineBars(db, fetched.rows);
-    return { code, source: "eastmoney", rows: fetched.rows };
+    if (fetched.rows.length > 0) {
+      await putKlineSnapshot(env, code, fq, fetched.rows);
+    }
+    return { code, source: "eastmoney", rows: sliceKlineRows(fetched.rows, from, to) };
   }
 
-  const fetched = await fetchTencentStockKline(db, code, period, fq).catch(async (err) => {
+  const fetched = await fetchTencentStockKline(env.DB, code, period, fq).catch(async (err) => {
     console.warn(`tencent kline unavailable for ${code}, trying Eastmoney:`, err);
-    return fetchEastmoneyStockKline(db, code, period, fq, from, to);
+    return fetchEastmoneyStockKline(env.DB, code, period, fq, fullKlineHistoryStartDate(), to);
   });
   if (fetched.security) {
-    await upsertSecurity(db, fetched.security);
+    await upsertSecurity(env.DB, fetched.security);
   }
-  await upsertKlineBars(db, fetched.rows);
-  return { code, source: "eastmoney", rows: fetched.rows };
+  if (fetched.rows.length > 0) {
+    await putKlineSnapshot(env, code, fq, fetched.rows);
+  }
+  return { code, source: "eastmoney", rows: sliceKlineRows(fetched.rows, from, to) };
 }
 
 function isEastmoneyKlineCode(code: string): boolean {
   return /\.(SH|SZ|BJ|HK|US)$/.test(code);
 }
 
-function isFreshEnough(updatedAt: number | undefined): boolean {
+function isFreshEnough(code: string, updatedAt: number | undefined): boolean {
   if (!updatedAt) {
     return false;
   }
-  return Date.now() - updatedAt < 6 * 60 * 60 * 1000;
+  return Date.now() < marketDataCacheExpiresAtMsForCode(code, updatedAt);
 }

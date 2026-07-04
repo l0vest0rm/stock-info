@@ -1,6 +1,6 @@
 import { Context, Hono } from "hono";
 import { getAppKv, putAppKv } from "../../../db/queries";
-import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
+import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
 import { loadKline } from "../../market/application/load-kline";
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
@@ -48,9 +48,10 @@ type SinaCompanyReport = {
 };
 
 const REPORT_SOURCE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-const REPORT_SOURCE_CACHE_VERSION = "v3";
+const REPORT_SOURCE_CACHE_VERSION = "v6";
 const REPORT_PAGE_SIZE = 10;
 const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const REPORT_FORECAST_CACHE_VERSION = "v3";
 const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
 const REPORT_LLM_MODEL: SupportedLlmModel = "doubao-seed-2-0-mini-260215";
@@ -207,7 +208,7 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
   const httpOptions = externalHttpOptions(c.env);
   const [security, kline] = await Promise.all([
     getSecurity(c.env.DB, normalized, { httpOptions }).catch(() => null),
-    loadKline(c.env.DB, normalized, "day", "normal", "1990-01-01", today(), {
+    loadKline(c.env, normalized, "day", "normal", "1990-01-01", today(), {
       httpOptions,
     }).catch(() => ({ rows: [] as KlineBar[] })),
   ]);
@@ -247,8 +248,6 @@ async function fetchEastmoneyCompanyReports(
   if (!stockCode) {
     return [];
   }
-  const overview = await fetchCompanyOverview(c, normalized).catch(() => null);
-  const marketCapYi = overview?.marketCapYi ?? null;
   const url = new URL("https://reportapi.eastmoney.com/report/list");
   const params: Record<string, string> = {
     cb: "jQuery",
@@ -284,15 +283,14 @@ async function fetchEastmoneyCompanyReports(
     data?: Array<Record<string, unknown>>;
   };
   const items = Array.isArray(payload?.data) ? payload.data : [];
-  return items.map((item) => mapEastmoneyCompanyReportItem(item, normalized, marketCapYi));
+  return items.map((item) => mapEastmoneyCompanyReportItem(item, normalized));
 }
 
 function mapEastmoneyCompanyReportItem(
   item: Record<string, unknown>,
-  normalizedCode: string,
-  marketCapYi: number | null
+  normalizedCode: string
 ): Record<string, unknown> {
-  const forecasts = buildEastmoneyForecasts(item, marketCapYi);
+  const forecasts = buildEastmoneyForecasts(item);
   return {
     ...item,
     code: normalizedCode,
@@ -322,6 +320,7 @@ async function getCompanyReportsWithProgress(
   page: number,
   onProgress: (event: ReportForecastStreamEvent) => void
 ): Promise<Array<Record<string, unknown>>> {
+  const totalShares = await fetchLatestTotalShares(c, code).catch(() => null);
   let items = await getCompanyReportsSource(c, code, page);
   if (page === 1) {
     await ensureReportForecastsForItemsWithProgress(c, code, items, onProgress);
@@ -329,7 +328,7 @@ async function getCompanyReportsWithProgress(
     onProgress({ progress: { completed: 0, total: 0, title: "" } });
   }
   items = await annotateReportItemsWithForecasts(c, items);
-  return items;
+  return items.map((item) => enrichReportForecastsWithNetProfit(item, totalShares));
 }
 
 async function getCompanyReportsSource(
@@ -391,8 +390,7 @@ async function ensureReportForecastsForItemsWithProgress(
   const normalized = normalizeSecurityCode(code);
   const candidates = items
     .filter((item) => normalizeSecurityCode(text(item.code)) === normalized)
-    .filter((item) => !Array.isArray(item.forecasts) || item.forecasts.length === 0)
-    .filter((item) => reportNeedsLlmExtraction(item))
+    .filter((item) => reportForecastNeedsLlmRefresh(item))
     .slice(0, REPORT_FORECAST_MAX_CALLS);
   onProgress({
     progress: { completed: 0, total: candidates.length, title: "" },
@@ -402,6 +400,12 @@ async function ensureReportForecastsForItemsWithProgress(
     const item = candidates[index];
     try {
       await ensureSingleReportForecast(c, normalized, item);
+    } catch (error) {
+      console.error("company report forecast extraction failed", {
+        code: normalized,
+        title: text(item.title),
+        error: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       onProgress({
         progress: {
@@ -424,7 +428,7 @@ async function ensureSingleReportForecast(
   if (!reportId) {
     return;
   }
-  const cacheKey = `report-forecast:${reportId}`;
+  const cacheKey = reportForecastCacheKey(reportId);
   const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, cacheKey);
   if (cached?.forecasts?.length) {
     return;
@@ -441,7 +445,7 @@ async function ensureSingleReportForecast(
     reportId,
     code,
     title: text(item.title),
-    source: text(item.url) ? "sina_html" : "unknown",
+    source: reportNeedsLlmExtraction(item) ? "sina_html" : "unknown",
     updatedAt: Date.now(),
     forecasts,
   };
@@ -454,21 +458,22 @@ async function annotateReportItemsWithForecasts(
 ): Promise<Array<Record<string, unknown>>> {
   const results: Array<Record<string, unknown>> = [];
   for (const item of items) {
-    if (Array.isArray(item.forecasts) && item.forecasts.length > 0) {
-      results.push(item);
-      continue;
-    }
     const reportId = companyReportId(item);
     if (!reportId) {
       results.push(item);
       continue;
     }
-    const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, `report-forecast:${reportId}`);
-    if (cached?.forecasts?.length) {
+    const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, reportForecastCacheKey(reportId));
+    if (cached?.forecasts?.length && canOverrideItemForecasts(item)) {
       results.push({
         ...item,
+        forecastSource: "llm_sina_html",
         forecasts: cached.forecasts,
       });
+      continue;
+    }
+    if (Array.isArray(item.forecasts) && item.forecasts.length > 0) {
+      results.push(item);
       continue;
     }
     results.push(item);
@@ -480,7 +485,7 @@ async function loadReportContentForForecast(
   c: Context<AppEnv>,
   item: Record<string, unknown>
 ): Promise<string> {
-  const url = text(item.url);
+  const url = text(item.detailUrl) || text(item.url);
   if (!url) {
     return "";
   }
@@ -497,19 +502,34 @@ async function extractCompanyReportByLlm(
   if (!trimmed) {
     return [];
   }
+  const patternForecasts = extractForecastsByPattern(trimmed);
+  if (patternForecasts.length > 0) {
+    return patternForecasts;
+  }
   const prompt = REPORT_ANALYZE_USER_PROMPT
     .replace("{{TITLE}}", title)
     .replace("{{CONTENT}}", trimmed);
-  const response = await requestLlmText(c.env, {
-    model: REPORT_LLM_MODEL,
-    messages: [
-      { role: "system", content: REPORT_ANALYZE_SYSTEM_PROMPT },
-      { role: "user", content: prompt },
-    ],
-    maxTokens: 4096,
-    cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
-  });
-  return parseCompanyReportForecasts(response.text);
+  try {
+    const response = await requestLlmText(c.env, {
+      model: REPORT_LLM_MODEL,
+      messages: [
+        { role: "system", content: REPORT_ANALYZE_SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+      maxTokens: 4096,
+      cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
+    });
+    return mergeForecastRows(
+      patternForecasts,
+      parseCompanyReportForecasts(response.text)
+    );
+  } catch (error) {
+    console.error("llm forecast extraction failed", {
+      title,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return patternForecasts;
+  }
 }
 
 function parseCompanyReportForecasts(textBody: string): CompanyReportForecast[] {
@@ -575,20 +595,19 @@ function aggregateForecastsForCode(
 }
 
 function buildEastmoneyForecasts(
-  item: Record<string, unknown>,
-  marketCapYi: number | null
+  item: Record<string, unknown>
 ): CompanyReportForecast[] {
   const publishYear = Number(text(item.publishDate).slice(0, 4)) || new Date().getFullYear();
   const pairs = [
-    { year: publishYear, eps: item.predictThisYearEps, pe: item.predictThisYearPe },
-    { year: publishYear + 1, eps: item.predictNextYearEps, pe: item.predictNextYearPe },
-    { year: publishYear + 2, eps: item.predictNextTwoYearEps, pe: item.predictNextTwoYearPe },
+    { year: publishYear, eps: item.predictThisYearEps, pe: item.predictThisYearPe, profit: item.predictThisYearProfit },
+    { year: publishYear + 1, eps: item.predictNextYearEps, pe: item.predictNextYearPe, profit: item.predictNextYearProfit },
+    { year: publishYear + 2, eps: item.predictNextTwoYearEps, pe: item.predictNextTwoYearPe, profit: item.predictNextTwoYearProfit },
   ];
   return pairs
-    .map(({ year, eps, pe }) => {
+    .map(({ year, eps, pe, profit }) => {
       const epsValue = numberOrUndefined(eps);
       const peValue = numberOrUndefined(pe);
-      const netProfit = marketCapYi && peValue && peValue > 0 ? round2(marketCapYi / peValue) : undefined;
+      const netProfit = numberOrUndefined(profit);
       if (epsValue === undefined && peValue === undefined && netProfit === undefined) {
         return null;
       }
@@ -602,18 +621,95 @@ function buildEastmoneyForecasts(
     .filter((row): row is CompanyReportForecast => Boolean(row));
 }
 
+async function fetchLatestTotalShares(c: Context<AppEnv>, code: string): Promise<number | null> {
+  const normalized = normalizeSecurityCode(code);
+  if (!isCnCode(normalized)) {
+    return null;
+  }
+  const rows = await fetchEastmoneyDataRows(c.env.DB, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+    reportName: "RPT_F10_EH_EQUITY",
+    columns: "SECUCODE,END_DATE,TOTAL_SHARES",
+    quoteColumns: "",
+    filter: `(SECUCODE="${normalized}")`,
+    pageNumber: "1",
+    pageSize: "1",
+    sortTypes: "-1",
+    sortColumns: "END_DATE",
+    source: "HSF10",
+    client: "PC",
+  });
+  const totalShares = numberOrUndefined(rows[0]?.TOTAL_SHARES);
+  return totalShares && totalShares > 0 ? totalShares : null;
+}
+
+function enrichReportForecastsWithNetProfit(
+  item: Record<string, unknown>,
+  totalShares: number | null
+): Record<string, unknown> {
+  if (!Array.isArray(item.forecasts) || !totalShares || totalShares <= 0) {
+    return item;
+  }
+  let changed = false;
+  const forecasts = item.forecasts.map((forecast) => {
+    if (!forecast || typeof forecast !== "object") {
+      return forecast;
+    }
+    const record = forecast as Record<string, unknown>;
+    const netProfit = numberOrUndefined(record.netProfit);
+    if (netProfit !== undefined) {
+      return record;
+    }
+    const eps = numberOrUndefined(record.eps);
+    if (eps === undefined) {
+      return record;
+    }
+    changed = true;
+    return {
+      ...record,
+      netProfit: round2((eps * totalShares) / 100_000_000),
+    };
+  });
+  return changed ? { ...item, forecasts } : item;
+}
+
+function reportForecastCacheKey(reportId: string): string {
+  return `report-forecast:${REPORT_FORECAST_CACHE_VERSION}:${reportId}`;
+}
+
 function mergeCompanyReportsPreferPrimary(
   primary: Array<Record<string, unknown>>,
   supplements: Array<Record<string, unknown>>
 ): Array<Record<string, unknown>> {
   const merged: Array<Record<string, unknown>> = [];
   const seen = new Set<string>();
-  for (const item of [...primary, ...supplements]) {
-    const key = companyReportDedupKey(item);
-    if (!key || seen.has(key)) {
+  const supplementsByKey = new Map<string, Array<Record<string, unknown>>>();
+  for (const item of supplements) {
+    const key = companyReportMergeKey(item);
+    if (!key) {
       continue;
     }
-    seen.add(key);
+    if (!supplementsByKey.has(key)) {
+      supplementsByKey.set(key, []);
+    }
+    supplementsByKey.get(key)!.push(item);
+  }
+  for (const item of primary) {
+    const key = companyReportMergeKey(item);
+    const supplement = key ? supplementsByKey.get(key)?.shift() : undefined;
+    const mergedItem = supplement ? mergePrimaryReportWithSupplement(item, supplement) : item;
+    const dedupKey = companyReportDedupKey(mergedItem);
+    if (!dedupKey || seen.has(dedupKey)) {
+      continue;
+    }
+    seen.add(dedupKey);
+    merged.push(mergedItem);
+  }
+  for (const item of supplements) {
+    const dedupKey = companyReportDedupKey(item);
+    if (!dedupKey || seen.has(dedupKey)) {
+      continue;
+    }
+    seen.add(dedupKey);
     merged.push(item);
   }
   merged.sort((left, right) => companyReportSortTime(right) - companyReportSortTime(left));
@@ -631,7 +727,17 @@ function companyReportSortTime(item: Record<string, unknown>): number {
 }
 
 function companyReportDedupKey(item: Record<string, unknown>): string {
-  return `${normalizeDedupText(text(item.title))}|${normalizeDedupText(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org)]))}`;
+  return `${normalizeDedupText(text(item.title))}|${normalizeReportOrgName(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org)]))}`;
+}
+
+function companyReportMergeKey(item: Record<string, unknown>): string {
+  const org = normalizeReportOrgName(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org)]));
+  const date = text(item.publishDate).slice(0, 10);
+  const title = normalizeReportTitleCore(text(item.title));
+  if (!org || !date || !title) {
+    return "";
+  }
+  return `${date}|${org}|${title}`;
 }
 
 function companyReportId(item: Record<string, unknown>): string {
@@ -651,7 +757,24 @@ function companyReportId(item: Record<string, unknown>): string {
 }
 
 function reportNeedsLlmExtraction(item: Record<string, unknown>): boolean {
-  return text(item.url).includes("sina.com.cn");
+  return text(item.detailUrl).includes("sina.com.cn") || text(item.url).includes("sina.com.cn");
+}
+
+function reportForecastNeedsLlmRefresh(item: Record<string, unknown>): boolean {
+  if (!reportNeedsLlmExtraction(item)) {
+    return false;
+  }
+  if (!Array.isArray(item.forecasts) || item.forecasts.length === 0) {
+    return true;
+  }
+  return !reportForecastsHaveNetProfit(item.forecasts as Array<Record<string, unknown>>);
+}
+
+function canOverrideItemForecasts(item: Record<string, unknown>): boolean {
+  if (!Array.isArray(item.forecasts) || item.forecasts.length === 0) {
+    return true;
+  }
+  return !reportForecastsHaveNetProfit(item.forecasts as Array<Record<string, unknown>>);
 }
 
 function isCnCode(code: string): boolean {
@@ -802,6 +925,78 @@ function normalizeDedupText(value: string): string {
     .replace(/（/g, "(")
     .replace(/）/g, ")")
     .replace(/[－—–]/g, "-");
+}
+
+function normalizeReportTitleCore(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const colonIndex = Math.max(trimmed.indexOf("："), trimmed.indexOf(":"));
+  let afterColon = colonIndex >= 0 ? trimmed.slice(colonIndex + 1) : trimmed;
+  if (colonIndex < 0) {
+    afterColon = afterColon.replace(/^[\u4e00-\u9fa5A-Za-z0-9]+(?:\(\d{6}(?:\.[A-Z]{2})?\))\s*[：:]?/, "");
+  }
+  return normalizeDedupText(
+    afterColon
+      .replace(/[，,、。！？!?\-]/g, "")
+  );
+}
+
+function normalizeReportOrgName(value: string): string {
+  return normalizeDedupText(
+    value.replace(/(股份)?有限责任公司|股份有限公司|有限公司/g, "")
+  );
+}
+
+function reportForecastsHaveNetProfit(forecasts: Array<Record<string, unknown>>): boolean {
+  return forecasts.some((forecast) => numberOrUndefined(forecast.netProfit) !== undefined);
+}
+
+function extractForecastsByPattern(content: string): CompanyReportForecast[] {
+  const sentence = content.match(
+    /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*\/\s*(\d{4})\s*\/\s*(\d{4})\s*年[^。；\n]{0,220}?归母净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*亿元/i
+  );
+  if (!sentence) {
+    return [];
+  }
+  const years = [Number(sentence[1]), Number(sentence[2]), Number(sentence[3])];
+  const profits = [Number(sentence[4]), Number(sentence[5]), Number(sentence[6])];
+  if (years.some((year) => !Number.isInteger(year)) || profits.some((profit) => !Number.isFinite(profit))) {
+    return [];
+  }
+  return years.map((year, index) => ({
+    year,
+    netProfit: round2(profits[index]),
+  }));
+}
+
+function mergeForecastRows(
+  preferred: CompanyReportForecast[],
+  fallback: CompanyReportForecast[]
+): CompanyReportForecast[] {
+  const merged = new Map<number, CompanyReportForecast>();
+  for (const item of fallback) {
+    merged.set(item.year, { ...item });
+  }
+  for (const item of preferred) {
+    merged.set(item.year, {
+      ...(merged.get(item.year) ?? { year: item.year }),
+      ...item,
+    });
+  }
+  return [...merged.values()].sort((left, right) => left.year - right.year);
+}
+
+function mergePrimaryReportWithSupplement(
+  primary: Record<string, unknown>,
+  supplement: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...supplement,
+    ...primary,
+    ...(text(supplement.url) ? { detailUrl: text(supplement.url) } : {}),
+  };
 }
 
 async function fetchDecodedPageCached(

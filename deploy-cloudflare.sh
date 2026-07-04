@@ -10,10 +10,11 @@ PRODUCTION_DOMAIN="${CF_PRODUCTION_DOMAIN:-tinfo.cc}"
 DRY_RUN_ONLY=0
 SKIP_MIGRATE=0
 CREATE_MISSING_R2=0
+SKIP_PREFLIGHT=0
 
 usage() {
   cat <<'EOF'
-Usage: ./deploy-cloudflare.sh [--dry-run-only] [--skip-migrate] [--create-missing-r2]
+Usage: ./deploy-cloudflare.sh [--dry-run-only] [--skip-migrate] [--create-missing-r2] [--skip-preflight]
 
 Environment:
   CLOUDFLARE_API_TOKEN   Required. API token used by Wrangler.
@@ -33,6 +34,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --create-missing-r2)
       CREATE_MISSING_R2=1
+      ;;
+    --skip-preflight)
+      SKIP_PREFLIGHT=1
       ;;
     -h|--help)
       usage
@@ -73,10 +77,14 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
-echo "Checking Wrangler auth..."
-npx wrangler whoami >/dev/null
+if [[ "$SKIP_PREFLIGHT" -eq 0 ]]; then
+  echo "Running Cloudflare release preflight..."
+  ./scripts/preflight-cloudflare-release.sh
+else
+  echo "Skipping Cloudflare release preflight."
+fi
 
-R2_BUCKETS=("${(@f)$(node <<'EOF'
+R2_BUCKETS_TEXT=$(node <<'EOF'
 const fs = require("node:fs");
 const path = require("node:path");
 const file = path.join(process.cwd(), "wrangler.jsonc");
@@ -89,11 +97,12 @@ const buckets = Array.isArray(parsed.r2_buckets)
   : [];
 process.stdout.write(buckets.join("\n"));
 EOF
-)}")
+)
 
-if [[ "${#R2_BUCKETS[@]}" -gt 0 ]]; then
+if [[ -n "$R2_BUCKETS_TEXT" ]]; then
   echo "Checking configured R2 buckets..."
-  for bucket in "${R2_BUCKETS[@]}"; do
+  while IFS= read -r bucket; do
+    [[ -n "$bucket" ]] || continue
     if npx wrangler r2 bucket info "$bucket" --json >/dev/null 2>&1; then
       echo "R2 bucket ok: ${bucket}"
       continue
@@ -106,7 +115,9 @@ if [[ "${#R2_BUCKETS[@]}" -gt 0 ]]; then
       echo "Create it first or rerun with --create-missing-r2." >&2
       exit 1
     fi
-  done
+  done <<EOF
+$R2_BUCKETS_TEXT
+EOF
 else
   echo "No R2 buckets configured in wrangler.jsonc."
 fi

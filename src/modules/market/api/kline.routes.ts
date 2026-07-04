@@ -17,14 +17,14 @@ klineRoutes.get("/kline", async (c) => {
   if (!period || !fq) {
     return fail(c, 400, "invalid period or fq parameter");
   }
-  const data = await loadKline(c.env.DB, code, period, fq, from, to, {
+  const data = await loadKline(c.env, code, period, fq, from, to, {
     httpOptions: externalHttpOptions(c.env),
   });
   return ok(c, toLegacyKlineRows(data.rows));
 });
 
 function normalizePeriod(value: string): string | null {
-  if (value === "day" || value === "week" || value === "month") {
+  if (value === "day") {
     return value;
   }
   return null;

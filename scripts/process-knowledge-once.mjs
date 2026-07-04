@@ -26,6 +26,7 @@ import {
   TOPIC_BATCH_SYSTEM_PROMPT,
   TOPIC_BATCH_USER_PROMPT,
 } from "./generated/prompt-text.mjs";
+import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const sharedDataRoot = "/Users/terry/git/data";
@@ -43,6 +44,7 @@ const markdownCacheDir = join(workDir, "markdown-cache");
 const llmCacheDbPath = join(stateDir, "llm-cache.sqlite");
 const llmReviewDir = join(reviewDir, "llm-topic-review");
 const localLlmClients = new Map();
+const localCompanyCodeResolver = loadLocalCompanyCodeResolver(root);
 const importSyncFile = resolve(stateDir, config.importSyncFile || "knowledge-remote-sync.jsonl");
 const now = new Date();
 const runId = formatRunTime(now);
@@ -225,7 +227,7 @@ if (filteredDocs.length > 0 && filteredReviewImportEnabled) {
   const filteredImportFile = join(workDir, `knowledge-filtered-${formatRunTime(now)}.jsonl`);
   const filteredResultFile = join(workDir, `knowledge-filtered-result-${formatRunTime(now)}.json`);
   writeFileSync(filteredImportFile, `${filteredDocs.map((row) => JSON.stringify(row)).join("\n")}\n`);
-  execFileSync(
+  runLoggedCommand(
     "npm",
     [
       "run",
@@ -241,7 +243,7 @@ if (filteredDocs.length > 0 && filteredReviewImportEnabled) {
       "--database",
       config.database || "stock_info",
     ],
-    { cwd: root, stdio: "inherit" }
+    { cwd: root }
   );
   const filteredEntries = readImportResults(filteredResultFile);
   mergeImportSyncState(importSyncState, filteredEntries, importTarget);
@@ -253,7 +255,7 @@ if (uniqueDocs.length > 0) {
   const importFile = join(workDir, `knowledge-import-${formatRunTime(now)}.jsonl`);
   const importResultFile = join(workDir, `knowledge-import-result-${formatRunTime(now)}.json`);
   writeFileSync(importFile, `${uniqueDocs.map((doc) => JSON.stringify(doc)).join("\n")}\n`);
-  execFileSync(
+  runLoggedCommand(
     "npm",
     [
       "run",
@@ -269,7 +271,7 @@ if (uniqueDocs.length > 0) {
       "--database",
       config.database || "stock_info",
     ],
-    { cwd: root, stdio: "inherit" }
+    { cwd: root }
   );
   const importedEntries = readImportResults(importResultFile);
   mergeImportSyncState(importSyncState, importedEntries, importTarget);
@@ -327,7 +329,7 @@ console.log(JSON.stringify({
 
 function runKnowledgeStorageReport(cfg) {
   try {
-    execFileSync(
+    runLoggedCommand(
       "npm",
       [
         "run",
@@ -337,7 +339,7 @@ function runKnowledgeStorageReport(cfg) {
         "--database",
         cfg.database || "stock_info",
       ],
-      { cwd: root, stdio: "inherit" }
+      { cwd: root }
     );
     return {
       ok: true,
@@ -515,7 +517,7 @@ function normalizeRawInput(raw, file) {
     publishedAt,
     eventTime: publishedAt,
     targetName: primaryTarget.name,
-    targetCode: primaryTarget.code,
+    targetCode: normalizeSupportedCompanyCode(primaryTarget.code),
     content: body,
     tags: unique(array(raw.tags).map(text)),
     metadata: {
@@ -532,7 +534,7 @@ function normalizeRawInput(raw, file) {
 
 function resolveTencentPrimaryTarget(raw, stockItems) {
   const explicitName = text(raw.targetName ?? raw.target_name);
-  const explicitCode = text(raw.targetCode ?? raw.target_code);
+  const explicitCode = resolveSupportedCompanyCode(raw.targetCode ?? raw.target_code, explicitName);
   if (explicitName || explicitCode) {
     return { name: explicitName, code: explicitCode };
   }
@@ -540,7 +542,7 @@ function resolveTencentPrimaryTarget(raw, stockItems) {
   const candidates = stockItems
     .map((item) => ({
       name: text(item?.name),
-      code: text(item?.symbol),
+      code: resolveSupportedCompanyCode(item?.symbol, item?.name),
     }))
     .filter((item) => item.name || item.code);
   if (candidates.length === 1 && isDirectSecurityCandidate(candidates[0])) {
@@ -639,6 +641,8 @@ function withStockLinkMetadata(doc) {
     ...doc,
     metadata: {
       ...doc.metadata,
+      stockNames: stockLinks.map((item) => item.name).filter(Boolean),
+      stockCodes: stockLinks.map((item) => item.code).filter(Boolean),
       stockLinks,
     },
   };
@@ -648,9 +652,9 @@ function extractStockLinks(doc) {
   const metadata = object(doc.metadata);
   const links = [];
   const push = ({ code, name, aliases = [] }) => {
-    const normalizedCode = normalizeStockCode(code);
+    const normalizedCode = resolveSupportedCompanyCode(code, name);
     const normalizedName = text(name);
-    if (!normalizedCode && !normalizedName) return;
+    if (!normalizedCode) return;
     links.push({
       code: normalizedCode,
       name: normalizedName,
@@ -1374,6 +1378,28 @@ function executeWranglerSql(sql, cfg, options = {}) {
   );
 }
 
+function runLoggedCommand(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    ...options,
+    encoding: "utf8",
+    stdio: ["inherit", "inherit", "pipe"],
+  });
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  if (result.status === 0) {
+    return;
+  }
+  const detail = [
+    `command failed: ${[command, ...args].join(" ")}`,
+    result.status !== null ? `exit status: ${result.status}` : "",
+    result.signal ? `signal: ${result.signal}` : "",
+    result.error?.message ? `spawn error: ${result.error.message}` : "",
+    result.stderr?.trim() ? `stderr:\n${result.stderr.trim()}` : "",
+  ].filter(Boolean).join("\n\n");
+  throw new Error(detail);
+}
+
 function sourceFingerprint(file) {
   const stat = statSync(file);
   return {
@@ -1622,16 +1648,54 @@ function normalizeStockCode(value) {
   if (usMatch) {
     return `${usMatch[1]}.US`;
   }
-  const lower = raw.toLowerCase();
-  const match = lower.match(/(?:^|[^0-9])([036]\d{5})(?:[^0-9]|$)/);
-  if (match) {
-    return `${match[1]}.${match[1].startsWith("6") ? "SH" : "SZ"}`;
+  const prefixedMatch = upper.match(/^(SH|SZ|BJ)(\d{6})$/);
+  if (prefixedMatch) {
+    return `${prefixedMatch[2]}.${prefixedMatch[1]}`;
   }
-  const suffixMatch = raw.match(/^(\d{6})\.(SH|SZ)$/i);
+  const hkPrefixedMatch = upper.match(/^HK(\d{5})$/);
+  if (hkPrefixedMatch) {
+    return `${hkPrefixedMatch[1]}.HK`;
+  }
+  const lower = raw.toLowerCase();
+  const match = lower.match(/(?:^|[^0-9])([0-9]\d{5})(?:[^0-9]|$)/);
+  if (match) {
+    if (match[1].startsWith("6") || match[1].startsWith("5") || match[1].startsWith("9")) {
+      return `${match[1]}.SH`;
+    }
+    if (match[1].startsWith("0") || match[1].startsWith("1") || match[1].startsWith("2") || match[1].startsWith("3")) {
+      return `${match[1]}.SZ`;
+    }
+    return `${match[1]}.BJ`;
+  }
+  const suffixMatch = raw.match(/^(\d{6})\.(SH|SZ|BJ)$/i);
   if (suffixMatch) {
     return `${suffixMatch[1]}.${suffixMatch[2].toUpperCase()}`;
   }
+  const hkSuffixMatch = raw.match(/^(\d{5})\.HK$/i);
+  if (hkSuffixMatch) {
+    return `${hkSuffixMatch[1]}.HK`;
+  }
   return raw.toUpperCase();
+}
+
+function normalizeSupportedCompanyCode(value) {
+  const normalized = normalizeStockCode(value);
+  return isSupportedCompanyCode(normalized) ? normalized : "";
+}
+
+function resolveSupportedCompanyCode(code, name = "") {
+  const normalized = normalizeSupportedCompanyCode(code);
+  if (normalized) {
+    return normalized;
+  }
+  return localCompanyCodeResolver.resolveByName(name);
+}
+
+function isSupportedCompanyCode(value) {
+  const normalized = text(value).toUpperCase();
+  return /^\d{6}\.(SH|SZ|BJ)$/.test(normalized)
+    || /^\d{5}\.HK$/.test(normalized)
+    || /^[A-Z0-9.-]+\.US$/.test(normalized);
 }
 
 function bareStockCode(value) {

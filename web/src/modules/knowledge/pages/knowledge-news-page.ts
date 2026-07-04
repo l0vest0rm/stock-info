@@ -1,4 +1,5 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { knowledgeDocModalStyles } from '../runtime/knowledge-doc-modal'
 
 type KnowledgeNewsTableRow = {
   displayTime: string
@@ -104,30 +105,7 @@ const knowledgeNewsTargetStyle = `
   overflow-y: auto;
 }
 
-#knowledgeDocContent > *:first-child {
-  margin-top: 0;
-}
-
-#knowledgeDocContent > *:last-child {
-  margin-bottom: 0;
-}
-
-#knowledgeDocContent p,
-#knowledgeDocContent ul,
-#knowledgeDocContent ol,
-#knowledgeDocContent pre,
-#knowledgeDocContent blockquote {
-  margin-bottom: 1rem;
-}
-
-#knowledgeDocContent h1,
-#knowledgeDocContent h2,
-#knowledgeDocContent h3,
-#knowledgeDocContent h4,
-#knowledgeDocContent h5,
-#knowledgeDocContent h6 {
-  margin: 1.25rem 0 0.75rem;
-}
+${knowledgeDocModalStyles}
 `
 
 const knowledgeNewsTagClassMap: Record<string, string> = {

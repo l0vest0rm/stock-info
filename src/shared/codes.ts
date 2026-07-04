@@ -28,6 +28,34 @@ export function normalizeSecurityCode(input: string): string {
   return raw;
 }
 
+export function isSupportedCompanyCode(input: string): boolean {
+  const normalized = normalizeSecurityCode(input);
+  return /^\d{6}\.(SH|SZ|BJ)$/.test(normalized)
+    || /^\d{5}\.HK$/.test(normalized)
+    || /^[A-Z0-9.-]+\.US$/.test(normalized);
+}
+
+export function normalizeSupportedCompanyCode(input: string): string {
+  const raw = input.trim().toUpperCase();
+  if (!raw) {
+    return "";
+  }
+  const usMatch = raw.match(/^US([A-Z0-9.-]+)\.(?:OQ|NQ|N|AMEX|PK|OB)$/);
+  if (usMatch) {
+    return `${usMatch[1]}.US`;
+  }
+  const prefixedMatch = raw.match(/^(SH|SZ|BJ)(\d{6})$/);
+  if (prefixedMatch) {
+    return `${prefixedMatch[2]}.${prefixedMatch[1]}`;
+  }
+  const hkPrefixedMatch = raw.match(/^HK(\d{5})$/);
+  if (hkPrefixedMatch) {
+    return `${hkPrefixedMatch[1]}.HK`;
+  }
+  const normalized = normalizeSecurityCode(raw);
+  return isSupportedCompanyCode(normalized) ? normalized : "";
+}
+
 export function securityMarket(code: string): string {
   const normalized = normalizeSecurityCode(code);
   const suffix = normalized.split(".").pop() ?? "";

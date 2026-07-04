@@ -24,24 +24,6 @@ type CompanyOptionCompareControlsEvent = CustomEvent<{
   strategyNamePlaceholder?: string
 }>
 
-type CompanyOptionStrategySummaryEvent = CustomEvent<{
-  text?: string
-}>
-
-type CompanyOptionStrategyLegRow = {
-  id: number
-  side: 'buy' | 'sell'
-  quantity: number
-  type: 'call' | 'put'
-  expiration: string
-  strike: string
-  price: string
-}
-
-type CompanyOptionStrategyLegsEvent = CustomEvent<{
-  legs?: CompanyOptionStrategyLegRow[]
-}>
-
 type CompanyOptionCompareScenarioCell = {
   text: string
   className: string
@@ -84,13 +66,6 @@ type CompanyOptionChainRowsEvent = CustomEvent<{
   rows?: CompanyOptionChainRow[]
 }>
 
-type CompanyOptionChartOptionEvent = CustomEvent<{
-  id?: string
-  option?: unknown
-}>
-
-declare const echarts: any
-
 function labeledControl(label: string, target: string, control: ReturnType<typeof h>) {
   return [
     h('label', { class: 'form-label mb-1', for: target }, label),
@@ -107,71 +82,6 @@ function lineNodes(lines: string[]) {
     nodes.push(lines[index])
   }
   return nodes
-}
-
-function renderStrategyTable(legs: CompanyOptionStrategyLegRow[]) {
-  if (legs.length === 0) {
-    return [
-      h('thead', { class: 'table-info' }, [
-        h('tr', [h('th', '已选组合')]),
-      ]),
-      h('tbody', [
-        h('tr', [h('td', { class: 'text-muted' }, '从左侧期权链加入合约')]),
-      ]),
-    ]
-  }
-
-  return [
-    h('thead', { class: 'table-info' }, [
-      h('tr', [
-        h('th', '买卖'),
-        h('th', '张数'),
-        h('th', '方向'),
-        h('th', '到期日'),
-        h('th', { class: 'text-end' }, '行权价'),
-        h('th', { class: 'text-end' }, '权利金'),
-        h('th'),
-      ]),
-    ]),
-    h('tbody', legs.map((leg) => h('tr', { key: leg.id }, [
-      h('td', [
-        h('select', {
-          class: 'form-select form-select-sm',
-          'data-action': 'update-option-leg',
-          'data-field': 'side',
-          'data-id': String(leg.id),
-          value: leg.side,
-        }, [
-          h('option', { value: 'buy' }, '买入'),
-          h('option', { value: 'sell' }, '卖出'),
-        ]),
-      ]),
-      h('td', [
-        h('input', {
-          class: 'form-control form-control-sm text-end',
-          type: 'number',
-          min: '1',
-          step: '1',
-          defaultValue: String(leg.quantity),
-          'data-action': 'update-option-leg',
-          'data-field': 'quantity',
-          'data-id': String(leg.id),
-        }),
-      ]),
-      h('td', leg.type === 'call' ? 'Call' : 'Put'),
-      h('td', leg.expiration),
-      h('td', { class: 'text-end' }, leg.strike),
-      h('td', { class: 'text-end' }, leg.price),
-      h('td', [
-        h('button', {
-          type: 'button',
-          class: 'btn btn-sm btn-outline-danger',
-          'data-action': 'remove-option-leg',
-          'data-id': String(leg.id),
-        }, '移除'),
-      ]),
-    ]))),
-  ]
 }
 
 function renderCompareTable(scenarioPrices: string[], rows: CompanyOptionCompareRow[]) {
@@ -238,6 +148,29 @@ function renderCompareTable(scenarioPrices: string[], rows: CompanyOptionCompare
 }
 
 function renderChainTable(rows: CompanyOptionChainRow[]) {
+  if (rows.length === 0) {
+    return [
+      h('thead', { class: 'table-info theadFix' }, [
+        h('tr', [
+          h('th', '方向'),
+          h('th', { class: 'text-end' }, '行权价'),
+          h('th', { class: 'text-end' }, '距离(%)'),
+          h('th', { class: 'text-end' }, '中价'),
+          h('th', { class: 'text-end' }, 'Bid'),
+          h('th', { class: 'text-end' }, 'Ask'),
+          h('th', { class: 'text-end' }, 'Last'),
+          h('th', { class: 'text-end' }, 'Volume'),
+          h('th', { class: 'text-end' }, 'Open Int.'),
+          h('th'),
+        ]),
+      ]),
+      h('tbody', [
+        h('tr', [
+          h('td', { class: 'text-muted text-center', colSpan: 10 }, '请选择到期日后加载合约'),
+        ]),
+      ]),
+    ]
+  }
   return [
     h('thead', { class: 'table-info theadFix' }, [
       h('tr', [
@@ -275,31 +208,20 @@ function renderChainTable(rows: CompanyOptionChainRow[]) {
   ]
 }
 
-function applyChartOption(chartId: string, option: unknown) {
-  const chartDom = document.getElementById(chartId)
-  if (!chartDom || typeof echarts === 'undefined') {
-    return
-  }
-  echarts.dispose(chartDom)
-  echarts.init(chartDom).setOption(option || {xAxis: {type: 'value'}, yAxis: {type: 'value'}, series: []})
-}
-
 const CompanyOptionPage = defineComponent({
   name: 'CompanyOptionPage',
   setup() {
     const statusText = ref('')
     const compareStatusText = ref('')
     const expirationOptions = ref<CompanyOptionExpirationOption[]>([
-      {value: 'all', text: '全部到期日'},
+      {value: '', text: '请选择到期日'},
     ])
-    const selectedExpiration = ref('all')
+    const selectedExpiration = ref('')
     const optionType = ref('all')
     const compareCapital = ref('')
     const comparePrices = ref('')
     const compareStrategyName = ref('')
     const compareStrategyNamePlaceholder = ref('')
-    const strategySummaryText = ref('')
-    const strategyLegRows = ref<CompanyOptionStrategyLegRow[]>([])
     const compareScenarioPrices = ref<string[]>([])
     const compareRows = ref<CompanyOptionCompareRow[]>([])
     const chainRows = ref<CompanyOptionChainRow[]>([])
@@ -322,9 +244,11 @@ const CompanyOptionPage = defineComponent({
         return
       }
       expirationOptions.value = detail.options
-      selectedExpiration.value = detail.selected || detail.options[0]?.value || 'all'
+      selectedExpiration.value = detail.selected || detail.options[0]?.value || ''
       nextTick(() => {
-        document.getElementById('optionExpirationFilter')?.dispatchEvent(new Event('change', { bubbles: true }))
+        if (selectedExpiration.value) {
+          document.getElementById('optionExpirationFilter')?.dispatchEvent(new Event('change', { bubbles: true }))
+        }
       })
     }
 
@@ -347,16 +271,6 @@ const CompanyOptionPage = defineComponent({
       }
     }
 
-    const onStrategySummary = (event: Event) => {
-      const detail = (event as CompanyOptionStrategySummaryEvent).detail
-      strategySummaryText.value = detail?.text || ''
-    }
-
-    const onStrategyLegs = (event: Event) => {
-      const detail = (event as CompanyOptionStrategyLegsEvent).detail
-      strategyLegRows.value = Array.isArray(detail?.legs) ? detail.legs : []
-    }
-
     const onCompareTable = (event: Event) => {
       const detail = (event as CompanyOptionCompareTableEvent).detail
       compareScenarioPrices.value = Array.isArray(detail?.scenarioPrices) ? detail.scenarioPrices : []
@@ -368,34 +282,20 @@ const CompanyOptionPage = defineComponent({
       chainRows.value = Array.isArray(detail?.rows) ? detail.rows : []
     }
 
-    const onChartOption = (event: Event) => {
-      const detail = (event as CompanyOptionChartOptionEvent).detail
-      if (typeof detail?.id !== 'string') {
-        return
-      }
-      applyChartOption(detail.id, detail.option)
-    }
-
     onMounted(() => {
       window.addEventListener('licai:company-option-status', onStatus)
       window.addEventListener('licai:company-option-expirations', onExpirations)
       window.addEventListener('licai:company-option-compare-controls', onCompareControls)
-      window.addEventListener('licai:company-option-strategy-summary', onStrategySummary)
-      window.addEventListener('licai:company-option-strategy-legs', onStrategyLegs)
       window.addEventListener('licai:company-option-compare-table', onCompareTable)
       window.addEventListener('licai:company-option-chain-rows', onChainRows)
-      window.addEventListener('licai:company-option-chart-option', onChartOption)
     })
 
     onBeforeUnmount(() => {
       window.removeEventListener('licai:company-option-status', onStatus)
       window.removeEventListener('licai:company-option-expirations', onExpirations)
       window.removeEventListener('licai:company-option-compare-controls', onCompareControls)
-      window.removeEventListener('licai:company-option-strategy-summary', onStrategySummary)
-      window.removeEventListener('licai:company-option-strategy-legs', onStrategyLegs)
       window.removeEventListener('licai:company-option-compare-table', onCompareTable)
       window.removeEventListener('licai:company-option-chain-rows', onChainRows)
-      window.removeEventListener('licai:company-option-chart-option', onChartOption)
     })
 
     return () => h('div', { id: 'companyOptionPage' }, [
@@ -441,9 +341,16 @@ const CompanyOptionPage = defineComponent({
         ]),
         h('div', { class: 'col-12 col-xl-4' }, [
           h('div', { class: 'table-responsive' }, [
-            h('table', { id: 'optionStrategyTable', class: 'table table-sm table-bordered align-middle' }, renderStrategyTable(strategyLegRows.value)),
+            h('table', { id: 'optionStrategyTable', class: 'table table-sm table-bordered align-middle' }, [
+              h('thead', { class: 'table-info' }, [
+                h('tr', [h('th', '已选组合')]),
+              ]),
+              h('tbody', [
+                h('tr', [h('td', { class: 'text-muted' }, '从左侧期权链加入合约')]),
+              ]),
+            ]),
           ]),
-          h('div', { id: 'optionStrategyPremium', class: 'small text-end text-muted mb-2' }, strategySummaryText.value),
+          h('div', { id: 'optionStrategyPremium', class: 'small text-end text-muted mb-2' }),
           h('div', { id: 'optionsLineChart', style: 'min-height: 420px; min-width: 300px;' }),
         ]),
       ]),
@@ -510,4 +417,3 @@ const root = document.getElementById('company-option-vue-root')
 if (root) {
   createApp(CompanyOptionPage).mount(root)
 }
-

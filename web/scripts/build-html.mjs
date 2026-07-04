@@ -243,6 +243,7 @@ function generateRobots(baseConfig) {
     'Disallow: /api/',
     'Disallow: /knowledge-config.html',
     'Disallow: /company-option.html',
+    'Disallow: /company-option-theta.html',
     `Sitemap: ${siteUrl}/sitemap.xml`,
     '',
   ]

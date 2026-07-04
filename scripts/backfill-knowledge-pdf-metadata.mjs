@@ -180,6 +180,10 @@ function buildUpdate(row) {
     title: nextTitle,
     summary: nextSummary,
     metadataJson: JSON.stringify(nextMetadata),
+    sortTime: firstNonEmpty(nextEventTime, nextPublishedAt, text(row.fetchedAt)),
+    sourceNameNormalized: nextSourceName.toLowerCase(),
+    targetCodeNormalized: nextTargetCode.toUpperCase(),
+    securityCodes: extractSecurityCodes(nextTargetCode, nextMetadata),
   };
 }
 
@@ -240,8 +244,15 @@ function renderSql(updates) {
       `  report_type = ${sqlString(row.reportType)},`,
       `  title = ${sqlString(row.title)},`,
       `  summary = ${sqlString(row.summary)},`,
-      `  metadata_json = ${sqlString(row.metadataJson)}`,
-      `where doc_id = ${sqlString(row.docId)};`
+      `  metadata_json = ${sqlString(row.metadataJson)},`,
+      `  sort_time = ${sqlString(row.sortTime)},`,
+      `  source_name_normalized = ${sqlString(row.sourceNameNormalized)},`,
+      `  target_code_normalized = ${sqlString(row.targetCodeNormalized)}`,
+      `where doc_id = ${sqlString(row.docId)};`,
+      `delete from knowledge_doc_security_links where doc_id = ${sqlString(row.docId)};`,
+      ...row.securityCodes.map((code) =>
+        `insert into knowledge_doc_security_links (doc_id, code) values (${sqlString(row.docId)}, ${sqlString(code)}) on conflict(doc_id, code) do nothing;`
+      ),
     );
   }
   lines.push("commit;");
@@ -259,6 +270,32 @@ function parseJson(value) {
   } catch {
     return {};
   }
+}
+
+function extractSecurityCodes(targetCode, metadata) {
+  const links = Array.isArray(metadata.stockLinks) ? metadata.stockLinks : [];
+  return unique([
+    normalizeCode(targetCode),
+    ...links.map((link) => normalizeCode(link?.code)),
+  ]);
+}
+
+function normalizeCode(value) {
+  return text(value).toUpperCase();
+}
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = text(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 function normalizeText(value) {

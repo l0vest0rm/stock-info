@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { marketDataCacheTtlMsForRegion } from "../../../shared/cache-policy";
 import { cachedFetchText, ok, parseJsonOrJsonp } from "../../../shared/http";
 import type { AppEnv } from "../../../types";
 
@@ -10,7 +11,7 @@ marketRoutes.get("/companies/filter", async (c) => {
     source: "SELECT_SECURITIES",
     client: "WEB",
   });
-  return ok(c, ((await fetchJson(c.env.DB, url, "https://data.eastmoney.com/xuangu/", 60 * 60 * 1000)) as any).result ?? {});
+  return ok(c, ((await fetchJson(c.env.DB, url, "https://data.eastmoney.com/xuangu/", marketDataCacheTtlMsForRegion("cn"))) as any).result ?? {});
 });
 
 marketRoutes.get("/companies/change", async (c) => {
@@ -33,7 +34,7 @@ marketRoutes.get("/companies/change", async (c) => {
     fs: "m:0+t:6+f:!2,m:0+t:13+f:!2,m:0+t:80+f:!2,m:1+t:2+f:!2,m:1+t:23+f:!2,m:0+t:7+f:!2,m:1+t:3+f:!2",
     _: String(ts),
   });
-  return ok(c, ((await fetchJson(c.env.DB, url, "https://quote.eastmoney.com/", 60 * 1000)) as any).data ?? {});
+  return ok(c, ((await fetchJson(c.env.DB, url, "https://quote.eastmoney.com/", marketDataCacheTtlMsForRegion("cn"))) as any).data ?? {});
 });
 
 marketRoutes.get("/sector/flow", async (c) => {
@@ -56,7 +57,7 @@ marketRoutes.get("/sector/flow", async (c) => {
     fields: "f12,f14,f2,f3,f62,f184,f66,f69,f72,f75,f78,f81,f84,f87,f204,f205,f124,f1,f13",
     _: String(ts),
   });
-  return ok(c, ((await fetchJson(c.env.DB, url, "https://quote.eastmoney.com/", 60 * 1000)) as any).data ?? {});
+  return ok(c, ((await fetchJson(c.env.DB, url, "https://quote.eastmoney.com/", marketDataCacheTtlMsForRegion("cn"))) as any).data ?? {});
 });
 
 marketRoutes.get("/companies/holding/rank", async (c) => {

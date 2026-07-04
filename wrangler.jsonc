@@ -9,6 +9,7 @@
   },
   "vars": {
     "APP_VERSION": "0.1.0",
+    "MARKET_DATA_PUBLIC_BASE_URL": "https://market-data.tinfo.cc",
     "LLM_DAILY_LIMIT": "300",
     "HTTP_PROXY_URL": "",
     "HTTP_PROXY_DOMAINS": "",
@@ -38,8 +39,13 @@
   ],
   "r2_buckets": [
     {
+      "binding": "MARKET_DATA_BUCKET",
+      "bucket_name": "stock-info-market-data",
+    },
+    {
       "binding": "KNOWLEDGE_CONTENT_BUCKET",
       "bucket_name": "stock-info-knowledge-content",
+      "remote": true,
     },
   ],
   "triggers": {

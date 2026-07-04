@@ -14,6 +14,8 @@ if (args.remote && !args.uploadContentRemote) {
 
 const now = Date.now();
 const maxSqlBatchBytes = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES, 700000);
+const maxLocalContentChunkChars = positiveInteger(process.env.KNOWLEDGE_IMPORT_LOCAL_CONTENT_CHUNK_CHARS, 20000);
+const docChunkSize = positiveInteger(process.env.KNOWLEDGE_IMPORT_DOC_CHUNK_SIZE, args.remote ? 400 : 1000);
 const contentOptions = buildContentOptions(args);
 const rows = loadRows(args.file);
 if (rows.length === 0) {
@@ -36,27 +38,38 @@ if (pendingRows.length === 0) {
   process.exit(0);
 }
 
-const normalizedRows = await mapWithConcurrency(pendingRows, contentOptions.uploadConcurrency, async (row) => {
-  const normalized = await normalizeRow(row);
-  appendSyncEntries(buildSyncEntries([normalized], { hasD1: false, hasR2: Boolean(normalized.contentKey) }));
-  return normalized;
-});
-const batches = buildSqlBatches(normalizedRows);
 let imported = 0;
-
-for (let index = 0; index < batches.length; index += 1) {
-  const sql = batches[index].statements.join("\n");
-  const dir = mkdtempSync(join(tmpdir(), "stock-info-filtered-import-"));
-  const sqlFile = join(dir, "import-filtered.sql");
-  try {
-    writeFileSync(sqlFile, sql);
-    executeWrangler(sqlFile);
-    imported += batches[index].docs;
-    appendImportResults(args.resultFile, buildImportResults(batches[index].items));
-    appendSyncEntries(buildSyncEntries(batches[index].items, { hasD1: true, hasR2: true }));
-    console.error(`[knowledge-filtered-import] imported batch ${index + 1}/${batches.length} docs=${batches[index].docs}`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+let executedBatches = 0;
+for (let offset = 0; offset < pendingRows.length; offset += docChunkSize) {
+  const chunk = pendingRows.slice(offset, offset + docChunkSize);
+  const normalizedRows = await mapWithConcurrency(
+    chunk,
+    contentOptions.uploadConcurrency,
+    async (row) => {
+      const normalized = await normalizeRow(row);
+      appendSyncEntries(buildSyncEntries([normalized], { hasD1: false }));
+      return normalized;
+    },
+    { label: "knowledge-filtered-import", completed: offset, total: pendingRows.length }
+  );
+  const batches = buildSqlBatches(normalizedRows);
+  for (let index = 0; index < batches.length; index += 1) {
+    const sql = batches[index].statements.join("\n");
+    const dir = mkdtempSync(join(tmpdir(), "stock-info-filtered-import-"));
+    const sqlFile = join(dir, "import-filtered.sql");
+    try {
+      writeFileSync(sqlFile, sql);
+      executeWrangler(sqlFile);
+      imported += batches[index].docs;
+      executedBatches += 1;
+      appendImportResults(args.resultFile, buildImportResults(batches[index].items));
+      appendSyncEntries(buildSyncEntries(batches[index].items, { hasD1: true }));
+      console.error(
+        `[knowledge-filtered-import] imported batch docs=${batches[index].docs} imported=${imported}/${pendingRows.length} d1Batches=${executedBatches}`
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 }
 
@@ -82,22 +95,26 @@ function executeWrangler(sqlFile) {
   }
 }
 
-console.log(JSON.stringify({ imported, skippedSynced, batches: batches.length, contentBucket: contentOptions.bucket }, null, 2));
+console.log(JSON.stringify({
+  imported,
+  skippedSynced,
+  batches: executedBatches,
+  chunkSize: docChunkSize,
+  contentBucket: contentOptions.bucket,
+}, null, 2));
 
 function statementForRow(item) {
   return `insert into knowledge_filtered_docs (
       doc_id, source_type, report_type, source_name, title, url, published_at, fetched_at,
-      event_time, target_name, target_code, summary,
-      content_key, content_url, content_type, content_encoding, content_bytes, content_sha256,
+      event_time, target_name, target_code, access_method, summary,
       content_preview, metadata_json,
       filter_method, filter_score, filter_confidence, filter_reasons_json, source_file,
       reviewed_status, updated_at
     ) values (
       ${q(item.docId)}, ${q(item.sourceType)}, ${q(item.reportType)}, ${q(item.sourceName)},
       ${q(item.title)}, ${q(item.url)}, ${q(item.publishedAt)}, ${q(item.fetchedAt)},
-      ${q(item.eventTime)}, ${q(item.targetName)}, ${q(item.targetCode)}, ${q(item.summary)},
-      ${q(item.contentKey)}, ${q(item.contentUrl)}, ${q(item.contentType)}, ${q(item.contentEncoding)},
-      ${item.contentBytes}, ${q(item.contentSha256)}, ${q(item.contentPreview)},
+      ${q(item.eventTime)}, ${q(item.targetName)}, ${q(item.targetCode)}, ${q(item.accessMethod)}, ${q(item.summary)},
+      ${q(item.contentPreview)},
       ${q(JSON.stringify(item.metadata))}, ${q(item.filterMethod)},
       ${item.filterScore}, ${item.filterConfidence === null ? "null" : item.filterConfidence},
       ${q(JSON.stringify(item.filterReasons))}, ${q(item.sourceFile)}, ${q(item.reviewedStatus)},
@@ -114,13 +131,8 @@ function statementForRow(item) {
       event_time=excluded.event_time,
       target_name=excluded.target_name,
       target_code=excluded.target_code,
+      access_method=excluded.access_method,
       summary=excluded.summary,
-      content_key=excluded.content_key,
-      content_url=excluded.content_url,
-      content_type=excluded.content_type,
-      content_encoding=excluded.content_encoding,
-      content_bytes=excluded.content_bytes,
-      content_sha256=excluded.content_sha256,
       content_preview=excluded.content_preview,
       metadata_json=excluded.metadata_json,
       filter_method=excluded.filter_method,
@@ -131,6 +143,66 @@ function statementForRow(item) {
       updated_at=excluded.updated_at;`;
 }
 
+function contentRefStatement(table, item) {
+  if (!hasContentRef(item)) {
+    return `delete from ${table} where doc_id = ${q(item.docId)};`;
+  }
+  return `insert into ${table} (
+      doc_id, content_key, content_url, content_type, content_encoding, content_bytes, content_sha256, updated_at
+    ) values (
+      ${q(item.docId)}, ${q(item.contentKey)}, ${q(item.contentUrl)}, ${q(item.contentType)},
+      ${q(item.contentEncoding)}, ${item.contentBytes}, ${q(item.contentSha256)}, ${item.updatedAt}
+    )
+    on conflict(doc_id) do update set
+      content_key=excluded.content_key,
+      content_url=excluded.content_url,
+      content_type=excluded.content_type,
+      content_encoding=excluded.content_encoding,
+      content_bytes=excluded.content_bytes,
+      content_sha256=excluded.content_sha256,
+      updated_at=excluded.updated_at;`;
+}
+
+function localContentCacheStatement(item) {
+  if (args.remote || args.uploadContentRemote) {
+    return [
+      `delete from knowledge_local_content_cache_chunks where content_key = ${q(item.contentKey)};`,
+      `delete from knowledge_local_content_cache where content_key = ${q(item.contentKey)};`,
+    ];
+  }
+  if (!text(item.contentKey) || !text(item.payloadBase64)) {
+    return [
+      `delete from knowledge_local_content_cache_chunks where content_key = ${q(item.contentKey)};`,
+      `delete from knowledge_local_content_cache where content_key = ${q(item.contentKey)};`,
+    ];
+  }
+  return [
+    `delete from knowledge_local_content_cache_chunks where content_key = ${q(item.contentKey)};`,
+    `insert into knowledge_local_content_cache (
+      content_key, content_type, content_encoding, content_sha256, content_bytes, updated_at
+    ) values (
+      ${q(item.contentKey)}, ${q(item.contentType)}, ${q(item.contentEncoding)},
+      ${q(item.contentSha256)}, ${item.contentBytes}, ${item.updatedAt}
+    )
+    on conflict(content_key) do update set
+      content_type=excluded.content_type,
+      content_encoding=excluded.content_encoding,
+      content_sha256=excluded.content_sha256,
+      content_bytes=excluded.content_bytes,
+      updated_at=excluded.updated_at;`,
+    ...buildLocalContentChunkStatements(item),
+  ];
+}
+
+function hasContentRef(item) {
+  return Boolean(
+    text(item.contentKey)
+    || text(item.contentUrl)
+    || text(item.contentSha256)
+    || integer(item.contentBytes, 0) > 0
+  );
+}
+
 function buildSqlBatches(items) {
   const batches = [];
   let current = [];
@@ -138,7 +210,11 @@ function buildSqlBatches(items) {
   let currentDocs = 0;
   let currentItems = [];
   for (const item of items) {
-    const statements = [statementForRow(item)];
+    const statements = [
+      statementForRow(item),
+      contentRefStatement("knowledge_filtered_doc_content_refs", item),
+      localContentCacheStatement(item),
+    ].flat();
     const sql = statements.join("\n");
     const bytes = Buffer.byteLength(sql);
     if (current.length > 0 && currentBytes + bytes > maxSqlBatchBytes) {
@@ -159,16 +235,36 @@ function buildSqlBatches(items) {
   return batches;
 }
 
+function buildLocalContentChunkStatements(item) {
+  const payloadBase64 = text(item.payloadBase64);
+  if (!payloadBase64) {
+    return [];
+  }
+  const statements = [];
+  for (let index = 0; index < payloadBase64.length; index += maxLocalContentChunkChars) {
+    const chunk = payloadBase64.slice(index, index + maxLocalContentChunkChars);
+    statements.push(`insert into knowledge_local_content_cache_chunks (
+        content_key, chunk_index, payload_base64
+      ) values (
+        ${q(item.contentKey)}, ${index / maxLocalContentChunkChars}, ${q(chunk)}
+      )
+      on conflict(content_key, chunk_index) do update set
+        payload_base64=excluded.payload_base64;`);
+  }
+  return statements;
+}
+
 async function normalizeRow(raw) {
   const doc = raw.doc || raw;
   const filter = raw.filter || raw.topic || {};
   const metadata = object(doc.metadata ?? doc.metadata_json);
   const rawMdText = text(doc.markdown ?? doc.mdText ?? doc.md_text);
   const docId = text(doc.docId ?? doc.doc_id ?? raw.docId ?? raw.doc_id);
+  const contentRemote = args.remote || args.uploadContentRemote;
   const content = await prepareKnowledgeContentAsync({
     docId,
     markdown: rawMdText,
-    remote: args.remote,
+    remote: contentRemote,
     options: contentOptions,
   });
   return {
@@ -183,6 +279,7 @@ async function normalizeRow(raw) {
     eventTime: text(doc.eventTime ?? doc.event_time ?? doc.publishedAt ?? doc.published_at),
     targetName: text(doc.targetName ?? doc.target_name),
     targetCode: text(doc.targetCode ?? doc.target_code),
+    accessMethod: text(doc.accessMethod ?? doc.access_method) || (content.contentKey ? "markdown" : (text(doc.url).toLowerCase().includes(".pdf") ? "remote_pdf" : "")),
     summary: text(doc.summary),
     ...content,
     metadata,
@@ -277,6 +374,7 @@ function usage() {
 
 function buildImportResults(items) {
   const importedAt = new Date().toISOString();
+  const uploadedRemote = args.remote || args.uploadContentRemote;
   return items.map((item) => ({
     scope: "knowledge_filtered_docs",
     docId: item.docId,
@@ -294,7 +392,7 @@ function buildImportResults(items) {
     contentSha256: item.contentSha256,
     contentBucket: contentOptions.bucket,
     hasD1: true,
-    hasR2: Boolean(item.contentKey),
+    hasR2: Boolean(uploadedRemote && text(item.contentKey)),
   }));
 }
 
@@ -307,6 +405,7 @@ function appendImportResults(file, entries) {
 
 function buildSyncEntries(items, overrides = {}) {
   const importedAt = new Date().toISOString();
+  const uploadedRemote = args.remote || args.uploadContentRemote;
   return items.map((item) => ({
     scope: "knowledge_filtered_docs",
     docId: item.docId,
@@ -324,7 +423,7 @@ function buildSyncEntries(items, overrides = {}) {
     contentSha256: item.contentSha256,
     contentBucket: contentOptions.bucket,
     hasD1: false,
-    hasR2: Boolean(item.contentKey),
+    hasR2: Boolean(uploadedRemote && text(item.contentKey)),
     ...overrides,
   }));
 }
@@ -372,7 +471,7 @@ function finiteNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-async function mapWithConcurrency(items, concurrency, mapper) {
+async function mapWithConcurrency(items, concurrency, mapper, progress = {}) {
   const results = new Array(items.length);
   let nextIndex = 0;
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
@@ -380,8 +479,10 @@ async function mapWithConcurrency(items, concurrency, mapper) {
       const index = nextIndex;
       nextIndex += 1;
       results[index] = await mapper(items[index], index);
-      if ((index + 1) % 25 === 0 || index + 1 === items.length) {
-        console.error(`[knowledge-filtered-import] prepared content ${index + 1}/${items.length}`);
+      const completed = integer(progress.completed, 0) + index + 1;
+      const total = integer(progress.total, items.length);
+      if (completed % 25 === 0 || completed === total) {
+        console.error(`[${text(progress.label) || "knowledge-filtered-import"}] prepared content ${completed}/${total}`);
       }
     }
   });

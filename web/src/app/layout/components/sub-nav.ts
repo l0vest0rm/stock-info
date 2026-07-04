@@ -72,7 +72,11 @@ export const SubNav = defineComponent({
   setup(props) {
     return () => {
       const nested = props.kind === "fund" || props.kind === "index";
-      const buttonGroup = h("div", { class: "btn-group", role: "group" }, renderSubnavLinks(props.kind, props.page));
+      const buttonGroup = h(
+        "div",
+        { class: "d-flex flex-wrap justify-content-center gap-2 company-subnav-pills", role: "group" },
+        renderSubnavLinks(props.kind, props.page)
+      );
       if (nested) {
         return h("div", { id: "container", class: "py-2" }, [h("div", { class: "text-center" }, [buttonGroup])]);
       }

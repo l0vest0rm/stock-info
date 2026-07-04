@@ -73,7 +73,7 @@ financeRoutes.get("/finance/:statementType", async (c) => {
   if (code instanceof Response) {
     return code;
   }
-  const data = await loadFinancialStatements(c.env.DB, code, statementType, {
+  const data = await loadFinancialStatements(c.env, code, statementType, {
     httpOptions: externalHttpOptions(c.env),
   }).catch((err) => {
     if (isUnsupportedFinanceError(err)) {

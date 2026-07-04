@@ -16,6 +16,10 @@
     "enabled": true,
     "knowledgeDocsMaxAgeDays": 90
   },
+  "remoteImportRetention": {
+    "newsMaxAgeDays": 14,
+    "reportMaxAgeDays": 30
+  },
   "importBatchSize": 200,
   "filterReviewPreviewLimit": 50,
   "docProcessingConcurrency": 4,

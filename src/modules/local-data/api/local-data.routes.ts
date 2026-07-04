@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { fail, ok } from "../../../shared/http";
-import { isLocalHostHeader } from "../../../shared/request";
+import { isLocalDevelopmentRuntime } from "../../../shared/request";
 import type { AppEnv } from "../../../types";
 
 export const localDataRoutes = new Hono<AppEnv>();
@@ -12,7 +12,7 @@ localDataRoutes.post("/knowledge/doc/event", (c) => fail(c, 404, "knowledge even
 localDataRoutes.post("/knowledge/doc/favorite", (c) => fail(c, 404, "knowledge favorites are not enabled"));
 localDataRoutes.get("/knowledge/sources", (c) => ok(c, []));
 localDataRoutes.get("/knowledge/ingest-config", (c) => {
-  if (!isLocalHostHeader(c.req.header("host"))) {
+  if (!isLocalDevelopmentRuntime()) {
     return fail(c, 404, "knowledge ingest config is only available in local development");
   }
   return ok(c, {
@@ -34,13 +34,13 @@ localDataRoutes.get("/knowledge/ingest-config", (c) => {
   });
 });
 localDataRoutes.post("/knowledge/ingest-config", (c) => {
-  if (!isLocalHostHeader(c.req.header("host"))) {
+  if (!isLocalDevelopmentRuntime()) {
     return fail(c, 404, "knowledge ingest config is only available in local development");
   }
   return ok(c, { saved: false, reason: "not-migrated" });
 });
 localDataRoutes.post("/knowledge/ingest-run", (c) => {
-  if (!isLocalHostHeader(c.req.header("host"))) {
+  if (!isLocalDevelopmentRuntime()) {
     return fail(c, 404, "knowledge ingest run is only available in local development");
   }
   return ok(c, { started: false, reason: "not-migrated" });

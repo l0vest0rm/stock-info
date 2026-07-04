@@ -1,8 +1,8 @@
 import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 
@@ -21,7 +21,7 @@ export function buildContentOptions(args = {}) {
     publicBaseUrl: text(args.contentPublicBaseUrl || process.env.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL || "https://content.tinfo.cc"),
     localContentDir: resolve(text(args.localContentDir || process.env.KNOWLEDGE_CONTENT_LOCAL_DIR || "/Users/terry/git/data/stock-info/knowledge/content-cache")),
     minCompressBytes: positiveInteger(process.env.KNOWLEDGE_CONTENT_COMPRESS_MIN_BYTES, 4096),
-    uploadConcurrency: positiveInteger(process.env.KNOWLEDGE_CONTENT_UPLOAD_CONCURRENCY, 8),
+    uploadConcurrency: positiveInteger(process.env.KNOWLEDGE_CONTENT_UPLOAD_CONCURRENCY, remote ? 8 : 1),
     uploadRetryCount: positiveInteger(process.env.KNOWLEDGE_CONTENT_UPLOAD_RETRY_COUNT, remote ? 2 : 4),
     uploadConnectTimeoutSeconds: positiveInteger(process.env.KNOWLEDGE_CONTENT_UPLOAD_CONNECT_TIMEOUT_SECONDS, 10),
     uploadMaxTimeSeconds: positiveInteger(process.env.KNOWLEDGE_CONTENT_UPLOAD_MAX_TIME_SECONDS, 180),
@@ -36,9 +36,10 @@ export function buildContentOptions(args = {}) {
 
 export function prepareKnowledgeContent({ docId, markdown, remote, options }) {
   const prepared = prepareKnowledgeContentPayload({ docId, markdown, options, remote });
-  if (!prepared.contentKey || prepared.contentKey.startsWith("localfs:")) {
+  if (!prepared.contentKey) {
     return prepared;
   }
+  if (!remote && !options.useRemoteS3) return stripPayload(prepared);
   uploadKnowledgeContent({
     options,
     bucket: options.bucket,
@@ -50,11 +51,16 @@ export function prepareKnowledgeContent({ docId, markdown, remote, options }) {
   return stripPayload(prepared);
 }
 
+export function planKnowledgeContent({ docId, markdown, remote, options }) {
+  return stripPayload(prepareKnowledgeContentPayload({ docId, markdown, options, remote }));
+}
+
 export async function prepareKnowledgeContentAsync({ docId, markdown, remote, options }) {
   const prepared = prepareKnowledgeContentPayload({ docId, markdown, options, remote });
-  if (!prepared.contentKey || prepared.contentKey.startsWith("localfs:")) {
+  if (!prepared.contentKey) {
     return prepared;
   }
+  if (!remote && !options.useRemoteS3) return stripPayload(prepared);
   await uploadKnowledgeContentAsync({
     options,
     bucket: options.bucket,
@@ -73,28 +79,12 @@ function prepareKnowledgeContentPayload({ docId, markdown, options, remote }) {
   }
   const raw = Buffer.from(body, "utf8");
   const sha256 = createHash("sha256").update(raw).digest("hex");
-  if (!remote && !options.useRemoteS3) {
-    const filePath = localContentFilePath(options.localContentDir, docId, sha256);
-    ensureParentDir(filePath);
-    if (!existsSync(filePath)) {
-      writeFileSync(filePath, raw);
-    }
-    return {
-      contentKey: `localfs:${filePath}`,
-      contentUrl: "",
-      contentType: defaultContentType,
-      contentEncoding: "identity",
-      contentBytes: raw.length,
-      contentSha256: sha256,
-      contentPreview: markdownPreview(body),
-    };
-  }
   const compressed = raw.length >= options.minCompressBytes
     ? brotliCompressSync(raw, {
       params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 5 },
     })
     : null;
-  const useBrotli = Boolean(remote && compressed && compressed.length < raw.length);
+  const useBrotli = Boolean(compressed && compressed.length < raw.length);
   const payload = useBrotli ? compressed : raw;
   const encoding = useBrotli ? "br" : "identity";
   const key = knowledgeContentKey(docId, sha256, encoding);
@@ -359,23 +349,17 @@ async function runS3PutWithRetryAsync({ bucket, key, file, encoding, retryCount,
 }
 
 function stripPayload(value) {
-  const { payload: _payload, ...rest } = value;
-  return rest;
+  const { payload, ...rest } = value;
+  return {
+    ...rest,
+    payloadBase64: payload ? Buffer.from(payload).toString("base64") : "",
+  };
 }
 
 function knowledgeContentKey(docId, sha256, encoding) {
   const idHash = createHash("sha256").update(text(docId) || sha256).digest("hex");
   const extension = encoding === "br" ? "md.br" : "md";
   return `knowledge-content/${idHash.slice(0, 2)}/${idHash}-${sha256.slice(0, 12)}.${extension}`;
-}
-
-function localContentFilePath(baseDir, docId, sha256) {
-  const idHash = createHash("sha256").update(text(docId) || sha256).digest("hex");
-  return join(baseDir, idHash.slice(0, 2), `${idHash}-${sha256.slice(0, 12)}.md`);
-}
-
-function ensureParentDir(filePath) {
-  mkdirSync(dirname(filePath), { recursive: true });
 }
 
 function joinPublicUrl(baseUrl, key) {

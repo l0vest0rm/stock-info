@@ -16,6 +16,7 @@
   "companyNav": [
     {"href": "company.html", "text": "股价表现"},
     {"href": "company-option.html", "text": "期权"},
+    {"href": "company-option-theta.html", "text": "时间损耗"},
     {"href": "company-finance.html", "text": "财务指标"},
     {"href": "company-holders.html", "text": "股东分析"},
     {"href": "company-dividend.html", "text": "分红融资"},

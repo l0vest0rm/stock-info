@@ -100,26 +100,35 @@ const preparedSamples = samples.map((item) => ({
 }));
 
 const sql = [
+  "delete from knowledge_doc_content_refs where doc_id like 'sample:%';",
   "delete from knowledge_doc_tags where doc_id like 'sample:%';",
   "delete from knowledge_docs where doc_id like 'sample:%';",
   ...preparedSamples.flatMap((item) => [
     `insert into knowledge_docs (
       doc_id, source_type, report_type, source_name, title, url, published_at, fetched_at,
       event_time, target_name, target_code, discovery_method, access_method, summary,
-      content_key, content_url, content_type, content_encoding, content_bytes, content_sha256,
       content_preview, metadata_json, recommendation_score, recommendation_level,
-      recommendation_tags_json, recommendation_reasons_json, rank_score, source_weight, updated_at
+      recommendation_tags_json, recommendation_reasons_json, rank_score, source_weight,
+      sort_time, source_name_normalized, target_code_normalized, updated_at
     ) values (
       ${q(item.docId)}, ${q(item.sourceType)}, ${q(item.reportType)}, ${q(item.sourceName)},
       ${q(item.title)}, ${q(item.url)}, ${q(item.publishedAt)}, ${q(item.fetchedAt)},
       ${q(item.eventTime)}, ${q(item.targetName)}, ${q(item.targetCode)}, ${q(item.discoveryMethod)},
-      ${q(item.accessMethod)}, ${q(item.summary)}, ${q(item.contentKey)}, ${q(item.contentUrl)},
-      ${q(item.contentType)}, ${q(item.contentEncoding)}, ${item.contentBytes}, ${q(item.contentSha256)},
-      ${q(item.contentPreview)},
+      ${q(item.accessMethod)}, ${q(item.summary)}, ${q(item.contentPreview)},
       ${q(JSON.stringify({ source: "sample", pdfStored: false }))}, ${item.recommendationScore},
       ${q(item.recommendationLevel)}, ${q(JSON.stringify(item.tags))}, ${q(JSON.stringify(item.recommendationReasons))},
-      ${item.rankScore}, ${item.sourceWeight}, ${now}
+      ${item.rankScore}, ${item.sourceWeight}, ${q(item.eventTime)},
+      ${q(String(item.sourceName || "").toLowerCase())}, ${q(String(item.targetCode || "").toUpperCase())}, ${now}
     );`,
+    `insert into knowledge_doc_content_refs (
+      doc_id, content_key, content_url, content_type, content_encoding, content_bytes, content_sha256, updated_at
+    ) values (
+      ${q(item.docId)}, ${q(item.contentKey)}, ${q(item.contentUrl)}, ${q(item.contentType)},
+      ${q(item.contentEncoding)}, ${item.contentBytes}, ${q(item.contentSha256)}, ${now}
+    );`,
+    `insert into knowledge_doc_security_links (doc_id, code)
+       values (${q(item.docId)}, ${q(String(item.targetCode || "").toUpperCase())})
+       on conflict(doc_id, code) do nothing;`,
     ...item.tags.map((tag) =>
       `insert into knowledge_doc_tags (doc_id, tag) values (${q(item.docId)}, ${q(tag.toLowerCase())});`
     ),

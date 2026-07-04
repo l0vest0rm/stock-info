@@ -14,12 +14,12 @@ const existingTables = new Set(
 );
 
 const dbInfo = args.remote ? runD1Info() : null;
-const knowledgeTableStats = runD1Sql([knowledgeTableStatsSql()]);
+const knowledgeTableStats = runD1Sql(knowledgeTableStatsSqls());
 const knowledgeCategoryStats = runD1Sql([knowledgeCategoryStatsSql()]);
 const filteredStatusStats = runD1Sql([filteredStatusStatsSql()]);
 const r2Config = readR2Config(resolve(root, "wrangler.jsonc"));
 
-const tableRows = knowledgeTableStats[0] ?? [];
+const tableRows = knowledgeTableStats.flat();
 const categoryRows = knowledgeCategoryStats[0] ?? [];
 const filteredRows = filteredStatusStats[0] ?? [];
 
@@ -100,7 +100,7 @@ function runD1Info() {
   return JSON.parse(output);
 }
 
-function knowledgeTableStatsSql() {
+function knowledgeTableStatsSqls() {
   const s = sqlSize;
   const parts = [];
   if (existingTables.has("knowledge_docs")) {
@@ -109,20 +109,32 @@ function knowledgeTableStatsSql() {
     'knowledge_docs' as scope,
     count(*) as rowCount,
     sum(
-      ${s("doc_id")} + ${s("source_type")} + ${s("report_type")} + ${s("source_name")} +
-      ${s("title")} + ${s("url")} + ${s("published_at")} + ${s("fetched_at")} +
-      ${s("event_time")} + ${s("target_name")} + ${s("target_code")} +
-      ${s("discovery_method")} + ${s("access_method")} + ${s("summary")} +
-      ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
-      ${s("content_encoding")} + ${s("content_sha256")} + ${s("content_preview")} +
-      ${s("metadata_json")} +
-      ${s("recommendation_level")} + ${s("recommendation_tags_json")} +
-      ${s("recommendation_reasons_json")} + 40
+      ${s("d.doc_id")} + ${s("d.source_type")} + ${s("d.report_type")} + ${s("d.source_name")} +
+      ${s("d.title")} + ${s("d.url")} + ${s("d.published_at")} + ${s("d.fetched_at")} +
+      ${s("d.event_time")} + ${s("d.target_name")} + ${s("d.target_code")} +
+      ${s("d.discovery_method")} + ${s("d.access_method")} + ${s("d.summary")} +
+      ${s("d.content_preview")} + ${s("d.metadata_json")} +
+      ${s("d.recommendation_level")} + ${s("d.recommendation_tags_json")} +
+      ${s("d.recommendation_reasons_json")} + 40
+    ) as approxBytes,
+    0 as markdownBytes,
+    sum(${s("d.metadata_json")}) as metadataBytes,
+    0 as searchBytes
+  from knowledge_docs d`);
+  }
+  if (existingTables.has("knowledge_doc_content_refs")) {
+    parts.push(`
+  select
+    'knowledge_doc_content_refs' as scope,
+    count(*) as rowCount,
+    sum(
+      ${s("doc_id")} + ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
+      ${s("content_encoding")} + ${s("content_sha256")} + 16
     ) as approxBytes,
     sum(coalesce(content_bytes, 0)) as markdownBytes,
-    sum(${s("metadata_json")}) as metadataBytes,
+    0 as metadataBytes,
     0 as searchBytes
-  from knowledge_docs`);
+  from knowledge_doc_content_refs`);
   }
   if (existingTables.has("knowledge_filtered_docs")) {
     parts.push(`
@@ -130,18 +142,31 @@ function knowledgeTableStatsSql() {
     'knowledge_filtered_docs' as scope,
     count(*) as rowCount,
     sum(
-      ${s("doc_id")} + ${s("source_type")} + ${s("report_type")} + ${s("source_name")} +
-      ${s("title")} + ${s("url")} + ${s("published_at")} + ${s("fetched_at")} +
-      ${s("event_time")} + ${s("target_name")} + ${s("target_code")} +
-      ${s("summary")} + ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
-      ${s("content_encoding")} + ${s("content_sha256")} + ${s("content_preview")} + ${s("metadata_json")} +
-      ${s("filter_method")} + ${s("filter_reasons_json")} + ${s("source_file")} +
-      ${s("reviewed_status")} + 24
+      ${s("d.doc_id")} + ${s("d.source_type")} + ${s("d.report_type")} + ${s("d.source_name")} +
+      ${s("d.title")} + ${s("d.url")} + ${s("d.published_at")} + ${s("d.fetched_at")} +
+      ${s("d.event_time")} + ${s("d.target_name")} + ${s("d.target_code")} +
+      ${s("d.summary")} + ${s("d.content_preview")} + ${s("d.metadata_json")} +
+      ${s("d.filter_method")} + ${s("d.filter_reasons_json")} + ${s("d.source_file")} +
+      ${s("d.reviewed_status")} + 24
+    ) as approxBytes,
+    0 as markdownBytes,
+    sum(${s("d.metadata_json")}) as metadataBytes,
+    0 as searchBytes
+  from knowledge_filtered_docs d`);
+  }
+  if (existingTables.has("knowledge_filtered_doc_content_refs")) {
+    parts.push(`
+  select
+    'knowledge_filtered_doc_content_refs' as scope,
+    count(*) as rowCount,
+    sum(
+      ${s("doc_id")} + ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
+      ${s("content_encoding")} + ${s("content_sha256")} + 16
     ) as approxBytes,
     sum(coalesce(content_bytes, 0)) as markdownBytes,
-    sum(${s("metadata_json")}) as metadataBytes,
+    0 as metadataBytes,
     0 as searchBytes
-  from knowledge_filtered_docs`);
+  from knowledge_filtered_doc_content_refs`);
   }
   if (existingTables.has("knowledge_doc_tags")) {
     parts.push(`
@@ -177,7 +202,7 @@ function knowledgeTableStatsSql() {
   from knowledge_ingest_runs`);
   }
   if (parts.length === 0) {
-    return `
+    return [`
 select
   'knowledge_tables_missing' as scope,
   0 as rowCount,
@@ -185,22 +210,9 @@ select
   0 as markdownBytes,
   0 as metadataBytes,
   0 as searchBytes
-`;
+`];
   }
-  return `
-with table_stats as (
-${parts.join("\n  union all\n")}
-)
-select
-  scope,
-  coalesce(rowCount, 0) as rowCount,
-  coalesce(approxBytes, 0) as approxBytes,
-  coalesce(markdownBytes, 0) as markdownBytes,
-  coalesce(metadataBytes, 0) as metadataBytes,
-  coalesce(searchBytes, 0) as searchBytes
-from table_stats
-order by approxBytes desc, scope asc
-`;
+  return parts;
 }
 
 function knowledgeCategoryStatsSql() {
@@ -220,29 +232,27 @@ where 0
   return `
 select
   case
-    when source_type = 'research_report' and report_type = 'company_report' then 'company_report'
-    when source_type = 'research_report' and report_type = 'industry_report' then 'industry_report'
-    when source_type = 'research_report' then 'research_report_other'
-    when source_type in ('local_news', 'web_news') then source_type
-    when report_type in ('news', 'local_news', 'web_news') then report_type
-    else coalesce(report_type, source_type, 'unknown')
+    when d.source_type = 'research_report' and d.report_type = 'company_report' then 'company_report'
+    when d.source_type = 'research_report' and d.report_type = 'industry_report' then 'industry_report'
+    when d.source_type = 'research_report' then 'research_report_other'
+    when d.source_type in ('local_news', 'web_news') then d.source_type
+    when d.report_type in ('news', 'local_news', 'web_news') then d.report_type
+    else coalesce(d.report_type, d.source_type, 'unknown')
   end as category,
   count(*) as rowCount,
   sum(
-    ${s("doc_id")} + ${s("source_type")} + ${s("report_type")} + ${s("source_name")} +
-    ${s("title")} + ${s("url")} + ${s("published_at")} + ${s("fetched_at")} +
-    ${s("event_time")} + ${s("target_name")} + ${s("target_code")} +
-    ${s("discovery_method")} + ${s("access_method")} + ${s("summary")} +
-    ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
-    ${s("content_encoding")} + ${s("content_sha256")} + ${s("content_preview")} +
-    ${s("metadata_json")} +
-    ${s("recommendation_level")} + ${s("recommendation_tags_json")} +
-    ${s("recommendation_reasons_json")} + 40
+    ${s("d.doc_id")} + ${s("d.source_type")} + ${s("d.report_type")} + ${s("d.source_name")} +
+    ${s("d.title")} + ${s("d.url")} + ${s("d.published_at")} + ${s("d.fetched_at")} +
+    ${s("d.event_time")} + ${s("d.target_name")} + ${s("d.target_code")} +
+    ${s("d.discovery_method")} + ${s("d.access_method")} + ${s("d.summary")} +
+    ${s("d.content_preview")} + ${s("d.metadata_json")} +
+    ${s("d.recommendation_level")} + ${s("d.recommendation_tags_json")} +
+    ${s("d.recommendation_reasons_json")} + 40
   ) as approxBytes,
-  sum(coalesce(content_bytes, 0)) as markdownBytes,
-  sum(${s("metadata_json")}) as metadataBytes,
+  0 as markdownBytes,
+  sum(${s("d.metadata_json")}) as metadataBytes,
   0 as searchBytes
-from knowledge_docs
+from knowledge_docs d
 group by 1
 order by approxBytes desc, rowCount desc, category asc
 `;
@@ -262,19 +272,18 @@ where 0
   }
   return `
 select
-  coalesce(reviewed_status, 'pending') as status,
+  coalesce(d.reviewed_status, 'pending') as status,
   count(*) as rowCount,
   sum(
-    ${s("doc_id")} + ${s("source_type")} + ${s("report_type")} + ${s("source_name")} +
-    ${s("title")} + ${s("url")} + ${s("published_at")} + ${s("fetched_at")} +
-    ${s("event_time")} + ${s("target_name")} + ${s("target_code")} +
-    ${s("summary")} + ${s("content_key")} + ${s("content_url")} + ${s("content_type")} +
-    ${s("content_encoding")} + ${s("content_sha256")} + ${s("content_preview")} + ${s("metadata_json")} +
-    ${s("filter_method")} + ${s("filter_reasons_json")} + ${s("source_file")} +
-    ${s("reviewed_status")} + 24
+    ${s("d.doc_id")} + ${s("d.source_type")} + ${s("d.report_type")} + ${s("d.source_name")} +
+    ${s("d.title")} + ${s("d.url")} + ${s("d.published_at")} + ${s("d.fetched_at")} +
+    ${s("d.event_time")} + ${s("d.target_name")} + ${s("d.target_code")} +
+    ${s("d.summary")} + ${s("d.content_preview")} + ${s("d.metadata_json")} +
+    ${s("d.filter_method")} + ${s("d.filter_reasons_json")} + ${s("d.source_file")} +
+    ${s("d.reviewed_status")} + 24
   ) as approxBytes,
-  sum(coalesce(content_bytes, 0)) as markdownBytes
-from knowledge_filtered_docs
+  0 as markdownBytes
+from knowledge_filtered_docs d
 group by 1
 order by approxBytes desc, rowCount desc, status asc
 `;

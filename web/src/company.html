@@ -1,62 +1,422 @@
 <!-- @include:header -->
-  <!-- @include:company_nav -->
-  <div id="container" class="my-2">
-    <!-- @include:company_info -->
-    <div class="row">
-      <div class="col-3">
-        <div id="dateRange" class="mb-2"></div>
-      </div>
-      <div class="col-5">
-        <div class="btn-group" role="group">
+  <style>
+    .company-page-shell {
+      --company-page-bg:
+        radial-gradient(circle at top right, rgba(246, 211, 101, 0.18), transparent 22rem),
+        linear-gradient(180deg, #f5efe4 0%, #f8fbfd 26%, #edf4f3 100%);
+      --company-page-card: rgba(255, 255, 255, 0.9);
+      --company-page-card-border: rgba(18, 58, 103, 0.12);
+      --company-page-heading: #123a67;
+      --company-page-body: #29404f;
+      --company-page-muted: #66788a;
+      --company-page-accent: #0f766e;
+      --company-page-accent-soft: rgba(15, 118, 110, 0.12);
+      background: var(--company-page-bg);
+      min-height: 100vh;
+      padding-bottom: 2rem;
+    }
+
+    .company-page-subnav {
+      padding-top: 1rem;
+    }
+
+    .company-page-subnav .container {
+      max-width: 1200px;
+    }
+
+    .company-page-subnav .company-subnav-pills {
+      justify-content: flex-start !important;
+      overflow-x: auto;
+      padding-bottom: .25rem;
+      scrollbar-width: none;
+      white-space: nowrap;
+      flex-wrap: nowrap !important;
+    }
+
+    .company-page-subnav .company-subnav-pills::-webkit-scrollbar {
+      display: none;
+    }
+
+    .company-page-subnav .company-subnav-pills .btn {
+      border-radius: 999px;
+      flex: 0 0 auto;
+      padding-inline: .9rem;
+    }
+
+    #companyPageContainer {
+      max-width: 1200px;
+    }
+
+    .company-control-card,
+    .company-chart-card,
+    .company-table-card {
+      background: var(--company-page-card);
+      border: 1px solid var(--company-page-card-border);
+      border-radius: 1.25rem;
+      box-shadow: 0 1.25rem 2.5rem rgba(15, 23, 42, 0.06);
+    }
+
+    .company-control-card,
+    .company-chart-card {
+      padding: 1rem;
+    }
+
+    .company-section-heading {
+      color: var(--company-page-heading);
+      display: flex;
+      flex-wrap: wrap;
+      gap: .45rem;
+      justify-content: space-between;
+      margin-bottom: .65rem;
+    }
+
+    .company-section-heading h2 {
+      font-size: 1.15rem;
+      margin: 0;
+    }
+
+    .company-section-copy {
+      color: var(--company-page-muted);
+      font-size: .84rem;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    .company-controls-grid {
+      display: grid;
+      align-items: start;
+      gap: .85rem;
+      grid-template-columns: minmax(0, 1.7fr) minmax(16rem, .85fr);
+    }
+
+    .company-control-main {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: .6rem .75rem;
+    }
+
+    .company-control-row {
+      display: flex;
+      flex-wrap: wrap;
+      flex: 1 1 28rem;
+      gap: .55rem;
+    }
+
+    .company-control-row > * {
+      min-width: 0;
+    }
+
+    .company-control-field {
+      flex: 1 1 10.5rem;
+      min-width: 9rem;
+    }
+
+    .company-toggle-row {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      flex: 0 1 auto;
+      gap: .45rem;
+    }
+
+    .company-toggle-row .btn,
+    .company-toggle-row .dropdown .btn {
+      border-radius: 999px;
+    }
+
+    #dateRange {
+      align-items: center;
+      display: flex;
+      flex: 0 1 auto;
+      flex-wrap: nowrap;
+      gap: .4rem;
+      position: relative;
+      width: auto;
+      min-width: 0;
+    }
+
+    #dateRange.input-group {
+      width: auto;
+    }
+
+    #dateRange > .input-group-text,
+    #dateRange > .btn,
+    #dateRange > .form-control {
+      border-radius: .85rem !important;
+      min-height: 2.35rem;
+    }
+
+    #dateRange > .input-group-text {
+      background: #f4f8fc;
+      border: 1px solid rgba(18, 58, 103, 0.12);
+      color: #123a67;
+      flex: 0 0 auto;
+      font-weight: 600;
+      padding-inline: .85rem;
+    }
+
+    #dateRange > .form-control {
+      flex: 0 1 8.25rem;
+      min-width: 7.75rem;
+    }
+
+    #dateRange > .dropdown {
+      flex: 0 0 auto;
+      margin-left: .15rem;
+    }
+
+    #dateRange > .dropdown .btn {
+      white-space: nowrap;
+    }
+
+    #dateRange > .calender {
+      position: absolute;
+      top: calc(100% + .45rem);
+      width: min(18rem, calc(100vw - 2rem));
+      z-index: 30;
+    }
+
+    #dateRange > #dateRange-start-calender {
+      left: 0;
+    }
+
+    #dateRange > #dateRange-end-calender {
+      left: min(13rem, 42%);
+    }
+
+    #codes {
+      min-height: 8.5rem;
+    }
+
+    .company-controls-grid .company-section-heading {
+      margin-bottom: .45rem;
+    }
+
+    .company-controls-grid .company-section-copy {
+      max-width: 26rem;
+    }
+
+    .company-control-card-copy-compact,
+    .company-control-side-copy {
+      display: none;
+    }
+
+    #kline {
+      min-height: min(68vh, 680px);
+      width: 100%;
+    }
+
+    #position_wrapper,
+    #position,
+    #correlation {
+      width: 100% !important;
+    }
+
+    #position_wrapper {
+      margin-top: 1rem;
+    }
+
+    #position_wrapper .dataTables_filter,
+    #position_wrapper .dataTables_length {
+      margin-bottom: .75rem;
+    }
+
+    #position_wrapper table,
+    #position {
+      background: #fff;
+      border-radius: 1rem;
+      overflow: hidden;
+    }
+
+    #company-page-vue-root {
+      margin-top: 1rem;
+    }
+
+    #correlation {
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 991.98px) {
+      .company-controls-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .company-control-main {
+        display: grid;
+        gap: .85rem;
+      }
+
+      .company-control-row,
+      .company-toggle-row,
+      #dateRange {
+        flex: initial;
+        width: 100%;
+      }
+
+      .company-control-card-copy-compact,
+      .company-control-side-copy {
+        display: block;
+      }
+    }
+
+    @media (max-width: 767.98px) {
+      .company-page-shell {
+        padding-bottom: 1.25rem;
+      }
+
+      #companyPageContainer {
+        padding-inline: .85rem;
+      }
+
+      .company-control-card,
+      .company-chart-card,
+      .company-table-card {
+        border-radius: 1rem;
+      }
+
+      .company-control-card,
+      .company-chart-card {
+        padding: .9rem;
+      }
+
+      .company-control-row,
+      .company-toggle-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .company-control-field,
+      .company-control-row .dropdown,
+      .company-toggle-row .btn,
+      .company-toggle-row label,
+      .company-toggle-row .dropdown .btn {
+        width: 100%;
+      }
+
+      .company-section-copy {
+        font-size: .92rem;
+      }
+
+      #codes {
+        min-height: 7.5rem;
+      }
+
+      #dateRange {
+        flex-wrap: wrap;
+        gap: .5rem;
+        width: 100%;
+      }
+
+      #dateRange.input-group {
+        width: 100%;
+      }
+
+      #dateRange > .form-control,
+      #dateRange > .dropdown {
+        flex: 1 1 100%;
+        margin-left: 0;
+        width: 100%;
+      }
+
+      #dateRange > .input-group-text {
+        flex: 0 0 auto;
+      }
+
+      #dateRange > #dateRange-end-calender {
+        left: auto;
+        right: 0;
+      }
+
+      #kline {
+        min-height: 360px;
+      }
+    }
+  </style>
+  <div class="company-page-shell">
+    <section class="company-page-subnav">
+      <!-- @include:company_nav -->
+    </section>
+    <div id="companyPageContainer" class="container my-2">
+      <!-- @include:company_info -->
+      <section class="company-control-card mb-3">
+        <div class="company-section-heading">
           <div>
-            <select class="form-select form-select-sm" id="klinePrice">
-              <option value="">股价前复权</option>
-              <option value="normal">股价不复权</option>
-              <option value="after">股价后复权</option>
-            </select>
+            <h2>时间与指标控制</h2>
+            <p class="company-section-copy company-control-card-copy-compact">桌面和手机都保持同一套能力，操作区会按屏幕宽度自动折行。</p>
           </div>
-          <div>
-            <select class="form-select form-select-sm" id="klineOptions" multiple>
-              <option value="value">市值(亿)</option>
-              <option value="pettm">市盈率TTM</option>
-              <option value="pb">市净率(PB)</option>
-              <option value="ps">市销率(PS)</option>
-              <option value="bonus">股息率(%)</option>
-            </select>
-          </div>
-          <div class="dropdown">
-            <button class="btn btn-sm btn-outline-danger dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">标记...</button>
-            <ul class="dropdown-menu">
-              <li>
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" value="" id="marklineFinanceReportDate">
-                  <label class="form-check-label" for="marklineFinanceReportDate">标记财报发布日</label>
-                </div>
-              </li>
-              <li>
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" value="" id="marklineBonusDate">
-                  <label class="form-check-label" for="marklineBonusDate">标记分红日期</label>
-                </div>
-              </li>
-            </ul>
-          </div>
-          <input type="checkbox" class="btn-check" id="alignStart" autocomplete="off">
-          <label class="btn btn-sm btn-outline-primary" for="alignStart">对齐开始</label>
-          <input type="checkbox" class="btn-check" id="ratio" autocomplete="off">
-          <label class="btn btn-sm btn-outline-primary" for="ratio">比率</label>
-          <input type="checkbox" class="btn-check" id="candlestick" autocomplete="off">
-          <label class="btn btn-sm btn-outline-primary" for="candlestick">蜡烛图</label>
         </div>
-      </div>
-      <div class="col-4">
-        <select class="form-select" id="codes" multiple></select>
-      </div>
+        <div class="company-controls-grid">
+          <div class="company-control-main">
+            <div id="dateRange"></div>
+            <div class="company-control-row">
+              <div class="company-control-field">
+                <select class="form-select form-select-sm" id="klinePrice">
+                  <option value="">股价前复权</option>
+                  <option value="normal">股价不复权</option>
+                  <option value="after">股价后复权</option>
+                </select>
+              </div>
+              <div class="company-control-field">
+                <select class="form-select form-select-sm" id="klineOptions" multiple>
+                  <option value="value">市值(亿)</option>
+                  <option value="pettm">市盈率TTM</option>
+                  <option value="pb">市净率(PB)</option>
+                  <option value="ps">市销率(PS)</option>
+                  <option value="bonus">股息率(%)</option>
+                </select>
+              </div>
+            </div>
+            <div class="company-toggle-row">
+              <div class="dropdown">
+                <button class="btn btn-sm btn-outline-danger dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">标记选项</button>
+                <ul class="dropdown-menu p-2">
+                  <li>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" value="" id="marklineFinanceReportDate">
+                      <label class="form-check-label" for="marklineFinanceReportDate">标记财报发布日</label>
+                    </div>
+                  </li>
+                  <li>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" value="" id="marklineBonusDate">
+                      <label class="form-check-label" for="marklineBonusDate">标记分红日期</label>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+              <input type="checkbox" class="btn-check" id="alignStart" autocomplete="off">
+              <label class="btn btn-sm btn-outline-primary" for="alignStart">对齐开始</label>
+              <input type="checkbox" class="btn-check" id="ratio" autocomplete="off">
+              <label class="btn btn-sm btn-outline-primary" for="ratio">比率</label>
+              <input type="checkbox" class="btn-check" id="candlestick" autocomplete="off">
+              <label class="btn btn-sm btn-outline-primary" for="candlestick">蜡烛图</label>
+            </div>
+          </div>
+          <div>
+            <div class="company-section-heading">
+              <div>
+                <h2>对比标的</h2>
+                <p class="company-section-copy company-control-side-copy">可继续添加同业或指数，统一放到同一张图里比较。</p>
+              </div>
+            </div>
+            <select class="form-select" id="codes" multiple></select>
+          </div>
+        </div>
+      </section>
+      <section class="company-chart-card">
+        <div class="company-section-heading">
+          <div>
+            <h2>价格与估值走势</h2>
+            <p class="company-section-copy">图区优先铺满宽度，手机端缩短高度但保留完整交互。</p>
+          </div>
+        </div>
+        <div id="kline"></div>
+      </section>
+      <table id="position" class="display" width="100%"></table>
+      <div id="company-page-vue-root"></div>
+      <table id="correlation" class="table table-sm table-bordered table-hover"></table>
     </div>
-    <div id="kline" style="min-height: 600px; min-width: 300px;"></div>
-    <table id="position" class="display" width="100%"></table>
-    <div id="company-page-vue-root"></div>
-    <table id="correlation" class="table table-sm table-bordered table-hover"></table>
   </div>
   <script src="js/company-page.js"></script>
 <!-- @include:footer -->

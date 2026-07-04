@@ -1,4 +1,5 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { knowledgeDocModalStyles } from '../../knowledge/runtime/knowledge-doc-modal'
 
 const companyNewsStyles = `
 #companyNewsFeed {
@@ -179,6 +180,8 @@ const companyNewsStyles = `
     white-space: normal;
   }
 }
+
+${knowledgeDocModalStyles}
 `
 
 type CompanyNewsRow = {
@@ -373,6 +376,25 @@ const CompanyNewsPage = defineComponent({
             ])))
           : h('div', { class: 'company-news-empty' }, '暂无资讯'),
         pagination(),
+      ]),
+      h('div', { class: 'modal fade', id: 'knowledgeDocModal', tabindex: '-1', 'aria-labelledby': 'knowledgeDocModalTitle', 'aria-hidden': 'true' }, [
+        h('div', { class: 'modal-dialog modal-xl modal-dialog-scrollable' }, [
+          h('div', { class: 'modal-content' }, [
+            h('div', { class: 'modal-header' }, [
+              h('button', {
+                type: 'button',
+                class: 'btn btn-sm btn-outline-warning d-none',
+                id: 'knowledgeDocFavoriteBtn',
+              }, '收藏'),
+              h('h1', { class: 'modal-title fs-5', id: 'knowledgeDocModalTitle' }),
+              h('button', { type: 'button', class: 'btn-close', 'data-bs-dismiss': 'modal', 'aria-label': 'Close' }),
+            ]),
+            h('div', { class: 'modal-body' }, [
+              h('div', { id: 'knowledgeDocContent', class: 'lh-lg' }),
+              h('div', { id: 'knowledgeDocMeta', class: 'small text-muted mt-4 pt-3 border-top' }),
+            ]),
+          ]),
+        ]),
       ]),
     ])
   },

@@ -1,25 +1,31 @@
 import { fetchEastmoneyFinance } from "../../../adapters/eastmoney";
-import { getFinancialStatements, upsertFinancialStatements } from "../../../db/queries";
+import { areFinancialStatementsFresh } from "../../../shared/cache-policy";
 import { normalizeSecurityCode } from "../../../shared/codes";
+import {
+  getFinancialStatementsSnapshot,
+  putFinancialStatementsSnapshot,
+} from "../../../storage/market-data";
 import type { ExternalHttpOptions } from "../../../shared/http";
-import type { FinancialStatement, StatementType } from "../../../types";
+import type { Bindings, FinancialStatement, StatementType } from "../../../types";
 
 export async function loadFinancialStatements(
-  db: D1Database,
+  env: Pick<Bindings, "DB" | "MARKET_DATA_BUCKET">,
   rawCode: string,
   statementType: StatementType,
   _options?: { httpOptions?: ExternalHttpOptions }
-): Promise<{ code: string; source: "d1" | "eastmoney" | "yahoo"; rows: FinancialStatement[] }> {
+): Promise<{ code: string; source: "r2" | "eastmoney" | "yahoo"; rows: FinancialStatement[] }> {
   const code = normalizeSecurityCode(rawCode);
-  const cached = await getFinancialStatements(db, code, statementType);
-  if (cached.length > 0 && Date.now() - cached[0].updatedAt < 24 * 60 * 60 * 1000) {
-    return { code, source: "d1", rows: cached };
+  const snapshot = await getFinancialStatementsSnapshot(env, code, statementType);
+  if (snapshot && snapshot.rows.length > 0 && areFinancialStatementsFresh(snapshot.rows, Date.now())) {
+    return { code, source: "r2", rows: snapshot.rows };
   }
   if (!isCnExchangeCode(code)) {
     return { code, source: "yahoo", rows: [] };
   }
-  const rows = await fetchEastmoneyFinance(db, code, statementType);
-  await upsertFinancialStatements(db, rows);
+  const rows = await fetchEastmoneyFinance(env.DB, code, statementType);
+  if (rows.length > 0) {
+    await putFinancialStatementsSnapshot(env, code, statementType, rows);
+  }
   return { code, source: "eastmoney", rows };
 }
 

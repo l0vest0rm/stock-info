@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { fail, ok } from '../../../shared/http';
+import { normalizeSupportedCompanyCode } from "../../../shared/codes";
 import type { AppEnv } from '../../../types';
 
 export const knowledgeRoutes = new Hono<AppEnv>();
-const LOCAL_CONTENT_KEY_PREFIX = "localfs:";
 
 type KnowledgeDocRow = {
   doc_id: string;
@@ -37,6 +37,15 @@ type KnowledgeDocRow = {
   updated_at: number;
 };
 
+type KnowledgeContentRefRow = {
+  content_key: string | null;
+  content_url: string | null;
+  content_type: string | null;
+  content_encoding: string | null;
+  content_bytes: number | null;
+  content_sha256: string | null;
+};
+
 type KnowledgeDocsQuery = {
   sourceType: string;
   source: string;
@@ -65,6 +74,7 @@ type KnowledgeFilteredDocRow = {
   event_time: string | null;
   target_name: string | null;
   target_code: string | null;
+  access_method: string | null;
   summary: string | null;
   content_key: string | null;
   content_url: string | null;
@@ -83,6 +93,40 @@ type KnowledgeFilteredDocRow = {
   reviewed_at: number | null;
   updated_at: number;
 };
+
+const KNOWLEDGE_DOC_BASE_SELECT = `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
+  d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
+  d.discovery_method, d.access_method, d.summary, c.content_key, c.content_url, c.content_type,
+  c.content_encoding, c.content_bytes, c.content_sha256, d.content_preview, d.metadata_json,
+  d.recommendation_score, d.recommendation_level, d.recommendation_tags_json,
+  d.recommendation_reasons_json, d.rank_score, d.source_weight, d.updated_at
+ from knowledge_docs d
+ left join knowledge_doc_content_refs c on c.doc_id = d.doc_id`;
+
+const KNOWLEDGE_DOC_LIST_SELECT = `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
+  d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
+  d.discovery_method, d.access_method, d.summary, null as content_key, null as content_url, null as content_type,
+  null as content_encoding, 0 as content_bytes, null as content_sha256, d.content_preview, d.metadata_json,
+  d.recommendation_score, d.recommendation_level, d.recommendation_tags_json,
+  d.recommendation_reasons_json, d.rank_score, d.source_weight, d.updated_at
+ from knowledge_docs d`;
+
+const KNOWLEDGE_DOC_TIME_ORDER = "d.sort_time desc, d.rank_score desc, d.doc_id desc";
+
+const KNOWLEDGE_FILTERED_DETAIL_SELECT = `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
+  d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code, d.access_method, d.summary,
+  c.content_key, c.content_url, c.content_type, c.content_encoding, c.content_bytes, c.content_sha256,
+  d.content_preview, d.metadata_json, d.filter_method, d.filter_score, d.filter_confidence,
+  d.filter_reasons_json, d.source_file, d.reviewed_status, d.reviewed_at, d.updated_at
+ from knowledge_filtered_docs d
+ left join knowledge_filtered_doc_content_refs c on c.doc_id = d.doc_id`;
+
+const KNOWLEDGE_FILTERED_LIST_SELECT = `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
+  d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code, d.access_method, d.summary,
+  null as content_key, null as content_url, null as content_type, null as content_encoding, 0 as content_bytes, null as content_sha256,
+  d.content_preview, d.metadata_json, d.filter_method, d.filter_score, d.filter_confidence,
+  d.filter_reasons_json, d.source_file, d.reviewed_status, d.reviewed_at, d.updated_at
+ from knowledge_filtered_docs d`;
 
 knowledgeRoutes.get("/knowledge/docs", async (c) => {
   const query = parseDocsQuery(c.req.query());
@@ -106,21 +150,15 @@ knowledgeRoutes.get("/knowledge/doc", async (c) => {
     return fail(c, 400, "missing doc id");
   }
   const row = await c.env.DB.prepare(
-    `select doc_id, source_type, report_type, source_name, title, url,
-      published_at, fetched_at, event_time, target_name, target_code,
-      discovery_method, access_method, summary, content_key, content_url, content_type,
-      content_encoding, content_bytes, content_sha256, content_preview, metadata_json,
-      recommendation_score, recommendation_level, recommendation_tags_json,
-      recommendation_reasons_json, rank_score, source_weight, updated_at
-     from knowledge_docs
-     where doc_id = ?`
+    `${KNOWLEDGE_DOC_BASE_SELECT}
+     where d.doc_id = ?`
   )
     .bind(id)
     .first<KnowledgeDocRow>();
   if (!row) {
     return fail(c, 404, `knowledge document not found: ${id}`);
   }
-  return ok(c, mapKnowledgeDocDetail(row, knowledgeContentUrlContext(c)));
+  return ok(c, await mapKnowledgeDocDetail(row, knowledgeContentUrlContext(c)));
 });
 
 knowledgeRoutes.get("/knowledge/filtered", async (c) => {
@@ -147,15 +185,9 @@ knowledgeRoutes.get("/knowledge/filtered", async (c) => {
   const whereSql = `where ${filters.join(" and ")}`;
   const offset = (page - 1) * pageSize;
   const rows = await c.env.DB.prepare(
-    `select doc_id, source_type, report_type, source_name, title, url,
-        published_at, fetched_at, event_time, target_name, target_code, summary,
-        content_key, content_url, content_type, content_encoding, content_bytes, content_sha256,
-        content_preview,
-        metadata_json, filter_method, filter_score, filter_confidence,
-        filter_reasons_json, source_file, reviewed_status, reviewed_at, updated_at
-       from knowledge_filtered_docs
+    `${KNOWLEDGE_FILTERED_LIST_SELECT}
        ${whereSql}
-       order by filter_score desc, coalesce(event_time, published_at, fetched_at) desc, doc_id desc
+       order by d.filter_score desc, coalesce(d.event_time, d.published_at, d.fetched_at) desc, d.doc_id desc
        limit ? offset ?`
   )
     .bind(...binds, pageSize, offset)
@@ -171,19 +203,13 @@ knowledgeRoutes.get("/knowledge/filtered/doc", async (c) => {
   const id = c.req.query("id")?.trim() ?? "";
   if (!id) return fail(c, 400, "missing doc id");
   const row = await c.env.DB.prepare(
-    `select doc_id, source_type, report_type, source_name, title, url,
-      published_at, fetched_at, event_time, target_name, target_code, summary,
-      content_key, content_url, content_type, content_encoding, content_bytes, content_sha256,
-      content_preview,
-      metadata_json, filter_method, filter_score, filter_confidence,
-      filter_reasons_json, source_file, reviewed_status, reviewed_at, updated_at
-     from knowledge_filtered_docs
-     where doc_id = ?`
+    `${KNOWLEDGE_FILTERED_DETAIL_SELECT}
+     where d.doc_id = ?`
   )
     .bind(id)
     .first<KnowledgeFilteredDocRow>();
   if (!row) return fail(c, 404, `filtered document not found: ${id}`);
-  return ok(c, mapFilteredDocDetail(row, knowledgeContentUrlContext(c)));
+  return ok(c, await mapFilteredDocDetail(row, knowledgeContentUrlContext(c)));
 });
 
 knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
@@ -191,13 +217,8 @@ knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
   const id = String(body.id || c.req.query("id") || "").trim();
   if (!id) return fail(c, 400, "missing doc id");
   const row = await c.env.DB.prepare(
-    `select doc_id, source_type, report_type, source_name, title, url,
-      published_at, fetched_at, event_time, target_name, target_code, summary,
-      content_key, content_url, content_type, content_encoding, content_bytes, content_sha256,
-      content_preview,
-      metadata_json, filter_reasons_json, updated_at
-     from knowledge_filtered_docs
-     where doc_id = ?`
+    `${KNOWLEDGE_FILTERED_DETAIL_SELECT}
+     where d.doc_id = ?`
   )
     .bind(id)
     .first<KnowledgeFilteredDocRow>();
@@ -208,11 +229,11 @@ knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
     `insert into knowledge_docs (
       doc_id, source_type, report_type, source_name, title, url, published_at, fetched_at,
       event_time, target_name, target_code, discovery_method, access_method, summary,
-      content_key, content_url, content_type, content_encoding, content_bytes, content_sha256,
       content_preview, metadata_json, recommendation_score, recommendation_level,
-      recommendation_tags_json, recommendation_reasons_json, rank_score, source_weight, updated_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'filtered_review_keep', 'markdown',
-      ?, ?, ?, ?, ?, ?, ?, ?, 1, 'D', ?, ?, 1, 0, ?)
+      recommendation_tags_json, recommendation_reasons_json, rank_score, source_weight,
+      sort_time, source_name_normalized, target_code_normalized, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'filtered_review_keep', ?,
+      ?, ?, ?, 1, 'D', ?, ?, 1, 0, ?, ?, ?, ?)
     on conflict(doc_id) do update set
       source_type=excluded.source_type,
       report_type=excluded.report_type,
@@ -227,27 +248,37 @@ knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
       discovery_method=excluded.discovery_method,
       access_method=excluded.access_method,
       summary=excluded.summary,
-      content_key=excluded.content_key,
-      content_url=excluded.content_url,
-      content_type=excluded.content_type,
-      content_encoding=excluded.content_encoding,
-      content_bytes=excluded.content_bytes,
-      content_sha256=excluded.content_sha256,
       content_preview=excluded.content_preview,
       metadata_json=excluded.metadata_json,
       recommendation_tags_json=excluded.recommendation_tags_json,
       recommendation_reasons_json=excluded.recommendation_reasons_json,
+      sort_time=excluded.sort_time,
+      source_name_normalized=excluded.source_name_normalized,
+      target_code_normalized=excluded.target_code_normalized,
       updated_at=excluded.updated_at`
   )
     .bind(
       row.doc_id, row.source_type, row.report_type || row.source_type, row.source_name || "",
       row.title, row.url || "", row.published_at || "", row.fetched_at || "",
       row.event_time || row.published_at || row.fetched_at || "", row.target_name || "", row.target_code || "",
-      row.summary || "", row.content_key || "", row.content_url || "", row.content_type || "text/markdown; charset=utf-8",
-      row.content_encoding || "identity", row.content_bytes || 0, row.content_sha256 || "", row.content_preview || "",
-      row.metadata_json || "{}", JSON.stringify(tags), row.filter_reasons_json || "[]", now,
+      row.access_method || "", row.summary || "", row.content_preview || "",
+      row.metadata_json || "{}", JSON.stringify(tags), row.filter_reasons_json || "[]",
+      firstNonEmpty(row.event_time, row.published_at, row.fetched_at),
+      normalizeLower(row.source_name),
+      normalizeUpper(row.target_code),
+      now,
     )
     .run();
+  await upsertKnowledgeDocContentRef(c.env.DB, {
+    docId: row.doc_id,
+    content_key: row.content_key,
+    content_url: row.content_url,
+    content_type: row.content_type,
+    content_encoding: row.content_encoding,
+    content_bytes: row.content_bytes,
+    content_sha256: row.content_sha256,
+  }, now);
+  await replaceKnowledgeDocSecurityLinks(c.env.DB, row.doc_id, extractKnowledgeSecurityCodes(row.target_code, parseJsonObject(row.metadata_json)));
   await c.env.DB.prepare(
     `update knowledge_filtered_docs set reviewed_status = 'kept', reviewed_at = ?, updated_at = ? where doc_id = ?`
   ).bind(now, now, id).run();
@@ -304,37 +335,18 @@ knowledgeRoutes.get("/knowledge/file", async (c) => {
 });
 
 knowledgeRoutes.get("/knowledge/content", async (c) => {
-  if (!isLocalRequest(c.req.raw) && !isKnowledgeTextSearchEnabled(c.env)) {
-    return fail(c, 404, "knowledge content proxy is only enabled for local development");
-  }
   const key = c.req.query("key")?.trim() ?? "";
   if (!key) {
     return fail(c, 400, "missing content key");
   }
-  if (key.startsWith(LOCAL_CONTENT_KEY_PREFIX)) {
-    const filePath = key.slice(LOCAL_CONTENT_KEY_PREFIX.length);
-    const body = await readLocalKnowledgeContent(filePath);
-    if (body == null) {
-      return fail(c, 404, `knowledge local content not found: ${filePath}`);
-    }
-    return new Response(body, {
-      headers: {
-        "content-type": "text/markdown; charset=utf-8",
-        "cache-control": "no-store",
-      },
-    });
+  if (key.startsWith("localfs:")) {
+    return fail(c, 410, "localfs knowledge content is no longer supported; re-import or migrate content_key to knowledge-content/*");
   }
-  if (!c.env.KNOWLEDGE_CONTENT_BUCKET) {
-    return fail(c, 500, "knowledge content bucket is not configured");
-  }
-  const object = await c.env.KNOWLEDGE_CONTENT_BUCKET.get(key);
-  if (!object) {
+  const response = await readKnowledgeContentResponse(key, c.env);
+  if (!response) {
     return fail(c, 404, `knowledge content not found: ${key}`);
   }
-  const headers = new Headers();
-  object.writeHttpMetadata(headers);
-  headers.set("etag", object.httpEtag);
-  return new Response(object.body, { headers });
+  return response;
 });
 
 function parseDocsQuery(raw: Record<string, string>): KnowledgeDocsQuery {
@@ -363,22 +375,26 @@ function knowledgeContentUrlContext(c: { env: AppEnv["Bindings"]; req: { raw: Re
 }
 
 function resolveKnowledgeContentUrl(
-  row: Pick<KnowledgeDocRow | KnowledgeFilteredDocRow, "content_key" | "content_url">,
+  row: Pick<KnowledgeContentRefRow, "content_key" | "content_url">,
   context: KnowledgeContentUrlContext,
 ): string {
-  const storedUrl = String(row.content_url || "").trim();
-  if (storedUrl) {
-    return storedUrl;
-  }
   const key = String(row.content_key || "").trim();
+  if (key) {
+    return `/api/knowledge/content?key=${encodeURIComponent(key)}`;
+  }
   if (!key) {
+    const storedUrl = String(row.content_url || "").trim();
+    if (storedUrl) {
+      return storedUrl;
+    }
     return "";
   }
   if (context.publicBaseUrl) {
     return `${context.publicBaseUrl.replace(/\/+$/, "")}/${key.split("/").map(encodeURIComponent).join("/")}`;
   }
-  if (context.local) {
-    return `/api/knowledge/content?key=${encodeURIComponent(key)}`;
+  const storedUrl = String(row.content_url || "").trim();
+  if (storedUrl) {
+    return storedUrl;
   }
   return "";
 }
@@ -392,19 +408,6 @@ function isLocalRequest(request: Request | string): boolean {
   return hosts.some((hostname) =>
     hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]"
   ) || (typeof request !== "string" && !(request as Request & { cf?: unknown }).cf);
-}
-
-async function readLocalKnowledgeContent(filePath: string): Promise<string | null> {
-  try {
-    const processObject = (globalThis as { process?: { getBuiltinModule?: (name: string) => any } }).process;
-    const fsModule = processObject?.getBuiltinModule?.("node:fs/promises");
-    if (!fsModule?.readFile) {
-      return null;
-    }
-    return await fsModule.readFile(filePath, "utf8");
-  } catch {
-    return null;
-  }
 }
 
 function normalizeSource(value: string): string {
@@ -430,19 +433,12 @@ function buildKnowledgeWhere(query: KnowledgeDocsQuery): { whereSql: string; bin
     }
   }
   if (query.source) {
-    filters.push("lower(d.source_name) = ?");
+    filters.push("d.source_name_normalized = ?");
     binds.push(query.source);
   }
   if (query.code) {
-    filters.push(`(
-      upper(coalesce(d.target_code, '')) = ?
-      or exists (
-        select 1
-        from json_each(coalesce(json_extract(d.metadata_json, '$.stockLinks'), '[]')) stock_link
-        where upper(coalesce(json_extract(stock_link.value, '$.code'), '')) = ?
-      )
-    )`);
-    binds.push(query.code, query.code);
+    filters.push("d.doc_id in (select l.doc_id from knowledge_doc_security_links l where l.code = ?)");
+    binds.push(query.code);
   }
   if (query.q) {
     const like = `%${query.q.toLowerCase()}%`;
@@ -475,6 +471,7 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
   const metadata = parseJsonObject(row.metadata_json);
   const target = sanitizeKnowledgeTarget(row.title, row.target_name || "", row.target_code || "", metadata);
   const stockLinks = stockLinksFromMetadata(metadata, target.name, target.code);
+  const sanitizedMetadata = sanitizeKnowledgeMetadata(metadata, stockLinks);
   const recommendationTags = sanitizeKnowledgeDisplayTags(parseJsonArray(row.recommendation_tags_json), stockLinks);
   const contentUrl = resolveKnowledgeContentUrl(row, contentContext);
   const tags = [
@@ -503,7 +500,7 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
     content_encoding: row.content_encoding || "identity",
     content_bytes: row.content_bytes || 0,
     content_sha256: row.content_sha256 || "",
-    metadata,
+    metadata: sanitizedMetadata,
     stock_links: stockLinks,
     tags: unique(tags),
     recommendation: {
@@ -518,7 +515,10 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
   };
 }
 
-function mapKnowledgeDocDetail(row: KnowledgeDocRow, contentContext: KnowledgeContentUrlContext): Record<string, unknown> {
+async function mapKnowledgeDocDetail(
+  row: KnowledgeDocRow,
+  contentContext: KnowledgeContentUrlContext,
+): Promise<Record<string, unknown>> {
   return {
     ...mapKnowledgeDocListItem(row, contentContext),
   };
@@ -529,6 +529,7 @@ function mapFilteredDocListItem(row: KnowledgeFilteredDocRow, contentContext: Kn
   const filterReasons = parseJsonArray(row.filter_reasons_json);
   const target = sanitizeKnowledgeTarget(row.title, row.target_name || "", row.target_code || "", metadata);
   const stockLinks = stockLinksFromMetadata(metadata, target.name, target.code);
+  const sanitizedMetadata = sanitizeKnowledgeMetadata(metadata, stockLinks);
   const contentUrl = resolveKnowledgeContentUrl(row, contentContext);
   return {
     doc_id: row.doc_id,
@@ -543,7 +544,7 @@ function mapFilteredDocListItem(row: KnowledgeFilteredDocRow, contentContext: Kn
     target_name: target.name,
     target_code: target.code,
     discovery_method: "filtered_review",
-    access_method: row.content_key ? "markdown" : (row.url?.includes(".pdf") ? "remote_pdf" : ""),
+    access_method: row.access_method || "",
     summary: row.summary || "",
     content_preview: row.content_preview || "",
     content_key: row.content_key || "",
@@ -552,7 +553,7 @@ function mapFilteredDocListItem(row: KnowledgeFilteredDocRow, contentContext: Kn
     content_encoding: row.content_encoding || "identity",
     content_bytes: row.content_bytes || 0,
     content_sha256: row.content_sha256 || "",
-    metadata,
+    metadata: sanitizedMetadata,
     stock_links: stockLinks,
     tags: ["filtered"],
     recommendation: {
@@ -575,10 +576,173 @@ function mapFilteredDocListItem(row: KnowledgeFilteredDocRow, contentContext: Kn
   };
 }
 
-function mapFilteredDocDetail(row: KnowledgeFilteredDocRow, contentContext: KnowledgeContentUrlContext): Record<string, unknown> {
+async function mapFilteredDocDetail(
+  row: KnowledgeFilteredDocRow,
+  contentContext: KnowledgeContentUrlContext,
+): Promise<Record<string, unknown>> {
   return {
     ...mapFilteredDocListItem(row, contentContext),
   };
+}
+
+async function readKnowledgeContentResponse(
+  key: string,
+  env: AppEnv["Bindings"],
+): Promise<Response | null> {
+  const localResponse = await readKnowledgeContentFromLocalMirror(key, env);
+  if (localResponse) {
+    return localResponse;
+  }
+  if (env.KNOWLEDGE_CONTENT_BUCKET) {
+    const object = await env.KNOWLEDGE_CONTENT_BUCKET.get(key);
+    if (object) {
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set("etag", object.httpEtag);
+      return new Response(object.body, { headers });
+    }
+  }
+  return fetchKnowledgeContentFromPublicUrl(key, env);
+}
+
+async function readKnowledgeContentFromLocalMirror(
+  key: string,
+  env: AppEnv["Bindings"],
+): Promise<Response | null> {
+  const normalizedKey = normalizeKnowledgeContentKey(key);
+  if (!normalizedKey) {
+    return null;
+  }
+  const row = await env.DB.prepare(
+    `select content_type, content_encoding, content_bytes
+       from knowledge_local_content_cache
+      where content_key = ?`
+  )
+    .bind(normalizedKey)
+    .first<{ content_type: string | null; content_encoding: string | null; content_bytes: number | null }>();
+  const chunkRows = await env.DB.prepare(
+    `select payload_base64
+       from knowledge_local_content_cache_chunks
+      where content_key = ?
+      order by chunk_index asc`
+  )
+    .bind(normalizedKey)
+    .all<{ payload_base64: string | null }>();
+  const payloadBase64 = chunkRows.results.length > 0
+    ? chunkRows.results.map((chunk) => String(chunk.payload_base64 || "")).join("")
+    : "";
+  if (!payloadBase64) {
+    return null;
+  }
+  const bytes = decodeBase64(payloadBase64);
+  const headers = new Headers({
+    "content-type": String(row?.content_type || "text/markdown; charset=utf-8"),
+    "cache-control": "public, max-age=31536000, immutable",
+    "content-length": String(row?.content_bytes || bytes.byteLength),
+  });
+  const encoding = String(row?.content_encoding || "").trim();
+  if (encoding && encoding !== "identity") {
+    headers.set("content-encoding", encoding);
+  }
+  return new Response(bytes, { headers });
+}
+
+async function fetchKnowledgeContentFromPublicUrl(key: string, env: AppEnv["Bindings"]): Promise<Response | null> {
+  const baseUrl = String(env.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (!baseUrl) {
+    return null;
+  }
+  const response = await fetch(`${baseUrl}/${key.split("/").map(encodeURIComponent).join("/")}`);
+  if (!response.ok) {
+    return null;
+  }
+  return new Response(response.body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+function normalizeKnowledgeContentKey(key: string): string {
+  const value = String(key || "").trim().replace(/^\/+|\/+$/g, "");
+  if (!value.startsWith("knowledge-content/")) {
+    return "";
+  }
+  if (value.split("/").some((part) => !part || part === "." || part === "..")) {
+    return "";
+  }
+  return value;
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+async function upsertKnowledgeDocContentRef(
+  db: AppEnv["Bindings"]["DB"],
+  row: { docId: string } & KnowledgeContentRefRow,
+  updatedAt: number,
+): Promise<void> {
+  const hasRef = [
+    row.content_key,
+    row.content_url,
+    row.content_sha256,
+    row.content_bytes,
+  ].some((value) => String(value ?? "").trim() !== "" && String(value ?? "0") !== "0");
+  if (!hasRef) {
+    await db.prepare("delete from knowledge_doc_content_refs where doc_id = ?")
+      .bind(row.docId)
+      .run();
+    return;
+  }
+  await db.prepare(
+    `insert into knowledge_doc_content_refs (
+      doc_id, content_key, content_url, content_type, content_encoding, content_bytes, content_sha256, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?)
+    on conflict(doc_id) do update set
+      content_key=excluded.content_key,
+      content_url=excluded.content_url,
+      content_type=excluded.content_type,
+      content_encoding=excluded.content_encoding,
+      content_bytes=excluded.content_bytes,
+      content_sha256=excluded.content_sha256,
+      updated_at=excluded.updated_at`
+  )
+    .bind(
+      row.docId,
+      row.content_key || "",
+      row.content_url || "",
+      row.content_type || "text/markdown; charset=utf-8",
+      row.content_encoding || "identity",
+      row.content_bytes || 0,
+      row.content_sha256 || "",
+      updatedAt,
+    )
+    .run();
+}
+
+async function replaceKnowledgeDocSecurityLinks(
+  db: AppEnv["Bindings"]["DB"],
+  docId: string,
+  codes: string[],
+): Promise<void> {
+  await db.prepare("delete from knowledge_doc_security_links where doc_id = ?")
+    .bind(docId)
+    .run();
+  if (codes.length === 0) {
+    return;
+  }
+  const stmt = db.prepare(
+    `insert into knowledge_doc_security_links (doc_id, code)
+     values (?, ?)
+     on conflict(doc_id, code) do nothing`
+  );
+  await db.batch(codes.map((code) => stmt.bind(docId, code)));
 }
 
 function normalizeSourceType(value: string): string {
@@ -621,28 +785,32 @@ function stockLinksFromMetadata(metadata: Record<string, unknown>, targetName: s
     : [];
   return (links.length > 0 ? links : fallback)
     .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object" && !Array.isArray(item)))
-    .map((item) => ({
-      name: String(item.name || ""),
-      code: normalizeKnowledgeStockCode(String(item.code || "")),
-      aliases: buildSecurityAliases(
-        String(item.name || ""),
-        normalizeKnowledgeStockCode(String(item.code || "")),
-        Array.isArray(item.aliases)
-          ? item.aliases.map((alias) => String(alias || "").trim()).filter(Boolean)
-          : [],
-      ),
-    }))
-    .filter((item) => item.name || item.code);
+    .map((item) => {
+      const code = normalizeKnowledgeStockCode(String(item.code || ""));
+      return {
+        name: String(item.name || ""),
+        code,
+        aliases: buildSecurityAliases(
+          String(item.name || ""),
+          code,
+          Array.isArray(item.aliases)
+            ? item.aliases.map((alias) => String(alias || "").trim()).filter(Boolean)
+            : [],
+        ),
+      };
+    })
+    .filter((item) => item.code);
 }
 
 function sanitizeKnowledgeTarget(title: string, targetName: string, targetCode: string, metadata: Record<string, unknown>): { name: string; code: string } {
+  const normalizedCode = normalizeKnowledgeStockCode(targetCode);
   const stockNames = Array.isArray(metadata.stockNames) ? metadata.stockNames : [];
   if (metadata.source !== "tencent_stock_news" || stockNames.length <= 1) {
-    return { name: targetName, code: targetCode };
+    return { name: targetName, code: normalizedCode };
   }
   const baseName = securityBaseName(targetName);
   if (baseName && title.includes(baseName) && !isSecurityDisplayTag(targetName)) {
-    return { name: targetName, code: targetCode };
+    return { name: targetName, code: normalizedCode };
   }
   return { name: "", code: "" };
 }
@@ -682,9 +850,35 @@ function normalizeKnowledgeStockCode(code: string): string {
   }
   const usMatch = raw.match(/^US([A-Z0-9.-]+)\.(?:OQ|NQ|N|AMEX|PK|OB)$/);
   if (usMatch) {
-    return `${usMatch[1]}.US`;
+    return normalizeSupportedCompanyCode(`${usMatch[1]}.US`);
   }
-  return raw;
+  return normalizeSupportedCompanyCode(raw);
+}
+
+function extractKnowledgeSecurityCodes(targetCode: string | null, metadata: Record<string, unknown>): string[] {
+  const links = Array.isArray(metadata.stockLinks) ? metadata.stockLinks : [];
+  return unique([
+    normalizeKnowledgeStockCode(String(targetCode || "")),
+    ...links.map((item) => normalizeKnowledgeStockCode(String((item as Record<string, unknown>)?.code || ""))),
+  ]);
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    const normalized = String(value || "").trim();
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return "";
+}
+
+function normalizeLower(value: string | null): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeUpper(value: string | null): string {
+  return String(value || "").trim().toUpperCase();
 }
 
 function sanitizeKnowledgeDisplayTags(tags: string[], stockLinks: Array<Record<string, unknown>>): string[] {
@@ -701,6 +895,26 @@ function sanitizeKnowledgeDisplayTags(tags: string[], stockLinks: Array<Record<s
     if (stockAliases.has(normalized)) return false;
     return !isSecurityDisplayTag(tag);
   });
+}
+
+function sanitizeKnowledgeMetadata(
+  metadata: Record<string, unknown>,
+  stockLinks: Array<Record<string, unknown>>,
+): Record<string, unknown> {
+  if (stockLinks.length === 0) {
+    return {
+      ...metadata,
+      stockLinks: [],
+      stockCodes: [],
+      stockNames: [],
+    };
+  }
+  return {
+    ...metadata,
+    stockLinks,
+    stockCodes: stockLinks.map((item) => String(item.code || "")).filter(Boolean),
+    stockNames: stockLinks.map((item) => String(item.name || "")).filter(Boolean),
+  };
 }
 
 function isSecurityDisplayTag(tag: string): boolean {
@@ -784,15 +998,9 @@ async function listKnowledgeDocsDeduped(
 
   while (uniqueRows.length < endExclusive && !exhausted) {
     const rows = await db.prepare(
-      `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
-          d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
-          d.discovery_method, d.access_method, d.summary, d.content_key, d.content_url, d.content_type,
-          d.content_encoding, d.content_bytes, d.content_sha256, d.content_preview, d.metadata_json,
-          d.recommendation_score, d.recommendation_level, d.recommendation_tags_json,
-          d.recommendation_reasons_json, d.rank_score, d.source_weight, d.updated_at
-         from knowledge_docs d
+      `${KNOWLEDGE_DOC_LIST_SELECT}
          ${whereSql}
-         order by d.rank_score desc, coalesce(d.event_time, d.published_at, d.fetched_at) desc, d.doc_id desc
+         order by ${KNOWLEDGE_DOC_TIME_ORDER}
          limit ? offset ?`
     )
       .bind(...binds, batchSize, offset)

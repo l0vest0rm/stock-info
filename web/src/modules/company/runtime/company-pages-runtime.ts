@@ -1,3 +1,5 @@
+import { createKnowledgeDocModalController } from '../../knowledge/runtime/knowledge-doc-modal'
+
 type FetchRequest = (request: {
   url?: string
   params?: Record<string, unknown>
@@ -282,7 +284,10 @@ function openExternalUrlWithoutReferrer(url: string): void {
   link.remove()
 }
 
-function openCompanyNewsDocument(row: CompanyNewsRow): void {
+function openCompanyNewsDocument(
+  row: CompanyNewsRow,
+  knowledgeDocModal?: ReturnType<typeof createKnowledgeDocModalController>,
+): void {
   const docId = String(row.docId || '').trim()
   const sourceUrl = String(row.sourceUrl || '').trim()
   const accessMethod = String(row.accessMethod || '').trim().toLowerCase()
@@ -295,9 +300,7 @@ function openCompanyNewsDocument(row: CompanyNewsRow): void {
     return
   }
   if (docId) {
-    const url = new URL('research-news.html', window.location.href)
-    url.searchParams.set('docId', docId)
-    window.open(url.toString(), '_blank', 'noopener')
+    void knowledgeDocModal?.openByDocId(docId, false)
     return
   }
   if (sourceUrl) {
@@ -789,6 +792,10 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
 
 export function createCompanyNewsInitializer(context: CompanyPagesRuntimeContext) {
   const { server, fetchRequest, getCode } = context
+  const knowledgeDocModal = createKnowledgeDocModalController({
+    server,
+    fetchRequest,
+  })
 
   let companyNewsCurrentPage = 1
   let companyNewsHasNext = false
@@ -880,10 +887,11 @@ export function createCompanyNewsInitializer(context: CompanyPagesRuntimeContext
     if (!row) {
       return
     }
-    openCompanyNewsDocument(row)
+    openCompanyNewsDocument(row, knowledgeDocModal)
   }
 
   return function initCompanyNews() {
+    knowledgeDocModal.bindLifecycle()
     companyNewsCurrentPage = 1
     companyNewsRows = []
     companyNewsHasNext = false

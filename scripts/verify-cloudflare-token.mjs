@@ -36,6 +36,67 @@ if (!zoneId) {
   process.exit(hasFailures(checks) ? 1 : 0);
 }
 
+if (args.requireD1) {
+  const databaseId = config.d1DatabaseId;
+  if (!databaseId) {
+    checks.push({
+      name: "D1 database access",
+      neededPermission: "Account -> D1 -> Edit",
+      ok: false,
+      status: null,
+      error: "No d1_databases[0].database_id found in wrangler.jsonc",
+    });
+  } else {
+    const d1Read = await apiRequest({
+      token,
+      path: `/accounts/${zoneIdToAccountId(zoneLookup.body, zoneId)}/d1/database/${databaseId}`,
+    });
+    checks.push(makeCheck("D1 database access", "Account -> D1 -> Edit", d1Read));
+  }
+}
+
+if (args.requireR2) {
+  const buckets = config.r2Buckets;
+  if (buckets.length === 0) {
+    checks.push({
+      name: "R2 bucket access",
+      neededPermission: "Account -> Workers R2 Storage -> Edit",
+      ok: false,
+      status: null,
+      error: "No r2_buckets configured in wrangler.jsonc",
+    });
+  } else {
+    for (const bucketName of buckets) {
+      const r2Read = await apiRequest({
+        token,
+        path: `/accounts/${zoneIdToAccountId(zoneLookup.body, zoneId)}/r2/buckets/${encodeURIComponent(bucketName)}`,
+      });
+      checks.push(
+        makeCheck(`R2 bucket access (${bucketName})`, "Account -> Workers R2 Storage -> Edit", r2Read),
+      );
+    }
+  }
+}
+
+if (args.requireWorker) {
+  const workerName = config.workerName;
+  if (!workerName) {
+    checks.push({
+      name: "Worker service access",
+      neededPermission: "Account -> Workers Scripts -> Edit",
+      ok: false,
+      status: null,
+      error: "No worker name found in wrangler.jsonc",
+    });
+  } else {
+    const workerRead = await apiRequest({
+      token,
+      path: `/accounts/${zoneIdToAccountId(zoneLookup.body, zoneId)}/workers/services/${encodeURIComponent(workerName)}`,
+    });
+    checks.push(makeCheck(`Worker service access (${workerName})`, "Account -> Workers Scripts -> Edit", workerRead));
+  }
+}
+
 const dnsRead = await apiRequest({
   token,
   path: `/zones/${zoneId}/dns_records?per_page=1`,
@@ -128,7 +189,7 @@ function renderReport({ domain: targetDomain, zoneId: targetZoneId, checks: chec
   lines.push("");
   if (missing.length === 0) {
     lines.push("All non-destructive permission checks passed.");
-    lines.push("Note: this proves token validity plus zone read, DNS read, and workers routes read.");
+    lines.push("Note: this proves token validity plus the non-destructive checks requested for this repo.");
     lines.push("It does not safely prove DNS edit permission without making a real change.");
   } else {
     lines.push("Likely missing permissions:");
@@ -160,14 +221,35 @@ function unique(values) {
 
 function readWranglerConfig(filePath) {
   const text = readFileSync(filePath, "utf8");
-  const routeDomainMatch = text.match(/"pattern"\s*:\s*"([^"]+)"/);
+  const parsed = Function(`"use strict"; return (${text});`)();
+  const routeDomain = Array.isArray(parsed.routes)
+    ? parsed.routes
+        .map((entry) => String(entry?.pattern || "").trim())
+        .find(Boolean) || null
+    : null;
+  const d1DatabaseId = Array.isArray(parsed.d1_databases)
+    ? String(parsed.d1_databases[0]?.database_id || "").trim() || null
+    : null;
+  const r2Buckets = Array.isArray(parsed.r2_buckets)
+    ? parsed.r2_buckets
+        .map((entry) => String(entry?.bucket_name || "").trim())
+        .filter(Boolean)
+    : [];
+  const workerName = String(parsed.name || "").trim() || null;
   return {
-    routeDomain: routeDomainMatch?.[1] || null,
+    routeDomain,
+    d1DatabaseId,
+    r2Buckets,
+    workerName,
   };
 }
 
 function parseArgs(argv) {
-  const argsMap = {};
+  const argsMap = {
+    requireD1: false,
+    requireR2: false,
+    requireWorker: false,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     if (value === "--domain") {
@@ -178,7 +260,28 @@ function parseArgs(argv) {
     if (value === "--zone-id") {
       argsMap.zoneId = argv[index + 1] || "";
       index += 1;
+      continue;
+    }
+    if (value === "--require-d1") {
+      argsMap.requireD1 = true;
+      continue;
+    }
+    if (value === "--require-r2") {
+      argsMap.requireR2 = true;
+      continue;
+    }
+    if (value === "--require-worker") {
+      argsMap.requireWorker = true;
     }
   }
   return argsMap;
+}
+
+function zoneIdToAccountId(zoneLookupBody, fallbackZoneId) {
+  const zone = Array.isArray(zoneLookupBody?.result) ? zoneLookupBody.result[0] : null;
+  const accountId = String(zone?.account?.id || "").trim();
+  if (!accountId) {
+    throw new Error(`Unable to resolve account ID for zone ${fallbackZoneId}`);
+  }
+  return accountId;
 }

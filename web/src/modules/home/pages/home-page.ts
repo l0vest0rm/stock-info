@@ -217,10 +217,10 @@ const workflowCards = [
 ]
 
 const exampleSearches = [
-  { label: '贵州茅台', query: '600519' },
-  { label: '招商银行', query: '600036' },
-  { label: '纳斯达克100 ETF', query: '513100' },
-  { label: '腾讯控股', query: '00700' },
+  { label: '中际旭创', query: '300308' },
+  { label: '新易盛', query: '300502' },
+  { label: '天孚通信', query: '300394' },
+  { label: '澜起科技', query: '688008' },
 ]
 
 function labelForMarket(result: SearchResult) {
@@ -355,7 +355,7 @@ const HomePage = defineComponent({
                     id: 'homeSearchInput',
                     class: 'form-control form-control-lg',
                     type: 'search',
-                    placeholder: '例如 600519、招商银行、513100',
+                    placeholder: '例如 300308、中际旭创、300502、688008',
                     value: query.value,
                     onInput: (event: Event) => {
                       query.value = (event.target as HTMLInputElement).value
@@ -449,7 +449,7 @@ const HomePage = defineComponent({
           h('div', { class: 'col-lg-5' }, [
             h('div', { class: 'small text-uppercase fw-semibold text-secondary mb-2' }, 'Quick Links'),
             h('div', { class: 'd-flex flex-column gap-2' }, [
-              h('a', { href: 'company.html?code=600519.SH', class: 'home-example-link' }, '示例公司：贵州茅台'),
+              h('a', { href: 'company.html?code=300308.SZ', class: 'home-example-link' }, '示例公司：中际旭创'),
               h('a', { href: 'fund.html?code=513100.OF', class: 'home-example-link' }, '示例基金：纳指 ETF'),
               h('a', { href: 'research-news.html', class: 'home-example-link' }, '去看今日研报资讯'),
             ]),

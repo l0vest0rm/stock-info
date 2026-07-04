@@ -13,7 +13,7 @@ import { optionsRoutes } from "../modules/options/api/options.routes";
 import { securityRoutes } from "../modules/security/api/security.routes";
 import { thirteenFRoutes } from "../modules/thirteenf/api/thirteenf.routes";
 import { fail } from "../platform/http/response";
-import { isLocalHostHeader } from "../platform/request/host";
+import { isLocalDevelopmentRuntime } from "../shared/request";
 import type { AppEnv } from "../types";
 
 export function createRouter(): Hono<AppEnv> {
@@ -49,7 +49,7 @@ export function createRouter(): Hono<AppEnv> {
   app.get("/home.html", (c) => c.redirect("/", 301));
 
   app.get("/company-option.html", (c) => {
-    if (!isLocalHostHeader(c.req.header("host"))) {
+    if (!isLocalDevelopmentRuntime()) {
       return fail(c, 404, "options page is only available in local development");
     }
     if (c.env.ASSETS) {
@@ -58,8 +58,18 @@ export function createRouter(): Hono<AppEnv> {
     return fail(c, 404, "not found");
   });
 
+  app.get("/company-option-theta.html", (c) => {
+    if (!isLocalDevelopmentRuntime()) {
+      return fail(c, 404, "options theta page is only available in local development");
+    }
+    if (c.env.ASSETS) {
+      return c.env.ASSETS.fetch(c.req.raw);
+    }
+    return fail(c, 404, "not found");
+  });
+
   app.get("/knowledge-config.html", (c) => {
-    if (!isLocalHostHeader(c.req.header("host"))) {
+    if (!isLocalDevelopmentRuntime()) {
       return fail(c, 404, "knowledge config is only available in local development");
     }
     if (c.env.ASSETS) {

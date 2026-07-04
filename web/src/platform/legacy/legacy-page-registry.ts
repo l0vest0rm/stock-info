@@ -256,6 +256,15 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
         echarts: context.echarts,
       })
     }
+    case 'company-option-theta.html': {
+      const { createCompanyOptionThetaInitializer } = await import('../../modules/company/runtime/company-option-theta-runtime')
+      return createCompanyOptionThetaInitializer({
+        getCode: context.getCode,
+        server: context.server,
+        fetchRequest: context.fetchRequest,
+        echartsColor: context.echartsColor,
+      })
+    }
     case 'company-report-predict.html': {
       const { createCompanyReportPredictInitializer } = await import('../../modules/company/runtime/company-report-predict-runtime')
       return createCompanyReportPredictInitializer({

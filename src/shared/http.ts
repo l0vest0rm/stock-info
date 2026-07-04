@@ -10,6 +10,7 @@ export type ExternalHttpOptions = {
   includeSensitiveHeaders?: boolean;
   cacheKey?: string;
   cacheTtlMs?: number;
+  resolveCacheTtlMs?: (response: { status: number; headers: Record<string, string>; text: string }) => number;
 };
 
 const domainLimiters = new Map<string, DomainLimiter>();
@@ -64,6 +65,10 @@ export async function cachedFetchText(
   }
   const { status, headers, text } = await fetchTextResponse(url, init, options);
   const now = Date.now();
+  const resolvedTtlMs = options?.resolveCacheTtlMs?.({ status, headers, text });
+  const finalCacheTtlMs = Number.isFinite(resolvedTtlMs) && resolvedTtlMs && resolvedTtlMs > 0
+    ? resolvedTtlMs
+    : cacheTtlMs;
   await putHttpCache(db, {
     cacheKey,
     url,
@@ -71,7 +76,7 @@ export async function cachedFetchText(
     status,
     headersJson: JSON.stringify(headers),
     bodyText: text,
-    expiresAt: now + Math.max(1, cacheTtlMs),
+    expiresAt: now + Math.max(1, finalCacheTtlMs),
     updatedAt: now,
   });
   return text;

@@ -1,3 +1,5 @@
+import { createKnowledgeDocModalController, knowledgeDisplayTime } from './knowledge-doc-modal'
+
 type KnowledgeNewsFetchRequest = (request: {
   url?: string
   params?: Record<string, unknown>
@@ -31,7 +33,7 @@ type KnowledgeNewsTableRow = {
 }
 
 export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeContext) {
-  const { server, fetchRequest, escapeHtml } = context
+  const { server, fetchRequest } = context
 
   let knowledgeNewsRows: KnowledgeNewsTableRow[] = []
   let knowledgeNewsCurrentPage = 1
@@ -44,7 +46,11 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   let knowledgeNewsSelectedTags: string[] = []
   let knowledgeNewsCurrentDocId = ''
   let knowledgeNewsCurrentDocFiltered = false
-  let knowledgeNewsModalInstance: any = null
+  const knowledgeDocModal = createKnowledgeDocModalController({
+    server,
+    fetchRequest,
+    onKeepFilteredDocument: keepFilteredDocument,
+  })
 
   function isLocalKnowledgeNewsHost() {
     const hostname = window.location.hostname.toLowerCase()
@@ -119,44 +125,6 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       return `${name} (${code})`
     }
     return name || code || ''
-  }
-
-  function formatKnowledgeTime(value: string): string {
-    const raw = String(value || '').trim()
-    if (!raw) {
-      return '-'
-    }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-      return raw
-    }
-    const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)
-    if (!hasTimeZone) {
-      return raw.replace('T', ' ').replace(/\.\d+$/, '').substring(0, 19)
-    }
-    const date = new Date(raw)
-    if (Number.isNaN(date.getTime())) {
-      return raw.replace('T', ' ').replace(/\+.*/, '').replace(/Z$/i, '').substring(0, 19)
-    }
-    const parts = new Intl.DateTimeFormat('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    }).formatToParts(date)
-    const pick = (type: string) => parts.find((part) => part.type === type)?.value || ''
-    return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
-  }
-
-  function knowledgeDisplayTime(item: any): string {
-    const primary = formatKnowledgeTime(item.event_time || item.published_at)
-    if (primary !== '-') {
-      return primary
-    }
-    return formatKnowledgeTime(item.fetched_at)
   }
 
   function emitKnowledgeNewsTableState() {
@@ -314,26 +282,6 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     link.remove()
   }
 
-  function knowledgeNewsOriginalUrl(data: any) {
-    const url = String(data && data.url ? data.url : '').trim()
-    if (!url) {
-      return ''
-    }
-    return url
-  }
-
-  async function fetchKnowledgeDocumentContent(data: any) {
-    const contentUrl = String(data && data.content_url ? data.content_url : '').trim()
-    if (!contentUrl) {
-      return String(data && data.title ? data.title : '')
-    }
-    const response = await fetch(contentUrl, { credentials: 'omit' })
-    if (!response.ok) {
-      throw new Error(`正文加载失败: HTTP ${response.status}`)
-    }
-    return response.text()
-  }
-
   async function keepFilteredDocument(docID: string) {
     await fetchRequest({
       url: `${server}/api/knowledge/filtered/keep`,
@@ -342,126 +290,14 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     await renderKnowledgeNews()
   }
 
-  function stockHref(code: string) {
-    return `company.html?code=${encodeURIComponent(code)}`
-  }
-
-  function linkStockReferences(root: HTMLElement, stockLinks: any[]) {
-    const links = Array.isArray(stockLinks) ? stockLinks : []
-    const aliases = links.flatMap((item) => {
-      const code = String(item?.code || '').trim()
-      const values = Array.isArray(item?.aliases) ? item.aliases : []
-      return values
-        .map((alias: unknown) => String(alias || '').trim())
-        .filter((alias: string) => alias && code)
-        .map((alias: string) => ({ alias, code }))
-    }).sort((a, b) => b.alias.length - a.alias.length)
-    if (aliases.length === 0) {
-      return
-    }
-    const ignored = new Set(['A', 'SCRIPT', 'STYLE', 'TEXTAREA', 'CODE', 'PRE'])
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        const parent = node.parentElement
-        if (!parent || ignored.has(parent.tagName)) {
-          return NodeFilter.FILTER_REJECT
-        }
-        const value = node.nodeValue || ''
-        return aliases.some((item) => value.includes(item.alias))
-          ? NodeFilter.FILTER_ACCEPT
-          : NodeFilter.FILTER_REJECT
-      }
-    })
-    const nodes: Text[] = []
-    while (walker.nextNode()) {
-      nodes.push(walker.currentNode as Text)
-    }
-    for (const node of nodes) {
-      const value = node.nodeValue || ''
-      const match = aliases.find((item) => value.includes(item.alias))
-      if (!match) continue
-      const index = value.indexOf(match.alias)
-      const fragment = document.createDocumentFragment()
-      if (index > 0) fragment.append(document.createTextNode(value.slice(0, index)))
-      const link = document.createElement('a')
-      link.href = stockHref(match.code)
-      link.target = '_blank'
-      link.rel = 'noopener'
-      link.textContent = match.alias
-      fragment.append(link)
-      if (index + match.alias.length < value.length) {
-        fragment.append(document.createTextNode(value.slice(index + match.alias.length)))
-      }
-      node.replaceWith(fragment)
-    }
-  }
-
-  function renderKnowledgeDocContent(content: string) {
-    const marked = (window as any).marked
-    const normalizedContent = normalizeMarkdownHeadings(content)
-    if (!marked || typeof marked.parse !== 'function') {
-      return `<pre class="text-wrap">${escapeHtml(normalizedContent)}</pre>`
-    }
-    return marked.parse(normalizedContent, {
-      gfm: true,
-      breaks: true,
-    })
-  }
-
-  function normalizeMarkdownHeadings(content: string): string {
-    return String(content || '')
-      .split(/\r?\n/)
-      .map((line) => {
-        const match = line.match(/^(\s{0,3})(#{1,6})([^\s#].*)$/)
-        if (!match) {
-          return line
-        }
-        const [, indent, hashes, rest] = match
-        const trimmed = rest.trim()
-        if (!trimmed || trimmed.includes('#') || trimmed.length > 80) {
-          return line
-        }
-        return `${indent}${hashes} ${trimmed}`
-      })
-      .join('\n')
-  }
-
   async function showKnowledgeDocument(docID: string, filtered: boolean = false) {
     if (!docID) {
       return
     }
-    const data = await fetchRequest({
-      url: filtered ? `${server}/api/knowledge/filtered/doc` : `${server}/api/knowledge/doc`,
-      params: { id: docID }
-    }) as any
-    const title = data && data.title ? data.title : ''
-    const content = await fetchKnowledgeDocumentContent(data)
-    const url = knowledgeNewsOriginalUrl(data)
-    const meta = [
-      knowledgeReportTypeText(data),
-      knowledgeTargetText(data),
-      data.source_name,
-      `时间 ${knowledgeDisplayTime(data)}`,
-    ].filter((value) => value && value !== '-').map(escapeHtml).join(' / ')
-    document.getElementById('knowledgeDocModalTitle')!.textContent = title
-    const favoriteButton = document.getElementById('knowledgeDocFavoriteBtn') as HTMLButtonElement | null
-    if (favoriteButton) {
-      favoriteButton.className = filtered ? 'btn btn-sm btn-outline-success me-2' : 'btn btn-sm btn-outline-warning d-none'
-      favoriteButton.textContent = '保留'
-      favoriteButton.onclick = filtered ? () => { void keepFilteredDocument(docID) } : null
-    }
-    document.getElementById('knowledgeDocMeta')!.innerHTML = `${meta}${url ? ` <a class="ms-2" href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">打开原文</a>` : ''}`
-    const contentElem = document.getElementById('knowledgeDocContent')!
-    contentElem.innerHTML = renderKnowledgeDocContent(content)
-    linkStockReferences(contentElem, data.stock_links || [])
-    const modal = document.getElementById('knowledgeDocModal')
-    if (!knowledgeNewsModalInstance) {
-      knowledgeNewsModalInstance = new (window as any).bootstrap.Modal(modal)
-    }
     knowledgeNewsCurrentDocId = docID
     knowledgeNewsCurrentDocFiltered = filtered
     syncKnowledgeDocStateToUrl(docID, filtered)
-    knowledgeNewsModalInstance.show()
+    await knowledgeDocModal.openByDocId(docID, filtered)
   }
 
   async function onKnowledgeNewsOpenDoc(event: Event) {
@@ -546,6 +382,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     document.getElementById('knowledgeDocModal')?.addEventListener('hidden.bs.modal', () => {
       clearKnowledgeDocState('replace')
     })
+    knowledgeDocModal.bindLifecycle()
     if (!knowledgeNewsEventsBound) {
       knowledgeNewsEventsBound = true
       window.addEventListener('licai:knowledge-news-open-doc', (event) => {
