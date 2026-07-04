@@ -6,19 +6,19 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 DATABASE_NAME="${CF_D1_DATABASE:-stock_info}"
 WORKER_NAME="${CF_WORKER_NAME:-stock-info}"
-RUN_CLEANUP_DRY_RUN=1
+RUN_CLEANUP_DRY_RUN=0
 RUN_OBSERVABILITY=1
 STRICT_OBSERVABILITY=0
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/preflight-cloudflare-release.sh [--skip-cleanup-dry-run] [--skip-observability] [--strict-observability]
+Usage: ./scripts/preflight-cloudflare-release.sh [--run-cleanup-dry-run] [--skip-observability] [--strict-observability]
 
 Checks:
   - Cloudflare token validity plus required zone/Worker/D1/R2 access
   - configured R2 buckets exist
-  - knowledge content cleanup dry-run
   - Cloudflare observability snapshot
+  - optional knowledge content cleanup dry-run only when --run-cleanup-dry-run is passed
 
 Environment:
   CLOUDFLARE_API_TOKEN   Required
@@ -33,7 +33,7 @@ Observability envs when enabled:
   KNOWLEDGE_CONTENT_BUCKET
   KNOWLEDGE_CONTENT_HOSTNAME
 
-Cleanup dry-run envs when enabled:
+Cleanup dry-run envs when explicitly enabled:
   CLOUDFLARE_R2_ENDPOINT
   CLOUDFLARE_R2_ACCESS_KEY_ID
   CLOUDFLARE_R2_SECRET_ACCESS_KEY
@@ -42,8 +42,8 @@ EOF
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skip-cleanup-dry-run)
-      RUN_CLEANUP_DRY_RUN=0
+    --run-cleanup-dry-run)
+      RUN_CLEANUP_DRY_RUN=1
       ;;
     --skip-observability)
       RUN_OBSERVABILITY=0
