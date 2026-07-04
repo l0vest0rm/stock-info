@@ -395,6 +395,10 @@ const KnowledgeNewsTable = defineComponent({
 const KnowledgeNewsPage = defineComponent({
   name: 'KnowledgeNewsPage',
   setup() {
+    const isLocalKnowledgeHost = (() => {
+      const hostname = window.location.hostname.toLowerCase()
+      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+    })()
     const sourceNameOptions = ref<KnowledgeNewsFilterOption[]>([
       { value: 'all', label: '全部来源站点' },
     ])
@@ -437,7 +441,7 @@ const KnowledgeNewsPage = defineComponent({
             h('option', { value: 'research_report' }, '全部研报'),
             h('option', { value: 'company_report' }, '公司研报'),
             h('option', { value: 'industry_report' }, '行业研报'),
-            h('option', { value: 'filtered_review' }, '过滤Review'),
+            isLocalKnowledgeHost ? h('option', { value: 'filtered_review' }, '过滤Review') : null,
           ]),
           h('select', { id: 'knowledgeSourceName', class: 'form-select form-select-sm', style: 'width: 180px;' }, [
             ...sourceNameOptions.value.map((option) => h('option', {

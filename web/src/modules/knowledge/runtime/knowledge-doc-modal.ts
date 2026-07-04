@@ -134,7 +134,7 @@ async function fetchKnowledgeDocumentContent(data: any) {
   }
   let response: Response
   try {
-    response = await fetch(contentUrl, { credentials: 'omit' })
+    response = await fetch(contentUrl, { credentials: 'omit', cache: 'reload' })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`正文加载失败: ${message}`)

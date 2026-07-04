@@ -37,6 +37,8 @@ const processedDir = resolve(root, config.processedDir || `${sharedDataRoot}/sto
 const failedDir = resolve(root, config.failedDir || `${sharedDataRoot}/stock-info/knowledge/failed`);
 const workDir = resolve(root, config.workDir || `${sharedDataRoot}/stock-info/knowledge/work`);
 const reviewDir = resolve(root, config.reviewDir || `${sharedDataRoot}/stock-info/knowledge/reviews`);
+const localReviewCacheDir = join(root, "data", "knowledge-review");
+const localReviewStaticDir = join(root, "web", "static", "knowledge-review");
 const stateDir = resolve(root, config.stateDir || `${sharedDataRoot}/stock-info/knowledge/state`);
 const inputDirs = resolveInputDirs(args.inboxDir, config, args.extraInputs);
 const remotePdfCacheDir = join(workDir, "remote-pdf");
@@ -72,7 +74,7 @@ const importTarget = {
   database: config.database || "stock_info",
 };
 
-for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmReviewDir]) {
+for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmReviewDir, localReviewCacheDir, localReviewStaticDir]) {
   mkdirSync(dir, { recursive: true });
 }
 
@@ -1125,6 +1127,7 @@ function isPdfDoc(doc) {
 }
 
 function topicReviewRow(doc, file, topic) {
+  const content = reviewContentText(doc);
   return {
     keep: Boolean(topic.keep),
     title: doc.title,
@@ -1140,16 +1143,25 @@ function topicReviewRow(doc, file, topic) {
     reasons: array(topic.reasons).map(text).filter(Boolean),
     docId: doc.docId,
     file: relativeInputPath(file),
+    url: text(doc.url),
+    accessMethod: text(doc.accessMethod),
+    summary: text(doc.summary),
+    contentPreview: truncateReviewText(content || text(doc.summary) || text(doc.title), 280),
+    content: truncateReviewText(content, 4000),
   };
 }
 
 function writeTopicReview(rows, cfg) {
   const jsonlFile = join(reviewDir, `topic-filter-${runId}.jsonl`);
   const mdFile = join(reviewDir, `topic-filter-${runId}.md`);
+  const latestJsonlFile = join(localReviewCacheDir, "topic-filter-latest.jsonl");
+  const latestMdFile = join(localReviewCacheDir, "topic-filter-latest.md");
+  const staticJsonlFile = join(localReviewStaticDir, "topic-filter-latest.jsonl");
+  const staticMdFile = join(localReviewStaticDir, "topic-filter-latest.md");
   const kept = rows.filter((row) => row.keep);
   const filteredOut = rows.filter((row) => !row.keep);
-  writeFileSync(jsonlFile, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
-  writeFileSync(mdFile, [
+  const jsonlBody = `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  const mdBody = [
     `# Topic Filter Review ${runId}`,
     "",
     `- kept: ${kept.length}`,
@@ -1161,7 +1173,13 @@ function writeTopicReview(rows, cfg) {
     "## Kept",
     ...kept.map((row) => `- ${row.title} | ${row.sourceType}/${row.reportType} | score=${row.score} | ${row.reasons.join("; ") || row.method}`),
     "",
-  ].join("\n"));
+  ].join("\n");
+  writeFileSync(jsonlFile, jsonlBody);
+  writeFileSync(mdFile, mdBody);
+  writeFileSync(latestJsonlFile, jsonlBody);
+  writeFileSync(latestMdFile, mdBody);
+  writeFileSync(staticJsonlFile, jsonlBody);
+  writeFileSync(staticMdFile, mdBody);
   return {
     jsonlFile,
     mdFile,
@@ -1171,6 +1189,40 @@ function writeTopicReview(rows, cfg) {
       .slice(0, integer(cfg.filterReviewPreviewLimit, 50))
       .map((row) => row.title),
   };
+}
+
+function reviewContentText(doc) {
+  const candidates = [
+    text(doc.markdown),
+    text(doc.content),
+    text(doc.summary),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+    if (/<[a-z][\s\S]*>/i.test(candidate)) {
+      return candidate
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .trim();
+    }
+    return candidate.trim();
+  }
+  return "";
+}
+
+function truncateReviewText(value, max = 4000) {
+  const normalized = text(value);
+  if (!normalized) {
+    return "";
+  }
+  return normalized.length <= max ? normalized : `${normalized.slice(0, max).trimEnd()}...`;
 }
 
 function writeLlmTopicReview(rows) {

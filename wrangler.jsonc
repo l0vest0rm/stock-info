@@ -48,7 +48,4 @@
       "remote": true,
     },
   ],
-  "triggers": {
-    "crons": ["17 1 * * *"],
-  },
 }

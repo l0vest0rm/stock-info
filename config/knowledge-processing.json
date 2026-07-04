@@ -62,10 +62,10 @@
     "coreKeywords": [
       "AI", "人工智能", "大模型", "LLM", "智能体", "Agent", "多模态", "推理",
       "算力", "智算", "数据中心", "GPU", "ASIC", "AI芯片", "服务器",
-      "HBM", "DRAM", "NAND", "SSD", "存储", "半导体", "先进制程",
+      "HBM", "DRAM", "NAND", "SSD", "存储", "内存", "闪存", "memory", "flash", "nand flash", "dram", "ssd", "半导体", "先进制程",
       "先进封装", "CoWoS", "Chiplet", "光模块", "光通信", "CPO", "硅光",
       "800G", "1.6T", "高速互联", "交换机", "液冷", "PCB", "AIPCB",
-      "英伟达", "NVIDIA",
+      "英伟达", "NVIDIA", "闪迪", "sandisk", "SNDK",
       "寒武纪", "海光", "中际旭创", "新易盛", "工业富联"
     ],
     "supportKeywords": [

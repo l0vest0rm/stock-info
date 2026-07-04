@@ -40,7 +40,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply stock_info --remote"
   },
   "dependencies": {
-    "@m2ai/shared-llm-client": "file:../shared-ts/llm-client",
+    "@m2ai/shared-llm-client": "file:../shared-ts/packages/llm-client",
     "@vitejs/plugin-vue": "^6.0.3",
     "echarts": "^6.0.0",
     "hono": "^4.12.27",

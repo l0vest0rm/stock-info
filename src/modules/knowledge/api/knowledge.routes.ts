@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { fail, ok } from '../../../shared/http';
 import { normalizeSupportedCompanyCode } from "../../../shared/codes";
+import { isLocalDevelopmentRuntime } from "../../../shared/request";
 import type { AppEnv } from '../../../types';
 
 export const knowledgeRoutes = new Hono<AppEnv>();
@@ -162,68 +163,50 @@ knowledgeRoutes.get("/knowledge/doc", async (c) => {
 });
 
 knowledgeRoutes.get("/knowledge/filtered", async (c) => {
-  const q = String(c.req.query("q") ?? "").trim();
-  if (q && !isKnowledgeTextSearchEnabled(c.env)) {
-    return fail(c, 400, "keyword search is only enabled for local development");
+  if (!isLocalDevelopmentRuntime()) {
+    return fail(c, 404, "filtered review is only available in local development");
   }
-  const status = normalizeFilter(c.req.query("status") ?? "pending") || "pending";
+  const q = String(c.req.query("q") ?? "").trim();
   const page = clampInteger(c.req.query("page"), 1, 1, 10000);
   const pageSize = clampInteger(c.req.query("pageSize"), 50, 1, 100);
-  const filters = ["reviewed_status = ?"];
-  const binds: unknown[] = [status];
-  if (q) {
-    const like = `%${q.toLowerCase()}%`;
-    filters.push(`(
-      lower(title) like ?
-      or lower(coalesce(source_name, '')) like ?
-      or lower(coalesce(target_name, '')) like ?
-      or lower(coalesce(target_code, '')) like ?
-      or lower(coalesce(url, '')) like ?
-    )`);
-    binds.push(like, like, like, like, like);
-  }
-  const whereSql = `where ${filters.join(" and ")}`;
   const offset = (page - 1) * pageSize;
-  const rows = await c.env.DB.prepare(
-    `${KNOWLEDGE_FILTERED_LIST_SELECT}
-       ${whereSql}
-       order by d.filter_score desc, coalesce(d.event_time, d.published_at, d.fetched_at) desc, d.doc_id desc
-       limit ? offset ?`
-  )
-    .bind(...binds, pageSize, offset)
-    .all<KnowledgeFilteredDocRow>();
+  const reviewRows = await loadLocalFilteredReviewRowsFromAsset(c.env.ASSETS, c.req.url);
+  const keptDocIds = await loadExistingKnowledgeDocIds(c.env.DB, reviewRows.map((row) => row.docId));
+  const filteredRows = reviewRows
+    .filter((row) => !row.keep && !keptDocIds.has(row.docId))
+    .filter((row) => !q || matchesLocalFilteredReviewQuery(row, q))
+    .sort(compareLocalFilteredReviewRows);
+  const pageRows = filteredRows.slice(offset, offset + pageSize);
   return ok(c, {
     page,
     page_size: pageSize,
-    list: (rows.results ?? []).map((row) => mapFilteredDocListItem(row, knowledgeContentUrlContext(c))),
+    total: filteredRows.length,
+    has_next: offset + pageSize < filteredRows.length,
+    list: pageRows.map((row) => mapLocalFilteredReviewListItem(row, knowledgeContentUrlContext(c))),
   });
 });
 
 knowledgeRoutes.get("/knowledge/filtered/doc", async (c) => {
+  if (!isLocalDevelopmentRuntime()) return fail(c, 404, "filtered review is only available in local development");
   const id = c.req.query("id")?.trim() ?? "";
   if (!id) return fail(c, 400, "missing doc id");
-  const row = await c.env.DB.prepare(
-    `${KNOWLEDGE_FILTERED_DETAIL_SELECT}
-     where d.doc_id = ?`
-  )
-    .bind(id)
-    .first<KnowledgeFilteredDocRow>();
+  const reviewRows = await loadLocalFilteredReviewRowsFromAsset(c.env.ASSETS, c.req.url);
+  const keptDocIds = await loadExistingKnowledgeDocIds(c.env.DB, reviewRows.map((item) => item.docId));
+  const row = reviewRows.find((item) => item.docId === id && !item.keep && !keptDocIds.has(item.docId));
   if (!row) return fail(c, 404, `filtered document not found: ${id}`);
-  return ok(c, await mapFilteredDocDetail(row, knowledgeContentUrlContext(c)));
+  return ok(c, await mapLocalFilteredReviewDetail(row, knowledgeContentUrlContext(c)));
 });
 
 knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
+  if (!isLocalDevelopmentRuntime()) return fail(c, 404, "filtered review is only available in local development");
   const body = await c.req.json().catch(() => ({})) as { id?: string };
   const id = String(body.id || c.req.query("id") || "").trim();
   if (!id) return fail(c, 400, "missing doc id");
-  const row = await c.env.DB.prepare(
-    `${KNOWLEDGE_FILTERED_DETAIL_SELECT}
-     where d.doc_id = ?`
-  )
-    .bind(id)
-    .first<KnowledgeFilteredDocRow>();
-  if (!row) return fail(c, 404, `filtered document not found: ${id}`);
-  const tags = ["review_kept"];
+  const reviewRows = await loadLocalFilteredReviewRowsFromAsset(c.env.ASSETS, c.req.url);
+  const keptDocIds = await loadExistingKnowledgeDocIds(c.env.DB, reviewRows.map((item) => item.docId));
+  const reviewRow = reviewRows.find((item) => item.docId === id && !item.keep && !keptDocIds.has(item.docId));
+  if (!reviewRow) return fail(c, 404, `filtered document not found: ${id}`);
+  const localDoc = await buildLocalReviewKeptDoc(reviewRow);
   const now = Date.now();
   await c.env.DB.prepare(
     `insert into knowledge_docs (
@@ -258,30 +241,34 @@ knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
       updated_at=excluded.updated_at`
   )
     .bind(
-      row.doc_id, row.source_type, row.report_type || row.source_type, row.source_name || "",
-      row.title, row.url || "", row.published_at || "", row.fetched_at || "",
-      row.event_time || row.published_at || row.fetched_at || "", row.target_name || "", row.target_code || "",
-      row.access_method || "", row.summary || "", row.content_preview || "",
-      row.metadata_json || "{}", JSON.stringify(tags), row.filter_reasons_json || "[]",
-      firstNonEmpty(row.event_time, row.published_at, row.fetched_at),
-      normalizeLower(row.source_name),
-      normalizeUpper(row.target_code),
+      localDoc.docId, localDoc.sourceType, localDoc.reportType || localDoc.sourceType, localDoc.sourceName,
+      localDoc.title, localDoc.url, localDoc.publishedAt, localDoc.fetchedAt,
+      localDoc.eventTime, localDoc.targetName, localDoc.targetCode,
+      localDoc.accessMethod, localDoc.summary, localDoc.contentPreview,
+      JSON.stringify(localDoc.metadata), JSON.stringify(localDoc.tags), JSON.stringify(localDoc.recommendationReasons),
+      firstNonEmpty(localDoc.eventTime, localDoc.publishedAt, localDoc.fetchedAt),
+      normalizeLower(localDoc.sourceName),
+      normalizeUpper(localDoc.targetCode),
       now,
     )
     .run();
   await upsertKnowledgeDocContentRef(c.env.DB, {
-    docId: row.doc_id,
-    content_key: row.content_key,
-    content_url: row.content_url,
-    content_type: row.content_type,
-    content_encoding: row.content_encoding,
-    content_bytes: row.content_bytes,
-    content_sha256: row.content_sha256,
+    docId: localDoc.docId,
+    content_key: localDoc.contentKey,
+    content_url: "",
+    content_type: localDoc.contentType,
+    content_encoding: "identity",
+    content_bytes: localDoc.contentBytes,
+    content_sha256: localDoc.contentSha256,
   }, now);
-  await replaceKnowledgeDocSecurityLinks(c.env.DB, row.doc_id, extractKnowledgeSecurityCodes(row.target_code, parseJsonObject(row.metadata_json)));
-  await c.env.DB.prepare(
-    `update knowledge_filtered_docs set reviewed_status = 'kept', reviewed_at = ?, updated_at = ? where doc_id = ?`
-  ).bind(now, now, id).run();
+  await replaceKnowledgeDocSecurityLinks(c.env.DB, localDoc.docId, extractKnowledgeSecurityCodes(localDoc.targetCode, localDoc.metadata));
+  await replaceKnowledgeLocalContentCache(c.env.DB, {
+    contentKey: localDoc.contentKey,
+    contentType: localDoc.contentType,
+    contentEncoding: "identity",
+    content: localDoc.content,
+  }, now);
+  await replaceKnowledgeDocTags(c.env.DB, localDoc.docId, localDoc.tags);
   return ok(c, { kept: true, doc_id: id });
 });
 
@@ -342,7 +329,7 @@ knowledgeRoutes.get("/knowledge/content", async (c) => {
   if (key.startsWith("localfs:")) {
     return fail(c, 410, "localfs knowledge content is no longer supported; re-import or migrate content_key to knowledge-content/*");
   }
-  const response = await readKnowledgeContentResponse(key, c.env);
+  const response = await readKnowledgeContentResponse(key, c.env, c.req.raw);
   if (!response) {
     return fail(c, 404, `knowledge content not found: ${key}`);
   }
@@ -368,7 +355,7 @@ function knowledgeContentUrlContext(c: { env: AppEnv["Bindings"]; req: { raw: Re
   const url = new URL(c.req.raw.url);
   const host = c.req.raw.headers.get("host") || "";
   return {
-    local: isLocalRequest(c.req.raw) || isKnowledgeTextSearchEnabled(c.env),
+    local: isLocalDevelopmentRuntime() || isKnowledgeTextSearchEnabled(c.env),
     origin: host ? `${url.protocol}//${host}` : url.origin,
     publicBaseUrl: String(c.env.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL || "").trim(),
   };
@@ -379,22 +366,15 @@ function resolveKnowledgeContentUrl(
   context: KnowledgeContentUrlContext,
 ): string {
   const key = String(row.content_key || "").trim();
-  if (key) {
+  const storedUrl = String(row.content_url || "").trim();
+  if (context.local && key) {
     return `/api/knowledge/content?key=${encodeURIComponent(key)}`;
   }
-  if (!key) {
-    const storedUrl = String(row.content_url || "").trim();
-    if (storedUrl) {
-      return storedUrl;
-    }
-    return "";
-  }
-  if (context.publicBaseUrl) {
-    return `${context.publicBaseUrl.replace(/\/+$/, "")}/${key.split("/").map(encodeURIComponent).join("/")}`;
-  }
-  const storedUrl = String(row.content_url || "").trim();
   if (storedUrl) {
     return storedUrl;
+  }
+  if (key && context.publicBaseUrl) {
+    return `${context.publicBaseUrl.replace(/\/+$/, "")}/${key.split("/").map(encodeURIComponent).join("/")}`;
   }
   return "";
 }
@@ -588,21 +568,12 @@ async function mapFilteredDocDetail(
 async function readKnowledgeContentResponse(
   key: string,
   env: AppEnv["Bindings"],
+  _request: Request,
 ): Promise<Response | null> {
-  const localResponse = await readKnowledgeContentFromLocalMirror(key, env);
-  if (localResponse) {
-    return localResponse;
+  if (!isLocalDevelopmentRuntime()) {
+    return buildKnowledgeContentRedirectResponse(key, env);
   }
-  if (env.KNOWLEDGE_CONTENT_BUCKET) {
-    const object = await env.KNOWLEDGE_CONTENT_BUCKET.get(key);
-    if (object) {
-      const headers = new Headers();
-      object.writeHttpMetadata(headers);
-      headers.set("etag", object.httpEtag);
-      return new Response(object.body, { headers });
-    }
-  }
-  return fetchKnowledgeContentFromPublicUrl(key, env);
+  return readKnowledgeContentFromLocalMirror(key, env);
 }
 
 async function readKnowledgeContentFromLocalMirror(
@@ -635,32 +606,22 @@ async function readKnowledgeContentFromLocalMirror(
     return null;
   }
   const bytes = decodeBase64(payloadBase64);
+  const encoding = String(row?.content_encoding || "").trim();
+  const normalizedBytes = decodeKnowledgeContentBytes(bytes, encoding);
   const headers = new Headers({
     "content-type": String(row?.content_type || "text/markdown; charset=utf-8"),
     "cache-control": "public, max-age=31536000, immutable",
-    "content-length": String(row?.content_bytes || bytes.byteLength),
+    "content-length": String(normalizedBytes.byteLength),
   });
-  const encoding = String(row?.content_encoding || "").trim();
-  if (encoding && encoding !== "identity") {
-    headers.set("content-encoding", encoding);
-  }
-  return new Response(bytes, { headers });
+  return new Response(normalizedBytes, { headers });
 }
 
-async function fetchKnowledgeContentFromPublicUrl(key: string, env: AppEnv["Bindings"]): Promise<Response | null> {
+function buildKnowledgeContentRedirectResponse(key: string, env: AppEnv["Bindings"]): Response | null {
   const baseUrl = String(env.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
   if (!baseUrl) {
     return null;
   }
-  const response = await fetch(`${baseUrl}/${key.split("/").map(encodeURIComponent).join("/")}`);
-  if (!response.ok) {
-    return null;
-  }
-  return new Response(response.body, {
-    headers: response.headers,
-    status: response.status,
-    statusText: response.statusText,
-  });
+  return Response.redirect(`${baseUrl}/${key.split("/").map(encodeURIComponent).join("/")}`, 302);
 }
 
 function normalizeKnowledgeContentKey(key: string): string {
@@ -681,6 +642,49 @@ function decodeBase64(value: string): Uint8Array {
     bytes[index] = binary.charCodeAt(index);
   }
   return bytes;
+}
+
+function decodeKnowledgeContentBytes(bytes: Uint8Array, encoding: string): Uint8Array {
+  const normalizedEncoding = String(encoding || "").trim().toLowerCase();
+  if (!normalizedEncoding || normalizedEncoding === "identity") {
+    return bytes;
+  }
+  const zlib = loadNodeZlib();
+  if (!zlib) {
+    throw new Error(`knowledge content uses unsupported encoding without node:zlib support: ${normalizedEncoding}`);
+  }
+  switch (normalizedEncoding) {
+    case "br":
+      return new Uint8Array(zlib.brotliDecompressSync(bytes));
+    case "gzip":
+      return new Uint8Array(zlib.gunzipSync(bytes));
+    case "deflate":
+      return new Uint8Array(zlib.inflateSync(bytes));
+    default:
+      return new Uint8Array(zlib.unzipSync(bytes));
+  }
+}
+
+function loadNodeZlib():
+  | {
+    brotliDecompressSync(input: Uint8Array): Uint8Array;
+    gunzipSync(input: Uint8Array): Uint8Array;
+    inflateSync(input: Uint8Array): Uint8Array;
+    unzipSync(input: Uint8Array): Uint8Array;
+  }
+  | null {
+  const getBuiltinModule = (globalThis as {
+    process?: { getBuiltinModule?: (name: string) => unknown };
+  }).process?.getBuiltinModule;
+  if (typeof getBuiltinModule !== "function") {
+    return null;
+  }
+  return getBuiltinModule("node:zlib") as {
+    brotliDecompressSync(input: Uint8Array): Uint8Array;
+    gunzipSync(input: Uint8Array): Uint8Array;
+    inflateSync(input: Uint8Array): Uint8Array;
+    unzipSync(input: Uint8Array): Uint8Array;
+  };
 }
 
 async function upsertKnowledgeDocContentRef(
@@ -1095,4 +1099,591 @@ function rankReasons(row: KnowledgeDocRow): string[] {
     reasons.push("公共排序分");
   }
   return reasons;
+}
+
+type LocalFilteredReviewRow = {
+  keep: boolean;
+  title: string;
+  sourceType: string;
+  reportType: string;
+  sourceName: string;
+  targetName: string;
+  targetCode: string;
+  publishedAt: string;
+  score: number;
+  method: string;
+  confidence?: number;
+  reasons: string[];
+  docId: string;
+  file: string;
+  url: string;
+  accessMethod: string;
+  summary: string;
+  contentPreview: string;
+  content: string;
+};
+
+type LocalReviewKeepDoc = {
+  docId: string;
+  sourceType: string;
+  reportType: string;
+  sourceName: string;
+  title: string;
+  url: string;
+  publishedAt: string;
+  fetchedAt: string;
+  eventTime: string;
+  targetName: string;
+  targetCode: string;
+  accessMethod: string;
+  summary: string;
+  contentPreview: string;
+  content: string;
+  contentKey: string;
+  contentType: string;
+  contentBytes: number;
+  contentSha256: string;
+  metadata: Record<string, unknown>;
+  tags: string[];
+  recommendationReasons: string[];
+};
+
+function getNodeBuiltin(name: string): any | null {
+  const processObject = (globalThis as { process?: { getBuiltinModule?: (moduleName: string) => unknown } }).process;
+  return processObject?.getBuiltinModule?.(name) ?? null;
+}
+
+function getProcessCwd(): string {
+  const processObject = (globalThis as { process?: { cwd?: () => string } }).process;
+  return processObject?.cwd?.() || ".";
+}
+
+async function loadLocalFilteredReviewRowsFromAsset(assets: Fetcher, requestUrl: string): Promise<LocalFilteredReviewRow[]> {
+  const assetUrl = new URL("/knowledge-review/topic-filter-latest.jsonl", requestUrl);
+  const response = await assets.fetch(new Request(assetUrl.toString(), { method: "GET" }));
+  if (!response.ok) {
+    return [];
+  }
+  const body = String(await response.text() || "");
+  const trimmedBody = body.trimStart();
+  if (trimmedBody.startsWith("<")) {
+    throw new Error(`filtered review asset returned HTML instead of JSONL: ${assetUrl.pathname}`);
+  }
+  return body
+    .split(/\r?\n/)
+    .map((line: string) => line.trim())
+    .filter(Boolean)
+    .map((line: string) => {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      return {
+        keep: Boolean(parsed.keep),
+        title: String(parsed.title || ""),
+        sourceType: String(parsed.sourceType || parsed.source_type || ""),
+        reportType: String(parsed.reportType || parsed.report_type || parsed.sourceType || parsed.source_type || ""),
+        sourceName: String(parsed.sourceName || parsed.source_name || ""),
+        targetName: String(parsed.targetName || parsed.target_name || ""),
+        targetCode: normalizeKnowledgeStockCode(String(parsed.targetCode || parsed.target_code || "")),
+        publishedAt: String(parsed.publishedAt || parsed.published_at || ""),
+        score: Number(parsed.score || 0) || 0,
+        method: String(parsed.method || ""),
+        confidence: typeof parsed.confidence === "number" ? parsed.confidence : undefined,
+        reasons: Array.isArray(parsed.reasons)
+          ? parsed.reasons.map((item) => String(item || "").trim()).filter(Boolean)
+          : [],
+        docId: String(parsed.docId || parsed.doc_id || ""),
+        file: String(parsed.file || ""),
+        url: String(parsed.url || ""),
+        accessMethod: String(parsed.accessMethod || parsed.access_method || ""),
+        summary: String(parsed.summary || ""),
+        contentPreview: String(parsed.contentPreview || parsed.content_preview || ""),
+        content: String(parsed.content || ""),
+      } satisfies LocalFilteredReviewRow;
+    })
+    .filter((row: LocalFilteredReviewRow) => Boolean(row.docId));
+}
+
+async function loadExistingKnowledgeDocIds(
+  db: AppEnv["Bindings"]["DB"],
+  docIds: string[],
+): Promise<Set<string>> {
+  const uniqueDocIds = unique(docIds);
+  if (uniqueDocIds.length === 0) {
+    return new Set<string>();
+  }
+  const placeholders = uniqueDocIds.map(() => "?").join(", ");
+  const rows = await db.prepare(
+    `select doc_id from knowledge_docs where doc_id in (${placeholders})`
+  )
+    .bind(...uniqueDocIds)
+    .all<{ doc_id: string }>();
+  return new Set((rows.results ?? []).map((row) => row.doc_id));
+}
+
+async function loadLocalFilteredReviewRows(): Promise<LocalFilteredReviewRow[]> {
+  const fs = getNodeBuiltin("node:fs/promises");
+  const path = getNodeBuiltin("node:path");
+  if (!fs || !path) {
+    return [];
+  }
+  const reviewDir = await resolveLocalReviewDir();
+  if (!(await pathExists(reviewDir))) {
+    console.log(JSON.stringify({ filteredReviewDir: reviewDir, exists: false }));
+    return [];
+  }
+  const files = (await fs.readdir(reviewDir))
+    .filter((name: string) => /^topic-filter-.*\.jsonl$/i.test(name))
+    .sort((left: string, right: string) => right.localeCompare(left));
+  console.log(JSON.stringify({ filteredReviewDir: reviewDir, fileCount: files.length, firstFile: files[0] || "" }));
+  if (files.length === 0) {
+    return [];
+  }
+  const body = String(await fs.readFile(path.join(reviewDir, files[0]), "utf8") || "");
+  return body
+    .split(/\r?\n/)
+    .map((line: string) => line.trim())
+    .filter(Boolean)
+    .map((line: string) => {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      return {
+        keep: Boolean(parsed.keep),
+        title: String(parsed.title || ""),
+        sourceType: String(parsed.sourceType || parsed.source_type || ""),
+        reportType: String(parsed.reportType || parsed.report_type || parsed.sourceType || parsed.source_type || ""),
+        sourceName: String(parsed.sourceName || parsed.source_name || ""),
+        targetName: String(parsed.targetName || parsed.target_name || ""),
+        targetCode: normalizeKnowledgeStockCode(String(parsed.targetCode || parsed.target_code || "")),
+        publishedAt: String(parsed.publishedAt || parsed.published_at || ""),
+        score: Number(parsed.score || 0) || 0,
+        method: String(parsed.method || ""),
+        confidence: typeof parsed.confidence === "number" ? parsed.confidence : undefined,
+        reasons: Array.isArray(parsed.reasons)
+          ? parsed.reasons.map((item) => String(item || "").trim()).filter(Boolean)
+          : [],
+        docId: String(parsed.docId || parsed.doc_id || ""),
+        file: String(parsed.file || ""),
+        url: String(parsed.url || ""),
+        accessMethod: String(parsed.accessMethod || parsed.access_method || ""),
+        summary: String(parsed.summary || ""),
+        contentPreview: String(parsed.contentPreview || parsed.content_preview || ""),
+        content: String(parsed.content || ""),
+      } satisfies LocalFilteredReviewRow;
+    })
+    .filter((row: LocalFilteredReviewRow) => Boolean(row.docId));
+}
+
+async function readLocalKnowledgeProcessingConfig(): Promise<Record<string, unknown>> {
+  const fs = getNodeBuiltin("node:fs/promises");
+  const path = getNodeBuiltin("node:path");
+  if (!fs || !path) {
+    return {};
+  }
+  const candidates = [
+    path.resolve(getProcessCwd(), "config", "knowledge-processing.json"),
+    path.resolve(getProcessCwd(), "..", "stock-info", "config", "knowledge-processing.json"),
+    "/Users/terry/git/stock-info/config/knowledge-processing.json",
+  ];
+  for (const configFile of candidates) {
+    if (!(await pathExists(configFile))) {
+      continue;
+    }
+    try {
+      return objectRecord(JSON.parse(String(await fs.readFile(configFile, "utf8") || "{}")));
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+async function resolveLocalReviewDir(): Promise<string> {
+  const path = getNodeBuiltin("node:path");
+  const config = await readLocalKnowledgeProcessingConfig();
+  const cwd = getProcessCwd();
+  const candidates = [
+    path ? path.resolve(cwd, "data", "knowledge-review") : "",
+    String(config.reviewDir || "").trim(),
+    path ? path.resolve(cwd, "..", "data", "stock-info", "knowledge", "reviews") : "",
+    path ? path.resolve(cwd, "..", "stock-info", "..", "data", "stock-info", "knowledge", "reviews") : "",
+    "/Users/terry/git/data/stock-info/knowledge/reviews",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0] || "../data/stock-info/knowledge/reviews";
+}
+
+async function loadLocalFilteredReviewKeptDocIds(): Promise<Set<string>> {
+  const fs = getNodeBuiltin("node:fs/promises");
+  const path = getNodeBuiltin("node:path");
+  if (!fs || !path) {
+    return new Set<string>();
+  }
+  const file = path.join(await resolveLocalReviewDir(), "topic-filter-kept.json");
+  if (!(await pathExists(file))) {
+    return new Set<string>();
+  }
+  try {
+    const parsed = JSON.parse(String(await fs.readFile(file, "utf8") || "[]"));
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.map((item) => String(item || "").trim()).filter(Boolean)
+        : [],
+    );
+  } catch {
+    return new Set<string>();
+  }
+}
+
+async function saveLocalFilteredReviewKeptDocId(docId: string): Promise<void> {
+  const fs = getNodeBuiltin("node:fs/promises");
+  const path = getNodeBuiltin("node:path");
+  if (!fs || !path) {
+    return;
+  }
+  const file = path.join(await resolveLocalReviewDir(), "topic-filter-kept.json");
+  const ids = await loadLocalFilteredReviewKeptDocIds();
+  ids.add(docId);
+  await fs.writeFile(file, `${JSON.stringify([...ids], null, 2)}\n`, "utf8");
+}
+
+function matchesLocalFilteredReviewQuery(row: LocalFilteredReviewRow, q: string): boolean {
+  const needle = q.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  const haystacks = [
+    row.title,
+    row.sourceName,
+    row.targetName,
+    row.targetCode,
+    row.docId,
+    row.file,
+    row.method,
+    ...row.reasons,
+  ];
+  return haystacks.some((value) => String(value || "").toLowerCase().includes(needle));
+}
+
+function compareLocalFilteredReviewRows(left: LocalFilteredReviewRow, right: LocalFilteredReviewRow): number {
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+  return firstNonEmpty(right.publishedAt).localeCompare(firstNonEmpty(left.publishedAt));
+}
+
+function mapLocalFilteredReviewListItem(
+  row: LocalFilteredReviewRow,
+  _contentContext: KnowledgeContentUrlContext,
+): Record<string, unknown> {
+  const stockLinks = row.targetCode
+    ? [{
+      name: row.targetName,
+      code: row.targetCode,
+      aliases: buildSecurityAliases(row.targetName, row.targetCode, []),
+    }]
+    : [];
+  return {
+    doc_id: row.docId,
+    source_type: "filtered_review",
+    report_type: row.reportType || row.sourceType || "news",
+    source_name: displaySourceName(row.sourceName),
+    title: row.title,
+    url: row.url,
+    published_at: row.publishedAt,
+    fetched_at: "",
+    event_time: row.publishedAt,
+    target_name: row.targetName,
+    target_code: row.targetCode,
+    discovery_method: "filtered_review",
+    access_method: row.accessMethod || "markdown",
+    summary: row.summary,
+    content_preview: row.contentPreview || truncatePreview([row.reasons.join("；"), row.title].filter(Boolean).join(" "), 280),
+    metadata: {
+      sourceFile: row.file,
+      reviewMethod: row.method,
+    },
+    stock_links: stockLinks,
+    tags: ["filtered"],
+    recommendation: {
+      level: "",
+      score: row.score,
+      tags: ["filtered"],
+      reasons: row.reasons,
+    },
+    rankScore: row.score,
+    rankReasons: row.reasons,
+    filter: {
+      method: row.method,
+      score: row.score,
+      confidence: row.confidence ?? null,
+      reasons: row.reasons,
+      status: "pending",
+      sourceFile: row.file,
+    },
+    favorited: false,
+  };
+}
+
+async function mapLocalFilteredReviewDetail(
+  row: LocalFilteredReviewRow,
+  contentContext: KnowledgeContentUrlContext,
+): Promise<Record<string, unknown>> {
+  const source = await readLocalReviewSourceData(row.file);
+  const content = row.content || extractLocalReviewContent(source);
+  return {
+    ...mapLocalFilteredReviewListItem(row, contentContext),
+    url: row.url || String(source.url || source.origin_url || ""),
+    access_method: row.accessMethod || inferLocalReviewAccessMethod(source, row.file, content),
+    summary: row.summary || buildLocalReviewSummary(source, content),
+    content_preview: row.contentPreview || buildLocalReviewPreview(content, row.title),
+    content,
+    metadata: {
+      ...objectRecord(mapLocalFilteredReviewListItem(row, contentContext).metadata),
+      sourceFile: row.file,
+      source: String(source.source || source.source_name || row.sourceName || ""),
+    },
+  };
+}
+
+async function readLocalReviewSourceData(relativeFile: string): Promise<Record<string, unknown>> {
+  const fs = getNodeBuiltin("node:fs/promises");
+  const path = getNodeBuiltin("node:path");
+  if (!fs || !path || !relativeFile) {
+    return {};
+  }
+  const config = await readLocalKnowledgeProcessingConfig();
+  const configuredInputDirs = Array.isArray(config.inputDirs)
+    ? config.inputDirs.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const inputDirs = [
+    ...configuredInputDirs,
+    "/Users/terry/git/data/news",
+    "/Users/terry/git/data/reports",
+  ];
+  for (const dir of inputDirs) {
+    const fullPath = path.resolve(dir, relativeFile);
+    if (!(await pathExists(fullPath))) {
+      continue;
+    }
+    try {
+      const ext = String(path.extname(fullPath) || "").toLowerCase();
+      if (ext === ".json" || ext === ".jsonl") {
+        const text = String(await fs.readFile(fullPath, "utf8") || "").trim();
+        if (!text) {
+          return {};
+        }
+        if (ext === ".jsonl") {
+          const firstLine = text.split(/\r?\n/).map((line: string) => line.trim()).find(Boolean) || "{}";
+          return objectRecord(JSON.parse(firstLine));
+        }
+        return objectRecord(JSON.parse(text));
+      }
+      if (ext === ".md" || ext === ".txt") {
+        return { markdown: String(await fs.readFile(fullPath, "utf8") || "") };
+      }
+      return {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function extractLocalReviewContent(source: Record<string, unknown>): string {
+  const candidates = [
+    source.markdown,
+    source.md_text,
+    source.summary,
+    objectRecord(source.content).text,
+    source.content,
+  ];
+  for (const candidate of candidates) {
+    const value = typeof candidate === "string" ? candidate.trim() : "";
+    if (!value) {
+      continue;
+    }
+    if (/<[a-z][\s\S]*>/i.test(value)) {
+      return normalizeHtmlSnippet(value);
+    }
+    return value;
+  }
+  return "";
+}
+
+function buildLocalReviewSummary(source: Record<string, unknown>, content: string): string {
+  const summary = String(source.summary || "").trim();
+  if (summary) {
+    return summary;
+  }
+  return truncatePreview(content, 180);
+}
+
+function buildLocalReviewPreview(content: string, title: string): string {
+  return truncatePreview(content || title, 280);
+}
+
+function normalizeHtmlSnippet(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+function inferLocalReviewAccessMethod(source: Record<string, unknown>, relativeFile: string, content: string): string {
+  const sourceUrl = String(source.url || source.origin_url || "").toLowerCase();
+  const file = relativeFile.toLowerCase();
+  if (String(source.accessMethod || source.access_method || "").trim()) {
+    return String(source.accessMethod || source.access_method || "").trim();
+  }
+  if (sourceUrl.includes(".pdf") || file.endsWith(".pdf")) {
+    return sourceUrl ? "remote_pdf" : "local_pdf_pending";
+  }
+  if (content) {
+    return "markdown";
+  }
+  return "remote_url";
+}
+
+async function buildLocalReviewKeptDoc(row: LocalFilteredReviewRow): Promise<LocalReviewKeepDoc> {
+  const source = await readLocalReviewSourceData(row.file);
+  const content = row.content || extractLocalReviewContent(source);
+  const contentKey = content ? `knowledge-content/local-review/${row.docId}.md` : "";
+  const contentBytes = content ? new TextEncoder().encode(content).byteLength : 0;
+  const metadata = sanitizeKnowledgeMetadata({
+    source: String(source.source || source.source_name || row.sourceName || ""),
+    inputRelativeFile: row.file,
+    topicFilter: {
+      keep: true,
+      score: row.score,
+      method: row.method,
+      reasons: row.reasons,
+      confidence: row.confidence ?? null,
+    },
+  }, row.targetCode ? [{
+    name: row.targetName,
+    code: row.targetCode,
+    aliases: buildSecurityAliases(row.targetName, row.targetCode, []),
+  }] : []);
+  return {
+    docId: row.docId,
+    sourceType: row.sourceType || "local_news",
+    reportType: row.reportType || row.sourceType || "news",
+    sourceName: row.sourceName,
+    title: row.title,
+    url: row.url || String(source.url || source.origin_url || ""),
+    publishedAt: row.publishedAt,
+    fetchedAt: "",
+    eventTime: row.publishedAt,
+    targetName: row.targetName,
+    targetCode: row.targetCode,
+    accessMethod: row.accessMethod || inferLocalReviewAccessMethod(source, row.file, content),
+    summary: row.summary || buildLocalReviewSummary(source, content),
+    contentPreview: row.contentPreview || buildLocalReviewPreview(content, row.title),
+    content,
+    contentKey,
+    contentType: "text/markdown; charset=utf-8",
+    contentBytes,
+    contentSha256: "",
+    metadata,
+    tags: ["review_kept"],
+    recommendationReasons: row.reasons,
+  };
+}
+
+async function pathExists(file: string): Promise<boolean> {
+  const fs = getNodeBuiltin("node:fs/promises");
+  if (!fs || !file) {
+    return false;
+  }
+  try {
+    await fs.access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function replaceKnowledgeLocalContentCache(
+  db: AppEnv["Bindings"]["DB"],
+  payload: { contentKey: string; contentType: string; contentEncoding: string; content: string },
+  updatedAt: number,
+): Promise<void> {
+  const contentKey = String(payload.contentKey || "").trim();
+  await db.prepare("delete from knowledge_local_content_cache_chunks where content_key = ?").bind(contentKey).run();
+  await db.prepare("delete from knowledge_local_content_cache where content_key = ?").bind(contentKey).run();
+  if (!contentKey || !payload.content) {
+    return;
+  }
+  const bufferModule = getNodeBuiltin("node:buffer");
+  const BufferCtor = bufferModule?.Buffer;
+  const base64 = BufferCtor
+    ? String(BufferCtor.from(payload.content, "utf8").toString("base64"))
+    : bytesToBase64(new TextEncoder().encode(payload.content));
+  const bytes = new TextEncoder().encode(payload.content);
+  const sha256 = await sha256Hex(bytes);
+  await db.prepare(
+    `insert into knowledge_local_content_cache (
+      content_key, content_type, content_encoding, content_sha256, content_bytes, updated_at
+    ) values (?, ?, ?, ?, ?, ?)
+    on conflict(content_key) do update set
+      content_type=excluded.content_type,
+      content_encoding=excluded.content_encoding,
+      content_sha256=excluded.content_sha256,
+      content_bytes=excluded.content_bytes,
+      updated_at=excluded.updated_at`
+  )
+    .bind(contentKey, payload.contentType, payload.contentEncoding, sha256, bytes.byteLength, updatedAt)
+    .run();
+  const chunkInsert = db.prepare(
+    `insert into knowledge_local_content_cache_chunks (content_key, chunk_index, payload_base64)
+     values (?, ?, ?)
+     on conflict(content_key, chunk_index) do update set payload_base64=excluded.payload_base64`
+  );
+  const chunkSize = 20000;
+  const chunks: ReturnType<typeof chunkInsert.bind>[] = [];
+  for (let index = 0; index * chunkSize < base64.length; index += 1) {
+    chunks.push(chunkInsert.bind(contentKey, index, base64.slice(index * chunkSize, (index + 1) * chunkSize)));
+  }
+  if (chunks.length > 0) {
+    await db.batch(chunks);
+  }
+}
+
+async function replaceKnowledgeDocTags(
+  db: AppEnv["Bindings"]["DB"],
+  docId: string,
+  tags: string[],
+): Promise<void> {
+  await db.prepare("delete from knowledge_doc_tags where doc_id = ?").bind(docId).run();
+  if (tags.length === 0) {
+    return;
+  }
+  const stmt = db.prepare(
+    `insert into knowledge_doc_tags (doc_id, tag)
+     values (?, ?)
+     on conflict(doc_id, tag) do nothing`
+  );
+  await db.batch(tags.map((tag) => stmt.bind(docId, tag.toLowerCase())));
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
 }
