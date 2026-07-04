@@ -30,6 +30,7 @@ type KnowledgeNewsTableRow = {
   tags: string[]
   favorited: boolean
   isFiltered: boolean
+  document: Record<string, unknown>
 }
 
 export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeContext) {
@@ -164,27 +165,8 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     return tags
   }
 
-  function normalizeKnowledgeNewsDedupeText(value: unknown): string {
-    return String(value || '')
-      .replace(/^作者[丨|｜:：\s]*[^\s，。,；;:：]{1,40}\s*/u, '')
-      .replace(/^(公众号|点击上方)[^。！？!?]{0,80}[。！？!?]?\s*/u, '')
-      .replace(/^来源[：:]\s*[^\s]+\s*/u, '')
-      .replace(/^原标题[：:]\s*/u, '')
-      .replace(/[^\p{L}\p{N}]+/gu, '')
-      .trim()
-      .toLowerCase()
-  }
-
   function knowledgeNewsDedupeKey(item: any): string {
-    const metadata = item && item.metadata && typeof item.metadata === 'object' ? item.metadata : {}
-    const source = String((metadata as any).source || '').trim().toLowerCase()
-    if (source !== 'tencent_stock_news') {
-      return String(item?.doc_id || '')
-    }
-    const sourceName = String(item?.source_name || '').trim().toLowerCase()
-    const title = String(item?.title || '').trim().toLowerCase()
-    const preview = normalizeKnowledgeNewsDedupeText(String(item?.content_preview || item?.title || '').slice(0, 320)).slice(0, 180)
-    return `tencent|${sourceName}|${title}|${preview}`
+    return String(item?.doc_id || '')
   }
 
   function dedupeKnowledgeNewsItems(items: any[]): any[] {
@@ -228,6 +210,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       tags,
       favorited: Boolean(item.favorited),
       isFiltered: item.source_type === 'filtered_review' || Boolean(item.filter),
+      document: item && typeof item === 'object' ? item : {},
     }
   }
 
@@ -270,6 +253,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       : list.length >= pageSize
     emitKnowledgeNewsTableState()
     emitKnowledgeNewsFiltersState()
+    restoreKnowledgeDocumentFromUrl('replace')
   }
 
   function openExternalUrl(url: string) {
@@ -290,19 +274,25 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     await renderKnowledgeNews()
   }
 
-  async function showKnowledgeDocument(docID: string, filtered: boolean = false) {
+  async function showKnowledgeDocument(doc: Record<string, unknown> | string, filtered: boolean = false) {
+    const data = doc && typeof doc === 'object' ? doc : null
+    const docID = String((data?.doc_id as string) || doc || '')
     if (!docID) {
       return
     }
     knowledgeNewsCurrentDocId = docID
     knowledgeNewsCurrentDocFiltered = filtered
     syncKnowledgeDocStateToUrl(docID, filtered)
+    if (data) {
+      await knowledgeDocModal.openDocument(data, filtered)
+      return
+    }
     await knowledgeDocModal.openByDocId(docID, filtered)
   }
 
   async function onKnowledgeNewsOpenDoc(event: Event) {
-    const detail = (event as CustomEvent<{docId?: string; filtered?: boolean; sourceUrl?: string}>).detail
-    await showKnowledgeDocument(detail?.docId || '', Boolean(detail?.filtered))
+    const detail = (event as CustomEvent<{docId?: string; filtered?: boolean; row?: { document?: Record<string, unknown> }}>).detail
+    await showKnowledgeDocument(detail?.row?.document || detail?.docId || '', Boolean(detail?.filtered))
   }
 
   function onKnowledgeNewsPageChange(event: Event) {
@@ -330,7 +320,8 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       return
     }
     syncKnowledgeDocStateToUrl(docId, filtered, mode)
-    void showKnowledgeDocument(docId, filtered)
+    const matchedRow = knowledgeNewsRows.find((row) => row.docId === docId && row.isFiltered === filtered)
+    void showKnowledgeDocument(matchedRow?.document || docId, filtered)
   }
 
   function renderKnowledgeNewsFirstPage() {
@@ -403,7 +394,6 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     }
     renderKnowledgeNewsFirstPage()
     void loadKnowledgeSourceOptions()
-    restoreKnowledgeDocumentFromUrl('replace')
   }
 
   return initKnowledgeNews

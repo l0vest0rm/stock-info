@@ -67,6 +67,7 @@ type CompanyNewsRow = {
   docId: string
   sourceUrl: string
   accessMethod: string
+  document?: Record<string, unknown>
 }
 
 function mergeAnnualFinancial(target: Map<number, AnnualFinancial>, year: number, value: AnnualFinancial): void {
@@ -300,7 +301,7 @@ function openCompanyNewsDocument(
     return
   }
   if (docId) {
-    void knowledgeDocModal?.openByDocId(docId, false)
+    void knowledgeDocModal?.openDocument(row.document || { doc_id: docId }, false)
     return
   }
   if (sourceUrl) {
@@ -847,6 +848,7 @@ export function createCompanyNewsInitializer(context: CompanyPagesRuntimeContext
         docId: String(item.doc_id || ''),
         sourceUrl: String(item.url || ''),
         accessMethod: String(item.access_method || ''),
+        document: item && typeof item === 'object' ? item : {},
       }))
       companyNewsHasNext = list.length >= pageSize
       emitCompanyNewsState({

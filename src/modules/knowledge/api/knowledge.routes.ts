@@ -18,24 +18,13 @@ type KnowledgeDocRow = {
   event_time: string | null;
   target_name: string | null;
   target_code: string | null;
-  discovery_method: string | null;
   access_method: string | null;
   summary: string | null;
   content_key: string | null;
   content_url: string | null;
-  content_type: string | null;
-  content_encoding: string | null;
-  content_bytes: number | null;
-  content_sha256: string | null;
   content_preview: string | null;
   metadata_json: string | null;
-  recommendation_score: number;
-  recommendation_level: string | null;
   recommendation_tags_json: string | null;
-  recommendation_reasons_json: string | null;
-  rank_score: number;
-  source_weight: number;
-  updated_at: number;
 };
 
 type KnowledgeContentRefRow = {
@@ -97,20 +86,12 @@ type KnowledgeFilteredDocRow = {
 
 const KNOWLEDGE_DOC_BASE_SELECT = `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
   d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
-  d.discovery_method, d.access_method, d.summary, c.content_key, c.content_url, c.content_type,
-  c.content_encoding, c.content_bytes, c.content_sha256, d.content_preview, d.metadata_json,
-  d.recommendation_score, d.recommendation_level, d.recommendation_tags_json,
-  d.recommendation_reasons_json, d.rank_score, d.source_weight, d.updated_at
+  d.access_method, d.summary, c.content_key, c.content_url, d.content_preview, d.metadata_json,
+  d.recommendation_tags_json
  from knowledge_docs d
  left join knowledge_doc_content_refs c on c.doc_id = d.doc_id`;
 
-const KNOWLEDGE_DOC_LIST_SELECT = `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
-  d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
-  d.discovery_method, d.access_method, d.summary, null as content_key, null as content_url, null as content_type,
-  null as content_encoding, 0 as content_bytes, null as content_sha256, d.content_preview, d.metadata_json,
-  d.recommendation_score, d.recommendation_level, d.recommendation_tags_json,
-  d.recommendation_reasons_json, d.rank_score, d.source_weight, d.updated_at
- from knowledge_docs d`;
+const KNOWLEDGE_DOC_LIST_SELECT = KNOWLEDGE_DOC_BASE_SELECT;
 
 const KNOWLEDGE_DOC_TIME_ORDER = "d.sort_time desc, d.rank_score desc, d.doc_id desc";
 
@@ -448,7 +429,6 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
   const metadata = parseJsonObject(row.metadata_json);
   const target = sanitizeKnowledgeTarget(row.title, row.target_name || "", row.target_code || "", metadata);
   const stockLinks = stockLinksFromMetadata(metadata, target.name, target.code);
-  const sanitizedMetadata = sanitizeKnowledgeMetadata(metadata, stockLinks);
   const recommendationTags = sanitizeKnowledgeDisplayTags(parseJsonArray(row.recommendation_tags_json), stockLinks);
   const contentUrl = resolveKnowledgeContentUrl(row, contentContext);
   const tags = [
@@ -467,28 +447,12 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
     event_time: row.event_time || row.published_at || row.fetched_at || "",
     target_name: target.name,
     target_code: target.code,
-    discovery_method: row.discovery_method || metadata.discovery_method || "",
     access_method: resolveKnowledgeAccessMethod(row),
     summary: row.summary || "",
     content_preview: buildKnowledgePreview(row),
-    content_key: row.content_key || "",
     content_url: contentUrl,
-    content_type: row.content_type || "text/markdown; charset=utf-8",
-    content_encoding: row.content_encoding || "identity",
-    content_bytes: row.content_bytes || 0,
-    content_sha256: row.content_sha256 || "",
-    metadata: sanitizedMetadata,
     stock_links: stockLinks,
     tags: unique(tags),
-    recommendation: {
-      level: "",
-      score: row.recommendation_score || 0,
-      tags: recommendationTags,
-      reasons: parseJsonArray(row.recommendation_reasons_json),
-    },
-    rankScore: row.rank_score || 0,
-    rankReasons: rankReasons(row),
-    favorited: false,
   };
 }
 
@@ -898,8 +862,8 @@ async function listKnowledgeDocsDeduped(
       break;
     }
     for (const row of batch) {
+      const dedupeKey = knowledgeDocRowDedupeKey(row);
       const item = mapKnowledgeDocListItem(row, contentContext);
-      const dedupeKey = knowledgeDocDedupeKey(item);
       if (seen.has(dedupeKey)) {
         continue;
       }
@@ -920,18 +884,18 @@ async function listKnowledgeDocsDeduped(
   };
 }
 
-function knowledgeDocDedupeKey(item: Record<string, unknown>): string {
-  const metadata = objectRecord(item.metadata);
+function knowledgeDocRowDedupeKey(row: Pick<KnowledgeDocRow, "doc_id" | "source_name" | "title" | "content_preview" | "metadata_json">): string {
+  const metadata = parseJsonObject(row.metadata_json);
   const source = String(metadata.source || "");
-  const sourceName = String(item.source_name || "").trim().toLowerCase();
-  const title = String(item.title || "").trim().toLowerCase();
+  const sourceName = String(row.source_name || "").trim().toLowerCase();
+  const title = String(row.title || "").trim().toLowerCase();
   const preview = normalizeKnowledgeDedupeText(
-    String(item.content_preview || item.title || "").slice(0, 320)
+    String(row.content_preview || row.title || "").slice(0, 320)
   ).slice(0, 180);
   if (source === "tencent_stock_news") {
     return `tencent|${sourceName}|${title}|${preview}`;
   }
-  return String(item.doc_id || "");
+  return String(row.doc_id || "");
 }
 
 function normalizeKnowledgeDedupeText(value: string): string {
@@ -971,17 +935,6 @@ function objectRecord(value: unknown): Record<string, unknown> {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.map((item) => item.trim()).filter(Boolean))];
-}
-
-function rankReasons(row: KnowledgeDocRow): string[] {
-  const reasons: string[] = [];
-  if (row.source_weight > 0) {
-    reasons.push("来源权重");
-  }
-  if (row.rank_score > 0) {
-    reasons.push("公共排序分");
-  }
-  return reasons;
 }
 
 type LocalFilteredReviewRow = {

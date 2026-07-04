@@ -12,6 +12,23 @@ type KnowledgeDocModalContext = {
   onKeepFilteredDocument?: (docId: string) => Promise<void>
 }
 
+type KnowledgeDocModalData = {
+  doc_id?: string
+  title?: string
+  url?: string
+  source_name?: string
+  source_type?: string
+  report_type?: string
+  published_at?: string
+  fetched_at?: string
+  event_time?: string
+  target_name?: string
+  target_code?: string
+  access_method?: string
+  content_url?: string
+  stock_links?: unknown[]
+}
+
 const defaultEscapeHtml = (value: unknown): string => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -288,15 +305,11 @@ export function createKnowledgeDocModalController(context: KnowledgeDocModalCont
     })
   }
 
-  async function openByDocId(docId: string, filtered: boolean = false) {
-    const trimmedDocId = String(docId || '').trim()
+  async function renderDocument(data: KnowledgeDocModalData, filtered: boolean = false) {
+    const trimmedDocId = String(data?.doc_id || '').trim()
     if (!trimmedDocId) {
       return
     }
-    const data = await fetchRequest({
-      url: filtered ? `${server}/api/knowledge/filtered/doc` : `${server}/api/knowledge/doc`,
-      params: { id: trimmedDocId },
-    }) as any
     const { title, content, meta, favoriteButton } = getModalElements()
     if (!title || !content || !meta) {
       throw new Error('knowledge document modal elements are missing')
@@ -340,6 +353,22 @@ export function createKnowledgeDocModalController(context: KnowledgeDocModalCont
     }
   }
 
+  async function openDocument(data: KnowledgeDocModalData, filtered: boolean = false) {
+    await renderDocument(data, filtered)
+  }
+
+  async function openByDocId(docId: string, filtered: boolean = false) {
+    const trimmedDocId = String(docId || '').trim()
+    if (!trimmedDocId) {
+      return
+    }
+    const data = await fetchRequest({
+      url: filtered ? `${server}/api/knowledge/filtered/doc` : `${server}/api/knowledge/doc`,
+      params: { id: trimmedDocId },
+    }) as KnowledgeDocModalData
+    await renderDocument(data, filtered)
+  }
+
   async function keepFiltered(docId: string) {
     if (!onKeepFilteredDocument) {
       return
@@ -350,6 +379,7 @@ export function createKnowledgeDocModalController(context: KnowledgeDocModalCont
   return {
     bindLifecycle,
     keepFiltered,
+    openDocument,
     openByDocId,
   }
 }

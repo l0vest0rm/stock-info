@@ -17,6 +17,7 @@ type KnowledgeNewsTableRow = {
   tags: string[]
   favorited: boolean
   isFiltered: boolean
+  document?: Record<string, unknown>
 }
 
 type KnowledgeNewsTableStateEvent = CustomEvent<{
@@ -120,15 +121,15 @@ const knowledgeNewsTagLabelMap: Record<string, string> = {
   local: '本地',
 }
 
-function emitKnowledgeNewsOpenDoc(docId: string) {
+function emitKnowledgeNewsOpenDoc(row: KnowledgeNewsTableRow) {
   window.dispatchEvent(new CustomEvent('licai:knowledge-news-open-doc', {
-    detail: { docId },
+    detail: { docId: row.docId, row },
   }))
 }
 
-function emitKnowledgeNewsOpenFilteredDoc(docId: string) {
+function emitKnowledgeNewsOpenFilteredDoc(row: KnowledgeNewsTableRow) {
   window.dispatchEvent(new CustomEvent('licai:knowledge-news-open-doc', {
-    detail: { docId, filtered: true },
+    detail: { docId: row.docId, filtered: true, row },
   }))
 }
 
@@ -165,7 +166,7 @@ function knowledgeNewsRemotePdfUrl(row: KnowledgeNewsTableRow) {
 function onKnowledgeNewsTitleClick(event: Event, row: KnowledgeNewsTableRow) {
   event.preventDefault()
   if (row.isFiltered) {
-    emitKnowledgeNewsOpenFilteredDoc(row.docId)
+    emitKnowledgeNewsOpenFilteredDoc(row)
     return
   }
   const localFileUrl = row.accessMethod === 'local_file' && row.docId
@@ -181,7 +182,7 @@ function onKnowledgeNewsTitleClick(event: Event, row: KnowledgeNewsTableRow) {
     return
   }
   if (row.docId) {
-    emitKnowledgeNewsOpenDoc(row.docId)
+    emitKnowledgeNewsOpenDoc(row)
   }
 }
 
