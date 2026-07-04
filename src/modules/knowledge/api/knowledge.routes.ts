@@ -329,11 +329,11 @@ knowledgeRoutes.get("/knowledge/content", async (c) => {
   if (key.startsWith("localfs:")) {
     return fail(c, 410, "localfs knowledge content is no longer supported; re-import or migrate content_key to knowledge-content/*");
   }
-  const response = await readKnowledgeContentResponse(key, c.env, c.req.raw);
-  if (!response) {
-    return fail(c, 404, `knowledge content not found: ${key}`);
+  const redirectResponse = buildKnowledgeContentRedirectResponse(key, c.env);
+  if (!redirectResponse) {
+    return fail(c, 404, `knowledge content public base url is unavailable: ${key}`);
   }
-  return response;
+  return redirectResponse;
 });
 
 function parseDocsQuery(raw: Record<string, string>): KnowledgeDocsQuery {
@@ -367,14 +367,11 @@ function resolveKnowledgeContentUrl(
 ): string {
   const key = String(row.content_key || "").trim();
   const storedUrl = String(row.content_url || "").trim();
-  if (context.local && key) {
-    return `/api/knowledge/content?key=${encodeURIComponent(key)}`;
+  if (key && context.publicBaseUrl) {
+    return `${context.publicBaseUrl.replace(/\/+$/, "")}/${key.split("/").map(encodeURIComponent).join("/")}`;
   }
   if (storedUrl) {
     return storedUrl;
-  }
-  if (key && context.publicBaseUrl) {
-    return `${context.publicBaseUrl.replace(/\/+$/, "")}/${key.split("/").map(encodeURIComponent).join("/")}`;
   }
   return "";
 }
@@ -565,126 +562,12 @@ async function mapFilteredDocDetail(
   };
 }
 
-async function readKnowledgeContentResponse(
-  key: string,
-  env: AppEnv["Bindings"],
-  _request: Request,
-): Promise<Response | null> {
-  if (!isLocalDevelopmentRuntime()) {
-    return buildKnowledgeContentRedirectResponse(key, env);
-  }
-  return readKnowledgeContentFromLocalMirror(key, env);
-}
-
-async function readKnowledgeContentFromLocalMirror(
-  key: string,
-  env: AppEnv["Bindings"],
-): Promise<Response | null> {
-  const normalizedKey = normalizeKnowledgeContentKey(key);
-  if (!normalizedKey) {
-    return null;
-  }
-  const row = await env.DB.prepare(
-    `select content_type, content_encoding, content_bytes
-       from knowledge_local_content_cache
-      where content_key = ?`
-  )
-    .bind(normalizedKey)
-    .first<{ content_type: string | null; content_encoding: string | null; content_bytes: number | null }>();
-  const chunkRows = await env.DB.prepare(
-    `select payload_base64
-       from knowledge_local_content_cache_chunks
-      where content_key = ?
-      order by chunk_index asc`
-  )
-    .bind(normalizedKey)
-    .all<{ payload_base64: string | null }>();
-  const payloadBase64 = chunkRows.results.length > 0
-    ? chunkRows.results.map((chunk) => String(chunk.payload_base64 || "")).join("")
-    : "";
-  if (!payloadBase64) {
-    return null;
-  }
-  const bytes = decodeBase64(payloadBase64);
-  const encoding = String(row?.content_encoding || "").trim();
-  const normalizedBytes = decodeKnowledgeContentBytes(bytes, encoding);
-  const headers = new Headers({
-    "content-type": String(row?.content_type || "text/markdown; charset=utf-8"),
-    "cache-control": "public, max-age=31536000, immutable",
-    "content-length": String(normalizedBytes.byteLength),
-  });
-  return new Response(normalizedBytes, { headers });
-}
-
 function buildKnowledgeContentRedirectResponse(key: string, env: AppEnv["Bindings"]): Response | null {
   const baseUrl = String(env.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
   if (!baseUrl) {
     return null;
   }
   return Response.redirect(`${baseUrl}/${key.split("/").map(encodeURIComponent).join("/")}`, 302);
-}
-
-function normalizeKnowledgeContentKey(key: string): string {
-  const value = String(key || "").trim().replace(/^\/+|\/+$/g, "");
-  if (!value.startsWith("knowledge-content/")) {
-    return "";
-  }
-  if (value.split("/").some((part) => !part || part === "." || part === "..")) {
-    return "";
-  }
-  return value;
-}
-
-function decodeBase64(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-}
-
-function decodeKnowledgeContentBytes(bytes: Uint8Array, encoding: string): Uint8Array {
-  const normalizedEncoding = String(encoding || "").trim().toLowerCase();
-  if (!normalizedEncoding || normalizedEncoding === "identity") {
-    return bytes;
-  }
-  const zlib = loadNodeZlib();
-  if (!zlib) {
-    throw new Error(`knowledge content uses unsupported encoding without node:zlib support: ${normalizedEncoding}`);
-  }
-  switch (normalizedEncoding) {
-    case "br":
-      return new Uint8Array(zlib.brotliDecompressSync(bytes));
-    case "gzip":
-      return new Uint8Array(zlib.gunzipSync(bytes));
-    case "deflate":
-      return new Uint8Array(zlib.inflateSync(bytes));
-    default:
-      return new Uint8Array(zlib.unzipSync(bytes));
-  }
-}
-
-function loadNodeZlib():
-  | {
-    brotliDecompressSync(input: Uint8Array): Uint8Array;
-    gunzipSync(input: Uint8Array): Uint8Array;
-    inflateSync(input: Uint8Array): Uint8Array;
-    unzipSync(input: Uint8Array): Uint8Array;
-  }
-  | null {
-  const getBuiltinModule = (globalThis as {
-    process?: { getBuiltinModule?: (name: string) => unknown };
-  }).process?.getBuiltinModule;
-  if (typeof getBuiltinModule !== "function") {
-    return null;
-  }
-  return getBuiltinModule("node:zlib") as {
-    brotliDecompressSync(input: Uint8Array): Uint8Array;
-    gunzipSync(input: Uint8Array): Uint8Array;
-    inflateSync(input: Uint8Array): Uint8Array;
-    unzipSync(input: Uint8Array): Uint8Array;
-  };
 }
 
 async function upsertKnowledgeDocContentRef(

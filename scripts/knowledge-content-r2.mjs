@@ -1,8 +1,8 @@
 import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 
@@ -39,6 +39,9 @@ export function prepareKnowledgeContent({ docId, markdown, remote, options }) {
   if (!prepared.contentKey) {
     return prepared;
   }
+  if (!remote) {
+    writeLocalContentFile({ options, key: prepared.contentKey, payload: prepared.payload });
+  }
   if (!remote && !options.useRemoteS3) return stripPayload(prepared);
   uploadKnowledgeContent({
     options,
@@ -59,6 +62,9 @@ export async function prepareKnowledgeContentAsync({ docId, markdown, remote, op
   const prepared = prepareKnowledgeContentPayload({ docId, markdown, options, remote });
   if (!prepared.contentKey) {
     return prepared;
+  }
+  if (!remote) {
+    writeLocalContentFile({ options, key: prepared.contentKey, payload: prepared.payload });
   }
   if (!remote && !options.useRemoteS3) return stripPayload(prepared);
   await uploadKnowledgeContentAsync({
@@ -356,10 +362,29 @@ function stripPayload(value) {
   };
 }
 
+function writeLocalContentFile({ options, key, payload }) {
+  const relativePath = contentRelativePath(key);
+  const file = join(options.localContentDir, relativePath);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, payload);
+}
+
 function knowledgeContentKey(docId, sha256, encoding) {
   const idHash = createHash("sha256").update(text(docId) || sha256).digest("hex");
   const extension = encoding === "br" ? "md.br" : "md";
   return `knowledge-content/${idHash.slice(0, 2)}/${idHash}-${sha256.slice(0, 12)}.${extension}`;
+}
+
+function contentRelativePath(key) {
+  const normalized = text(key).replace(/^\/+|\/+$/g, "");
+  if (!normalized.startsWith("knowledge-content/")) {
+    throw new Error(`unsupported content key: ${key}`);
+  }
+  const relativePath = normalized.slice("knowledge-content/".length);
+  if (!relativePath || relativePath.split("/").some((part) => !part || part === "." || part === "..")) {
+    throw new Error(`unsafe content key: ${key}`);
+  }
+  return relativePath;
 }
 
 function joinPublicUrl(baseUrl, key) {
