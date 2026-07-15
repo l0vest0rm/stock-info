@@ -28,7 +28,11 @@ export async function loadKline(
   from: string,
   to: string,
   options?: { httpOptions?: ExternalHttpOptions }
-): Promise<{ code: string; source: "r2" | "eastmoney" | "yahoo"; rows: KlineBar[] | FundNavRow[] }> {
+): Promise<{
+  code: string;
+  source: "r2" | "eastmoney" | "tencent" | "yahoo";
+  rows: KlineBar[] | FundNavRow[];
+}> {
   if (period !== "day") {
     throw new Error(`unsupported kline period: ${period}`);
   }
@@ -47,7 +51,17 @@ export async function loadKline(
   }
 
   const snapshot = await getKlineSnapshot(env, code, fq);
-  if (snapshot && isFreshEnough(code, snapshot.updatedAt) && snapshotCoversRange(snapshot, from, to)) {
+  const snapshotHasRequestedAdjustment = !(
+    code.endsWith(".HK")
+    && fq !== "normal"
+    && snapshot?.source === "tencent"
+  );
+  if (
+    snapshot
+    && snapshotHasRequestedAdjustment
+    && isFreshEnough(code, snapshot.updatedAt)
+    && snapshotCoversRange(snapshot, from, to)
+  ) {
     return { code, source: "r2", rows: sliceKlineRows(snapshot.rows, from, to) };
   }
   if (!isEastmoneyKlineCode(code)) {
@@ -70,7 +84,7 @@ export async function loadKline(
       return fetchEastmoneyStockKline(env.DB, code, period, fq, fullKlineHistoryStartDate(), to);
     });
   } catch (err) {
-    if (!code.endsWith(".US")) {
+    if (!code.endsWith(".US") && !code.endsWith(".HK")) {
       throw err;
     }
     console.warn(`Eastmoney kline unavailable for ${code}, trying Yahoo:`, err);
@@ -84,7 +98,12 @@ export async function loadKline(
   if (fetched.rows.length > 0) {
     await putKlineSnapshot(env, code, fq, fetched.rows);
   }
-  const source = fetched.rows[0]?.source === "yahoo" ? "yahoo" : "eastmoney";
+  const fetchedSource = fetched.rows[0]?.source;
+  const source = fetchedSource === "yahoo"
+    ? "yahoo"
+    : fetchedSource === "tencent"
+      ? "tencent"
+      : "eastmoney";
   return { code, source, rows: sliceKlineRows(fetched.rows, from, to) };
 }
 

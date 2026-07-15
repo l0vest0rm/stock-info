@@ -408,7 +408,6 @@ export async function fetchEastmoneyStockKline(
     headers: {
       Accept: "*/*",
       "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-      Cookie: "nid18=1",
       Referer: "https://quote.eastmoney.com/",
       "Sec-Fetch-Dest": "script",
       "Sec-Fetch-Mode": "no-cors",
@@ -1541,7 +1540,10 @@ export async function fetchTencentStockKline(db: D1Database, code: string, perio
   }
   const data = body.data?.[symbol];
   const key = tencentKlineKey(fq);
-  const rawRows = data?.[key] ?? data?.day ?? [];
+  const rawRows = data?.[key] ?? (fq === "normal" ? data?.day : undefined) ?? [];
+  if (rawRows.length === 0 && fq !== "normal" && (data?.day?.length ?? 0) > 0) {
+    throw new Error(`tencent kline response does not include ${key} for ${code}`);
+  }
   const now = Date.now();
   const quote = data?.qt?.[symbol];
   const security = quote?.[1]
@@ -1586,6 +1588,7 @@ function tencentSymbol(code: string): string | null {
   if (suffix === "SH") return `sh${base}`;
   if (suffix === "SZ") return `sz${base}`;
   if (suffix === "BJ") return `bj${base}`;
+  if (suffix === "HK") return `hk${base}`;
   return null;
 }
 

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "baseUrl": "https://tinfo.cc",
+  "defaultDays": 30,
+  "defaultLimit": 20,
+  "pageSize": 50,
+  "marketBatchSize": 20,
+  "marketCandidateLimit": 200,
+  "analysisPoolLimit": 40,
+  "financeConcurrency": 3,
+  "consensusLimit": 10,
+  "filters": {
+    "minMarketCapYi": 30,
+    "maxMarketCapYi": 5000,
+    "excludeNamePatterns": ["ST", "退"]
+  },
+  "ranking": {
+    "lowBaseRatio": 0.1,
+    "yoyIgnoreAbove": 200,
+    "effectiveGrowthWeights": {
+      "qoq": 0.7,
+      "yoy": 0.3
+    },
+    "growthFloor": -20,
+    "growthCeiling": 50,
+    "forwardPeCeiling": 40,
+    "pegLikeCeiling": 2,
+    "weights": {
+      "forwardPe": 35,
+      "effectiveGrowth": 35,
+      "pegLike": 20,
+      "deductProfitQuality": 10
+    },
+    "negativeSingleQuarterPenalty": 20,
+    "eventRiskPenalty": 20,
+    "riskReasonKeywords": ["公允价值", "估值上涨", "科创投资", "投资收益", "股权处置", "资产处置", "政府补助"]
+  }
+}

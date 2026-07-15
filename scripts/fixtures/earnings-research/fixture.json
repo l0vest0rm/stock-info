@@ -1,0 +1,143 @@
+{
+  "performanceRows": [
+    {
+      "SECUCODE": "600002.SH",
+      "SECURITY_NAME_ABBR": "样本快报",
+      "REPORT_DATE": "2026-06-30 00:00:00",
+      "NOTICE_DATE": "2026-07-12 00:00:00",
+      "UPDATE_DATE": "2026-07-12 00:00:00",
+      "PARENT_NETPROFIT": 300000000,
+      "TOTAL_OPERATE_INCOME": 2500000000,
+      "JLRTBZCL": 50,
+      "YSTZ": 20,
+      "PARENT_NETPROFIT_SQ": 200000000
+    },
+    {
+      "SECUCODE": "600003.SH",
+      "SECURITY_NAME_ABBR": "未来公告",
+      "REPORT_DATE": "2026-06-30 00:00:00",
+      "NOTICE_DATE": "2026-07-16 00:00:00",
+      "UPDATE_DATE": "2026-07-15 00:00:00",
+      "PARENT_NETPROFIT": 900000000,
+      "TOTAL_OPERATE_INCOME": 5000000000,
+      "JLRTBZCL": 200,
+      "YSTZ": 80
+    },
+    {
+      "SECUCODE": "900921.SH",
+      "SECURITY_NAME_ABBR": "B股样本",
+      "REPORT_DATE": "2026-06-30 00:00:00",
+      "NOTICE_DATE": "2026-07-14 00:00:00",
+      "UPDATE_DATE": "2026-07-14 00:00:00",
+      "PARENT_NETPROFIT": 100000000,
+      "TOTAL_OPERATE_INCOME": 500000000,
+      "JLRTBZCL": 20,
+      "YSTZ": 10
+    }
+  ],
+  "forecastRows": [
+    {
+      "SECUCODE": "600001.SH",
+      "SECURITY_NAME_ABBR": "样本预告",
+      "REPORT_DATE": "2026-06-30 00:00:00",
+      "NOTICE_DATE": "2026-07-10 00:00:00",
+      "IS_LATEST": "T",
+      "PREDICT_FINANCE_CODE": "004",
+      "PREDICT_AMT_LOWER": 100000000,
+      "PREDICT_AMT_UPPER": 120000000,
+      "ADD_AMP_LOWER": 25,
+      "ADD_AMP_UPPER": 50,
+      "PREYEAR_SAME_PERIOD": 80000000,
+      "PREDICT_TYPE": "预增",
+      "CHANGE_REASON_EXPLAIN": "主营业务增长"
+    },
+    {
+      "SECUCODE": "600001.SH",
+      "SECURITY_NAME_ABBR": "样本预告",
+      "REPORT_DATE": "2026-06-30 00:00:00",
+      "NOTICE_DATE": "2026-07-10 00:00:00",
+      "IS_LATEST": "T",
+      "PREDICT_FINANCE_CODE": "005",
+      "PREDICT_AMT_LOWER": 90000000,
+      "PREDICT_AMT_UPPER": 105000000,
+      "ADD_AMP_LOWER": 20,
+      "ADD_AMP_UPPER": 40
+    },
+    {
+      "SECUCODE": "600001.SH",
+      "SECURITY_NAME_ABBR": "样本预告",
+      "REPORT_DATE": "2026-06-30 00:00:00",
+      "NOTICE_DATE": "2026-07-10 00:00:00",
+      "IS_LATEST": "T",
+      "PREDICT_FINANCE_CODE": "006",
+      "PREDICT_AMT_LOWER": 1000000000,
+      "PREDICT_AMT_UPPER": 1100000000,
+      "ADD_AMP_LOWER": 10,
+      "ADD_AMP_UPPER": 15
+    }
+  ],
+  "marketRows": [
+    {
+      "SECUCODE": "600001.SH",
+      "SECURITY_NAME_ABBR": "样本预告",
+      "NEW_PRICE": 10,
+      "TOTAL_MARKET_CAP": 3200000000,
+      "PE9": 18,
+      "PBNEWMRQ": 2.1,
+      "NETPROFIT_YOY_RATIO": 30,
+      "ZXGXL": 1.5,
+      "ALLCORP_NUM": 12,
+      "MAX_TRADE_DATE": "2026-07-15"
+    },
+    {
+      "SECUCODE": "600002.SH",
+      "SECURITY_NAME_ABBR": "样本快报",
+      "NEW_PRICE": 20,
+      "TOTAL_MARKET_CAP": 6000000000,
+      "PE9": 20,
+      "PBNEWMRQ": 3.2,
+      "NETPROFIT_YOY_RATIO": 50,
+      "ZXGXL": 0.8,
+      "ALLCORP_NUM": 25,
+      "MAX_TRADE_DATE": "2026-07-15"
+    }
+  ],
+  "statements": {
+    "income": {
+      "600001.SH": [
+        {"reportDate":"2026-03-31","noticeDate":"2026-04-20","parentNetprofit":40000000},
+        {"reportDate":"2025-12-31","noticeDate":"2026-03-20","parentNetprofit":70000000},
+        {"reportDate":"2025-09-30","noticeDate":"2025-10-20","parentNetprofit":50000000},
+        {"reportDate":"2025-06-30","noticeDate":"2025-08-20","parentNetprofit":45000000},
+        {"reportDate":"2025-03-31","noticeDate":"2025-04-20","parentNetprofit":35000000},
+        {"reportDate":"2024-12-31","noticeDate":"2025-03-20","parentNetprofit":65000000},
+        {"reportDate":"2024-09-30","noticeDate":"2024-10-20","parentNetprofit":45000000},
+        {"reportDate":"2024-06-30","noticeDate":"2024-08-20","parentNetprofit":40000000},
+        {"reportDate":"2024-03-31","noticeDate":"2024-04-20","parentNetprofit":30000000}
+      ],
+      "600002.SH": [
+        {"reportDate":"2026-03-31","noticeDate":"2026-04-20","parentNetprofit":100000000},
+        {"reportDate":"2025-12-31","noticeDate":"2026-03-20","parentNetprofit":200000000},
+        {"reportDate":"2025-09-30","noticeDate":"2025-10-20","parentNetprofit":150000000},
+        {"reportDate":"2025-06-30","noticeDate":"2025-08-20","parentNetprofit":120000000},
+        {"reportDate":"2025-03-31","noticeDate":"2025-04-20","parentNetprofit":80000000},
+        {"reportDate":"2024-12-31","noticeDate":"2025-03-20","parentNetprofit":180000000},
+        {"reportDate":"2024-09-30","noticeDate":"2024-10-20","parentNetprofit":120000000},
+        {"reportDate":"2024-06-30","noticeDate":"2024-08-20","parentNetprofit":110000000},
+        {"reportDate":"2024-03-31","noticeDate":"2024-04-20","parentNetprofit":70000000}
+      ]
+    },
+    "balance": {
+      "600001.SH": [{"reportDate":"2026-03-31","noticeDate":"2026-04-20","totaAssets":2000000000,"totalLiabilities":700000000,"accountsRece":160000000,"inventory":120000000}],
+      "600002.SH": [{"reportDate":"2026-03-31","noticeDate":"2026-04-20","totaAssets":5000000000,"totalLiabilities":2500000000,"accountsRece":500000000,"inventory":800000000}]
+    },
+    "cashflow": {
+      "600001.SH": [{"reportDate":"2026-03-31","noticeDate":"2026-04-20","netcashOperate":45000000}],
+      "600002.SH": [{"reportDate":"2026-03-31","noticeDate":"2026-04-20","netcashOperate":90000000}]
+    }
+  },
+  "reportForecasts": {
+    "600001.SH": [{"year":2026,"netProfit":2.8}],
+    "600002.SH": [{"year":2026,"netProfit":5.5}]
+  }
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Analyze Stock Earnings"
+  short_description: "结合近期业绩、增长趋势与未来估值生成可解释的股票研究候选清单"
+  default_prompt: "Use $analyze-stock-earnings to analyze recent earnings and produce a Markdown stock shortlist."
+policy:
+  allow_implicit_invocation: true
