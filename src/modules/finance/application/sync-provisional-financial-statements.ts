@@ -23,6 +23,7 @@ const COMPANY_WRITE_CONCURRENCY = 8;
 type ProvisionalSource = "performance_report" | "performance_forecast";
 
 type SyncCheckpoint = {
+  reportDate: string;
   backfillNextPage: number;
   backfillComplete: boolean;
   latestPageFingerprint: string;
@@ -31,6 +32,9 @@ type SyncCheckpoint = {
 type SyncStats = {
   reportDate: string;
   pagesFetched: number;
+  latestPagesChanged: number;
+  latestPagesUnchanged: number;
+  backfillPagesProcessed: number;
   rowsRead: number;
   companiesSeen: number;
   snapshotsUpdated: number;
@@ -46,9 +50,13 @@ export async function syncProvisionalFinancialStatements(
   const jobId = crypto.randomUUID();
   const startedAt = Date.now();
   await startSyncJob(env.DB, jobId, startedAt, reportDate);
+  await migrateLegacyCheckpoints(env.DB, reportDate);
   const stats: SyncStats = {
     reportDate,
     pagesFetched: 0,
+    latestPagesChanged: 0,
+    latestPagesUnchanged: 0,
+    backfillPagesProcessed: 0,
     rowsRead: 0,
     companiesSeen: 0,
     snapshotsUpdated: 0,
@@ -77,7 +85,9 @@ async function syncSource(
   const checkpoint = await readSyncCheckpoint(env.DB, source, reportDate);
   const firstPage = await fetchSourcePage(env.DB, source, reportDate, 1);
   const latestPageFingerprint = await sourcePageFingerprint(firstPage.rows);
-  const pages = checkpoint.latestPageFingerprint === latestPageFingerprint ? [] : [firstPage];
+  const latestPageChanged = checkpoint.latestPageFingerprint !== latestPageFingerprint;
+  const pages = latestPageChanged ? [firstPage] : [];
+  stats[latestPageChanged ? "latestPagesChanged" : "latestPagesUnchanged"] += 1;
   stats.pagesFetched += 1;
   let backfillNextPage = checkpoint.backfillNextPage;
   let backfillComplete = checkpoint.backfillComplete || firstPage.pages <= 1;
@@ -86,15 +96,11 @@ async function syncSource(
     if (pageNumber > 1) {
       pages.push(await fetchSourcePage(env.DB, source, reportDate, pageNumber));
       stats.pagesFetched += 1;
+      stats.backfillPagesProcessed += 1;
     }
     backfillComplete = pageNumber >= firstPage.pages;
     backfillNextPage = backfillComplete ? pageNumber : pageNumber + 1;
   }
-  await writeSyncCheckpoint(env.DB, source, reportDate, {
-    backfillNextPage,
-    backfillComplete,
-    latestPageFingerprint,
-  });
   const rows = dedupeSourceRows(pages.flatMap((page) => page.rows), source);
   stats.rowsRead += rows.length;
   const rowsByCode = groupRowsByCode(rows);
@@ -122,6 +128,12 @@ async function syncSource(
       stats.snapshotsUpdated += 1;
     }));
   }
+  await writeSyncCheckpoint(env.DB, source, reportDate, {
+    reportDate,
+    backfillNextPage,
+    backfillComplete,
+    latestPageFingerprint,
+  });
 }
 
 function mergeStoredProvisionalData(
@@ -203,12 +215,14 @@ async function readSyncCheckpoint(
   source: ProvisionalSource,
   reportDate: string
 ): Promise<SyncCheckpoint> {
-  const record = await getAppKv(db, cursorKey(source, reportDate));
-  if (!record) return emptyCheckpoint();
+  const record = await getAppKv(db, cursorKey(source));
+  if (!record) return emptyCheckpoint(reportDate);
   try {
     const value = JSON.parse(record.valueJson) as Record<string, unknown>;
+    if (value.reportDate !== reportDate) return emptyCheckpoint(reportDate);
     const page = Number(value.backfillNextPage ?? value.nextPage);
     return {
+      reportDate,
       backfillNextPage: Number.isInteger(page) && page >= 2 ? page : 2,
       backfillComplete: value.backfillComplete === true,
       latestPageFingerprint: typeof value.latestPageFingerprint === "string"
@@ -216,7 +230,7 @@ async function readSyncCheckpoint(
         : "",
     };
   } catch {
-    return emptyCheckpoint();
+    return emptyCheckpoint(reportDate);
   }
 }
 
@@ -227,15 +241,15 @@ async function writeSyncCheckpoint(
   checkpoint: SyncCheckpoint
 ): Promise<void> {
   await putAppKv(db, {
-    key: cursorKey(source, reportDate),
+    key: cursorKey(source),
     valueJson: JSON.stringify(checkpoint),
     expiresAt: null,
     updatedAt: Date.now(),
   });
 }
 
-function emptyCheckpoint(): SyncCheckpoint {
-  return { backfillNextPage: 2, backfillComplete: false, latestPageFingerprint: "" };
+function emptyCheckpoint(reportDate: string): SyncCheckpoint {
+  return { reportDate, backfillNextPage: 2, backfillComplete: false, latestPageFingerprint: "" };
 }
 
 function normalizeBackfillPage(nextPage: number, pages: number): number {
@@ -248,8 +262,42 @@ async function sourcePageFingerprint(rows: Record<string, unknown>[]): Promise<s
   return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-function cursorKey(source: ProvisionalSource, reportDate: string): string {
-  return `financial-provisional-sync:${source}:${reportDate}`;
+function cursorKey(source: ProvisionalSource): string {
+  return `financial-provisional-sync:${source}`;
+}
+
+async function migrateLegacyCheckpoints(db: D1Database, reportDate: string): Promise<void> {
+  for (const source of ["performance_report", "performance_forecast"] as const) {
+    const fixedKey = cursorKey(source);
+    const fixed = await getAppKv(db, fixedKey);
+    if (!fixed) {
+      const legacy = await getAppKv(db, `${fixedKey}:${reportDate}`);
+      if (legacy) {
+        try {
+          const value = JSON.parse(legacy.valueJson) as Record<string, unknown>;
+          const page = Number(value.backfillNextPage ?? value.nextPage);
+          await putAppKv(db, {
+            key: fixedKey,
+            valueJson: JSON.stringify({
+              reportDate,
+              backfillNextPage: Number.isInteger(page) && page >= 2 ? page : 2,
+              backfillComplete: value.backfillComplete === true,
+              latestPageFingerprint: typeof value.latestPageFingerprint === "string"
+                ? value.latestPageFingerprint
+                : "",
+            } satisfies SyncCheckpoint),
+            expiresAt: null,
+            updatedAt: Date.now(),
+          });
+        } catch (err) {
+          console.warn(`invalid legacy financial sync checkpoint: ${fixedKey}:${reportDate}`, err);
+        }
+      }
+    }
+  }
+  await db.prepare(
+    `delete from app_kv where key like 'financial-provisional-sync:%:%'`
+  ).run();
 }
 
 async function startSyncJob(
