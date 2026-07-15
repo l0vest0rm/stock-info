@@ -651,14 +651,16 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       if (!chartDom) {
         return
       }
-      valuationChart = valuationChart || echarts.getInstanceByDom(chartDom) || echarts.init(chartDom)
       const response = Array.isArray(prefetchedReports)
         ? prefetchedReports
         : await fetchRequest(companyReportRequestUrl(code, 1)) as any[]
       if (!response || response.length === 0) {
-        valuationChart.clear()
+        valuationChart?.clear()
+        chartDom.hidden = true
         return
       }
+      chartDom.hidden = false
+      valuationChart = valuationChart || echarts.getInstanceByDom(chartDom) || echarts.init(chartDom)
       const reports = [...response].sort((a, b) => {
         const dateA = new Date(a.publishDate || a.ts * 1000).getTime()
         const dateB = new Date(b.publishDate || b.ts * 1000).getTime()

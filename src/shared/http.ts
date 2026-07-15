@@ -5,6 +5,7 @@ import type { ApiFailure, ApiSuccess, Bindings } from "../types";
 export type ExternalHttpOptions = {
   proxyEnabled?: boolean;
   proxyUrl?: string;
+  proxyRelayUrl?: string;
   proxyDomains?: string[];
   domainConcurrency?: number;
   includeSensitiveHeaders?: boolean;
@@ -94,23 +95,59 @@ async function fetchTextResponse(
 ): Promise<{ status: number; headers: Record<string, string>; text: string }> {
   const host = new URL(url).hostname.toLowerCase();
   return runWithDomainLimit(host, options?.domainConcurrency ?? 3, async () => {
-    if (shouldUseProxy(url, options)) {
-      return fetchTextViaProxy(options!.proxyUrl!, url, init, options);
+    const attempts = isRetryableMethod(init?.method) ? 2 : 1;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        if (shouldUseProxy(url, options)) {
+          return await fetchTextViaProxy(options!.proxyUrl!, url, init, options);
+        }
+        return await fetchTextDirect(url, init);
+      } catch (err) {
+        lastError = err;
+        if (attempt >= attempts || !isRetryableNetworkError(err)) {
+          throw err;
+        }
+        console.warn(`external request connection failed for ${host}; retrying with a new request:`, err);
+      }
     }
-    const res = await fetch(url, {
-      ...init,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; stock-info-worker/0.1; +https://workers.cloudflare.com/)",
-        ...(init?.headers ?? {}),
-      },
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(`request failed: status=${res.status} body=${truncate(text)}`);
-    }
-    return { status: res.status, headers: Object.fromEntries(res.headers.entries()), text };
+    throw lastError;
   });
+}
+
+async function fetchTextDirect(
+  url: string,
+  init?: RequestInit
+): Promise<{ status: number; headers: Record<string, string>; text: string }> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (compatible; stock-info-worker/0.1; +https://workers.cloudflare.com/)",
+      ...(init?.headers ?? {}),
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`request failed: status=${res.status} body=${truncate(text)}`);
+  }
+  return { status: res.status, headers: Object.fromEntries(res.headers.entries()), text };
+}
+
+function isRetryableMethod(method: string | undefined): boolean {
+  const normalized = (method ?? "GET").toUpperCase();
+  return normalized === "GET" || normalized === "HEAD";
+}
+
+function isRetryableNetworkError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
+  if ((err as { retryable?: unknown }).retryable === true) {
+    return true;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  return /network connection lost|fetch failed|connection reset|socket closed/i.test(message);
 }
 
 async function fetchTextViaProxy(
@@ -124,13 +161,40 @@ async function fetchTextViaProxy(
   text: string;
 }> {
   const normalizedProxyUrl = normalizeProxyUrl(proxyUrl);
+  if (options?.proxyRelayUrl) {
+    return fetchTextViaProxyRelay(options.proxyRelayUrl, url, init, options);
+  }
   return fetchTextViaHttpProxy(normalizedProxyUrl, url, init, options);
+}
+
+async function fetchTextViaProxyRelay(
+  relayUrl: string,
+  url: string,
+  init?: RequestInit,
+  options?: ExternalHttpOptions
+): Promise<{ status: number; headers: Record<string, string>; text: string }> {
+  const res = await fetch(relayUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url,
+      method: init?.method ?? "GET",
+      headers: normalizeOutgoingHeaders(init?.headers, options),
+      body: typeof init?.body === "string" ? init.body : undefined,
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`proxy relay request failed: status=${res.status} body=${truncate(text)}`);
+  }
+  return { status: res.status, headers: Object.fromEntries(res.headers.entries()), text };
 }
 
 export function externalHttpOptions(env: Partial<Bindings>): ExternalHttpOptions {
   return {
     proxyEnabled: Boolean(env.HTTP_PROXY_URL),
     proxyUrl: env.HTTP_PROXY_URL,
+    proxyRelayUrl: env.HTTP_PROXY_RELAY_URL,
     proxyDomains: parseDomains(env.HTTP_PROXY_DOMAINS),
     domainConcurrency: positiveInt(env.HTTP_DOMAIN_CONCURRENCY) ?? 3,
   };

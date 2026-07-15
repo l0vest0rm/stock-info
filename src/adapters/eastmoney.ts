@@ -45,6 +45,8 @@ type EastmoneyFundNavResponse = {
 type EastmoneyFinanceResponse = {
   result?: {
     data?: Record<string, unknown>[];
+    pages?: number;
+    count?: number;
   };
 };
 
@@ -53,6 +55,13 @@ type FinanceMappings = {
 };
 
 const bankCodeSet = new Set(((financeMappings as FinanceMappings).bankCodes ?? []).map((code) => normalizeSecurityCode(code)));
+const PROVISIONAL_FINANCE_SOURCE_TTL_MS = 10 * 60 * 1000;
+
+export type EastmoneyDataPage = {
+  rows: Record<string, unknown>[];
+  pages: number;
+  count: number;
+};
 
 type EastmoneyOverviewResponse = {
   data?: {
@@ -541,6 +550,40 @@ export async function fetchEastmoneyFinance(
   return statements;
 }
 
+export async function fetchEastmoneyPerformanceReportPage(
+  db: D1Database,
+  reportDate: string,
+  pageNumber: number,
+  pageSize: number
+): Promise<EastmoneyDataPage> {
+  return fetchEastmoneyDataPage(db, "https://datacenter-web.eastmoney.com/api/data/v1/get", {
+    reportName: "RPT_FCI_PERFORMANCEE",
+    columns: "ALL",
+    filter: `(SECURITY_TYPE_CODE in ("058001001","058001008"))(TRADE_MARKET_CODE!="069001017")(REPORT_DATE='${reportDate}')`,
+    pageNumber: String(pageNumber),
+    pageSize: String(pageSize),
+    sortTypes: "-1,-1",
+    sortColumns: "UPDATE_DATE,SECURITY_CODE",
+  }, PROVISIONAL_FINANCE_SOURCE_TTL_MS);
+}
+
+export async function fetchEastmoneyPerformanceForecastPage(
+  db: D1Database,
+  reportDate: string,
+  pageNumber: number,
+  pageSize: number
+): Promise<EastmoneyDataPage> {
+  return fetchEastmoneyDataPage(db, "https://datacenter-web.eastmoney.com/api/data/v1/get", {
+    reportName: "RPT_PUBLIC_OP_NEWPREDICT",
+    columns: "ALL",
+    filter: `(REPORT_DATE='${reportDate}')`,
+    pageNumber: String(pageNumber),
+    pageSize: String(pageSize),
+    sortTypes: "-1,-1",
+    sortColumns: "NOTICE_DATE,SECURITY_CODE",
+  }, PROVISIONAL_FINANCE_SOURCE_TTL_MS);
+}
+
 export async function fetchYahooFinance(
   db: D1Database,
   code: string,
@@ -609,7 +652,8 @@ export async function fetchYahooFinance(
 export async function fetchEastmoneyDataRows(
   db: D1Database,
   endpoint: string,
-  params: Record<string, string>
+  params: Record<string, string>,
+  ttlMs = 24 * 60 * 60 * 1000
 ): Promise<Record<string, unknown>[]> {
   const url = new URL(endpoint);
   for (const [key, value] of Object.entries(params)) {
@@ -617,8 +661,28 @@ export async function fetchEastmoneyDataRows(
   }
   const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://emweb.securities.eastmoney.com/" },
-  }, 24 * 60 * 60 * 1000)) as EastmoneyFinanceResponse;
+  }, ttlMs)) as EastmoneyFinanceResponse;
   return body.result?.data ?? [];
+}
+
+export async function fetchEastmoneyDataPage(
+  db: D1Database,
+  endpoint: string,
+  params: Record<string, string>,
+  ttlMs = 24 * 60 * 60 * 1000
+): Promise<EastmoneyDataPage> {
+  const url = new URL(endpoint);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  const body = (await cachedFetchJson(db, url.toString(), {
+    headers: { Referer: "https://emweb.securities.eastmoney.com/" },
+  }, ttlMs)) as EastmoneyFinanceResponse;
+  return {
+    rows: body.result?.data ?? [],
+    pages: Number(body.result?.pages ?? 0),
+    count: Number(body.result?.count ?? 0),
+  };
 }
 
 function ttlForEastmoneyFinancialResponse(text: string): number {

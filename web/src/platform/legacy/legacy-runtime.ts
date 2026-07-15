@@ -1378,26 +1378,10 @@ function onFinanceCheckChange(selected: any[], type: string, checked: boolean) {
           const timestamp = data[i][0]
           const price = data[i][1]
           
-          // 找到对应的财务数据（最新的财报）
-          let eps = null
-          let netProfit = null
-          for (const finance of financeData) {
-            const reportDate = new Date(finance.reportDate).getTime()
-            if (reportDate <= timestamp) {
-              eps = finance.basicEps
-              netProfit = finance.parentNetprofit
-              break
-            }
-          }
-          
           // 计算估值指标
           let value = null
           if (type === 'pettm') {
-            // 如果有EPS，直接计算PE
-            if (eps && eps > 0) {
-              value = price / eps
-            } else if (netProfit && shareChangeData && Array.isArray(shareChangeData) && shareChangeData.length > 0) {
-              // 如果没有EPS（快报或预告），使用净利润和总股本计算PE TTM
+            if (shareChangeData && Array.isArray(shareChangeData) && shareChangeData.length > 0) {
               // 找到对应的总股本
               let totalShares = null
               for (const share of shareChangeData) {
@@ -1412,17 +1396,16 @@ function onFinanceCheckChange(selected: any[], type: string, checked: boolean) {
               if (totalShares && totalShares > 0) {
                 const marketCap = price * totalShares
                 // 累加最近4个季度的净利润
-                let totalNetProfit = 0
-                let count = 0
+                const trailingProfits: number[] = []
                 for (const finance of financeData) {
                   const reportDate = new Date(finance.reportDate).getTime()
-                  if (reportDate <= timestamp && count < 4) {
-                    totalNetProfit += finance.parentNetprofit || 0
-                    count++
+                  const profit = Number(finance.parentNetprofit)
+                  if (reportDate <= timestamp && Number.isFinite(profit) && trailingProfits.length < 4) {
+                    trailingProfits.push(profit)
                   }
                 }
-                
-                if (totalNetProfit > 0) {
+                const totalNetProfit = trailingProfits.reduce((sum, profit) => sum + profit, 0)
+                if (trailingProfits.length === 4 && totalNetProfit > 0) {
                   value = marketCap / totalNetProfit
                 }
               }
@@ -1635,7 +1618,6 @@ const legacyControls = createLegacyControls({
 const bsSelect = legacyControls.bsSelect
 export const bsRadioButtons = legacyControls.bsRadioButtons
 export const bsCards = legacyControls.bsCards
-const codeSearchInit = legacyControls.codeSearchInit
 export const codeSelectInit = legacyControls.codeSelectInit
 
 //绘制财报柱状对比图
@@ -1646,7 +1628,11 @@ export function genFinanceChart(id: string, codes: string[], yKeys: string[], yK
   let yUnit = '(亿元)'
   let unit = 1e8
   const typedReportsMap = runtimeState.reportsMap as Record<string, any[]>
-  if (typedReportsMap[codes[0]][0][yKeys[0]] < 1e8) {
+  const firstFiniteValue = codes
+    .flatMap((code) => typedReportsMap[code] || [])
+    .map((report) => Number(report?.[yKeys[0]]))
+    .find((value) => Number.isFinite(value))
+  if (firstFiniteValue !== undefined && Math.abs(firstFiniteValue) < 1e8) {
     unit = 1e6
     yUnit = '(百万)'
   }
@@ -1665,7 +1651,10 @@ export function genFinanceChart(id: string, codes: string[], yKeys: string[], yK
       }
       if (typedReportsMap[code][i].dataSource) {
         if (!dataSourceMap[code]) dataSourceMap[code] = {}
-        dataSourceMap[code][data[code][i][xKey]] = typedReportsMap[code][i].dataSource
+        dataSourceMap[code][data[code][i][xKey]] = {
+          type: typedReportsMap[code][i].dataSource,
+          label: typedReportsMap[code][i].dataSourceLabel,
+        }
       }
     }
   }
@@ -1768,7 +1757,13 @@ function genBarLineCompareChart(id: string, codes: string[], data: any, codeName
         const current = data[code][i][yKeys[j]]
         const pre = i+offsetMap[code] < data[code].length? data[code][i+offsetMap[code]][yKeys[j]]: 0
         const ratio = pre > 0 ? 100*current/pre - 100: 0
-        items[j*2].unshift(current)
+        const reportDate = data[code][i][xKey]
+        const source = dataSourceMap?.[code]?.[reportDate]
+        items[j*2].unshift({
+          value: current,
+          dataSource: source?.type,
+          dataSourceLabel: source?.label,
+        })
         items[j*2+1].unshift(ratio)
       }
     }
@@ -1783,7 +1778,14 @@ function genBarLineCompareChart(id: string, codes: string[], data: any, codeName
       series.push({
         name: name1,
         type: 'bar',
-        data: items[i*2]
+        data: items[i*2],
+        label: {
+          show: true,
+          position: 'top',
+          color: '#d9485f',
+          fontWeight: 'bold',
+          formatter: (params: any) => provisionalFinanceSourceLabel(params?.data)
+        }
       })
       series.push({
         name: name2,
@@ -1814,7 +1816,7 @@ function genBarLineCompareChart(id: string, codes: string[], data: any, codeName
   renderBarLineCombo(id, legendData, xAxisData, yAxis, series, seriesUnit, dataSourceMap, codes)
 }
 
-function renderBarLineCombo(id: string, legendData: string[], xAxisData: string[], yAxis: any[], series: any[], seriesUnit: string[], dataSourceMap?: any, codes?: string[]) {
+function renderBarLineCombo(id: string, legendData: string[], xAxisData: string[], yAxis: any[], series: any[], seriesUnit: string[], _dataSourceMap?: any, _codes?: string[]) {
   const chartDom: any = document.getElementById(id)
   // @ts-ignore
   echarts.dispose(chartDom)
@@ -1832,22 +1834,12 @@ function renderBarLineCombo(id: string, legendData: string[], xAxisData: string[
       },
       formatter: function (params: any, _ticket: string, _callback: (ticket: string, html: string) => void): string | HTMLElement | HTMLElement[] {
         const date = params[0].axisValue
-        let str = date
-        if (dataSourceMap && codes) {
-          for (const code of codes) {
-            if (dataSourceMap[code] && dataSourceMap[code][date]) {
-              const sourceText = dataSourceMap[code][date] === 'performance' ? '业绩快报' : 
-                                 dataSourceMap[code][date] === 'prediction' ? '业绩预告' : ''
-              if (sourceText) {
-                str += ` <span style="color:#ff6b6b;font-weight:bold;">[${sourceText}]</span>`
-                break
-              }
-            }
-          }
-        }
-        str += '</br>'
+        let str = `${date}</br>`
         for (let i = 0; i < params.length; i++) {
-          str += `${params[i].marker}${params[i].seriesName}: ${params[i].value.toFixed(2)}${seriesUnit[i]}</br>`
+          const sourceText = provisionalFinanceSourceLabel(params[i].data)
+          const sourceBadge = sourceText ? ` <span style="color:#d9485f;font-weight:bold;">[${sourceText}]</span>` : ''
+          const value = Number(params[i].value)
+          str += `${params[i].marker}${params[i].seriesName}${sourceBadge}: ${Number.isFinite(value) ? value.toFixed(2) : '-'}${seriesUnit[i]}</br>`
         }
         return str
       }
@@ -1867,6 +1859,14 @@ function renderBarLineCombo(id: string, legendData: string[], xAxisData: string[
     yAxis: yAxis,
     series: series
   })
+}
+
+function provisionalFinanceSourceLabel(value: any): string {
+  if (!Number.isFinite(Number(value?.value))) return ''
+  const source = value?.dataSource
+  if (source === 'performance_report' || source === 'performance') return '快报'
+  if (source === 'performance_forecast' || source === 'prediction') return '预告'
+  return ''
 }
 
 async function codeInit() {
@@ -2244,8 +2244,11 @@ function formatFinanceData(codes: string[]) {
       if (compareType ==='yearly' && report.reportDate.substring(0, 4) === reportYear && reports.length > 0) {
         //累加年度的
         const i = reports.length - 1
+        const mergedSource = mergeFinancialDataSource(reports[i].dataSource, report.dataSource)
+        reports[i].dataSource = mergedSource
+        reports[i].dataSourceLabel = financialDataSourceLabel(mergedSource)
         for (const key in report) {
-          if (['reportDate', 'noticeDate'].includes(key)) {
+          if (['reportDate', 'noticeDate', 'dataSource', 'dataSourceLabel'].includes(key)) {
             continue
           }
           if (reports[i][key]) {
@@ -2269,6 +2272,9 @@ function formatFinanceData(codes: string[]) {
         if (reports[i].reportDate === balanceCacheData[j].reportDate) {
           //同日期的找到了
           for (const key in balanceCacheData[j]) {
+            if (['dataSource', 'dataSourceLabel'].includes(key)) {
+              continue
+            }
             reports[i][key] = balanceCacheData[j][key]
           }
         }
@@ -2285,7 +2291,7 @@ function formatFinanceData(codes: string[]) {
         if (reports[i].reportDate === cashCacheData[j].reportDate || (compareType === 'yearly' && reports[i].reportDate.substring(0,4) === cashCacheData[j].reportDate.substring(0,4))) {
           //同时间的找到了
           for (const key in cashCacheData[j]) {
-            if (['reportDate', 'noticeDate'].includes(key)) {
+            if (['reportDate', 'noticeDate', 'dataSource', 'dataSourceLabel'].includes(key)) {
               continue
             }
             //存在就累加，不存在就赋值
@@ -2324,6 +2330,19 @@ function formatFinanceData(codes: string[]) {
     reportsMap[code] = reports
   }
   return reportsMap
+}
+
+function mergeFinancialDataSource(left: unknown, right: unknown): string {
+  const sources = [String(left || ''), String(right || '')]
+  if (sources.includes('performance_forecast') || sources.includes('prediction')) return 'performance_forecast'
+  if (sources.includes('performance_report') || sources.includes('performance')) return 'performance_report'
+  return 'financial_report'
+}
+
+function financialDataSourceLabel(source: unknown): string {
+  if (source === 'performance_forecast' || source === 'prediction') return '业绩预告'
+  if (source === 'performance_report' || source === 'performance') return '业绩快报'
+  return '正式财报'
 }
 
 export function genFinanceChartTable(codes: string[]) {
@@ -2655,7 +2674,6 @@ export function selectChangeValue(id: string, value: string) {
 //基础公共初始化，所有页面都调用
 async function commonInit(): Promise<void> {
   await codeInit()
-  codeSearchInit()
 }
 
 // 生成管理规模趋势图表
@@ -2783,12 +2801,13 @@ function calculateAndDisplayValuation(code: string, data: number[][], currentPri
       // PE TTM = 市值 / 最近4个季度的净利润之和
       if (totalShares && totalShares > 0 && financeData.length >= 4) {
         const marketCap = currentPrice * totalShares // 市值（元）
-        let totalNetProfit = 0
-        for (let i = 0; i < 4 && i < financeData.length; i++) {
-          totalNetProfit += financeData[i].parentNetprofit || 0
-        }
+        const trailingProfits = financeData
+          .slice(0, 4)
+          .map((item) => Number(item.parentNetprofit))
+          .filter((profit) => Number.isFinite(profit))
+        const totalNetProfit = trailingProfits.reduce((sum, profit) => sum + profit, 0)
 
-        if (totalNetProfit > 0) {
+        if (trailingProfits.length === 4 && totalNetProfit > 0) {
           // 净利润单位是元，市值也是元，直接相除
           const pe = marketCap / totalNetProfit
           stockValuation += `<span class="px-1">PE(TTM): ${pe.toFixed(2)}</span>`

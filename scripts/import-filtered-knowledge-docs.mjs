@@ -5,6 +5,15 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildContentOptions, prepareKnowledgeContentAsync } from "./knowledge-content-r2.mjs";
+import { executeLocalD1SqlFile } from "./lib/local-d1-sqlite.mjs";
+import {
+  appendSyncLedgerEntries,
+  compactSyncLedger,
+  knowledgeImportFingerprint,
+  legacySourceFingerprintMatches,
+  loadSyncLedger,
+  syncStateFor,
+} from "./lib/knowledge-import-sync.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 if (!args.file) usage();
@@ -13,7 +22,10 @@ if (args.remote && !args.uploadContentRemote) {
 }
 
 const now = Date.now();
-const maxSqlBatchBytes = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES, 700000);
+const maxSqlBatchBytes = positiveInteger(
+  process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES,
+  args.remote ? 700000 : 64000000
+);
 const maxLocalContentChunkChars = positiveInteger(process.env.KNOWLEDGE_IMPORT_LOCAL_CONTENT_CHUNK_CHARS, 20000);
 const docChunkSize = positiveInteger(process.env.KNOWLEDGE_IMPORT_DOC_CHUNK_SIZE, args.remote ? 400 : 1000);
 const contentOptions = buildContentOptions(args);
@@ -23,18 +35,38 @@ if (rows.length === 0) {
   process.exit(0);
 }
 const syncTarget = { scope: "knowledge_filtered_docs", target: args.remote ? "remote" : "local", database: args.database };
-const syncState = loadSyncState(args.syncFile, syncTarget);
+const syncLedger = loadSyncLedger(args.syncFile);
+const syncState = syncStateFor(syncLedger.entries, syncTarget);
 const pendingRows = [];
+const syncUpgrades = [];
 let skippedSynced = 0;
 for (const row of rows) {
-  if (isFilteredRowAlreadySynced(row, syncState, { requireR2: args.uploadContentRemote })) {
+  const importFingerprint = knowledgeImportFingerprint(row);
+  const syncMatch = filteredRowSyncMatch(row, syncState, importFingerprint, { requireR2: args.uploadContentRemote });
+  if (syncMatch.matched) {
     skippedSynced += 1;
+    if (syncMatch.legacy) {
+      syncUpgrades.push({
+        ...syncMatch.entry,
+        importedAt: new Date().toISOString(),
+        importFingerprint,
+      });
+    }
     continue;
   }
-  pendingRows.push(row);
+  pendingRows.push({ raw: row, importFingerprint });
 }
 if (pendingRows.length === 0) {
-  console.log(JSON.stringify({ imported: 0, skippedSynced, file: args.file }, null, 2));
+  appendSyncLedgerEntries(args.syncFile, syncUpgrades);
+  const syncCompaction = compactSyncLedger(args.syncFile);
+  console.log(JSON.stringify({
+    imported: 0,
+    skippedSynced,
+    batches: 0,
+    syncUpgraded: syncUpgrades.length,
+    syncCompaction,
+    file: args.file,
+  }, null, 2));
   process.exit(0);
 }
 
@@ -45,10 +77,9 @@ for (let offset = 0; offset < pendingRows.length; offset += docChunkSize) {
   const normalizedRows = await mapWithConcurrency(
     chunk,
     contentOptions.uploadConcurrency,
-    async (row) => {
-      const normalized = await normalizeRow(row);
-      appendSyncEntries(buildSyncEntries([normalized], { hasD1: false }));
-      return normalized;
+    async (candidate) => {
+      const normalized = await normalizeRow(candidate.raw);
+      return { ...normalized, importFingerprint: candidate.importFingerprint };
     },
     { label: "knowledge-filtered-import", completed: offset, total: pendingRows.length }
   );
@@ -59,11 +90,11 @@ for (let offset = 0; offset < pendingRows.length; offset += docChunkSize) {
     const sqlFile = join(dir, "import-filtered.sql");
     try {
       writeFileSync(sqlFile, sql);
-      executeWrangler(sqlFile);
+      executeD1SqlFile(sqlFile);
       imported += batches[index].docs;
       executedBatches += 1;
       appendImportResults(args.resultFile, buildImportResults(batches[index].items));
-      appendSyncEntries(buildSyncEntries(batches[index].items, { hasD1: true }));
+      appendSyncEntries(buildSyncEntries(batches[index].items));
       console.error(
         `[knowledge-filtered-import] imported batch docs=${batches[index].docs} imported=${imported}/${pendingRows.length} d1Batches=${executedBatches}`
       );
@@ -73,7 +104,14 @@ for (let offset = 0; offset < pendingRows.length; offset += docChunkSize) {
   }
 }
 
-function executeWrangler(sqlFile) {
+appendSyncLedgerEntries(args.syncFile, syncUpgrades);
+const syncCompaction = compactSyncLedger(args.syncFile);
+
+function executeD1SqlFile(sqlFile) {
+  if (!args.remote) {
+    executeLocalD1SqlFile(sqlFile, { requiredTable: "knowledge_filtered_docs" });
+    return;
+  }
   try {
     execFileSync(
       "npx",
@@ -86,10 +124,13 @@ function executeWrangler(sqlFile) {
         "--file",
         sqlFile,
       ],
-      { stdio: "pipe", encoding: "utf8" }
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+        encoding: "utf8",
+        maxBuffer: 10 * 1024 * 1024,
+      }
     );
   } catch (err) {
-    if (err.stdout) process.stderr.write(err.stdout);
     if (err.stderr) process.stderr.write(err.stderr);
     throw err;
   }
@@ -100,6 +141,10 @@ console.log(JSON.stringify({
   skippedSynced,
   batches: executedBatches,
   chunkSize: docChunkSize,
+  maxSqlBatchBytes,
+  localExecutor: args.remote ? null : "sqlite-transaction",
+  syncUpgraded: syncUpgrades.length,
+  syncCompaction,
   contentBucket: contentOptions.bucket,
 }, null, 2));
 
@@ -318,47 +363,26 @@ function loadRows(file) {
   return body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
 }
 
-function loadSyncState(file, target) {
-  const map = new Map();
-  if (!file) {
-    return map;
-  }
-  try {
-    const body = readFileSync(file, "utf8");
-    for (const line of body.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)) {
-      const entry = JSON.parse(line);
-      if (text(entry.scope) !== target.scope || text(entry.target) !== target.target || text(entry.database) !== target.database) {
-        continue;
-      }
-      const docId = text(entry.docId);
-      if (!docId) {
-        continue;
-      }
-      map.set(docId, entry);
-    }
-  } catch {
-    return map;
-  }
-  return map;
-}
-
-function isFilteredRowAlreadySynced(raw, syncState, options = {}) {
+function filteredRowSyncMatch(raw, syncState, importFingerprint, options = {}) {
   const doc = raw.doc || raw;
   const docId = text(doc.docId ?? doc.doc_id ?? raw.docId ?? raw.doc_id);
   if (!docId) {
-    return false;
+    return { matched: false };
   }
   const entry = syncState.get(docId);
   if (!entry || !entry.hasD1) {
-    return false;
+    return { matched: false };
   }
   if (options.requireR2 && !entry.hasR2) {
-    return false;
+    return { matched: false };
+  }
+  if (text(entry.importFingerprint)) {
+    return { matched: text(entry.importFingerprint) === importFingerprint, entry, legacy: false };
   }
   const metadata = object(doc.metadata ?? doc.metadata_json);
-  return text(entry.sourceFile) === text(raw.file ?? raw.sourceFile ?? raw.source_file ?? metadata.inputRelativeFile)
-    && integer(entry.sourceMtimeMs, -1) === integer(metadata.sourceMtimeMs, -2)
-    && integer(entry.sourceSize, -1) === integer(metadata.sourceSize, -2);
+  const sourceFile = text(raw.file ?? raw.sourceFile ?? raw.source_file ?? metadata.inputRelativeFile);
+  const matched = legacySourceFingerprintMatches(doc, entry, sourceFile);
+  return { matched, entry, legacy: matched };
 }
 
 function requireValue(argv, index, flag) {
@@ -391,6 +415,7 @@ function buildImportResults(items) {
     contentBytes: item.contentBytes,
     contentSha256: item.contentSha256,
     contentBucket: contentOptions.bucket,
+    importFingerprint: item.importFingerprint,
     hasD1: true,
     hasR2: Boolean(uploadedRemote && text(item.contentKey)),
   }));
@@ -403,7 +428,7 @@ function appendImportResults(file, entries) {
   writeFileSync(file, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, { flag: "a" });
 }
 
-function buildSyncEntries(items, overrides = {}) {
+function buildSyncEntries(items) {
   const importedAt = new Date().toISOString();
   const uploadedRemote = args.remote || args.uploadContentRemote;
   return items.map((item) => ({
@@ -422,17 +447,14 @@ function buildSyncEntries(items, overrides = {}) {
     contentBytes: item.contentBytes,
     contentSha256: item.contentSha256,
     contentBucket: contentOptions.bucket,
-    hasD1: false,
+    importFingerprint: item.importFingerprint,
+    hasD1: true,
     hasR2: Boolean(uploadedRemote && text(item.contentKey)),
-    ...overrides,
   }));
 }
 
 function appendSyncEntries(entries) {
-  if (!args.syncFile || entries.length === 0) {
-    return;
-  }
-  writeFileSync(args.syncFile, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, { flag: "a" });
+  appendSyncLedgerEntries(args.syncFile, entries);
 }
 
 function text(value) {

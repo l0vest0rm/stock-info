@@ -1,11 +1,11 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  loadSecuritySearchHistory,
+  rememberSecuritySearch,
+  type SecuritySearchHistoryItem,
+} from '../../../platform/search-history'
 
-type SearchResult = {
-  code: string
-  market: string
-  type: string
-  name: string
-}
+type SearchResult = SecuritySearchHistoryItem
 
 const homePageStyle = `
 .home-hero {
@@ -259,6 +259,8 @@ const HomePage = defineComponent({
     const searching = ref(false)
     const status = ref('输入股票代码、公司名称或基金名称后可直接跳转。')
     const suggestions = ref<SearchResult[]>([])
+    const showingHistory = ref(false)
+    const history = ref<SearchResult[]>(loadSecuritySearchHistory())
     let currentRequestId = 0
     let searchTimer = 0
 
@@ -267,11 +269,14 @@ const HomePage = defineComponent({
       currentRequestId += 1
       const requestId = currentRequestId
       if (!trimmed) {
-        suggestions.value = []
+        history.value = loadSecuritySearchHistory()
+        suggestions.value = history.value
         searching.value = false
-        status.value = '输入股票代码、公司名称或基金名称后可直接跳转。'
+        showingHistory.value = history.value.length > 0
+        status.value = history.value.length > 0 ? '最近搜索' : '输入股票代码、公司名称或基金名称后可直接跳转。'
         return
       }
+      showingHistory.value = false
       searching.value = true
       status.value = '搜索中...'
       try {
@@ -320,6 +325,7 @@ const HomePage = defineComponent({
         status.value = '请先从下方结果中选择证券。'
         return
       }
+      history.value = rememberSecuritySearch(first)
       window.location.href = routeForResult(first)
     }
 
@@ -360,6 +366,16 @@ const HomePage = defineComponent({
                     onInput: (event: Event) => {
                       query.value = (event.target as HTMLInputElement).value
                     },
+                    onFocus: () => {
+                      if (!query.value.trim()) {
+                        history.value = loadSecuritySearchHistory()
+                        suggestions.value = history.value
+                        showingHistory.value = history.value.length > 0
+                        status.value = history.value.length > 0
+                          ? '最近搜索'
+                          : '输入股票代码、公司名称或基金名称后可直接跳转。'
+                      }
+                    },
                   }),
                   h('button', { class: 'btn btn-success btn-lg px-4', type: 'submit', disabled: searching.value }, searching.value ? '搜索中' : '进入详情'),
                 ]),
@@ -370,14 +386,15 @@ const HomePage = defineComponent({
                   key: item.code,
                   href: routeForResult(item),
                   class: 'home-search-result',
+                  onClick: () => {
+                    history.value = rememberSecuritySearch(item)
+                  },
                 }, [
-                  h('div', { class: 'd-flex justify-content-between gap-3' }, [
-                    h('div', [
-                      h('div', { class: 'fw-semibold' }, item.name),
-                      h('div', { class: 'home-search-result-meta mt-1' }, labelForMarket(item)),
-                    ]),
-                    h('div', { class: 'home-search-result-code' }, item.code),
+                  h('div', { class: 'd-flex align-items-center justify-content-between gap-3' }, [
+                    h('div', { class: 'fw-semibold text-truncate' }, item.name),
+                    h('div', { class: 'home-search-result-code flex-shrink-0' }, item.code),
                   ]),
+                  showingHistory.value ? null : h('div', { class: 'home-search-result-meta mt-1' }, labelForMarket(item)),
                 ])))
                 : null,
             ]),

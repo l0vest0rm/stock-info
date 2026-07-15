@@ -249,7 +249,7 @@ if (filteredDocs.length > 0 && filteredReviewImportEnabled) {
   );
   const filteredEntries = readImportResults(filteredResultFile);
   mergeImportSyncState(importSyncState, filteredEntries, importTarget);
-  filteredImported = filteredDocs.length;
+  filteredImported = filteredEntries.length;
 }
 const uniqueDocs = uniqueByDocId(docs);
 let imported = 0;
@@ -277,7 +277,7 @@ if (uniqueDocs.length > 0) {
   );
   const importedEntries = readImportResults(importResultFile);
   mergeImportSyncState(importSyncState, importedEntries, importTarget);
-  imported = uniqueDocs.length;
+  imported = importedEntries.length;
 }
 const storageCleanup = pruneKnowledgeStorage(config);
 const storageReport = runKnowledgeStorageReport(config);
@@ -1848,7 +1848,42 @@ async function mapWithConcurrency(items, concurrency, iteratee) {
 
 function loadConfig(path) {
   const file = resolve(root, path || "config/knowledge-processing.json");
-  return JSON.parse(readFileSync(file, "utf8"));
+  const config = JSON.parse(readFileSync(file, "utf8"));
+  const topicFilter = object(config.topicFilter);
+  if (Object.keys(topicFilter).length > 0) {
+    config.topicFilter = resolveTopicFilterConfig(topicFilter, dirname(file));
+  }
+  return config;
+}
+
+function resolveTopicFilterConfig(filter, configDir) {
+  const next = { ...filter };
+  const groupsFile = text(filter.keywordGroupsFile || filter.coreKeywordGroupsFile);
+  if (!groupsFile) {
+    return next;
+  }
+  const groupsPayload = readJsonFile(resolve(configDir, groupsFile));
+  const groups = object(groupsPayload?.groups);
+  const allowGroupNames = array(filter.allowKeywordGroups || filter.coreKeywordGroups).map(text).filter(Boolean);
+  const denyGroupNames = array(filter.denyKeywordGroups).map(text).filter(Boolean);
+  next.coreKeywords = unique([
+    ...resolveKeywordGroups(groups, allowGroupNames),
+    ...array(filter.coreKeywords).map(text).filter(Boolean),
+  ]);
+  next.denyKeywords = unique([
+    ...resolveKeywordGroups(groups, denyGroupNames),
+    ...array(filter.denyKeywords).map(text).filter(Boolean),
+  ]);
+  return next;
+}
+
+function resolveKeywordGroups(groups, names) {
+  const selectedNames = names.length > 0 ? names : Object.keys(groups);
+  const keywords = [];
+  for (const name of selectedNames) {
+    keywords.push(...array(groups[name]).map(text).filter(Boolean));
+  }
+  return keywords;
 }
 
 function parseArgs(argv) {

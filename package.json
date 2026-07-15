@@ -34,9 +34,10 @@
     "stats:knowledge:storage": "node scripts/report-knowledge-storage.mjs",
     "check:cloudflare:token": "node scripts/verify-cloudflare-token.mjs",
     "test:smoke:pages": "node scripts/smoke-pages.mjs",
+    "test:knowledge-import": "node --test scripts/lib/knowledge-import-sync.test.mjs scripts/lib/local-d1-sqlite.test.mjs",
     "seed:knowledge:sample": "node scripts/seed-knowledge-sample.mjs",
     "typecheck": "npm run build:prompts && tsc --noEmit",
-    "db:migrate:local": "wrangler d1 migrations apply stock_info --local",
+    "db:migrate:local": "WRANGLER_HIDE_BANNER=true wrangler d1 migrations apply stock_info --local",
     "db:migrate:remote": "wrangler d1 migrations apply stock_info --remote"
   },
   "dependencies": {
@@ -44,6 +45,7 @@
     "@vitejs/plugin-vue": "^6.0.3",
     "echarts": "^6.0.0",
     "hono": "^4.12.27",
+    "undici": "7.28.0",
     "vite": "^7.2.7",
     "vue": "^3.5.35"
   },

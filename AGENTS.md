@@ -4,7 +4,7 @@
 
 - Treat this repo as a Cloudflare Worker project in production and a local Wrangler simulation in development.
 - Local development should default to `./start-local.sh`.
-- The default local URL is `http://127.0.0.1:8787`.
+- The default local URL is `http://127.0.0.1:8000`.
 - Production deployment and verification must be treated separately from local `wrangler dev --local`.
 
 ## Local Workflow
@@ -24,6 +24,13 @@
 - Verify at the highest realistic layer first: real page/API behavior on the target environment, then module-level checks.
 - When a page looks wrong, inspect the real stored content shape or API payload before assuming the frontend renderer is the only issue.
 - When converted knowledge content misroutes, inspect the API response fields that drive the frontend branch, especially access-method style routing.
+- For knowledge import issues, separate local processing, local cache, remote D1 visibility, and remote R2 lifecycle.
+
+## Codex Proof
+
+- Default local proof path: `./start-local.sh`, then `GET http://127.0.0.1:8000/api/health`.
+- For served page or routing changes, prefer `npm run test:smoke:pages` when it exercises the changed behavior.
+- For remote knowledge visibility, prove through `/api/knowledge/docs` or remote D1 checks; prepare/upload logs alone do not prove the page can see the docs.
 
 ## Change Boundaries
 

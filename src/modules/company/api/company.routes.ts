@@ -320,7 +320,7 @@ async function getCompanyReportsWithProgress(
   page: number,
   onProgress: (event: ReportForecastStreamEvent) => void
 ): Promise<Array<Record<string, unknown>>> {
-  const totalShares = await fetchLatestTotalShares(c, code).catch(() => null);
+  const totalSharesPromise = fetchLatestTotalShares(c, code).catch(() => null);
   let items = await getCompanyReportsSource(c, code, page);
   if (page === 1) {
     await ensureReportForecastsForItemsWithProgress(c, code, items, onProgress);
@@ -328,6 +328,7 @@ async function getCompanyReportsWithProgress(
     onProgress({ progress: { completed: 0, total: 0, title: "" } });
   }
   items = await annotateReportItemsWithForecasts(c, items);
+  const totalShares = await totalSharesPromise;
   return items.map((item) => enrichReportForecastsWithNetProfit(item, totalShares));
 }
 
@@ -394,7 +395,7 @@ async function ensureReportForecastsForItemsWithProgress(
     .slice(0, REPORT_FORECAST_MAX_CALLS);
   onProgress({
     progress: { completed: 0, total: candidates.length, title: "" },
-    items: await annotateReportItemsWithForecasts(c, items),
+    items,
   });
   for (let index = 0; index < candidates.length; index += 1) {
     const item = candidates[index];

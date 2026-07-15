@@ -140,7 +140,7 @@ knowledgeRoutes.get("/knowledge/doc", async (c) => {
   if (!row) {
     return fail(c, 404, `knowledge document not found: ${id}`);
   }
-  return ok(c, await mapKnowledgeDocDetail(row, knowledgeContentUrlContext(c)));
+  return ok(c, mapKnowledgeDocListItem(row, knowledgeContentUrlContext(c)));
 });
 
 knowledgeRoutes.get("/knowledge/filtered", async (c) => {
@@ -453,15 +453,6 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
     content_url: contentUrl,
     stock_links: stockLinks,
     tags: unique(tags),
-  };
-}
-
-async function mapKnowledgeDocDetail(
-  row: KnowledgeDocRow,
-  contentContext: KnowledgeContentUrlContext,
-): Promise<Record<string, unknown>> {
-  return {
-    ...mapKnowledgeDocListItem(row, contentContext),
   };
 }
 

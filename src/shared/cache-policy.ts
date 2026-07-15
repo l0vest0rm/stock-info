@@ -84,9 +84,16 @@ export function areFinancialStatementsFresh(
   return updatedAt > 0 && now - updatedAt < FINANCE_FALLBACK_TTL_MS;
 }
 
-function hasLatestCompletedQuarter(rows: Array<{ reportDate?: string | null }>, now: number): boolean {
+function hasLatestCompletedQuarter(
+  rows: Array<{ reportDate?: string | null }>,
+  now = Date.now()
+): boolean {
   const latestReportDate = String(rows[0]?.reportDate ?? "").slice(0, 10);
-  return latestReportDate === previousQuarterEndDate(now, "Asia/Shanghai");
+  return latestReportDate === latestCompletedQuarterEndDate(now);
+}
+
+export function latestCompletedQuarterEndDate(now = Date.now()): string {
+  return previousQuarterEndDate(now, "Asia/Shanghai");
 }
 
 function marketRegionForCode(code: string): MarketRegion | null {

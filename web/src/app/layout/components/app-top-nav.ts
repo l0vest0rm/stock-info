@@ -1,12 +1,12 @@
 import { defineComponent, h, onBeforeUnmount, ref, watch } from "vue";
+import {
+  loadSecuritySearchHistory,
+  rememberSecuritySearch,
+  type SecuritySearchHistoryItem,
+} from "../../../platform/search-history";
 import { navConfig } from "../config/navigation";
 
-type SearchResult = {
-  code: string;
-  market: string;
-  type: string;
-  name: string;
-};
+type SearchResult = SecuritySearchHistoryItem;
 
 function isHomePage(page: string): boolean {
   return page === "home.html" || page === "/" || page === "";
@@ -42,6 +42,8 @@ export const AppTopNav = defineComponent({
     const suggestions = ref<SearchResult[]>([]);
     const searching = ref(false);
     const open = ref(false);
+    const showingHistory = ref(false);
+    const history = ref<SearchResult[]>(loadSecuritySearchHistory());
     let currentRequestId = 0;
     let searchTimer = 0;
 
@@ -50,11 +52,14 @@ export const AppTopNav = defineComponent({
       currentRequestId += 1;
       const requestId = currentRequestId;
       if (!trimmed) {
-        suggestions.value = [];
+        history.value = loadSecuritySearchHistory();
+        suggestions.value = history.value;
         searching.value = false;
-        open.value = false;
+        showingHistory.value = true;
+        open.value = history.value.length > 0;
         return;
       }
+      showingHistory.value = false;
       searching.value = true;
       try {
         const response = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
@@ -88,7 +93,12 @@ export const AppTopNav = defineComponent({
       window.clearTimeout(searchTimer);
     });
 
+    const rememberResult = (item: SearchResult) => {
+      history.value = rememberSecuritySearch(item);
+    };
+
     const openResult = (item: SearchResult) => {
+      rememberResult(item);
       window.location.href = routeForResult(item);
     };
 
@@ -128,7 +138,11 @@ export const AppTopNav = defineComponent({
                 ])
               )
             ),
-            h("form", { class: "col-12 col-lg-auto mb-3 mb-lg-0 me-lg-3 position-relative", onSubmit }, [
+            h("form", {
+              class: "col-12 col-lg-auto mb-3 mb-lg-0 me-lg-3 position-relative",
+              style: "width: min(18rem, 100%);",
+              onSubmit,
+            }, [
               h("input", {
                 id: "autocomplete",
                 type: "search",
@@ -140,6 +154,11 @@ export const AppTopNav = defineComponent({
                   query.value = (event.target as HTMLInputElement).value;
                 },
                 onFocus: () => {
+                  if (!query.value.trim()) {
+                    history.value = loadSecuritySearchHistory();
+                    suggestions.value = history.value;
+                    showingHistory.value = true;
+                  }
                   if (suggestions.value.length > 0) {
                     open.value = true;
                   }
@@ -158,21 +177,26 @@ export const AppTopNav = defineComponent({
                       style: "max-height: 24rem; overflow-y: auto;",
                     },
                     suggestions.value.length > 0
-                      ? suggestions.value.map((item) =>
+                      ? [
+                          showingHistory.value
+                            ? h("div", { class: "list-group-item small text-muted py-2" }, "最近搜索")
+                            : null,
+                          ...suggestions.value.map((item) =>
                           h(
                             "button",
                             {
                               key: item.code,
                               type: "button",
-                              class: "list-group-item list-group-item-action text-start",
+                              class: "list-group-item list-group-item-action text-start d-flex align-items-center justify-content-between gap-3",
                               onClick: () => openResult(item),
                             },
                             [
-                              h("div", { class: "fw-semibold" }, item.name),
-                              h("div", { class: "small text-muted" }, item.code),
+                              h("span", { class: "fw-semibold" }, item.name),
+                              h("span", { class: "small text-muted flex-shrink-0" }, item.code),
                             ]
                           )
-                        )
+                        ),
+                        ]
                       : [
                           h(
                             "div",

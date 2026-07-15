@@ -17,6 +17,7 @@ export type Bindings = {
   LLM_BASE_URL?: string;
   LLM_DAILY_LIMIT?: string;
   HTTP_PROXY_URL?: string;
+  HTTP_PROXY_RELAY_URL?: string;
   HTTP_PROXY_DOMAINS?: string;
   HTTP_DOMAIN_CONCURRENCY?: string;
 };

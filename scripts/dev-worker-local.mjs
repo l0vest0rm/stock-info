@@ -3,8 +3,8 @@
 import { spawn } from 'node:child_process'
 import process from 'node:process'
 
-const workerPort = String(process.env.PORT || '8787')
-const httpProxyUrl = process.env.HTTP_PROXY_URL || 'http://127.0.0.1:7892'
+const workerPort = String(process.env.PORT || '8000')
+const httpProxyUrl = process.env.HTTP_PROXY_URL || 'http://127.0.0.1:7890'
 const httpProxyDomains = process.env.HTTP_PROXY_DOMAINS || 'yahoo.com'
 const httpDomainConcurrency = process.env.HTTP_DOMAIN_CONCURRENCY || '3'
 const llmDailyLimit = process.env.LLM_DAILY_LIMIT || '1000000'

@@ -26,7 +26,6 @@ type KnowledgeNewsTableRow = {
   contentUrl: string
   accessMethod: string
   stockLinks: Array<{ name: string; code: string }>
-  isLocalNews: boolean
   tags: string[]
   favorited: boolean
   isFiltered: boolean
@@ -206,7 +205,6 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       contentUrl: String(item.content_url || ''),
       accessMethod: String(item.access_method || ''),
       stockLinks,
-      isLocalNews: item.source_type === 'local_news',
       tags,
       favorited: Boolean(item.favorited),
       isFiltered: item.source_type === 'filtered_review' || Boolean(item.filter),

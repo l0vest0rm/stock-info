@@ -13,7 +13,6 @@ type KnowledgeNewsTableRow = {
   contentUrl: string
   accessMethod: string
   stockLinks: Array<{ name: string; code: string }>
-  isLocalNews: boolean
   tags: string[]
   favorited: boolean
   isFiltered: boolean
@@ -112,13 +111,11 @@ ${knowledgeDocModalStyles}
 const knowledgeNewsTagClassMap: Record<string, string> = {
   unread: 'text-bg-warning',
   pdf: 'text-bg-danger',
-  local: 'text-bg-success',
 }
 
 const knowledgeNewsTagLabelMap: Record<string, string> = {
   unread: '未读',
   pdf: 'PDF',
-  local: '本地',
 }
 
 function emitKnowledgeNewsOpenDoc(row: KnowledgeNewsTableRow) {
@@ -257,9 +254,6 @@ function knowledgeNewsTitleContent(row: KnowledgeNewsTableRow) {
     }, row.title)
     : row.title
   const tags = row.tags.slice()
-  if (row.isLocalNews && !tags.includes('local')) {
-    tags.push('local')
-  }
   return [
     title,
     ...tags.map((tag) => h('span', {

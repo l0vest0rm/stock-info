@@ -30,6 +30,9 @@
       "custom_domain": true,
     },
   ],
+  "triggers": {
+    "crons": ["*/15 * * * *"],
+  },
   "d1_databases": [
     {
       "binding": "DB",

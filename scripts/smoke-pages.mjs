@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const baseUrl = normalizeBaseUrl(process.env.SMOKE_BASE_URL || "http://127.0.0.1:8787");
+const baseUrl = normalizeBaseUrl(process.env.SMOKE_BASE_URL || "http://127.0.0.1:8000");
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS || "30000");
 
 const stocks = [

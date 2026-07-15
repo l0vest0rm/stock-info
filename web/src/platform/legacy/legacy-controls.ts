@@ -9,15 +9,6 @@ type SelectConfig = {
   transResults?: (data: any, term: string) => any
 }
 
-type AutocompleteConfig = {
-  minLength: number
-  delay?: number
-  cacheSelecNum: number
-  request: (term: string) => any
-  transResults?: (data: any) => any
-  select: (event: Event, item: any) => void
-}
-
 type CardsConfig = {
   data?: string | any[][]
   request?: (page: string) => any
@@ -133,133 +124,6 @@ export function createLegacyControls(context: LegacyControlsContext) {
       }
     }
     return result
-  }
-
-  function bsAutocomplete(id: string, config: AutocompleteConfig) {
-    const recentKey = `${id}-recentClick`
-    let recents: any = []
-    if (config.cacheSelecNum) {
-      const str = localStorage.getItem(recentKey)
-      if (str) {
-        recents = JSON.parse(str)
-      }
-    }
-
-    if (!config.delay) {
-      config.delay = 250
-    }
-    const input = document.getElementById(id) as HTMLInputElement
-    const list = document.createElement('div')
-    list.classList.add('list-group', 'list-autocomplete', 'position-absolute', 'start-0', 'end-0', 'top-100', 'z-3', 'mt-1', 'shadow')
-    list.style.maxHeight = '24rem'
-    list.style.overflowY = 'auto'
-    input.parentNode?.insertBefore(list, input.nextSibling)
-    let tid: number
-    ;['input', 'click'].forEach((type) => {
-      input.addEventListener(type, (e) => {
-        e.stopPropagation()
-        if (tid) {
-          clearTimeout(tid)
-        }
-        tid = window.setTimeout(() => {
-          const term = input.value.trim()
-          if (term.trim().length < config.minLength) {
-            if (config.cacheSelecNum && recents.length) {
-              response(recents)
-            }
-          } else {
-            fetchRequest(config.request(term)).then((data: any) => {
-              response(config.transResults ? config.transResults(data) : data)
-            })
-          }
-        }, (config as any).dealy || config.delay)
-      })
-    })
-
-    document.addEventListener('click', () => {
-      list.classList.add('d-none')
-    })
-
-    const response = (result: any) => {
-      let html = ''
-      for (const item of result) {
-        html += `<a href="#" class="list-group-item list-group-item-action" data-id="${item.id}">${item.name}</a>`
-      }
-      list.innerHTML = html
-      list.classList.remove('d-none')
-      list.querySelectorAll('.list-group-item').forEach((elem) => {
-        elem.addEventListener('click', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          if (config.cacheSelecNum) {
-            recents.unshift({ id: (elem as HTMLElement).dataset.id, name: (elem as HTMLElement).textContent })
-            recents = recents.filter((v1: any, i: number) => i === recents.findIndex((v2: any) => v2.id === v1.id))
-            if (recents.length > config.cacheSelecNum) {
-              recents = recents.slice(0, config.cacheSelecNum)
-            }
-            localStorage.setItem(recentKey, JSON.stringify(recents))
-          }
-          config.select(e, { id: (elem as HTMLElement).dataset.id, name: (elem as HTMLElement).textContent })
-        })
-      })
-    }
-  }
-
-  function codeSearchInit() {
-    bsAutocomplete('autocomplete', {
-      minLength: 2,
-      cacheSelecNum: 20,
-      request: (term: string) => {
-        if (term) {
-          return {
-            url: `${server}/api/suggest`,
-            cacheKey: `autocomplete-${term}`,
-            cacheTtl: 360000,
-            params: { q: term },
-          }
-        }
-        return securitiesFilter([], securities)
-      },
-      transResults: (data: any) => {
-        const result: any = []
-        cacheCodeNameMap(data)
-        for (const item of data) {
-          result.push({ id: item.id, name: getSearchResultCodeText(item.id) })
-        }
-        return result
-      },
-      select: (_event, item) => {
-        const code: string = item.id
-        const parts = code.split('.')
-        const encodedCode = encodeURIComponent(code)
-        let href = ''
-        switch (parts[1]) {
-          case 'SZ':
-          case 'SH':
-          case 'BJ':
-          case 'HK':
-          case 'KS':
-          case 'US':
-            href = currentPage().startsWith('company') ? `${currentPage()}?code=${encodedCode}` : `company.html?code=${encodedCode}`
-            break
-          case 'OF':
-          case 'SF':
-          case 'ZF':
-            href = `fund.html?code=${encodedCode}`
-            break
-          case 'ZI':
-          case 'SI':
-          case 'HI':
-            href = `index.html?code=${encodedCode}`
-            break
-          default:
-            break
-        }
-        if (href !== '') {
-          window.location.href = href
-        }
-      },
-    })
   }
 
   function bsSelect(id: string, config: SelectConfig) {
@@ -607,7 +471,6 @@ export function createLegacyControls(context: LegacyControlsContext) {
     bsSelect,
     bsRadioButtons,
     bsCards,
-    codeSearchInit,
     codeSelectInit,
   }
 }

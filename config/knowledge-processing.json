@@ -59,25 +59,12 @@
     "llmReview": false,
     "llmBatchSize": 10,
     "llmMinConfidence": 0.65,
-    "coreKeywords": [
-      "AI", "人工智能", "大模型", "LLM", "智能体", "Agent", "多模态", "推理",
-      "算力", "智算", "数据中心", "GPU", "ASIC", "AI芯片", "服务器",
-      "HBM", "DRAM", "NAND", "SSD", "存储", "内存", "闪存", "memory", "flash", "nand flash", "dram", "ssd", "半导体", "先进制程",
-      "先进封装", "CoWoS", "Chiplet", "光模块", "光通信", "CPO", "硅光",
-      "800G", "1.6T", "高速互联", "交换机", "液冷", "PCB", "AIPCB",
-      "英伟达", "NVIDIA", "闪迪", "sandisk", "SNDK",
-      "寒武纪", "海光", "中际旭创", "新易盛", "工业富联"
-    ],
-    "supportKeywords": [
-      "云计算", "云厂商", "资本开支", "Capex", "国产替代", "自主可控",
-      "晶圆", "封测", "电源", "UPS", "HVDC", "IDC",
-      "训练", "inference", "Token", "模型", "开源"
-    ],
-    "denyKeywords": [
-      "酒店", "旅游", "航空", "白酒", "啤酒", "煤炭", "焦煤", "房地产",
-      "猪价", "养殖", "医药集采", "创新药", "锂电池", "光伏", "风电",
-      "券商", "银行", "保险", "消费复苏"
-    ]
+    "keywordGroupsFile": "/Users/terry/git/mitmproxy/config/capture-title-keyword-filters/shared-groups.json",
+    "allowKeywordGroups": ["allowKeywords"],
+    "denyKeywordGroups": ["denyKeywords"],
+    "coreKeywords": [],
+    "supportKeywords": [],
+    "denyKeywords": []
   },
   "sourceTypeScores": {
     "research_report": 10,

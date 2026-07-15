@@ -21,13 +21,21 @@ type FundNavSnapshot = {
   rows: FundNavRow[];
 };
 
-type FinancialStatementsSnapshot = {
+export type FinancialProvisionalData = {
+  reportDate: string;
+  performanceRows: Record<string, unknown>[];
+  forecastRows: Record<string, unknown>[];
+  updatedAt: number;
+};
+
+export type FinancialStatementsSnapshot = {
   code: string;
   statementType: StatementType;
   source: string;
   updatedAt: number;
   reportDates: string[];
   rows: FinancialStatement[];
+  provisionalData?: FinancialProvisionalData;
 };
 
 function klineSnapshotKey(code: string, fq: string): string {
@@ -135,15 +143,18 @@ export async function putFinancialStatementsSnapshot(
   env: Pick<Bindings, "MARKET_DATA_BUCKET">,
   code: string,
   statementType: StatementType,
-  rows: FinancialStatement[]
+  rows: FinancialStatement[],
+  options?: { provisionalData?: FinancialProvisionalData }
 ): Promise<void> {
+  const updatedAt = rows[0]?.updatedAt ?? options?.provisionalData?.updatedAt ?? Date.now();
   const snapshot: FinancialStatementsSnapshot = {
     code,
     statementType,
     source: rows[0]?.source ?? "eastmoney",
-    updatedAt: rows[0]?.updatedAt ?? Date.now(),
+    updatedAt,
     reportDates: rows.map((row) => row.reportDate),
     rows,
+    ...(options?.provisionalData ? { provisionalData: options.provisionalData } : {}),
   };
   await env.MARKET_DATA_BUCKET.put(financialStatementsSnapshotKey(code, statementType), JSON.stringify(snapshot), {
     httpMetadata: {

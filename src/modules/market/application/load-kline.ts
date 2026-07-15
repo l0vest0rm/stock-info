@@ -2,6 +2,7 @@ import {
   fetchEastmoneyFundNav,
   fetchEastmoneyStockKline,
   fetchTencentStockKline,
+  fetchYahooStockKlineWithProxy,
 } from "../../../adapters/eastmoney";
 import { upsertSecurity } from "../../../db/queries";
 import {
@@ -62,17 +63,29 @@ export async function loadKline(
     return { code, source: "eastmoney", rows: sliceKlineRows(fetched.rows, from, to) };
   }
 
-  const fetched = await fetchTencentStockKline(env.DB, code, period, fq).catch(async (err) => {
-    console.warn(`tencent kline unavailable for ${code}, trying Eastmoney:`, err);
-    return fetchEastmoneyStockKline(env.DB, code, period, fq, fullKlineHistoryStartDate(), to);
-  });
+  let fetched;
+  try {
+    fetched = await fetchTencentStockKline(env.DB, code, period, fq).catch(async (err) => {
+      console.warn(`tencent kline unavailable for ${code}, trying Eastmoney:`, err);
+      return fetchEastmoneyStockKline(env.DB, code, period, fq, fullKlineHistoryStartDate(), to);
+    });
+  } catch (err) {
+    if (!code.endsWith(".US")) {
+      throw err;
+    }
+    console.warn(`Eastmoney kline unavailable for ${code}, trying Yahoo:`, err);
+    fetched = {
+      rows: await fetchYahooStockKlineWithProxy(env.DB, code, fq, options?.httpOptions),
+    };
+  }
   if (fetched.security) {
     await upsertSecurity(env.DB, fetched.security);
   }
   if (fetched.rows.length > 0) {
     await putKlineSnapshot(env, code, fq, fetched.rows);
   }
-  return { code, source: "eastmoney", rows: sliceKlineRows(fetched.rows, from, to) };
+  const source = fetched.rows[0]?.source === "yahoo" ? "yahoo" : "eastmoney";
+  return { code, source, rows: sliceKlineRows(fetched.rows, from, to) };
 }
 
 function isEastmoneyKlineCode(code: string): boolean {

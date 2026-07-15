@@ -11,7 +11,7 @@
 
 | 配置层 | 用途 | 示例 |
 | --- | --- | --- |
-| Mac 本地 | 本地开发、真实 Chrome 采集、本地代理 | Yahoo 等域名走 `127.0.0.1:7892` |
+| Mac 本地 | 本地开发、真实 Chrome 采集、本地代理 | Yahoo 等域名走 `127.0.0.1:7890` |
 | Cloudflare staging | 线上预发验证、低风险数据源试跑 | 默认不走代理，可使用 staging D1/R2 |
 | Cloudflare prod | 正式访问 | 默认不走代理，严格缓存和限流 |
 
@@ -19,11 +19,12 @@
 
 | 变量 | 含义 |
 | --- | --- |
-| `HTTP_PROXY_URL` | Worker 访问外部域名时使用的真实代理地址，本地通常是 `http://127.0.0.1:7892` 或 `socks5://127.0.0.1:7892` |
+| `HTTP_PROXY_URL` | Worker 访问外部域名时使用的真实代理地址，本地通常是 `http://127.0.0.1:7890` |
+| `HTTP_PROXY_RELAY_URL` | 本地 Worker 调用的 Node 转发入口；Node 负责通过真实代理建立新连接 |
 | `HTTP_PROXY_DOMAINS` | 需要走代理的目标域名列表，例如 `yahoo.com` |
 | `HTTP_DOMAIN_CONCURRENCY` | 单个目标域名最大并发，默认 `3` |
 
-`HTTP_PROXY_*` 是 Worker/http client 的统一配置。本地和线上逻辑一致，只是变量值不同。
+`HTTP_PROXY_*` 是 Worker/http client 的统一配置。本地 Wrangler 不能直接运行 Node 的 `ProxyAgent`，因此 `start-local.sh` 会启动仅监听回环地址的 Node 转发器；线上未配置代理时不经过该转发器。
 
 ### 统一 HTTP Client
 

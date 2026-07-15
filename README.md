@@ -35,7 +35,7 @@ npm install --no-audit --no-fund --omit=optional
 npm install --no-audit --no-fund --ignore-scripts
 npm run db:migrate:local
 npm run build
-npm run dev:worker -- --port 8787
+npm run dev:worker -- --port 8000
 ```
 
 macOS 上也可以直接用根目录脚本：
@@ -45,7 +45,7 @@ chmod +x ./start-local.sh
 ./start-local.sh
 ```
 
-默认访问地址是 `http://127.0.0.1:8787`。
+默认访问地址是 `http://127.0.0.1:8000`。
 
 第一步用 `--omit=optional` 跳过容易卡住的可选依赖构建；第二步补齐
 `rollup` 的平台包，但禁用安装脚本，避免 `fsevents` 之类的可选包拖慢安装。
@@ -77,6 +77,14 @@ chmod +x ./start-local.sh
 - 把 `processedDir` 也作为额外输入目录重新扫描
 - 结果写入本地 D1，并把正文内容写入本地正文缓存，内容键统一为 `knowledge-content/*`
 - 更新本地同步状态文件 `knowledge-remote-sync.jsonl`
+- 本地导入直接对 Wrangler 的本地 D1 SQLite 状态库执行分块事务，避免为每个小批次反复启动 Wrangler；远端导入仍使用 `wrangler d1 execute --remote`
+- 增量判断使用排除抓取时间、来源文件名和 mtime 等易变字段后的内容指纹；同步账本会在导入完成后原子压缩，只保留每篇文档在各目标上的最新状态
+
+本地 D1 文件通常会根据包含 `knowledge_docs` 的 Wrangler 状态库自动识别。如果同一状态目录存在多个候选库，可以显式设置：
+
+```bash
+KNOWLEDGE_IMPORT_LOCAL_D1_FILE=/absolute/path/to/local-d1.sqlite ./process-knowledge-local-full.sh
+```
 
 适合什么时候用：
 
@@ -220,9 +228,9 @@ export KNOWLEDGE_CONTENT_HOSTNAME=content.tinfo.cc
 
 ```bash
 npm run typecheck
-curl -s 'http://localhost:8787/api/health'
-curl -s 'http://localhost:8787/api/search?q=600519'
-curl -s 'http://localhost:8787/api/kline?code=600519&from=2026-06-01&to=2026-06-24'
+curl -s 'http://localhost:8000/api/health'
+curl -s 'http://localhost:8000/api/search?q=600519'
+curl -s 'http://localhost:8000/api/kline?code=600519&from=2026-06-01&to=2026-06-24'
 ```
 
 页面资源由 Wrangler `assets` 从 `web/dist` 提供，`/api/*` 继续由 Hono Worker 处理。
