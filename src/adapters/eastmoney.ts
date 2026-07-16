@@ -91,27 +91,6 @@ type EastmoneyNoticeResponse = {
   };
 };
 
-type YahooChartResponse = {
-  chart?: {
-    error?: { code?: string; description?: string } | null;
-    result?: Array<{
-      timestamp?: number[];
-      indicators?: {
-        quote?: Array<{
-          open?: Array<number | null>;
-          close?: Array<number | null>;
-          high?: Array<number | null>;
-          low?: Array<number | null>;
-          volume?: Array<number | null>;
-        }>;
-        adjclose?: Array<{
-          adjclose?: Array<number | null>;
-        }>;
-      };
-    }>;
-  };
-};
-
 type YahooSuggestResponse = {
   quotes?: Array<{
     exchange?: string;
@@ -269,20 +248,6 @@ type USOptionExpirationMeta = {
   putChunks: number;
 };
 
-type TencentKlineResponse = {
-  code?: number;
-  msg?: string;
-  data?: Record<
-    string,
-    {
-      day?: string[][];
-      qfqday?: string[][];
-      hfqday?: string[][];
-      qt?: Record<string, string[]>;
-    }
-  >;
-};
-
 const EASTMONEY_SUGGEST_TOKEN = "D43BF722C8E33BDC906FB84D85E326E8";
 
 export async function fetchEastmoneySuggest(db: D1Database, q: string): Promise<SecurityRecord[]> {
@@ -394,28 +359,49 @@ export async function fetchEastmoneyStockKline(
   if (!secid) {
     throw new Error(`unsupported Eastmoney stock code: ${code}`);
   }
-  const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
-  url.searchParams.set("secid", secid);
-  url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
-  url.searchParams.set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61");
-  url.searchParams.set("klt", eastmoneyKlt(period));
-  url.searchParams.set("fqt", eastmoneyFqt(fq));
-  url.searchParams.set("beg", from.replaceAll("-", ""));
-  url.searchParams.set("end", to.replaceAll("-", ""));
-  url.searchParams.set("ut", "fa5fd1943c7b386f172d6893dbfba10b");
-  url.searchParams.set("rtntype", "6");
-  const body = (await cachedFetchJson(db, url.toString(), {
-    headers: {
-      Accept: "*/*",
-      "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-      Referer: "https://quote.eastmoney.com/",
-      "Sec-Fetch-Dest": "script",
-      "Sec-Fetch-Mode": "no-cors",
-      "Sec-Fetch-Site": "same-site",
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
-    },
-  }, marketDataCacheTtlMsForCode(normalized))) as EastmoneyStockKlineResponse;
+  let body: EastmoneyStockKlineResponse | undefined;
+  let lastError: unknown;
+  for (let requestRound = 1; requestRound <= 3; requestRound += 1) {
+    const requestNonce = Date.now() + requestRound;
+    const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
+    url.searchParams.set("cb", `jQuery3510123456789_${requestNonce}`);
+    url.searchParams.set("secid", secid);
+    url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
+    url.searchParams.set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61");
+    url.searchParams.set("klt", eastmoneyKlt(period));
+    url.searchParams.set("fqt", eastmoneyFqt(fq));
+    url.searchParams.set("beg", from.replaceAll("-", ""));
+    url.searchParams.set("end", to.replaceAll("-", ""));
+    url.searchParams.set("lmt", "120");
+    url.searchParams.set("ut", "fa5fd1943c7b386f172d6893dbfba10b");
+    url.searchParams.set("rtntype", "6");
+    url.searchParams.set("_", String(requestNonce));
+    try {
+      body = (await cachedFetchJson(db, url.toString(), {
+        headers: {
+          Accept: "*/*",
+          "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+          Referer: "https://quote.eastmoney.com/",
+          "Sec-Fetch-Dest": "script",
+          "Sec-Fetch-Mode": "no-cors",
+          "Sec-Fetch-Site": "same-site",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+        },
+      }, marketDataCacheTtlMsForCode(normalized), {
+        cacheKey: `eastmoney:kline:v2:${normalized}:${period}:${fq}:${from}:${to}`,
+      })) as EastmoneyStockKlineResponse;
+      break;
+    } catch (err) {
+      lastError = err;
+      if (requestRound < 3) {
+        console.warn(`Eastmoney kline request failed for ${normalized}; retrying with a fresh JSONP request:`, err);
+      }
+    }
+  }
+  if (!body) {
+    throw lastError;
+  }
   const now = Date.now();
   const security = body.data?.name
     ? ({
@@ -503,14 +489,15 @@ export async function fetchEastmoneyFundNav(
 export async function fetchEastmoneyFinance(
   db: D1Database,
   code: string,
-  statementType: StatementType
+  statementType: StatementType,
+  httpOptions?: ExternalHttpOptions
 ): Promise<FinancialStatement[]> {
   const normalized = normalizeSecurityCode(code);
   if (!/\.(SH|SZ|BJ)$/.test(normalized)) {
     throw new Error(`finance statement only supports CN A-share codes in the MVP: ${code}`);
   }
   const reportType = financeReportType(statementType, normalized);
-  const url = new URL("https://datacenter.eastmoney.com/securities/api/data/get");
+  const url = new URL("https://datacenter-web.eastmoney.com/securities/api/data/get");
   url.searchParams.set("type", `RPT_F10_FINANCE_${reportType}`);
   url.searchParams.set("sty", financeStyle(statementType, reportType));
   url.searchParams.set(
@@ -526,6 +513,7 @@ export async function fetchEastmoneyFinance(
   const body = (await cachedFetchJson(db, url.toString(), {
     headers: { Referer: "https://emweb.securities.eastmoney.com/" },
   }, 24 * 60 * 60 * 1000, {
+    ...httpOptions,
     resolveCacheTtlMs: ({ text }) => ttlForEastmoneyFinancialResponse(text),
   })) as EastmoneyFinanceResponse;
   const now = Date.now();
@@ -732,76 +720,6 @@ export async function fetchEastmoneyText(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
     },
   }, ttlMs);
-}
-
-export async function fetchYahooStockKline(db: D1Database, code: string, fq: string): Promise<KlineBar[]> {
-  return fetchYahooStockKlineWithProxy(db, code, fq);
-}
-
-export async function fetchYahooStockKlineWithProxy(
-  db: D1Database,
-  code: string,
-  fq: string,
-  httpOptions?: ExternalHttpOptions
-): Promise<KlineBar[]> {
-  const normalized = normalizeSecurityCode(code);
-  const symbol = yahooChartSymbol(normalized);
-  const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
-  url.searchParams.set("period1", "0");
-  url.searchParams.set("period2", String(Math.floor(Date.now() / 1000) + 86400));
-  url.searchParams.set("interval", "1d");
-  url.searchParams.set("events", "history");
-  url.searchParams.set("includeAdjustedClose", "true");
-  const body = (await cachedFetchJson(db, url.toString(), {
-    headers: {
-      Origin: "https://finance.yahoo.com",
-      Referer: `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`,
-      "Sec-Fetch-Dest": "empty",
-      "Sec-Fetch-Mode": "cors",
-      "Sec-Fetch-Site": "same-site",
-    },
-  }, marketDataCacheTtlMsForCode(normalized), httpOptions)) as YahooChartResponse;
-  const error = body.chart?.error;
-  if (error) {
-    throw new Error(`yahoo chart error: code=${error.code ?? ""} description=${error.description ?? ""}`);
-  }
-  const result = body.chart?.result?.[0];
-  const quote = result?.indicators?.quote?.[0];
-  if (!result?.timestamp?.length || !quote) {
-    return [];
-  }
-  const adjClose = result.indicators?.adjclose?.[0]?.adjclose ?? [];
-  const now = Date.now();
-  const rows: KlineBar[] = [];
-  for (let idx = 0; idx < result.timestamp.length; idx += 1) {
-    const ts = result.timestamp[idx];
-    const close = at(quote.close, idx);
-    const low = at(quote.low, idx);
-    const high = at(quote.high, idx);
-    if (!ts || close === null || low === null || high === null) {
-      continue;
-    }
-    const displayClose = fq === "qfq" ? at(adjClose, idx) ?? close : close;
-    rows.push({
-      code: normalized,
-      period: "day",
-      fq,
-      date: new Date(ts * 1000).toISOString().slice(0, 10),
-      open: at(quote.open, idx),
-      close: displayClose,
-      high,
-      low,
-      volume: at(quote.volume, idx),
-      amount: null,
-      amplitude: null,
-      pctChange: null,
-      changeAmount: null,
-      turnover: null,
-      source: "yahoo",
-      updatedAt: now,
-    });
-  }
-  return rows;
 }
 
 function yahooChartSymbol(code: string): string {
@@ -1522,86 +1440,6 @@ function normalizeYahooSuggestCode(item: NonNullable<YahooSuggestResponse["quote
 
 function containsHan(value: string): boolean {
   return [...value].some((ch) => (ch >= "\u4e00" && ch <= "\u9fff") || (ch >= "\u3400" && ch <= "\u4dbf"));
-}
-
-export async function fetchTencentStockKline(db: D1Database, code: string, period: string, fq: string): Promise<{ security?: SecurityRecord; rows: KlineBar[] }> {
-  const normalized = normalizeSecurityCode(code);
-  const symbol = tencentSymbol(normalized);
-  if (!symbol || period !== "day") {
-    throw new Error(`unsupported Tencent kline code or period: ${code} ${period}`);
-  }
-  const url = new URL("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get");
-  url.searchParams.set("param", `${symbol},day,,,2000,${tencentFq(fq)}`);
-  const body = (await cachedFetchJson(db, url.toString(), {
-    headers: { Referer: "https://gu.qq.com/" },
-  }, 6 * 60 * 60 * 1000)) as TencentKlineResponse;
-  if (body.code && body.code !== 0) {
-    throw new Error(`tencent kline error: code=${body.code} msg=${body.msg ?? ""}`);
-  }
-  const data = body.data?.[symbol];
-  const key = tencentKlineKey(fq);
-  const rawRows = data?.[key] ?? (fq === "normal" ? data?.day : undefined) ?? [];
-  if (rawRows.length === 0 && fq !== "normal" && (data?.day?.length ?? 0) > 0) {
-    throw new Error(`tencent kline response does not include ${key} for ${code}`);
-  }
-  const now = Date.now();
-  const quote = data?.qt?.[symbol];
-  const security = quote?.[1]
-    ? ({
-        code: normalized,
-        market: securityMarket(normalized),
-        type: inferSecurityType(normalized),
-        name: quote[1],
-        source: "tencent",
-        updatedAt: now,
-      } satisfies SecurityRecord)
-    : undefined;
-  const rows = rawRows.map((row) => ({
-    code: normalized,
-    period,
-    fq,
-    date: row[0] ?? "",
-    open: numberOrNull(row[1]),
-    close: numberOrNull(row[2]),
-    high: numberOrNull(row[3]),
-    low: numberOrNull(row[4]),
-    volume: numberOrNull(row[5]),
-    amount: null,
-    amplitude: null,
-    pctChange: null,
-    changeAmount: null,
-    turnover: null,
-    source: "tencent",
-    updatedAt: now,
-  } satisfies KlineBar)).filter((row) => row.date);
-  return { security, rows };
-}
-
-function at(values: Array<number | null> | undefined, idx: number): number | null {
-  const value = values?.[idx];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function tencentSymbol(code: string): string | null {
-  const [base, suffix] = normalizeSecurityCode(code).split(".");
-  if (!base || !suffix) return null;
-  if (suffix === "SH") return `sh${base}`;
-  if (suffix === "SZ") return `sz${base}`;
-  if (suffix === "BJ") return `bj${base}`;
-  if (suffix === "HK") return `hk${base}`;
-  return null;
-}
-
-function tencentFq(fq: string): string {
-  if (fq === "qfq") return "qfq";
-  if (fq === "hfq") return "hfq";
-  return "";
-}
-
-function tencentKlineKey(fq: string): "day" | "qfqday" | "hfqday" {
-  if (fq === "qfq") return "qfqday";
-  if (fq === "hfq") return "hfqday";
-  return "day";
 }
 
 export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string): Promise<CompanyOverview> {

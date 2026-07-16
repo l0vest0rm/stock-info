@@ -36,3 +36,9 @@
 
 - Keep Cloudflare-specific configuration, bindings, migrations, and deploy logic explicit.
 - Do not add local-only shortcuts that obscure the Worker/D1 production contract.
+
+## Market Data Source Boundaries
+
+- K-line data must use Eastmoney only. Do not add Tencent, Yahoo, or other K-line fallbacks for A-shares, Hong Kong stocks, U.S. stocks, funds, or indices.
+- Yahoo is allowed only for U.S. stock options data. Do not reuse Yahoo endpoints, symbols, proxy configuration, or adapters for K-line, finance, search, or other market data.
+- When Eastmoney K-line requests fail, fix the Eastmoney request, cache, retry, connection, or runtime path. Surface the failure rather than silently switching data sources.

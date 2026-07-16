@@ -1,4 +1,4 @@
-import { fetchEastmoneySuggest, fetchYahooSuggest } from "../../../adapters/eastmoney";
+import { fetchEastmoneySuggest } from "../../../adapters/eastmoney";
 import { findSecurity, searchLocalSecurities, upsertSecurity } from "../../../db/queries";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import type { ExternalHttpOptions } from "../../../shared/http";
@@ -7,7 +7,7 @@ import type { SecurityRecord } from "../../../types";
 export async function searchSecurities(
   db: D1Database,
   q: string,
-  options?: { httpOptions?: ExternalHttpOptions }
+  _options?: { httpOptions?: ExternalHttpOptions }
 ): Promise<SecurityRecord[]> {
   const trimmed = q.trim();
   if (!trimmed) {
@@ -21,12 +21,8 @@ export async function searchSecurities(
     console.warn(`eastmoney suggest unavailable for ${trimmed}:`, err);
     return [] as SecurityRecord[];
   });
-  const yahoo = await fetchYahooSuggest(db, trimmed, options?.httpOptions).catch((err) => {
-    console.warn(`yahoo suggest unavailable for ${trimmed}:`, err);
-    return [] as SecurityRecord[];
-  });
-  const merged = mergeSecurityResults(local, remote, yahoo);
-  for (const item of [...remote, ...yahoo]) {
+  const merged = mergeSecurityResults(local, remote);
+  for (const item of remote) {
     await upsertSecurity(db, item);
   }
   return merged;
@@ -35,7 +31,7 @@ export async function searchSecurities(
 export async function getSecurity(
   db: D1Database,
   code: string,
-  options?: { httpOptions?: ExternalHttpOptions }
+  _options?: { httpOptions?: ExternalHttpOptions }
 ): Promise<SecurityRecord | null> {
   const normalized = normalizeSecurityCode(code);
   const local = await findSecurity(db, normalized);
@@ -43,10 +39,7 @@ export async function getSecurity(
     return local;
   }
   const query = normalized.split(".")[0] ?? normalized;
-  const remote = [
-    ...(await fetchEastmoneySuggest(db, query).catch(() => [])),
-    ...(await fetchYahooSuggest(db, query, options?.httpOptions).catch(() => [])),
-  ];
+  const remote = await fetchEastmoneySuggest(db, query).catch(() => []);
   const match = remote.find((item) => item.code === normalized) ?? remote[0] ?? null;
   if (match) {
     await upsertSecurity(db, match);

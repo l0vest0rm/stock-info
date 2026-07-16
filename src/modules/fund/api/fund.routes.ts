@@ -93,7 +93,7 @@ async function fetchFundPosition(db: D1Database, code: string, num: number): Pro
       return true;
     })
     .slice(0, num)
-    .map((row) => ({ ...row, sourceCode: fundCode, sourceName: "", sourceKind: "fund" }));
+    .map((row) => ({ ...row, sourceCode: `${fundCode}.OF`, sourceName: "", sourceKind: "fund" }));
 }
 
 async function fetchFundPositionYear(db: D1Database, fundCode: string, year: number): Promise<Array<Record<string, unknown>>> {

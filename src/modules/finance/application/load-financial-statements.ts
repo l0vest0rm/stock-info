@@ -19,8 +19,8 @@ export async function loadFinancialStatements(
   env: Pick<Bindings, "DB" | "MARKET_DATA_BUCKET">,
   rawCode: string,
   statementType: StatementType,
-  _options?: { httpOptions?: ExternalHttpOptions }
-): Promise<{ code: string; source: "r2" | "eastmoney" | "yahoo"; rows: FinancialStatement[] }> {
+  options?: { httpOptions?: ExternalHttpOptions }
+): Promise<{ code: string; source: "r2" | "eastmoney"; rows: FinancialStatement[] }> {
   const code = normalizeSecurityCode(rawCode);
   const snapshot = await getFinancialStatementsSnapshot(env, code, statementType);
   const snapshotRows = snapshot ? ensureFinancialSourceMetadata(snapshot.rows) : [];
@@ -39,9 +39,9 @@ export async function loadFinancialStatements(
     }
   }
   if (!isCnExchangeCode(code)) {
-    return { code, source: "yahoo", rows: [] };
+    return { code, source: "eastmoney", rows: [] };
   }
-  const formalRows = await fetchEastmoneyFinance(env.DB, code, statementType);
+  const formalRows = await fetchEastmoneyFinance(env.DB, code, statementType, options?.httpOptions);
   let rows = ensureFinancialSourceMetadata(formalRows);
   if (statementType === "income") {
     rows = mergeProvisionalFinancialStatements(

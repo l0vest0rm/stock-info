@@ -13,6 +13,7 @@ import { optionsRoutes } from "../modules/options/api/options.routes";
 import { securityRoutes } from "../modules/security/api/security.routes";
 import { thirteenFRoutes } from "../modules/thirteenf/api/thirteenf.routes";
 import { fail } from "../platform/http/response";
+import { ExternalRequestTimeoutError } from "../shared/http";
 import { isLocalDevelopmentRuntime } from "../shared/request";
 import type { AppEnv } from "../types";
 
@@ -87,6 +88,9 @@ export function createRouter(): Hono<AppEnv> {
 
   app.onError((err, c) => {
     console.error(err);
+    if (err instanceof ExternalRequestTimeoutError) {
+      return fail(c, err.status, err.message);
+    }
     return fail(c, 500, err instanceof Error ? err.message : String(err));
   });
 

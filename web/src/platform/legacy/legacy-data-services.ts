@@ -10,11 +10,12 @@ type DataServicesContext = {
   markPoints: unknown[]
   server: string
   usCodeMap: Record<string, string>
-  fetchRequest: (request: string | { url: string, cacheKey?: string, cacheTtl?: number, params?: Record<string, unknown> }) => Promise<unknown>
+  fetchRequest: (request: string | { url: string, cacheKey?: string, cacheTtl?: number, params?: Record<string, unknown>, silent?: boolean }) => Promise<unknown>
 }
 
 export function createLegacyDataServices(context: DataServicesContext) {
   const { cache, codeNameMap, klineCodes, markPoints, server, usCodeMap, fetchRequest } = context
+  const klineInflight = new Map<string, Promise<unknown>>()
 
   function fetchCodesData(codes: string[], fn: (code: string, succ: (code: string) => void) => void, callback: CodesCallback): void {
     const should = codes.length
@@ -91,19 +92,32 @@ export function createLegacyDataServices(context: DataServicesContext) {
     if (cache[cacheKey]) {
       return cache[cacheKey]
     }
-
-    const data = await fetchRequest({
+    const existing = klineInflight.get(cacheKey)
+    if (existing) {
+      return existing
+    }
+    const request = fetchRequest({
       url: `${server}/api/kline`,
       cacheKey,
       cacheTtl: 86400,
+      silent: true,
       params: {
         code,
         fq: fq || '',
       },
+    }).then((data) => {
+      if (data && typeof data === 'object' && 'error' in data) {
+        delete cache[cacheKey]
+        console.warn(`Kline unavailable for ${code}:`, data)
+        return undefined
+      }
+      cache[cacheKey] = data
+      return data
+    }).finally(() => {
+      klineInflight.delete(cacheKey)
     })
-
-    cache[cacheKey] = data
-    return data
+    klineInflight.set(cacheKey, request)
+    return request
   }
 
   async function fetchKlines(codes: string[], fq: string, callback: CodesCallback) {
@@ -122,10 +136,16 @@ export function createLegacyDataServices(context: DataServicesContext) {
       return
     }
 
-    for (const code of requestedCodes) {
-      await fetchKline(code, fq)
-      success()
-    }
+    let nextIndex = 0
+    const workers = Array.from({ length: Math.min(3, should) }, async () => {
+      while (nextIndex < should) {
+        const code = requestedCodes[nextIndex]
+        nextIndex += 1
+        await fetchKline(code, fq)
+        success()
+      }
+    })
+    await Promise.all(workers)
   }
 
   function fetchFundPosition(code: string, num: number, callback: (code: string) => void) {

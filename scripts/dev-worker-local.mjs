@@ -7,6 +7,7 @@ const workerPort = String(process.env.PORT || '8000')
 const httpProxyUrl = process.env.HTTP_PROXY_URL || 'http://127.0.0.1:7890'
 const httpProxyDomains = process.env.HTTP_PROXY_DOMAINS || 'yahoo.com'
 const httpDomainConcurrency = process.env.HTTP_DOMAIN_CONCURRENCY || '3'
+const httpRequestTimeoutMs = process.env.HTTP_REQUEST_TIMEOUT_MS || '10000'
 const llmDailyLimit = process.env.LLM_DAILY_LIMIT || '1000000'
 const passthroughVarNames = [
   'OPENAI_API_KEY',
@@ -22,6 +23,7 @@ const workerEnv = {
   HTTP_PROXY_URL: httpProxyUrl,
   HTTP_PROXY_DOMAINS: httpProxyDomains,
   HTTP_DOMAIN_CONCURRENCY: httpDomainConcurrency,
+  HTTP_REQUEST_TIMEOUT_MS: httpRequestTimeoutMs,
 }
 
 const workerVars = [
@@ -31,6 +33,8 @@ const workerVars = [
   `HTTP_PROXY_DOMAINS:${httpProxyDomains}`,
   '--var',
   `HTTP_DOMAIN_CONCURRENCY:${httpDomainConcurrency}`,
+  '--var',
+  `HTTP_REQUEST_TIMEOUT_MS:${httpRequestTimeoutMs}`,
   '--var',
   `LLM_DAILY_LIMIT:${llmDailyLimit}`,
 ]

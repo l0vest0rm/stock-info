@@ -20,6 +20,7 @@ export type Bindings = {
   HTTP_PROXY_RELAY_URL?: string;
   HTTP_PROXY_DOMAINS?: string;
   HTTP_DOMAIN_CONCURRENCY?: string;
+  HTTP_REQUEST_TIMEOUT_MS?: string;
 };
 
 export type AppEnv = {

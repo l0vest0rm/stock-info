@@ -208,9 +208,8 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
   const httpOptions = externalHttpOptions(c.env);
   const [security, kline] = await Promise.all([
     getSecurity(c.env.DB, normalized, { httpOptions }).catch(() => null),
-    loadKline(c.env, normalized, "day", "normal", "1990-01-01", today(), {
-      httpOptions,
-    }).catch(() => ({ rows: [] as KlineBar[] })),
+    loadKline(c.env, normalized, "day", "normal", "1990-01-01", today())
+      .catch(() => ({ rows: [] as KlineBar[] })),
   ]);
   const rows = kline.rows.filter((row): row is KlineBar => "close" in row && row.close !== null);
   const latest = rows.at(-1);
@@ -233,7 +232,7 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
     marketCapYi: null,
     peTtm: null,
     pb: null,
-    source: latest ? "yahoo" : "local",
+    source: latest ? "eastmoney" : "local",
     updatedAt: Date.now(),
   };
 }
@@ -627,7 +626,7 @@ async function fetchLatestTotalShares(c: Context<AppEnv>, code: string): Promise
   if (!isCnCode(normalized)) {
     return null;
   }
-  const rows = await fetchEastmoneyDataRows(c.env.DB, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+  const rows = await fetchEastmoneyDataRows(c.env.DB, "https://datacenter-web.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_EH_EQUITY",
     columns: "SECUCODE,END_DATE,TOTAL_SHARES",
     quoteColumns: "",

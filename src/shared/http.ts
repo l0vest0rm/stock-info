@@ -8,13 +8,25 @@ export type ExternalHttpOptions = {
   proxyRelayUrl?: string;
   proxyDomains?: string[];
   domainConcurrency?: number;
+  timeoutMs?: number;
   includeSensitiveHeaders?: boolean;
   cacheKey?: string;
   cacheTtlMs?: number;
   resolveCacheTtlMs?: (response: { status: number; headers: Record<string, string>; text: string }) => number;
 };
 
+const DEFAULT_EXTERNAL_HTTP_TIMEOUT_MS = 10_000;
+const DEFAULT_DOMAIN_CONCURRENCY = 3;
 const domainLimiters = new Map<string, DomainLimiter>();
+
+export class ExternalRequestTimeoutError extends Error {
+  readonly status = 504;
+
+  constructor(host: string, timeoutMs: number, options?: ErrorOptions) {
+    super(`external request timed out: host=${host} timeoutMs=${timeoutMs}`, options);
+    this.name = "ExternalRequestTimeoutError";
+  }
+}
 
 export function ok<T>(c: Context, data: T): Response {
   const body: ApiSuccess<T> = { code: 200, msg: "OK", data };
@@ -94,25 +106,41 @@ async function fetchTextResponse(
   options?: ExternalHttpOptions
 ): Promise<{ status: number; headers: Record<string, string>; text: string }> {
   const host = new URL(url).hostname.toLowerCase();
-  return runWithDomainLimit(host, options?.domainConcurrency ?? 3, async () => {
+  const concurrency = options?.domainConcurrency ?? DEFAULT_DOMAIN_CONCURRENCY;
+  return runWithDomainLimit(host, concurrency, async () => {
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_EXTERNAL_HTTP_TIMEOUT_MS;
     const attempts = isRetryableMethod(init?.method) ? 2 : 1;
     let lastError: unknown;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const attemptInit = withTimeoutSignal(init, timeoutMs);
       try {
         if (shouldUseProxy(url, options)) {
-          return await fetchTextViaProxy(options!.proxyUrl!, url, init, options);
+          return await fetchTextViaProxy(options!.proxyUrl!, url, attemptInit, options);
         }
-        return await fetchTextDirect(url, init);
+        return await fetchTextDirect(url, attemptInit);
       } catch (err) {
-        lastError = err;
-        if (attempt >= attempts || !isRetryableNetworkError(err)) {
-          throw err;
+        lastError = isTimeoutError(err)
+          ? new ExternalRequestTimeoutError(host, timeoutMs, { cause: err })
+          : err;
+        if (attempt >= attempts || !isRetryableNetworkError(lastError)) {
+          throw lastError;
         }
-        console.warn(`external request connection failed for ${host}; retrying with a new request:`, err);
+        console.warn(
+          `external request failed for ${host}; retrying with a new request (attempt ${attempt}/${attempts}):`,
+          lastError
+        );
       }
     }
     throw lastError;
   });
+}
+
+function withTimeoutSignal(init: RequestInit | undefined, timeoutMs: number): RequestInit {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal,
+  };
 }
 
 async function fetchTextDirect(
@@ -147,7 +175,11 @@ function isRetryableNetworkError(err: unknown): boolean {
     return true;
   }
   const message = err instanceof Error ? err.message : String(err);
-  return /network connection lost|fetch failed|connection reset|socket closed/i.test(message);
+  return /network connection lost|fetch failed|connection reset|socket closed|timed out|timeout/i.test(message);
+}
+
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && err.name === "TimeoutError";
 }
 
 async function fetchTextViaProxy(
@@ -176,6 +208,7 @@ async function fetchTextViaProxyRelay(
   const res = await fetch(relayUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: init?.signal,
     body: JSON.stringify({
       url,
       method: init?.method ?? "GET",
@@ -196,7 +229,8 @@ export function externalHttpOptions(env: Partial<Bindings>): ExternalHttpOptions
     proxyUrl: env.HTTP_PROXY_URL,
     proxyRelayUrl: env.HTTP_PROXY_RELAY_URL,
     proxyDomains: parseDomains(env.HTTP_PROXY_DOMAINS),
-    domainConcurrency: positiveInt(env.HTTP_DOMAIN_CONCURRENCY) ?? 3,
+    domainConcurrency: positiveInt(env.HTTP_DOMAIN_CONCURRENCY) ?? DEFAULT_DOMAIN_CONCURRENCY,
+    timeoutMs: positiveInt(env.HTTP_REQUEST_TIMEOUT_MS) ?? DEFAULT_EXTERNAL_HTTP_TIMEOUT_MS,
   };
 }
 
@@ -252,6 +286,7 @@ async function fetchTextViaHttpProxy(
     method: init?.method ?? "GET",
     headers: normalizeOutgoingHeaders(init?.headers, options),
     body: typeof init?.body === "string" ? init.body : undefined,
+    signal: init?.signal ?? undefined,
     dispatcher: new ProxyAgent(proxyUrl),
   });
   const text = await res.text();
@@ -262,7 +297,7 @@ async function fetchTextViaHttpProxy(
 }
 
 async function runWithDomainLimit<T>(host: string, concurrency: number, fn: () => Promise<T>): Promise<T> {
-  const limit = Math.max(1, concurrency || 3);
+  const limit = Math.max(1, concurrency || DEFAULT_DOMAIN_CONCURRENCY);
   let limiter = domainLimiters.get(host);
   if (!limiter || limiter.limit !== limit) {
     limiter = new DomainLimiter(limit);
