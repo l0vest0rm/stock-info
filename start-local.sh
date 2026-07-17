@@ -15,6 +15,8 @@ LOG_DIR="${PROJECT_ROOT}/data/logs"
 LOG_FILE="${LOG_DIR}/stock-info-wrangler.log"
 CONTENT_LOG_FILE="${LOG_DIR}/stock-info-knowledge-content.log"
 PROXY_RELAY_LOG_FILE="${LOG_DIR}/stock-info-http-proxy-relay.log"
+CRON_LOG_FILE="${LOG_DIR}/stock-info-local-cron.log"
+CRON_PID_FILE="${LOG_DIR}/stock-info-local-cron.pid"
 
 export HTTP_PROXY_URL="${HTTP_PROXY_URL:-http://127.0.0.1:7890}"
 export HTTP_PROXY_RELAY_URL="${HTTP_PROXY_RELAY_URL:-${PROXY_RELAY_BASE_URL}/fetch}"
@@ -45,6 +47,20 @@ done
 mkdir -p "$LOG_DIR"
 
 cd "$PROJECT_ROOT"
+
+if [[ -f "$CRON_PID_FILE" ]]; then
+  EXISTING_CRON_PID=$(<"$CRON_PID_FILE")
+  EXISTING_CRON_COMMAND=""
+  if [[ "$EXISTING_CRON_PID" == <-> ]]; then
+    EXISTING_CRON_COMMAND=$(ps -p "$EXISTING_CRON_PID" -o command= 2>/dev/null || true)
+  fi
+  if [[ "$EXISTING_CRON_COMMAND" == *"scripts/local-cron-runner.mjs"* ]]; then
+    echo "Stopping existing local cron runner: ${EXISTING_CRON_PID}"
+    kill "$EXISTING_CRON_PID" || true
+    sleep 1
+  fi
+  rm -f "$CRON_PID_FILE"
+fi
 
 EXISTING_WRANGLER_PIDS=$(pgrep -f "node .*wrangler dev --local --port ${PORT}" || true)
 if [[ -n "$EXISTING_WRANGLER_PIDS" ]]; then
@@ -165,10 +181,28 @@ until curl -fsS "${BASE_URL}/api/health" >/dev/null 2>&1; do
   sleep 1
 done
 
+echo "Starting local cron runner from wrangler.jsonc ..."
+: >"$CRON_LOG_FILE"
+node scripts/local-cron-runner.mjs \
+  --base-url "$BASE_URL" \
+  --config "$PROJECT_ROOT/wrangler.jsonc" \
+  >"$CRON_LOG_FILE" 2>&1 &
+CRON_PID=$!
+echo "$CRON_PID" >"$CRON_PID_FILE"
+sleep 1
+if ! kill -0 "$CRON_PID" >/dev/null 2>&1; then
+  echo "Local cron runner exited during startup."
+  echo "Check log: $CRON_LOG_FILE"
+  wait "$CRON_PID" || true
+  exit 1
+fi
+
 echo "Local site is ready."
 echo "URL: ${BASE_URL}"
 echo "Health: ${BASE_URL}/api/health"
 echo "Log: ${LOG_FILE}"
+echo "Cron config: ${PROJECT_ROOT}/wrangler.jsonc"
+echo "Cron log: ${CRON_LOG_FILE}"
 echo "Knowledge content URL: ${CONTENT_BASE_URL}"
 echo "Knowledge content log: ${CONTENT_LOG_FILE}"
 echo "HTTP proxy URL: ${HTTP_PROXY_URL}"
@@ -180,3 +214,4 @@ echo "LLM daily limit: ${LLM_DAILY_LIMIT}"
 echo "Knowledge content PID: ${CONTENT_PID}"
 echo "HTTP proxy relay PID: ${PROXY_RELAY_PID}"
 echo "Worker PID: ${WORKER_PID}"
+echo "Cron PID: ${CRON_PID}"

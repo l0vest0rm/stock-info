@@ -8,6 +8,8 @@
     "dev": "npm run build:prompts && npm run build:web && node scripts/dev-worker-local.mjs",
     "dev:worker": "npm run build:prompts && node scripts/dev-worker-local.mjs",
     "dev:worker:bare": "wrangler dev --local",
+    "dev:cron": "node scripts/local-cron-runner.mjs",
+    "dev:cron:once": "node scripts/local-cron-runner.mjs --once",
     "dev:web": "cd web && vite --config vite.layout.config.ts",
     "build": "npm run build:prompts && npm run build:web",
     "build:web": "cd web && node scripts/build-html.mjs && vite build --config vite.layout.config.ts && node scripts/build-vue-pages.mjs && node scripts/build-legacy-pages.mjs",
@@ -38,6 +40,7 @@
     "test:smoke:pages": "node scripts/smoke-pages.mjs",
     "test:knowledge-import": "node --test scripts/lib/knowledge-import-sync.test.mjs scripts/lib/local-d1-sqlite.test.mjs",
     "test:earnings-research": "node --test scripts/lib/earnings-research.test.mjs",
+    "test:local-cron": "node --test scripts/lib/local-cron-runner.test.mjs",
     "seed:knowledge:sample": "node scripts/seed-knowledge-sample.mjs",
     "typecheck": "npm run build:prompts && tsc --noEmit",
     "db:migrate:local": "WRANGLER_HIDE_BANNER=true wrangler d1 migrations apply stock_info --local",
@@ -54,6 +57,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260620.0",
+    "croner": "^10.0.1",
+    "jsonc-parser": "^3.3.1",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.1.8",
     "wrangler": "^4.23.0"

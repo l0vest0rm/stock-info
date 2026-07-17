@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import process from 'node:process'
 
 const workerPort = String(process.env.PORT || '8000')
@@ -47,6 +48,7 @@ for (const key of passthroughVarNames) {
 }
 
 let workerProcess = null
+let cronProcess = null
 let shuttingDown = false
 
 try {
@@ -62,8 +64,20 @@ try {
     env: workerEnv,
     stdio: 'inherit',
   })
+  cronProcess = spawn(process.execPath, [
+    fileURLToPath(new URL('./local-cron-runner.mjs', import.meta.url)),
+    '--base-url',
+    `http://127.0.0.1:${workerPort}`,
+    '--config',
+    fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
+  ], {
+    env: workerEnv,
+    stdio: 'inherit',
+  })
 } catch (error) {
   shuttingDown = true
+  workerProcess?.kill('SIGTERM')
+  cronProcess?.kill('SIGTERM')
   throw error
 }
 
@@ -73,20 +87,26 @@ const terminate = () => {
   }
   shuttingDown = true
   workerProcess?.kill('SIGTERM')
+  cronProcess?.kill('SIGTERM')
 }
 
 process.on('SIGINT', terminate)
 process.on('SIGTERM', terminate)
 
-const workerExitCode = await new Promise((resolve) => {
-  workerProcess.on('exit', (code, signal) => {
+const processExitCode = await new Promise((resolve) => {
+  const handleExit = (name) => (code, signal) => {
+    if (!shuttingDown && (signal || code !== 0)) {
+      console.error(`${name} exited unexpectedly`, { code, signal })
+    }
     terminate()
     if (signal) {
       resolve(1)
       return
     }
     resolve(code ?? 0)
-  })
+  }
+  workerProcess.on('exit', handleExit('Local Worker'))
+  cronProcess.on('exit', handleExit('Local cron runner'))
 })
 
-process.exit(workerExitCode)
+process.exit(processExitCode)

@@ -47,6 +47,16 @@ chmod +x ./start-local.sh
 
 默认访问地址是 `http://127.0.0.1:8000`。
 
+`start-local.sh` 会同时启动通用本地 cron runner。它直接读取
+`wrangler.jsonc` 的 `triggers.crons`，按 Cloudflare 一致的 UTC cron 配置调用
+本地 Worker 的 scheduled handler；以后新增定时任务只需要维护线上同一份配置。
+调度日志位于 `data/logs/stock-info-local-cron.log`。需要立即手动执行所有已配置
+cron 时，可以在 Worker 已启动后运行：
+
+```bash
+npm run dev:cron:once
+```
+
 第一步用 `--omit=optional` 跳过容易卡住的可选依赖构建；第二步补齐
 `rollup` 的平台包，但禁用安装脚本，避免 `fsevents` 之类的可选包拖慢安装。
 
