@@ -19,13 +19,12 @@
 
 | 变量 | 含义 |
 | --- | --- |
-| `HTTP_PROXY_URL` | Worker 访问外部域名时使用的真实代理地址，本地通常是 `http://127.0.0.1:7890` |
-| `HTTP_PROXY_RELAY_URL` | 本地 Worker 调用的 Node 转发入口；Node 负责通过真实代理建立新连接 |
-| `HTTP_PROXY_DOMAINS` | 需要走代理的目标域名列表，例如 `yahoo.com` |
+| `HTTP_PROXY_URL` | 启用代理并标识本地代理客户端地址，通常是 `http://127.0.0.1:7890` |
+| `HTTP_PROXY_RELAY_URL` | Worker 调用的 fetch 转发入口，本地默认是 Rust proxy client 的 `http://127.0.0.1:7890/fetch` |
 | `HTTP_DOMAIN_CONCURRENCY` | 单个目标域名最大并发，默认 `3` |
 | `HTTP_REQUEST_TIMEOUT_MS` | 单次外部请求的硬超时，默认 `10000` 毫秒 |
 
-`HTTP_PROXY_*` 是 Worker/http client 的统一配置。本地 Wrangler 不能直接运行 Node 的 `ProxyAgent`，因此 `start-local.sh` 会启动仅监听回环地址的 Node 转发器；线上未配置代理时不经过该转发器。
+`HTTP_PROXY_*` 是 Worker/http client 的统一配置。本地 Wrangler 不能直接运行 Node 的 `ProxyAgent`，因此外部 fetch 请求统一交给仅监听回环地址的 Rust proxy client，再由 `config/routes.toml` 决定本机直连或通过已认证的远端代理转发；线上未配置代理时不经过该入口。
 
 ### 统一 HTTP Client
 
@@ -34,7 +33,7 @@
 - Worker API、Cron、同步任务共用同一套请求、缓存、限流、超时、代理逻辑。
 - 默认按目标域名限流，单域名最大 3 并发，可由 `HTTP_DOMAIN_CONCURRENCY` 调整。
 - 每次外部请求都有硬超时；GET/HEAD 网络失败最多重试一次，避免请求长期占用 Worker。
-- 是否走代理由目标域名和 `HTTP_PROXY_*` 配置决定，不由业务 adapter 硬编码。
+- 本地请求的直连/代理路由由 proxy client 的 `config/routes.toml` 决定，不由业务 adapter 或 Worker 重复配置。
 - 调用方可以提供 `cacheKey` 和 `cacheTtlMs`；不提供时由请求 method/url/header/body 生成稳定 cache key。
 - 未命中 D1 `http_cache` 时才真实请求外部，成功后写入缓存。
 - Cookie、Authorization 等敏感 header 默认不透传到本地转发器；确实需要时必须显式 `includeSensitiveHeaders`。

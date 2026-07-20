@@ -1,57 +1,26 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { createInterface } from "node:readline";
 
 const args = parseArgs(process.argv.slice(2));
 const dbFile = resolve(args.dbFile || findLocalDatabaseFile());
 const contentDir = resolve(args.contentDir || process.env.KNOWLEDGE_CONTENT_LOCAL_DIR || "/Users/terry/git/data/stock-info/knowledge/content-cache");
 
-const contentRows = queryJson(dbFile, `
-  select content_key, content_bytes
+const [contentCount] = queryJson(dbFile, `
+  select count(*) as total
   from knowledge_local_content_cache
   where content_key like 'knowledge-content/%'
-  order by content_key asc
 `);
-const chunkRows = queryJson(dbFile, `
-  select content_key, payload_base64
-  from knowledge_local_content_cache_chunks
-  order by content_key asc, chunk_index asc
-`);
-
-const payloadByKey = new Map();
-for (const row of chunkRows) {
-  const key = String(row.content_key || "").trim();
-  const payload = String(row.payload_base64 || "");
-  if (!key || !payload) continue;
-  payloadByKey.set(key, `${payloadByKey.get(key) || ""}${payload}`);
-}
-
-let written = 0;
-let skipped = 0;
-for (const row of contentRows) {
-  const key = String(row.content_key || "").trim();
-  const payloadBase64 = payloadByKey.get(key) || "";
-  if (!key || !payloadBase64) {
-    continue;
-  }
-  const bytes = Buffer.from(payloadBase64, "base64");
-  const relativePath = contentRelativePath(key);
-  const outputPath = join(contentDir, relativePath);
-  mkdirSync(dirname(outputPath), { recursive: true });
-  if (isSameSizedFile(outputPath, bytes.length)) {
-    skipped += 1;
-    continue;
-  }
-  writeFileSync(outputPath, bytes);
-  written += 1;
-}
+const total = Number(contentCount?.total || 0);
+const { written, skipped } = await materializeChunkRows(dbFile, contentDir);
 
 console.log(JSON.stringify({
   dbFile,
   contentDir,
-  total: contentRows.length,
+  total,
   materialized: written,
   skipped,
 }, null, 2));
@@ -102,6 +71,82 @@ function queryJson(dbFile, sql) {
     maxBuffer: 50 * 1024 * 1024,
   }).trim();
   return result ? JSON.parse(result) : [];
+}
+
+async function materializeChunkRows(dbFile, contentDir) {
+  const sql = `
+    select json_object(
+      'content_key', chunks.content_key,
+      'payload_base64', chunks.payload_base64
+    )
+    from knowledge_local_content_cache_chunks as chunks
+    inner join knowledge_local_content_cache as content
+      on content.content_key = chunks.content_key
+    where content.content_key like 'knowledge-content/%'
+    order by chunks.content_key asc, chunks.chunk_index asc
+  `;
+  const child = spawn("sqlite3", ["-batch", "-noheader", dbFile, sql], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stderr.setEncoding("utf8");
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const completion = new Promise((resolveCompletion, rejectCompletion) => {
+    child.once("error", rejectCompletion);
+    child.once("close", (code, signal) => {
+      if (code === 0) {
+        resolveCompletion();
+        return;
+      }
+      const detail = stderr.trim() || (signal ? `terminated by ${signal}` : `exit code ${code}`);
+      rejectCompletion(new Error(`sqlite3 chunk query failed: ${detail}`));
+    });
+  });
+
+  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  let currentKey = "";
+  let payloadChunks = [];
+  let written = 0;
+  let skipped = 0;
+
+  const flush = () => {
+    if (!currentKey || payloadChunks.length === 0) return;
+    const bytes = Buffer.from(payloadChunks.join(""), "base64");
+    const outputPath = join(contentDir, contentRelativePath(currentKey));
+    mkdirSync(dirname(outputPath), { recursive: true });
+    if (isSameSizedFile(outputPath, bytes.length)) {
+      skipped += 1;
+      return;
+    }
+    writeFileSync(outputPath, bytes);
+    written += 1;
+  };
+
+  try {
+    for await (const line of lines) {
+      if (!line) continue;
+      const row = JSON.parse(line);
+      const key = String(row.content_key || "").trim();
+      const payload = String(row.payload_base64 || "");
+      if (!key || !payload) continue;
+      if (currentKey && key !== currentKey) {
+        flush();
+        payloadChunks = [];
+      }
+      currentKey = key;
+      payloadChunks.push(payload);
+    }
+    flush();
+    await completion;
+  } catch (error) {
+    child.kill();
+    await completion.catch(() => {});
+    throw error;
+  }
+
+  return { written, skipped };
 }
 
 function contentRelativePath(key) {

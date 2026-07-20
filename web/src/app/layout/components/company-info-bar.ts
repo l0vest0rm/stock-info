@@ -120,7 +120,6 @@ export const CompanyInfoBar = defineComponent({
             metricItem("去年至今", h("span", { id: "last2NowPriceChange" })),
             metricItem("市值(亿)", h("span", { id: "marketCap" })),
             metricItem(null, h("span", { id: "stockValuation" })),
-            metricItem("股息率", h("span", { id: "yield" })),
           ]),
         ]),
       ]);

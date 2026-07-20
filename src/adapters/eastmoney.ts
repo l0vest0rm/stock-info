@@ -4,7 +4,15 @@ import {
   marketDataCacheExpiresAtMsForCode,
   marketDataCacheTtlMsForCode,
 } from "../shared/cache-policy";
-import { bareCode, eastmoneySecId, inferSecurityType, normalizeSecurityCode, securityMarket, securitySuffix } from "../shared/codes";
+import {
+  bareCode,
+  eastmoneySecId,
+  inferSecurityType,
+  isSupportedCompanyCode,
+  normalizeSecurityCode,
+  securityMarket,
+  securitySuffix,
+} from "../shared/codes";
 import { getAppKv, putAppKv } from "../db/queries";
 import { cachedFetchJson, cachedFetchText, numberOrNull, parseJsonOrJsonp } from "../shared/http";
 import type { ExternalHttpOptions } from "../shared/http";
@@ -265,7 +273,7 @@ export async function fetchEastmoneySuggest(db: D1Database, q: string): Promise<
     const rawCode = item.OuterCode?.trim() ?? "";
     const normalized = normalizeEastmoneySuggestCode(rawCode);
     const name = item.ShortName?.trim() ?? "";
-    if (!normalized || !name) {
+    if (!normalized || !name || !isSupportedCompanyCode(normalized)) {
       continue;
     }
     records.push({

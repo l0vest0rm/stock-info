@@ -83,9 +83,9 @@ export function createCompanyDividendInitializer(context: CompanyDividendRuntime
         if (idx < 0) {
           continue
         }
-        const totalShares = kline[idx][7] / kline[idx][1]
         const bonusRatio = (100 * item.bonus / kline[idx][1]).toFixed(2)
         const bonusRatioToday = (100 * item.bonus / kline[kline.length - 1][1]).toFixed(2)
+        const bonusTotal = Number(item.bonusTotal)
         rows.push([
           item.noticeDate,
           item.plan,
@@ -95,7 +95,7 @@ export function createCompanyDividendInitializer(context: CompanyDividendRuntime
           kline[idx][1],
           bonusRatio,
           bonusRatioToday,
-          (item.bonus * totalShares / 1e8).toFixed(2),
+          Number.isFinite(bonusTotal) ? (bonusTotal / 1e8).toFixed(2) : '',
         ])
       }
 

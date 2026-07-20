@@ -11,3 +11,4 @@ reports/
 *.pid
 .DS_Store
 data/
+web/static/knowledge-review/

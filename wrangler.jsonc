@@ -12,7 +12,6 @@
     "MARKET_DATA_PUBLIC_BASE_URL": "https://market-data.tinfo.cc",
     "LLM_DAILY_LIMIT": "300",
     "HTTP_PROXY_URL": "",
-    "HTTP_PROXY_DOMAINS": "",
     "HTTP_DOMAIN_CONCURRENCY": "3",
     "HTTP_REQUEST_TIMEOUT_MS": "10000",
     "KNOWLEDGE_CONTENT_PUBLIC_BASE_URL": "https://content.tinfo.cc",

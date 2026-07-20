@@ -6,7 +6,6 @@ export type ExternalHttpOptions = {
   proxyEnabled?: boolean;
   proxyUrl?: string;
   proxyRelayUrl?: string;
-  proxyDomains?: string[];
   domainConcurrency?: number;
   timeoutMs?: number;
   includeSensitiveHeaders?: boolean;
@@ -114,8 +113,8 @@ async function fetchTextResponse(
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const attemptInit = withTimeoutSignal(init, timeoutMs);
       try {
-        if (shouldUseProxy(url, options)) {
-          return await fetchTextViaProxy(options!.proxyUrl!, url, attemptInit, options);
+        if (shouldUseProxy(options)) {
+          return await fetchTextViaProxy(url, attemptInit, options);
         }
         return await fetchTextDirect(url, attemptInit);
       } catch (err) {
@@ -183,7 +182,6 @@ function isTimeoutError(err: unknown): boolean {
 }
 
 async function fetchTextViaProxy(
-  proxyUrl: string,
   url: string,
   init?: RequestInit,
   options?: ExternalHttpOptions
@@ -192,11 +190,10 @@ async function fetchTextViaProxy(
   headers: Record<string, string>;
   text: string;
 }> {
-  const normalizedProxyUrl = normalizeProxyUrl(proxyUrl);
-  if (options?.proxyRelayUrl) {
-    return fetchTextViaProxyRelay(options.proxyRelayUrl, url, init, options);
+  if (!options?.proxyRelayUrl) {
+    throw new Error("HTTP_PROXY_RELAY_URL is required when HTTP proxying is enabled");
   }
-  return fetchTextViaHttpProxy(normalizedProxyUrl, url, init, options);
+  return fetchTextViaProxyRelay(options.proxyRelayUrl, url, init, options);
 }
 
 async function fetchTextViaProxyRelay(
@@ -228,72 +225,19 @@ export function externalHttpOptions(env: Partial<Bindings>): ExternalHttpOptions
     proxyEnabled: Boolean(env.HTTP_PROXY_URL),
     proxyUrl: env.HTTP_PROXY_URL,
     proxyRelayUrl: env.HTTP_PROXY_RELAY_URL,
-    proxyDomains: parseDomains(env.HTTP_PROXY_DOMAINS),
     domainConcurrency: positiveInt(env.HTTP_DOMAIN_CONCURRENCY) ?? DEFAULT_DOMAIN_CONCURRENCY,
     timeoutMs: positiveInt(env.HTTP_REQUEST_TIMEOUT_MS) ?? DEFAULT_EXTERNAL_HTTP_TIMEOUT_MS,
   };
 }
 
-function shouldUseProxy(url: string, options?: ExternalHttpOptions): boolean {
-  if (!options?.proxyUrl || options.proxyEnabled === false) {
-    return false;
-  }
-  const domains = options.proxyDomains ?? [];
-  if (domains.length === 0) {
-    return true;
-  }
-  const host = new URL(url).hostname.toLowerCase();
-  return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
-}
-
-function parseDomains(value: string | string[] | undefined): string[] {
-  const raw = Array.isArray(value) ? value.join(",") : value ?? "";
-  return raw
-    .split(/[,\s]+/)
-    .map((item) => item.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/^\./, "").replace(/\/$/, ""))
-    .filter(Boolean);
+function shouldUseProxy(options?: ExternalHttpOptions): boolean {
+  return Boolean(options?.proxyUrl) && options?.proxyEnabled !== false;
 }
 
 function positiveInt(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function normalizeProxyUrl(value: string): string {
-  const text = String(value || "").trim();
-  if (!text) {
-    return "";
-  }
-  const httpMatch = text.match(/^PROXY\s+(.+)$/i);
-  if (httpMatch) {
-    return `http://${httpMatch[1].trim()}`;
-  }
-  if (/^https?:\/\//i.test(text)) {
-    return text;
-  }
-  return `http://${text}`;
-}
-
-async function fetchTextViaHttpProxy(
-  proxyUrl: string,
-  url: string,
-  init?: RequestInit,
-  options?: ExternalHttpOptions
-): Promise<{ status: number; headers: Record<string, string>; text: string }> {
-  const { ProxyAgent, fetch: undiciFetch } = await import("undici");
-  const res = await undiciFetch(url, {
-    method: init?.method ?? "GET",
-    headers: normalizeOutgoingHeaders(init?.headers, options),
-    body: typeof init?.body === "string" ? init.body : undefined,
-    signal: init?.signal ?? undefined,
-    dispatcher: new ProxyAgent(proxyUrl),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`request failed: status=${res.status} body=${truncate(text)}`);
-  }
-  return { status: res.status, headers: Object.fromEntries(res.headers.entries()), text };
 }
 
 async function runWithDomainLimit<T>(host: string, concurrency: number, fn: () => Promise<T>): Promise<T> {

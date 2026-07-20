@@ -2,9 +2,10 @@ import { Hono } from "hono";
 import financeMappings from "../../../../shared/finance-mappings.json";
 import { fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
 import { loadFinancialStatements, parseStatementType } from "../application/load-financial-statements";
+import { loadKline } from "../../market/application/load-kline";
 import { externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
 import { normalizeSecurityCode } from "../../../shared/codes";
-import type { AppEnv, StatementType } from "../../../types";
+import type { AppEnv, Bindings, KlineBar, StatementType } from "../../../types";
 
 export const financeRoutes = new Hono<AppEnv>();
 
@@ -28,7 +29,11 @@ financeRoutes.get("/finance/shareadditional", async (c) => {
   return ok(c, await fetchShareAdditional(c.env.DB, code));
 });
 
-financeRoutes.get("/finance/dividendyield", async (c) => ok(c, await fetchDividendYield(c.req.query("code") ?? "")));
+financeRoutes.get("/finance/dividendyield", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  return ok(c, await fetchDividendYield(c.env, code));
+});
 
 financeRoutes.get("/finance/freeholders", async (c) => {
   const code = requireQuery(c, "code");
@@ -192,30 +197,37 @@ async function fetchShareChange(db: D1Database, code: string): Promise<Record<st
 
 async function fetchShareBonus(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
-  const rows = await fetchEastmoneyDataRows(db, "https://datacenter-web.eastmoney.com/securities/api/data/v1/get", {
-    reportName: "RPT_F10_DIVIDEND_MAIN",
-    columns:
-      "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,IMPL_PLAN_PROFILE,ASSIGN_PROGRESS,EQUITY_RECORD_DATE,EX_DIVIDEND_DATE,PAY_CASH_DATE",
-    quoteColumns: "",
-    filter: `(SECUCODE="${normalized}")`,
-    pageNumber: "1",
-    pageSize: "100",
-    sortTypes: "-1",
-    sortColumns: "NOTICE_DATE",
-    source: "HSF10",
-    client: "PC",
-  });
+  const [rows, shareChanges] = await Promise.all([
+    fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+      reportName: "RPT_F10_DIVIDEND_MAIN",
+      columns:
+        "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,IMPL_PLAN_PROFILE,ASSIGN_PROGRESS,EQUITY_RECORD_DATE,EX_DIVIDEND_DATE,PAY_CASH_DATE",
+      quoteColumns: "",
+      filter: `(SECUCODE="${normalized}")`,
+      pageNumber: "1",
+      pageSize: "100",
+      sortTypes: "-1",
+      sortColumns: "NOTICE_DATE",
+      source: "HSF10",
+      client: "PC",
+    }),
+    fetchShareChange(db, normalized),
+  ]);
   const items: Record<string, unknown>[] = [];
   for (const row of rows) {
     const plan = String(row.IMPL_PLAN_PROFILE ?? "");
     if (!plan || plan === "不分配不转增") continue;
+    const bonus = planNumber(plan.replace("元", ""), "派") / 10;
+    const eventDate = trimDate(row.EQUITY_RECORD_DATE) || trimDate(row.EX_DIVIDEND_DATE) || trimDate(row.NOTICE_DATE);
+    const totalShares = num(shareChanges.find((item) => String(item.changeDate ?? "") <= eventDate)?.totalShares);
     items.push({
       noticeDate: trimDate(row.NOTICE_DATE),
       progress: row.ASSIGN_PROGRESS ?? "",
       plan,
       give: planNumber(plan, "送") / 10,
       trans: planNumber(plan, "转") / 10,
-      bonus: planNumber(plan.replace("元", ""), "派") / 10,
+      bonus,
+      bonusTotal: bonus * totalShares,
       divDate: trimDate(row.EX_DIVIDEND_DATE),
       recordDate: trimDate(row.EQUITY_RECORD_DATE),
     });
@@ -225,7 +237,7 @@ async function fetchShareBonus(db: D1Database, code: string): Promise<Record<str
 
 async function fetchShareAdditional(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
-  return fetchEastmoneyDataRows(db, "https://datacenter-web.eastmoney.com/securities/api/data/v1/get", {
+  return fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_DIVIDEND_SEO",
     columns:
       "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,ISSUE_NUM,NET_RAISE_FUNDS,ISSUE_PRICE,ISSUE_WAY_EXPLAIN,REG_DATE,LISTING_DATE,RECEIVE_DATE",
@@ -274,7 +286,87 @@ async function fetchOrgHolders(db: D1Database, code: string, reportDate: string)
   });
 }
 
-async function fetchDividendYield(_code: string): Promise<Record<string, unknown>> {
+type DividendDecision = {
+  quarter: number;
+  announcedAt: string;
+  eventDate: string;
+  reportDate: string;
+  plan: string;
+  cashPerShare: number;
+};
+
+async function fetchDividendYield(
+  env: Pick<Bindings, "DB" | "MARKET_DATA_BUCKET">,
+  code: string
+): Promise<Record<string, unknown>> {
+  const normalized = normalizeSecurityCode(code);
+  if (!isCnExchangeCode(normalized)) {
+    return emptyDividendYield();
+  }
+  const [rawRows, klineResult] = await Promise.all([
+    fetchEastmoneyDataRows(env.DB, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
+      reportName: "RPT_F10_DIVIDEND_MAIN",
+      columns:
+        "SECUCODE,SECURITY_CODE,NOTICE_DATE,REPORT_DATE,REPORT_TIME,IMPL_PLAN_PROFILE,ASSIGN_PROGRESS,EQUITY_RECORD_DATE,EX_DIVIDEND_DATE,PAY_CASH_DATE",
+      quoteColumns: "",
+      filter: `(SECUCODE="${normalized}")`,
+      pageNumber: "1",
+      pageSize: "100",
+      sortTypes: "1",
+      sortColumns: "NOTICE_DATE",
+      source: "HSF10",
+      client: "PC",
+    }),
+    loadKline(env, normalized, "day", "normal", "1990-01-01", todayDate()),
+  ]);
+  const decisions = rawRows
+    .map(toDividendDecision)
+    .filter((item): item is DividendDecision => item !== null)
+    .sort((a, b) => a.announcedAt.localeCompare(b.announcedAt));
+  const bars = klineResult.rows.filter((row): row is KlineBar => "close" in row && Boolean(row.date));
+  if (!decisions.length || !bars.length) {
+    return emptyDividendYield();
+  }
+
+  const activeByQuarter = new Map<number, DividendDecision>();
+  const series: number[][] = [];
+  let decisionIndex = 0;
+  for (const bar of bars) {
+    while (decisionIndex < decisions.length && decisions[decisionIndex].announcedAt <= bar.date) {
+      const decision = decisions[decisionIndex];
+      activeByQuarter.set(decision.quarter, decision);
+      decisionIndex += 1;
+    }
+    const cashPerShare = trailingFourQuarterCash(activeByQuarter);
+    if (bar.close && bar.close > 0 && activeByQuarter.size > 0) {
+      series.push([Date.parse(`${bar.date}T00:00:00.000Z`), 100 * cashPerShare / bar.close]);
+    }
+  }
+  while (decisionIndex < decisions.length) {
+    const decision = decisions[decisionIndex];
+    activeByQuarter.set(decision.quarter, decision);
+    decisionIndex += 1;
+  }
+  const annualizedCashPerShare = trailingFourQuarterCash(activeByQuarter);
+  const latestClose = [...bars].reverse().find((bar) => bar.close && bar.close > 0)?.close ?? 0;
+  const currentYield = latestClose > 0 ? 100 * annualizedCashPerShare / latestClose : 0;
+  const cashEvents = decisions.filter((item) => item.cashPerShare > 0);
+  return {
+    currentYield,
+    annualizedCash: annualizedCashPerShare,
+    annualizedCashPerShare,
+    latestEventDate: cashEvents.at(-1)?.eventDate ?? "",
+    series,
+    events: cashEvents.map((item) => ({
+      ts: Date.parse(`${item.eventDate}T00:00:00.000Z`),
+      plan: item.plan,
+      reportDate: item.reportDate,
+      cashPerShare: item.cashPerShare,
+    })),
+  };
+}
+
+function emptyDividendYield(): Record<string, unknown> {
   return {
     currentYield: 0,
     annualizedCash: 0,
@@ -283,6 +375,60 @@ async function fetchDividendYield(_code: string): Promise<Record<string, unknown
     series: [],
     events: [],
   };
+}
+
+function toDividendDecision(row: Record<string, unknown>): DividendDecision | null {
+  const reportDate = trimDate(row.REPORT_TIME) || String(row.REPORT_DATE ?? "");
+  const quarter = reportQuarter(reportDate);
+  const announcedAt = trimDate(row.NOTICE_DATE);
+  if (quarter === null || !announcedAt) {
+    return null;
+  }
+  const plan = String(row.IMPL_PLAN_PROFILE ?? "");
+  return {
+    quarter,
+    announcedAt,
+    eventDate:
+      trimDate(row.EX_DIVIDEND_DATE)
+      || trimDate(row.EQUITY_RECORD_DATE)
+      || trimDate(row.PAY_CASH_DATE)
+      || announcedAt,
+    reportDate,
+    plan,
+    cashPerShare: planNumber(plan.replace("元", ""), "派") / 10,
+  };
+}
+
+function reportQuarter(value: string): number | null {
+  const dateMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    const year = Number(dateMatch[1]);
+    const month = Number(dateMatch[2]);
+    return year * 4 + Math.floor((month - 1) / 3);
+  }
+  const yearMatch = value.match(/(\d{4})/);
+  if (!yearMatch) return null;
+  const year = Number(yearMatch[1]);
+  if (value.includes("一季")) return year * 4;
+  if (value.includes("半年")) return year * 4 + 1;
+  if (value.includes("三季")) return year * 4 + 2;
+  if (value.includes("年报")) return year * 4 + 3;
+  return null;
+}
+
+function trailingFourQuarterCash(decisions: Map<number, DividendDecision>): number {
+  const latestQuarter = Math.max(...decisions.keys());
+  let total = 0;
+  for (const [quarter, decision] of decisions) {
+    if (quarter > latestQuarter - 4 && quarter <= latestQuarter) {
+      total += decision.cashPerShare;
+    }
+  }
+  return total;
+}
+
+function todayDate(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function genReportDates(years: number): string[] {

@@ -217,7 +217,7 @@ export function createLegacyDataServices(context: DataServicesContext) {
       cacheKey,
       cacheTtl: 360000,
     }).then((data: any) => {
-      callback(data.data)
+      callback(Array.isArray(data) ? data : data?.data)
     })
   }
 

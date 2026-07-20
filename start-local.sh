@@ -7,20 +7,16 @@ PROJECT_ROOT="$SCRIPT_DIR"
 PORT="${PORT:-8000}"
 BASE_URL="http://127.0.0.1:${PORT}"
 CONTENT_PORT="${KNOWLEDGE_CONTENT_LOCAL_PORT:-8788}"
-PROXY_RELAY_PORT="${HTTP_PROXY_RELAY_PORT:-8789}"
 CONTENT_BASE_URL="${KNOWLEDGE_CONTENT_PUBLIC_BASE_URL:-http://127.0.0.1:${CONTENT_PORT}}"
-PROXY_RELAY_BASE_URL="http://127.0.0.1:${PROXY_RELAY_PORT}"
 CONTENT_DIR="${KNOWLEDGE_CONTENT_LOCAL_DIR:-/Users/terry/git/data/stock-info/knowledge/content-cache}"
 LOG_DIR="${PROJECT_ROOT}/data/logs"
 LOG_FILE="${LOG_DIR}/stock-info-wrangler.log"
 CONTENT_LOG_FILE="${LOG_DIR}/stock-info-knowledge-content.log"
-PROXY_RELAY_LOG_FILE="${LOG_DIR}/stock-info-http-proxy-relay.log"
 CRON_LOG_FILE="${LOG_DIR}/stock-info-local-cron.log"
 CRON_PID_FILE="${LOG_DIR}/stock-info-local-cron.pid"
 
 export HTTP_PROXY_URL="${HTTP_PROXY_URL:-http://127.0.0.1:7890}"
-export HTTP_PROXY_RELAY_URL="${HTTP_PROXY_RELAY_URL:-${PROXY_RELAY_BASE_URL}/fetch}"
-export HTTP_PROXY_DOMAINS="yahoo.com"
+export HTTP_PROXY_RELAY_URL="${HTTP_PROXY_RELAY_URL:-${HTTP_PROXY_URL%/}/fetch}"
 export HTTP_DOMAIN_CONCURRENCY="${HTTP_DOMAIN_CONCURRENCY:-3}"
 export HTTP_REQUEST_TIMEOUT_MS="${HTTP_REQUEST_TIMEOUT_MS:-10000}"
 export LLM_DAILY_LIMIT="${LLM_DAILY_LIMIT:-1000000}"
@@ -30,7 +26,6 @@ export KNOWLEDGE_CONTENT_LOCAL_DIR="$CONTENT_DIR"
 WORKER_VARS=(
   --var "HTTP_PROXY_URL:$HTTP_PROXY_URL"
   --var "HTTP_PROXY_RELAY_URL:$HTTP_PROXY_RELAY_URL"
-  --var "HTTP_PROXY_DOMAINS:$HTTP_PROXY_DOMAINS"
   --var "HTTP_DOMAIN_CONCURRENCY:$HTTP_DOMAIN_CONCURRENCY"
   --var "HTTP_REQUEST_TIMEOUT_MS:$HTTP_REQUEST_TIMEOUT_MS"
   --var "LLM_DAILY_LIMIT:$LLM_DAILY_LIMIT"
@@ -83,13 +78,6 @@ if [[ -n "$EXISTING_CONTENT_LISTENERS" ]]; then
   sleep 1
 fi
 
-EXISTING_PROXY_RELAY_LISTENERS=$(lsof -tiTCP:"$PROXY_RELAY_PORT" -sTCP:LISTEN 2>/dev/null || true)
-if [[ -n "$EXISTING_PROXY_RELAY_LISTENERS" ]]; then
-  echo "Stopping existing proxy relay listener(s) on port ${PROXY_RELAY_PORT}: ${EXISTING_PROXY_RELAY_LISTENERS}"
-  echo "$EXISTING_PROXY_RELAY_LISTENERS" | xargs kill
-  sleep 1
-fi
-
 echo "Building frontend..."
 npm run build
 
@@ -129,29 +117,13 @@ until curl -fsS "${CONTENT_BASE_URL}/__health" >/dev/null 2>&1; do
   sleep 1
 done
 
-echo "Starting local HTTP proxy relay on ${PROXY_RELAY_BASE_URL} ..."
-: >"$PROXY_RELAY_LOG_FILE"
-HTTP_PROXY_RELAY_PORT="$PROXY_RELAY_PORT" node scripts/local-http-proxy-relay.mjs \
-  >"$PROXY_RELAY_LOG_FILE" 2>&1 &
-PROXY_RELAY_PID=$!
-
-PROXY_RELAY_ATTEMPTS=0
-until curl -fsS "${PROXY_RELAY_BASE_URL}/__health" >/dev/null 2>&1; do
-  PROXY_RELAY_ATTEMPTS=$((PROXY_RELAY_ATTEMPTS + 1))
-  if ! kill -0 "$PROXY_RELAY_PID" >/dev/null 2>&1; then
-    echo "Local HTTP proxy relay exited before becoming healthy."
-    echo "Check log: $PROXY_RELAY_LOG_FILE"
-    wait "$PROXY_RELAY_PID" || true
-    exit 1
-  fi
-  if [[ "$PROXY_RELAY_ATTEMPTS" -ge 30 ]]; then
-    echo "Timed out waiting for ${PROXY_RELAY_BASE_URL}/__health"
-    echo "Check log: $PROXY_RELAY_LOG_FILE"
-    kill "$PROXY_RELAY_PID" >/dev/null 2>&1 || true
-    exit 1
-  fi
-  sleep 1
-done
+HTTP_PROXY_RELAY_HEALTH_URL="${HTTP_PROXY_RELAY_URL%/}/__health"
+if ! curl -fsS "$HTTP_PROXY_RELAY_HEALTH_URL" >/dev/null 2>&1; then
+  echo "Local proxy client fetch relay is unavailable: ${HTTP_PROXY_RELAY_HEALTH_URL}"
+  echo "Start /Users/terry/git/proxy/scripts/start-local-client.sh first."
+  kill "$CONTENT_PID" >/dev/null 2>&1 || true
+  exit 1
+fi
 
 echo "Starting local Worker on ${BASE_URL} ..."
 : >"$LOG_FILE"
@@ -206,12 +178,10 @@ echo "Cron log: ${CRON_LOG_FILE}"
 echo "Knowledge content URL: ${CONTENT_BASE_URL}"
 echo "Knowledge content log: ${CONTENT_LOG_FILE}"
 echo "HTTP proxy URL: ${HTTP_PROXY_URL}"
-echo "HTTP proxy relay URL: ${HTTP_PROXY_RELAY_URL}"
-echo "HTTP proxy domains: ${HTTP_PROXY_DOMAINS}"
+echo "HTTP fetch relay URL: ${HTTP_PROXY_RELAY_URL}"
 echo "HTTP domain concurrency: ${HTTP_DOMAIN_CONCURRENCY}"
 echo "HTTP request timeout: ${HTTP_REQUEST_TIMEOUT_MS}ms"
 echo "LLM daily limit: ${LLM_DAILY_LIMIT}"
 echo "Knowledge content PID: ${CONTENT_PID}"
-echo "HTTP proxy relay PID: ${PROXY_RELAY_PID}"
 echo "Worker PID: ${WORKER_PID}"
 echo "Cron PID: ${CRON_PID}"
