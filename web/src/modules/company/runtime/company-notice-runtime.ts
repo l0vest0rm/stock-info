@@ -1,3 +1,5 @@
+import noticeTypeOptions from '../../../config/company-notice-categories.json'
+
 type CompanyNoticeFetchRequest = (request: {
   url?: string
   params?: Record<string, unknown>
@@ -28,17 +30,21 @@ export function createCompanyNoticeInitializer(context: CompanyNoticeRuntimeCont
     window.dispatchEvent(new CustomEvent('licai:company-notice-state', { detail: patch || {} }))
   }
 
-  function mapCompanyNoticeRows(data: any[]): any[] {
+  function mapCompanyNoticeRows(data: any[], selectedNoticeType: string): any[] {
     if (!Array.isArray(data)) {
       return []
     }
     const rows: any[] = []
+    const selectedLabel = selectedNoticeType
+      ? noticeTypeOptions.find((option) => option.value === selectedNoticeType)?.label
+      : ''
     for (const item of data) {
       rows.push({
         noticeDate: String(item.notice_date || '').substring(0, 10),
-        noticeType: String(item.columns?.[0]?.column_name || ''),
+        noticeType: selectedLabel || String(item.columns?.[0]?.column_name || ''),
         title: String(item.title || ''),
         artCode: String(item.art_code || ''),
+        pdfUrl: String(item.pdf_url || ''),
       })
     }
     return rows
@@ -46,57 +52,25 @@ export function createCompanyNoticeInitializer(context: CompanyNoticeRuntimeCont
 
   function companyNoticeRequestUrl(noticeTypeValue: string, page: string): string {
     const code = currentCode()
-    const arr = noticeTypeValue.split('-')
     const as = code.split('.')
     const params = {
       stock: as[0] || '',
       type: as[1] || '',
-      fNode: arr[0] || '',
-      sNode: arr[1] || '',
+      category: noticeTypeValue,
       page,
-      pageSize: 50,
+      pageSize: 30,
     }
     return `${server}/api/company/notices?${queryString(params)}`
   }
 
-  function openExternalUrlWithoutReferrer(url: string): void {
-    const trimmed = String(url || '').trim()
-    if (!trimmed) {
-      return
-    }
-    const link = document.createElement('a')
-    link.href = trimmed
-    link.target = '_blank'
-    link.rel = 'noreferrer noopener'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-  }
-
-  function openCompanyNoticePdf(artCode: string) {
-    void fetch(`${server}/api/notice/pdf?artCode=${encodeURIComponent(artCode)}`)
-      .then((res) => res.json())
-      .then((result: any) => {
-        if (result.code === 200 && result.data) {
-          openExternalUrlWithoutReferrer(`${result.data}#zoom=150`)
-        } else {
-          alert('获取PDF链接失败')
-        }
-      })
-      .catch((err) => {
-        console.error('获取PDF链接失败:', err)
-        alert('获取PDF链接失败')
-      })
-  }
-
   function renderCompanyNoticeTable() {
-    const noticeType = (document.getElementById('noticeType') as HTMLSelectElement | null)?.value || '0-0'
-    const pageSize = 50
+    const noticeType = (document.getElementById('noticeType') as HTMLSelectElement | null)?.value ?? ''
+    const pageSize = 30
     void fetchRequest(companyNoticeRequestUrl(noticeType, String(companyNoticeCurrentPage))).then((data: any) => {
       const rows = Array.isArray(data) ? data : []
       emitCompanyNoticeState({
         selectedNoticeType: noticeType,
-        rows: mapCompanyNoticeRows(rows),
+        rows: mapCompanyNoticeRows(rows, noticeType),
         currentPage: companyNoticeCurrentPage,
         hasNext: rows.length >= pageSize,
       })
@@ -111,7 +85,7 @@ export function createCompanyNoticeInitializer(context: CompanyNoticeRuntimeCont
     }
     companyNoticeCurrentPage = 1
     emitCompanyNoticeState({
-      selectedNoticeType: '0-0',
+      selectedNoticeType: '',
       currentPage: companyNoticeCurrentPage,
       hasNext: false,
       rows: [],
@@ -120,7 +94,7 @@ export function createCompanyNoticeInitializer(context: CompanyNoticeRuntimeCont
     if (!companyNoticeEventsBound) {
       companyNoticeEventsBound = true
       window.addEventListener('licai:company-notice-type-change', ((event: CustomEvent<{ noticeType?: string }>) => {
-        const noticeType = event.detail?.noticeType || '0-0'
+        const noticeType = event.detail?.noticeType ?? ''
         const select = document.getElementById('noticeType') as HTMLSelectElement | null
         if (select) {
           select.value = noticeType
@@ -135,13 +109,6 @@ export function createCompanyNoticeInitializer(context: CompanyNoticeRuntimeCont
         }
         companyNoticeCurrentPage = page
         renderCompanyNoticeTable()
-      }) as EventListener)
-      window.addEventListener('licai:company-notice-open-pdf', ((event: CustomEvent<{ artCode?: string }>) => {
-        const artCode = String(event.detail?.artCode || '')
-        if (!artCode) {
-          return
-        }
-        openCompanyNoticePdf(artCode)
       }) as EventListener)
     }
   }

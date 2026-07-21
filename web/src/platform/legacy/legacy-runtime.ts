@@ -1620,8 +1620,18 @@ export const bsRadioButtons = legacyControls.bsRadioButtons
 export const bsCards = legacyControls.bsCards
 export const codeSelectInit = legacyControls.codeSelectInit
 
+type FinanceChartPercentageLine = {
+  key: string
+  name: string
+}
+
+type FinanceChartOptions = {
+  includeQuarterOnQuarter?: boolean
+  percentageLines?: FinanceChartPercentageLine[]
+}
+
 //绘制财报柱状对比图
-export function genFinanceChart(id: string, codes: string[], yKeys: string[], yKeyNames: string[]) {
+export function genFinanceChart(id: string, codes: string[], yKeys: string[], yKeyNames: string[], options: FinanceChartOptions = {}) {
   // @ts-ignore
   const  seasons = parseInt(document.getElementById('seasons').value)
   const xKey = 'reportDate'
@@ -1642,11 +1652,14 @@ export function genFinanceChart(id: string, codes: string[], yKeys: string[], yK
     data[code] = []
     for (let i=0;i< typedReportsMap[code].length;i++) {
       data[code][i] = {}
-      for (const key of [xKey, ...yKeys]) {
+      for (const key of [xKey, ...yKeys, ...(options.percentageLines || []).map((line) => line.key)]) {
         if (key === 'reportDate') {
           data[code][i][key] = typedReportsMap[code][i][key]
-        } else {
+        } else if (yKeys.includes(key)) {
           data[code][i][key] = typedReportsMap[code][i][key]/unit
+        } else {
+          const value = Number(typedReportsMap[code][i][key])
+          data[code][i][key] = Number.isFinite(value) ? value : null
         }
       }
       if (typedReportsMap[code][i].dataSource) {
@@ -1658,7 +1671,7 @@ export function genFinanceChart(id: string, codes: string[], yKeys: string[], yK
       }
     }
   }
-  genBarLineCompareChart(id, codes, data, codeNameMap, yKeys, yKeyNames, xKey, yUnit, seasons, dataSourceMap)
+  genBarLineCompareChart(id, codes, data, codeNameMap, yKeys, yKeyNames, xKey, yUnit, seasons, dataSourceMap, options)
 }
 
 function getOffsetAndCompareText(data: any) {
@@ -1699,12 +1712,13 @@ function getOffsetAndCompareText(data: any) {
       offsetMap[code] = 1
     }
   }
-  return {offsetMap, compareText}
+  return {offsetMap, compareText, compareType}
 }
 
 //生成柱状图和折线图，柱状表示数量，折线表示同环比
-function genBarLineCompareChart(id: string, codes: string[], data: any, codeNameMap: any, yKeys: string[], yKeyNames: string[], xKey: string, yUnit: string, seasons: number, dataSourceMap?: any) {
-  const {offsetMap, compareText} = getOffsetAndCompareText(data)
+function genBarLineCompareChart(id: string, codes: string[], data: any, codeNameMap: any, yKeys: string[], yKeyNames: string[], xKey: string, yUnit: string, seasons: number, dataSourceMap?: any, options: FinanceChartOptions = {}) {
+  const {offsetMap, compareText, compareType} = getOffsetAndCompareText(data)
+  const showAdditionalQoQ = Boolean(options.includeQuarterOnQuarter && compareType === 'yoy')
   let maxDate = ''
   let maxCode = ''
   const seasonsMap: any = {} //财报数
@@ -1743,9 +1757,11 @@ function genBarLineCompareChart(id: string, codes: string[], data: any, codeName
   for (const code of codes) {
     const num = yKeys.length
     const items: any[][] = []
+    const qoqItems: any[][] = []
     for (let j=0;j< num;j++) {
       items[j*2] = []
       items[j*2+1] = []
+      qoqItems[j] = []
     }
     for (let i = 0; i < seasonsMap[code]; i++) {
       if (i >= data[maxCode].length) {
@@ -1756,7 +1772,7 @@ function genBarLineCompareChart(id: string, codes: string[], data: any, codeName
       for (let j=0;j< num;j++) {
         const current = data[code][i][yKeys[j]]
         const pre = i+offsetMap[code] < data[code].length? data[code][i+offsetMap[code]][yKeys[j]]: 0
-        const ratio = pre > 0 ? 100*current/pre - 100: 0
+        const ratio = pre > 0 ? 100*current/pre - 100: null
         const reportDate = data[code][i][xKey]
         const source = dataSourceMap?.[code]?.[reportDate]
         items[j*2].unshift({
@@ -1765,6 +1781,10 @@ function genBarLineCompareChart(id: string, codes: string[], data: any, codeName
           dataSourceLabel: source?.label,
         })
         items[j*2+1].unshift(ratio)
+        if (showAdditionalQoQ) {
+          const previousQuarter = i+1 < data[code].length ? data[code][i+1][yKeys[j]] : null
+          qoqItems[j].unshift(previousQuarter > 0 ? 100*current/previousQuarter - 100 : null)
+        }
       }
     }
 
@@ -1792,6 +1812,42 @@ function genBarLineCompareChart(id: string, codes: string[], data: any, codeName
         type: 'line',
         yAxisIndex: 1,
         data: items[i*2+1]
+      })
+      if (showAdditionalQoQ) {
+        const qoqName = `${codeName}-${yKeyNames[i]}环比`
+        legendData.push(qoqName)
+        seriesUnit.push('%')
+        series.push({
+          name: qoqName,
+          type: 'line',
+          yAxisIndex: 1,
+          data: qoqItems[i],
+          lineStyle: {
+            type: 'dashed'
+          }
+        })
+      }
+    }
+
+    for (const percentageLine of options.percentageLines || []) {
+      const codeName = codeNameMap[code] ? codeNameMap[code]: code
+      const name = `${codeName}-${percentageLine.name}`
+      const values: Array<number | null> = []
+      for (let i = 0; i < seasonsMap[code]; i++) {
+        const rawValue = data[code][i]?.[percentageLine.key]
+        const value = Number(rawValue)
+        values.unshift(rawValue !== null && rawValue !== undefined && Number.isFinite(value) ? value : null)
+      }
+      legendData.push(name)
+      seriesUnit.push('%')
+      series.push({
+        name,
+        type: 'line',
+        yAxisIndex: 1,
+        data: values,
+        lineStyle: {
+          type: 'dotted'
+        }
       })
     }
   }
@@ -1839,7 +1895,7 @@ function renderBarLineCombo(id: string, legendData: string[], xAxisData: string[
           const sourceText = provisionalFinanceSourceLabel(params[i].data)
           const sourceBadge = sourceText ? ` <span style="color:#d9485f;font-weight:bold;">[${sourceText}]</span>` : ''
           const value = Number(params[i].value)
-          str += `${params[i].marker}${params[i].seriesName}${sourceBadge}: ${Number.isFinite(value) ? value.toFixed(2) : '-'}${seriesUnit[i]}</br>`
+          str += `${params[i].marker}${params[i].seriesName}${sourceBadge}: ${Number.isFinite(value) ? value.toFixed(2) : '-'}${seriesUnit[params[i].seriesIndex] || ''}</br>`
         }
         return str
       }
@@ -2319,6 +2375,8 @@ function formatFinanceData(codes: string[]) {
       reports[i].grossProfitRatio = 100*reports[i].grossProfit/reports[i].totalOperateIncome
       //营业净利润率
       reports[i].netProfitRatio = 100*reports[i].netProfit/reports[i].totalOperateIncome
+      //归母净利润率，与主图的归母净利润柱保持同一口径
+      reports[i].parentNetprofitRatio = 100*reports[i].parentNetprofit/reports[i].totalOperateIncome
       //总资产周转率
       reports[i].totalAssetsTurnover = reports[i].totalOperateIncome/reports[i].totaAssets
       //资产负债率
@@ -2346,7 +2404,13 @@ function financialDataSourceLabel(source: unknown): string {
 }
 
 export function genFinanceChartTable(codes: string[]) {
-  genFinanceChart('financeChart', codes, ['totalOperateIncome', 'parentNetprofit'], ['总营收', '归母净利润'])
+  genFinanceChart('financeChart', codes, ['totalOperateIncome', 'parentNetprofit', 'deductParentNetprofit'], ['总营收', '归母净利润', '扣非归母净利润'], {
+    includeQuarterOnQuarter: true,
+    percentageLines: [
+      { key: 'grossProfitRatio', name: '毛利率' },
+      { key: 'parentNetprofitRatio', name: '归母净利率' },
+    ],
+  })
   genFinanceCoreTable(codes)
   genFinanceIncomeTable(codes)
   genFinanceBalanceTable(codes)

@@ -1,6 +1,7 @@
 import { Context, Hono } from "hono";
 import { getAppKv, putAppKv } from "../../../db/queries";
 import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
+import { fetchCninfoCompanyNotices, supportsCninfoCompanyNotices } from "../../../adapters/cninfo";
 import { loadKline } from "../../market/application/load-kline";
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
@@ -92,7 +93,10 @@ companyRoutes.get("/company/notices", async (c) => {
   }
   const page = Number(c.req.query("page") ?? "1") || 1;
   const pageSize = Number(c.req.query("pageSize") ?? "20") || 20;
-  const data = await fetchEastmoneyCompanyNotices(c.env.DB, code, page, pageSize);
+  const category = c.req.query("category")?.trim() ?? "";
+  const data = supportsCninfoCompanyNotices(code)
+    ? await fetchCninfoCompanyNotices(c.env.DB, code, page, pageSize, category)
+    : await fetchEastmoneyCompanyNotices(c.env.DB, code, page, pageSize);
   return ok(
     c,
     data.map((item) => ({
@@ -100,6 +104,7 @@ companyRoutes.get("/company/notices", async (c) => {
       title: item.title,
       notice_date: item.noticeDate,
       columns: [{ column_name: item.noticeType }],
+      pdf_url: item.pdfUrl,
     }))
   );
 });

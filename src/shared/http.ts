@@ -8,7 +8,6 @@ export type ExternalHttpOptions = {
   proxyRelayUrl?: string;
   domainConcurrency?: number;
   timeoutMs?: number;
-  includeSensitiveHeaders?: boolean;
   cacheKey?: string;
   cacheTtlMs?: number;
   resolveCacheTtlMs?: (response: { status: number; headers: Record<string, string>; text: string }) => number;
@@ -193,14 +192,13 @@ async function fetchTextViaProxy(
   if (!options?.proxyRelayUrl) {
     throw new Error("HTTP_PROXY_RELAY_URL is required when HTTP proxying is enabled");
   }
-  return fetchTextViaProxyRelay(options.proxyRelayUrl, url, init, options);
+  return fetchTextViaProxyRelay(options.proxyRelayUrl, url, init);
 }
 
 async function fetchTextViaProxyRelay(
   relayUrl: string,
   url: string,
-  init?: RequestInit,
-  options?: ExternalHttpOptions
+  init?: RequestInit
 ): Promise<{ status: number; headers: Record<string, string>; text: string }> {
   const res = await fetch(relayUrl, {
     method: "POST",
@@ -209,7 +207,7 @@ async function fetchTextViaProxyRelay(
     body: JSON.stringify({
       url,
       method: init?.method ?? "GET",
-      headers: normalizeOutgoingHeaders(init?.headers, options),
+      headers: normalizeOutgoingHeaders(init?.headers),
       body: typeof init?.body === "string" ? init.body : undefined,
     }),
   });
@@ -334,20 +332,7 @@ function normalizeHeaders(headers: HeadersInit | undefined): Record<string, stri
   return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-function normalizeOutgoingHeaders(
-  headers: HeadersInit | undefined,
-  options?: { includeSensitiveHeaders?: boolean }
-): Record<string, string> {
-  if (options?.includeSensitiveHeaders) {
-    return normalizeHeadersForOutgoing(headers);
-  }
-  const result = normalizeHeaders(headers);
-  delete result.authorization;
-  delete result.cookie;
-  return result;
-}
-
-function normalizeHeadersForOutgoing(headers: HeadersInit | undefined): Record<string, string> {
+function normalizeOutgoingHeaders(headers: HeadersInit | undefined): Record<string, string> {
   const result: Record<string, string> = {};
   if (!headers) {
     return result;

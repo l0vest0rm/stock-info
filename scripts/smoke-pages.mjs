@@ -10,6 +10,10 @@ const stocks = [
   { market: "us", code: "MU.US", name: "美光科技", minKlineRows: 100 },
 ];
 
+const klineRegressions = [
+  { code: "600487.SH", name: "亨通光电", minKlineRows: 100 },
+];
+
 const stockPages = [
   "company.html",
   "company-finance.html",
@@ -77,6 +81,17 @@ for (const stock of stocks) {
   await check(`${stock.market} ${stock.code} api notices`, async () => {
     const body = await fetchApi(`/api/company/notices?code=${encodeURIComponent(stock.code)}&page=1&pageSize=5`);
     assert(Array.isArray(body.data), "notices data is not an array");
+  });
+}
+
+for (const stock of klineRegressions) {
+  await check(`eastmoney cookie regression ${stock.code} api kline`, async () => {
+    const body = await fetchApi(`/api/kline?code=${encodeURIComponent(stock.code)}&fq=normal`);
+    assert(Array.isArray(body.data), "kline data is not an array");
+    assert(
+      body.data.length >= stock.minKlineRows,
+      `${stock.name} kline rows ${body.data.length} < ${stock.minKlineRows}`
+    );
   });
 }
 

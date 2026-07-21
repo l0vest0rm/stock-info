@@ -360,7 +360,8 @@ export async function fetchEastmoneyStockKline(
   period: string,
   fq: string,
   from: string,
-  to: string
+  to: string,
+  httpOptions?: ExternalHttpOptions
 ): Promise<{ security?: SecurityRecord; rows: KlineBar[] }> {
   const normalized = normalizeSecurityCode(code);
   const secid = eastmoneySecId(normalized);
@@ -389,6 +390,7 @@ export async function fetchEastmoneyStockKline(
         headers: {
           Accept: "*/*",
           "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+          Cookie: "nid18=1",
           Referer: "https://quote.eastmoney.com/",
           "Sec-Fetch-Dest": "script",
           "Sec-Fetch-Mode": "no-cors",
@@ -397,6 +399,7 @@ export async function fetchEastmoneyStockKline(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
         },
       }, marketDataCacheTtlMsForCode(normalized), {
+        ...httpOptions,
         cacheKey: `eastmoney:kline:v2:${normalized}:${period}:${fq}:${from}:${to}`,
       })) as EastmoneyStockKlineResponse;
       break;
@@ -1513,6 +1516,7 @@ export async function fetchEastmoneyCompanyNotices(
     title: item.title?.trim() ?? "",
     noticeDate: String(item.notice_date ?? "").slice(0, 10),
     noticeType: item.columns?.[0]?.column_name?.trim() ?? "",
+    pdfUrl: `https://pdf.dfcfw.com/pdf/H3_${encodeURIComponent(item.art_code?.trim() ?? "")}_1.pdf`,
   })).filter((item) => item.artCode && item.title);
 }
 

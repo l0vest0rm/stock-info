@@ -15,10 +15,19 @@ import {
 } from "../../../storage/market-data";
 import { inferSecurityType, normalizeSecurityCode } from "../../../shared/codes";
 import { marketDataCacheExpiresAtMsForCode } from "../../../shared/cache-policy";
+import { externalHttpOptions } from "../../../shared/http";
 import type { Bindings, FundNavRow, KlineBar } from "../../../types";
 
 export async function loadKline(
-  env: Pick<Bindings, "DB" | "MARKET_DATA_BUCKET">,
+  env: Pick<
+    Bindings,
+    | "DB"
+    | "MARKET_DATA_BUCKET"
+    | "HTTP_PROXY_URL"
+    | "HTTP_PROXY_RELAY_URL"
+    | "HTTP_DOMAIN_CONCURRENCY"
+    | "HTTP_REQUEST_TIMEOUT_MS"
+  >,
   rawCode: string,
   period: string,
   fq: string,
@@ -61,7 +70,8 @@ export async function loadKline(
     period,
     fq,
     fullKlineHistoryStartDate(),
-    to
+    to,
+    externalHttpOptions(env)
   );
   if (fetched.security) {
     await upsertSecurity(env.DB, fetched.security);

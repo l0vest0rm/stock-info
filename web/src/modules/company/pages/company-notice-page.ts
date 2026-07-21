@@ -1,10 +1,16 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import noticeTypeOptions from '../../../config/company-notice-categories.json'
+
+const query = new URLSearchParams(window.location.search)
+const pageCode = query.get('code') || `${query.get('stock') || ''}.${query.get('type') || ''}`
+const categoryFilterSupported = /^\d{6}(?:\.(SH|SZ|BJ))?$/i.test(pageCode)
 
 type CompanyNoticeRow = {
   noticeDate: string
   noticeType: string
   title: string
   artCode: string
+  pdfUrl: string
 }
 
 type CompanyNoticeStateEvent = CustomEvent<{
@@ -13,26 +19,6 @@ type CompanyNoticeStateEvent = CustomEvent<{
   currentPage?: number
   hasNext?: boolean
 }>
-
-type NoticeTypeOption = {
-  value: string
-  label: string
-}
-
-const noticeTypeOptions: NoticeTypeOption[] = [
-  { value: '0-0', label: '全部' },
-  { value: '1-0', label: '财务报告-全部' },
-  { value: '1-1', label: '财务报告-定期报告' },
-  { value: '1-13', label: '财务报告-利润分配' },
-  { value: '1-5', label: '财务报告-业绩预告' },
-  { value: '1-6', label: '财务报告-业绩快报' },
-  { value: '2-0', label: '融资公告-全部' },
-  { value: '3-0', label: '风险提示-全部' },
-  { value: '4-0', label: '信息变更-全部' },
-  { value: '5-0', label: '重大事项-全部' },
-  { value: '6-0', label: '资产充足-全部' },
-  { value: '7-0', label: '持股变动-全部' },
-]
 
 function emitNoticeTypeChange(noticeType: string) {
   window.dispatchEvent(new CustomEvent('licai:company-notice-type-change', {
@@ -43,12 +29,6 @@ function emitNoticeTypeChange(noticeType: string) {
 function emitPageChange(page: number) {
   window.dispatchEvent(new CustomEvent('licai:company-notice-page-change', {
     detail: { page },
-  }))
-}
-
-function emitOpenPdf(artCode: string) {
-  window.dispatchEvent(new CustomEvent('licai:company-notice-open-pdf', {
-    detail: { artCode },
   }))
 }
 
@@ -103,7 +83,7 @@ function companyNoticePagination(currentPage: number, hasNext: boolean) {
 const CompanyNoticePage = defineComponent({
   name: 'CompanyNoticePage',
   setup() {
-    const selectedNoticeType = ref('0-0')
+    const selectedNoticeType = ref('')
     const rows = ref<CompanyNoticeRow[]>([])
     const currentPage = ref(1)
     const hasNext = ref(false)
@@ -161,7 +141,7 @@ const CompanyNoticePage = defineComponent({
     }
 
     return () => h('div', { class: 'company-notice-page' }, [
-      h('div', { class: 'row my-2' }, [
+      categoryFilterSupported ? h('div', { class: 'row my-2' }, [
         h('div', { class: 'col-2' }),
         h('div', { class: 'col-8' }, [
           h('span', { class: 'text-center' }, [
@@ -179,7 +159,7 @@ const CompanyNoticePage = defineComponent({
           ]),
         ]),
         h('div', { class: 'col-2' }),
-      ]),
+      ]) : null,
       h('table', { id: 'companyNoticeTable', class: 'table table-sm table-bordered table-hover' }, [
         h('thead', { class: 'table-info' }, [
           h('tr', [
@@ -193,13 +173,11 @@ const CompanyNoticePage = defineComponent({
           h('td', row.noticeType),
           h('td', [
             h('a', {
-              href: `#${row.artCode}`,
+              href: row.pdfUrl,
               name: 'pdf',
               'data-code': row.artCode,
-              onClick: (event: Event) => {
-                event.preventDefault()
-                emitOpenPdf(row.artCode)
-              },
+              target: '_blank',
+              rel: 'noreferrer noopener',
             }, row.title),
           ]),
         ]))),
@@ -213,4 +191,3 @@ const root = document.getElementById('company-notice-vue-root')
 if (root) {
   createApp(CompanyNoticePage).mount(root)
 }
-

@@ -113,4 +113,5 @@ export type CompanyNotice = {
   title: string;
   noticeDate: string;
   noticeType: string;
+  pdfUrl: string;
 };
