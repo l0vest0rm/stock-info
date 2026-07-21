@@ -1,6 +1,6 @@
 import { fetchEastmoneySuggest } from "../../../adapters/eastmoney";
 import { findSecurity, searchLocalSecurities, upsertSecurity } from "../../../db/queries";
-import { isSupportedCompanyCode, normalizeSecurityCode } from "../../../shared/codes";
+import { isSupportedSecurityCode, normalizeSecurityCode } from "../../../shared/codes";
 import type { ExternalHttpOptions } from "../../../shared/http";
 import type { SecurityRecord } from "../../../types";
 
@@ -53,7 +53,7 @@ function mergeSecurityResults(...groups: SecurityRecord[][]): SecurityRecord[] {
   for (const group of groups) {
     for (const item of group) {
       const normalized = normalizeSearchRecord(item);
-      if (!isSupportedCompanyCode(normalized.code) || seen.has(normalized.code)) {
+      if (!isSupportedSecurityCode(normalized.code) || seen.has(normalized.code)) {
         continue;
       }
       seen.add(normalized.code);

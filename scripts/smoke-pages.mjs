@@ -35,6 +35,14 @@ await check("health", async () => {
   assert(body.code === 200, `unexpected api code: ${body.code}`);
 });
 
+await check("fund search 易方达蓝筹精选混合", async () => {
+  const body = await fetchApi(`/api/search?q=${encodeURIComponent("易方达蓝筹精选混合")}`);
+  assert(
+    body.data?.some((item) => item.code === "005827.OF" && item.type === "fund"),
+    `fund 005827.OF missing from search results: ${truncate(JSON.stringify(body.data))}`
+  );
+});
+
 for (const stock of stocks) {
   for (const page of stockPages) {
     await check(`${stock.market} ${stock.code} page ${page}`, async () => {

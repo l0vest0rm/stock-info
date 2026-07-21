@@ -35,6 +35,11 @@ export function isSupportedCompanyCode(input: string): boolean {
     || /^[A-Z0-9.-]+\.US$/.test(normalized);
 }
 
+export function isSupportedSecurityCode(input: string): boolean {
+  const normalized = normalizeSecurityCode(input);
+  return isSupportedCompanyCode(normalized) || /^\d{6}\.(OF|SF|ZF)$/.test(normalized);
+}
+
 export function normalizeSupportedCompanyCode(input: string): string {
   const raw = input.trim().toUpperCase();
   if (!raw) {

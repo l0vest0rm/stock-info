@@ -8,7 +8,7 @@ import {
   bareCode,
   eastmoneySecId,
   inferSecurityType,
-  isSupportedCompanyCode,
+  isSupportedSecurityCode,
   normalizeSecurityCode,
   securityMarket,
   securitySuffix,
@@ -273,7 +273,7 @@ export async function fetchEastmoneySuggest(db: D1Database, q: string): Promise<
     const rawCode = item.OuterCode?.trim() ?? "";
     const normalized = normalizeEastmoneySuggestCode(rawCode);
     const name = item.ShortName?.trim() ?? "";
-    if (!normalized || !name || !isSupportedCompanyCode(normalized)) {
+    if (!normalized || !name || !isSupportedSecurityCode(normalized)) {
       continue;
     }
     records.push({
