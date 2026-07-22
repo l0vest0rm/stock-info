@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import { AppFooter } from "./components/app-footer";
 import { AppTopNav } from "./components/app-top-nav";
-import { CompanyInfoBar } from "./components/company-info-bar";
+import { CompanyInfoBar, FundInfoBar } from "./components/company-info-bar";
 import { SubNav } from "./components/sub-nav";
 
 function currentPage(): string {
@@ -25,6 +25,10 @@ export function mountLayout(): void {
 
   document.querySelectorAll<HTMLElement>("[data-layout-company-info]").forEach((element) => {
     createApp(CompanyInfoBar).mount(element);
+  });
+
+  document.querySelectorAll<HTMLElement>("[data-layout-fund-info]").forEach((element) => {
+    createApp(FundInfoBar).mount(element);
   });
 
   const footer = document.getElementById("app-footer");

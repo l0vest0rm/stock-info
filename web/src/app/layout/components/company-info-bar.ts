@@ -1,10 +1,11 @@
 import { defineComponent, h } from "vue";
 
-export const CompanyInfoBar = defineComponent({
-  name: "CompanyInfoBar",
-  setup() {
-    const metricItem = (label: string | null, content: unknown) =>
-      h(
+function createInfoBar(name: string, kind: "company" | "fund") {
+  return defineComponent({
+    name,
+    setup() {
+      const metricItem = (label: string | null, content: unknown) =>
+        h(
         "div",
         {
           class: [
@@ -20,8 +21,24 @@ export const CompanyInfoBar = defineComponent({
         ],
       );
 
-    return () =>
-      h("section", { class: "company-info-strip-wrap" }, [
+      const metrics = kind === "fund"
+        ? [
+            metricItem("最新净值", h("span", { id: "currentPrice" })),
+            metricItem("涨跌", h("span", { id: "priceChange" })),
+            metricItem("今年涨跌", h("span", { id: "ytdPriceChange" })),
+            metricItem("去年至今", h("span", { id: "last2NowPriceChange" })),
+          ]
+        : [
+            metricItem("股价", h("span", { id: "currentPrice" })),
+            metricItem("涨跌", h("span", { id: "priceChange" })),
+            metricItem("今年涨跌", h("span", { id: "ytdPriceChange" })),
+            metricItem("去年至今", h("span", { id: "last2NowPriceChange" })),
+            metricItem("市值(亿)", h("span", { id: "marketCap" })),
+            metricItem(null, h("span", { id: "stockValuation" })),
+          ];
+
+      return () =>
+        h("section", { class: "company-info-strip-wrap" }, [
         h(
           "style",
           `
@@ -113,15 +130,12 @@ export const CompanyInfoBar = defineComponent({
         ),
         h("div", { class: "company-info-strip" }, [
           h("div", { class: "company-info-strip-title", id: "codeName" }),
-          h("div", { class: "company-info-strip-metrics" }, [
-            metricItem("股价", h("span", { id: "currentPrice" })),
-            metricItem("涨跌", h("span", { id: "priceChange" })),
-            metricItem("今年涨跌", h("span", { id: "ytdPriceChange" })),
-            metricItem("去年至今", h("span", { id: "last2NowPriceChange" })),
-            metricItem("市值(亿)", h("span", { id: "marketCap" })),
-            metricItem(null, h("span", { id: "stockValuation" })),
-          ]),
+          h("div", { class: "company-info-strip-metrics" }, metrics),
         ]),
       ]);
-  },
-});
+    },
+  });
+}
+
+export const CompanyInfoBar = createInfoBar("CompanyInfoBar", "company");
+export const FundInfoBar = createInfoBar("FundInfoBar", "fund");

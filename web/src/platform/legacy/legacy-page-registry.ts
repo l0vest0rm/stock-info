@@ -325,7 +325,16 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
     }
     case 'fund.html':
     case 'fund-position.html':
+    case 'fund-notice.html':
     case 'index-position.html': {
+      if (page === 'fund-notice.html') {
+        const { createFundNoticeInitializer } = await import('../../modules/fund/runtime/fund-notice-runtime')
+        return createFundNoticeInitializer({
+          server: context.server,
+          fetchRequest: context.fetchRequest,
+          getCode: context.getCode,
+        })
+      }
       const {
         createFundInitializer,
         createFundPositionInitializer,

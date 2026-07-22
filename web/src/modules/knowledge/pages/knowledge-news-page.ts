@@ -32,7 +32,10 @@ type KnowledgeNewsFilterOption = {
 
 type KnowledgeNewsFiltersStateEvent = CustomEvent<{
   sourceNameOptions?: KnowledgeNewsFilterOption[]
+  industryOptions?: KnowledgeNewsFilterOption[]
+  selectedSourceType?: string
   selectedSourceName?: string
+  selectedIndustry?: string
   selectedTags?: string[]
 }>
 
@@ -397,7 +400,10 @@ const KnowledgeNewsPage = defineComponent({
     const sourceNameOptions = ref<KnowledgeNewsFilterOption[]>([
       { value: 'all', label: '全部来源站点' },
     ])
+    const industryOptions = ref<KnowledgeNewsFilterOption[]>([])
+    const selectedSourceType = ref('all')
     const selectedSourceName = ref('all')
+    const selectedIndustry = ref('')
     const selectedTags = ref<string[]>([])
     const tagFilterOptions: KnowledgeNewsFilterOption[] = [
       { value: 'pdf', label: 'PDF' },
@@ -408,8 +414,17 @@ const KnowledgeNewsPage = defineComponent({
       if (Array.isArray(detail?.sourceNameOptions) && detail.sourceNameOptions.length > 0) {
         sourceNameOptions.value = detail.sourceNameOptions
       }
+      if (Array.isArray(detail?.industryOptions)) {
+        industryOptions.value = detail.industryOptions
+      }
+      if (typeof detail?.selectedSourceType === 'string') {
+        selectedSourceType.value = detail.selectedSourceType
+      }
       if (typeof detail?.selectedSourceName === 'string') {
         selectedSourceName.value = detail.selectedSourceName
+      }
+      if (typeof detail?.selectedIndustry === 'string') {
+        selectedIndustry.value = detail.selectedIndustry
       }
       if (Array.isArray(detail?.selectedTags)) {
         selectedTags.value = detail.selectedTags
@@ -444,6 +459,29 @@ const KnowledgeNewsPage = defineComponent({
               selected: selectedSourceName.value === option.value,
             }, option.label)),
           ]),
+          selectedSourceType.value === 'industry_report'
+            ? h('div', { class: 'd-flex align-items-center' }, [
+              h('input', {
+                id: 'knowledgeIndustry',
+                type: 'search',
+                list: 'knowledgeIndustryOptions',
+                class: 'form-control form-control-sm',
+                style: 'width: 200px;',
+                value: selectedIndustry.value,
+                placeholder: '搜索或选择行业',
+                'aria-label': '搜索或选择行业',
+                onChange: (event: Event) => {
+                  window.dispatchEvent(new CustomEvent('licai:knowledge-news-industry-change', {
+                    detail: { industry: (event.target as HTMLInputElement).value.trim() },
+                  }))
+                },
+              }),
+              h('datalist', { id: 'knowledgeIndustryOptions' }, industryOptions.value.map((option) => h('option', {
+                key: option.value,
+                value: option.value,
+              }, option.label))),
+            ])
+            : null,
           h('div', { id: 'knowledgeTagFilters', class: 'dropdown' }, [
             h('button', {
               type: 'button',

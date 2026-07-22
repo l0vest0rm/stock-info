@@ -376,8 +376,13 @@ export function createKnowledgeDocModalController(context: KnowledgeDocModalCont
     await onKeepFilteredDocument(docId)
   }
 
+  function hide() {
+    modalInstance?.hide()
+  }
+
   return {
     bindLifecycle,
+    hide,
     keepFiltered,
     openDocument,
     openByDocId,

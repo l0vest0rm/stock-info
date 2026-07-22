@@ -129,6 +129,11 @@ const pageEntries = [
     fileName: 'js/fund-position-page.js',
   },
   {
+    entry: 'src/modules/fund/pages/fund-notice-page.ts',
+    globalName: 'LicaiFundNoticePage',
+    fileName: 'js/fund-notice-page.js',
+  },
+  {
     entry: 'src/modules/fund/pages/fund-page.ts',
     globalName: 'LicaiFundPage',
     fileName: 'js/fund-page.js',

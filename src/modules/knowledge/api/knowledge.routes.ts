@@ -39,6 +39,7 @@ type KnowledgeContentRefRow = {
 type KnowledgeDocsQuery = {
   sourceType: string;
   source: string;
+  industry: string;
   code: string;
   tags: string[];
   q: string;
@@ -288,6 +289,25 @@ knowledgeRoutes.get("/knowledge/sources", async (c) => {
   });
 });
 
+knowledgeRoutes.get("/knowledge/industries", async (c) => {
+  const rows = await c.env.DB.prepare(
+    `select target_name as name, count(*) as count
+       from knowledge_docs
+       where source_type = 'research_report'
+         and report_type = 'industry_report'
+         and coalesce(target_name, '') != ''
+       group by target_name
+       order by count(*) desc, target_name asc
+       limit 500`
+  ).all<{ name: string; count: number }>();
+  return ok(c, {
+    list: (rows.results ?? []).map((row) => ({
+      name: row.name,
+      count: row.count,
+    })),
+  });
+});
+
 knowledgeRoutes.get("/knowledge/file", async (c) => {
   const id = c.req.query("id")?.trim() ?? "";
   if (!id) {
@@ -321,6 +341,7 @@ function parseDocsQuery(raw: Record<string, string>): KnowledgeDocsQuery {
   return {
     sourceType: normalizeSourceType(raw.sourceType ?? ""),
     source: normalizeSource(raw.source ?? ""),
+    industry: String(raw.industry ?? "").trim(),
     code: normalizeSecurityCode(raw.code ?? ""),
     tags: String(raw.tags ?? raw.tag ?? "")
       .split(",")
@@ -393,6 +414,10 @@ function buildKnowledgeWhere(query: KnowledgeDocsQuery): { whereSql: string; bin
   if (query.source) {
     filters.push("d.source_name_normalized = ?");
     binds.push(query.source);
+  }
+  if (query.industry) {
+    filters.push("lower(d.target_name) = lower(?)");
+    binds.push(query.industry);
   }
   if (query.code) {
     filters.push("d.doc_id in (select l.doc_id from knowledge_doc_security_links l where l.code = ?)");

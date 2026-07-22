@@ -25,6 +25,15 @@ fundRoutes.get("/fund/share-change", async (c) => {
   return ok(c, await fetchFundShareChange(c.env.DB, code));
 });
 
+fundRoutes.get("/fund/notices", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  const page = Math.min(positiveInt(c.req.query("page"), 1), 10_000);
+  const pageSize = Math.min(positiveInt(c.req.query("pageSize"), 20), 100);
+  const category = fundNoticeCategory(c.req.query("category"));
+  return ok(c, await fetchFundNotices(c.env.DB, code, page, pageSize, category));
+});
+
 fundRoutes.get("/fund/constituents", async (c) => {
   const code = requireQuery(c, "code");
   if (code instanceof Response) return code;
@@ -152,6 +161,59 @@ async function fetchFundShareChange(db: D1Database, code: string): Promise<Array
       shareChange: prevTotal > 0 ? ((total / prevTotal - 1) * 100).toFixed(2) : 0,
     };
   });
+}
+
+type EastmoneyFundNoticeResponse = {
+  Data?: Array<{
+    FUNDCODE?: string;
+    TITLE?: string;
+    NEWCATEGORY?: string;
+    PUBLISHDATEDesc?: string;
+    ATTACHTYPE?: string;
+    ID?: string;
+  }>;
+  ErrCode?: number;
+  ErrMsg?: string | null;
+  TotalCount?: number;
+  PageSize?: number;
+  PageIndex?: number;
+};
+
+async function fetchFundNotices(
+  db: D1Database,
+  code: string,
+  page: number,
+  pageSize: number,
+  category: string,
+): Promise<Record<string, unknown>> {
+  const fundCode = bareFundCode(code);
+  const url = new URL("https://api.fund.eastmoney.com/f10/JJGG");
+  url.searchParams.set("fundcode", fundCode);
+  url.searchParams.set("pageIndex", String(page));
+  url.searchParams.set("pageSize", String(pageSize));
+  url.searchParams.set("type", category);
+  const body = parseJsonOrJsonp(await fetchEastmoneyText(db, url.toString())) as EastmoneyFundNoticeResponse;
+  if (body.ErrCode !== 0) {
+    throw new Error(`eastmoney fund notices error: code=${body.ErrCode ?? "unknown"} msg=${body.ErrMsg ?? ""}`);
+  }
+  return {
+    rows: (body.Data ?? []).map((item) => {
+      const id = String(item.ID ?? "").trim();
+      const itemFundCode = String(item.FUNDCODE ?? fundCode).trim() || fundCode;
+      return {
+        id,
+        fundCode: itemFundCode,
+        title: String(item.TITLE ?? "").trim(),
+        category: String(item.NEWCATEGORY ?? "").trim(),
+        publishDate: String(item.PUBLISHDATEDesc ?? "").slice(0, 10),
+        detailUrl: id ? `https://fund.eastmoney.com/gonggao/${encodeURIComponent(itemFundCode)},${encodeURIComponent(id)}.html` : "",
+        pdfUrl: id && item.ATTACHTYPE === "0" ? `https://pdf.dfcfw.com/pdf/H2_${encodeURIComponent(id)}_1.pdf` : "",
+      };
+    }).filter((item) => item.id && item.title),
+    totalCount: Number(body.TotalCount ?? 0),
+    page: Number(body.PageIndex ?? page),
+    pageSize: Number(body.PageSize ?? pageSize),
+  };
 }
 
 async function fetchFundConstituents(db: D1Database, code: string): Promise<Record<string, unknown>> {
@@ -353,6 +415,11 @@ function num(value: unknown): number {
 function positiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function fundNoticeCategory(value: string | undefined): string {
+  const category = String(value ?? "0").trim();
+  return /^[0-6]$/.test(category) ? category : "0";
 }
 
 function formatSseDate(value: string): string {

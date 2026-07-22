@@ -1999,8 +1999,10 @@ async function codeInit() {
         }
       })
       
-      // 计算并显示估值指标（包括市值）
-      calculateAndDisplayValuation(currentCode, data, currentPrice)
+      // 只有股票信息条需要计算市值与估值，基金信息条不包含这些字段。
+      if (document.getElementById('marketCap') && document.getElementById('stockValuation')) {
+        calculateAndDisplayValuation(currentCode, data, currentPrice)
+      }
     }
   }
 }

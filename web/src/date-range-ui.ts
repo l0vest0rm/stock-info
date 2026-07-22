@@ -279,7 +279,7 @@ export function createDateRangeHelpers(context: DateRangeHelpersContext) {
       return
     }
 
-    const rangeIdx = new Date().getMonth() < 7 ? 1 : 0
+    const rangeIdx = new Date().getMonth() < 3 ? 1 : 0
     rangeSelectChange(nextConfig.ranges[rangeIdx][0], nextConfig.ranges[rangeIdx][1])
   }
 

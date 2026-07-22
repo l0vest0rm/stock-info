@@ -42,10 +42,14 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   let knowledgeNewsSourceNameOptions: Array<{value: string; label: string}> = [
     { value: 'all', label: '全部来源站点' }
   ]
+  let knowledgeNewsIndustryOptions: Array<{value: string; label: string}> = []
+  let knowledgeNewsSelectedSourceType = 'all'
   let knowledgeNewsSelectedSourceName = 'all'
+  let knowledgeNewsSelectedIndustry = ''
   let knowledgeNewsSelectedTags: string[] = []
   let knowledgeNewsCurrentDocId = ''
   let knowledgeNewsCurrentDocFiltered = false
+  let knowledgeNewsRenderRequestId = 0
   const knowledgeDocModal = createKnowledgeDocModalController({
     server,
     fetchRequest,
@@ -141,7 +145,10 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     window.dispatchEvent(new CustomEvent('licai:knowledge-news-filters-state', {
       detail: {
         sourceNameOptions: knowledgeNewsSourceNameOptions,
+        industryOptions: knowledgeNewsIndustryOptions,
+        selectedSourceType: knowledgeNewsSelectedSourceType,
         selectedSourceName: knowledgeNewsSelectedSourceName,
+        selectedIndustry: knowledgeNewsSelectedIndustry,
         selectedTags: knowledgeNewsSelectedTags,
       }
     }))
@@ -220,8 +227,12 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   }
 
   async function renderKnowledgeNews() {
+    const requestId = ++knowledgeNewsRenderRequestId
     const sourceType = (document.getElementById('knowledgeSourceType') as HTMLInputElement).value
     const source = (document.getElementById('knowledgeSourceName') as HTMLInputElement | null)?.value || 'all'
+    const industry = sourceType === 'industry_report'
+      ? ((document.getElementById('knowledgeIndustry') as HTMLInputElement | null)?.value || '').trim()
+      : ''
     const selectedTags = Array.from(document.querySelectorAll<HTMLInputElement>('#knowledgeTagFilters input[name="knowledgeTagFilter"]:checked'))
       .map((input) => input.value)
       .filter(Boolean)
@@ -229,7 +240,9 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     const query = isLocalKnowledgeNewsHost() ? (queryInput?.value || '') : ''
     const pageSize = 50
     knowledgeNewsSelectedTags = selectedTags
+    knowledgeNewsSelectedSourceType = sourceType
     knowledgeNewsSelectedSourceName = source
+    knowledgeNewsSelectedIndustry = industry
 
     const data = sourceType === 'filtered_review'
       ? await fetchRequest({
@@ -239,11 +252,15 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       : await fetchKnowledgeNewsPage({
         sourceType,
         source,
+        industry,
         tags: selectedTags.join(','),
         q: query,
         page: knowledgeNewsCurrentPage,
         pageSize
       })
+    if (requestId !== knowledgeNewsRenderRequestId) {
+      return
+    }
     const list = data && data.list ? dedupeKnowledgeNewsItems(data.list) : []
     knowledgeNewsRows = list.map((item: any): KnowledgeNewsTableRow => mapKnowledgeNewsRow(item))
     knowledgeNewsHasNext = typeof data?.has_next === 'boolean'
@@ -307,9 +324,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   function restoreKnowledgeDocumentFromUrl(mode: 'push' | 'replace' = 'replace') {
     const { docId, filtered } = readKnowledgeDocStateFromUrl()
     if (!docId) {
-      if (knowledgeNewsModalInstance) {
-        knowledgeNewsModalInstance.hide()
-      }
+      knowledgeDocModal.hide()
       clearKnowledgeDocState(mode)
       return
     }
@@ -351,9 +366,29 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     emitKnowledgeNewsFiltersState()
   }
 
+  async function loadKnowledgeIndustryOptions() {
+    const data = await fetchRequest({
+      url: `${server}/api/knowledge/industries`,
+    }) as any
+    const list = data && data.list ? data.list : []
+    knowledgeNewsIndustryOptions = list
+      .map((item: any) => {
+        const name = String(item?.name || '').trim()
+        return {
+          value: name,
+          label: `${name}${item?.count ? ` (${item.count})` : ''}`,
+        }
+      })
+      .filter((option: {value: string}) => option.value)
+    emitKnowledgeNewsFiltersState()
+  }
+
   function initKnowledgeNews() {
     document.getElementById('knowledgeSearchBtn')?.addEventListener('click', renderKnowledgeNewsFirstPage)
-    document.getElementById('knowledgeSourceType')?.addEventListener('change', () => {
+    document.getElementById('knowledgeSourceType')?.addEventListener('change', (event) => {
+      knowledgeNewsSelectedSourceType = (event.target as HTMLSelectElement).value
+      knowledgeNewsSelectedIndustry = ''
+      emitKnowledgeNewsFiltersState()
       void loadKnowledgeSourceOptions(true).then(renderKnowledgeNewsFirstPage)
     })
     document.getElementById('knowledgeSourceName')?.addEventListener('change', renderKnowledgeNewsFirstPage)
@@ -378,6 +413,11 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
         void onKnowledgeNewsOpenDoc(event)
       })
       window.addEventListener('licai:knowledge-news-page-change', onKnowledgeNewsPageChange as EventListener)
+      window.addEventListener('licai:knowledge-news-industry-change', (event) => {
+        const detail = (event as CustomEvent<{industry?: string}>).detail
+        knowledgeNewsSelectedIndustry = String(detail?.industry || '').trim()
+        renderKnowledgeNewsFirstPage()
+      })
       window.addEventListener('popstate', () => {
         restoreKnowledgeDocumentFromUrl('replace')
       })
@@ -392,6 +432,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     }
     renderKnowledgeNewsFirstPage()
     void loadKnowledgeSourceOptions()
+    void loadKnowledgeIndustryOptions()
   }
 
   return initKnowledgeNews

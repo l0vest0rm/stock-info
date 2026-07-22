@@ -27,7 +27,8 @@
   ],
   "fundNav": [
     {"href": "fund.html", "text": "基本数据"},
-    {"href": "fund-position.html", "text": "基金持仓"}
+    {"href": "fund-position.html", "text": "基金持仓"},
+    {"href": "fund-notice.html", "text": "基金公告"}
   ],
   "indexNav": [
     {"href": "index.html", "text": "基本数据"},

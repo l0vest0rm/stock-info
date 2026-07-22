@@ -43,6 +43,20 @@ await check("fund search 易方达蓝筹精选混合", async () => {
   );
 });
 
+await check("fund 005827.OF page fund-notice.html", async () => {
+  const res = await fetchWithTimeout(pageUrl("fund-notice.html", "005827.OF"));
+  const text = await res.text();
+  assert(res.status < 400, `status=${res.status} body=${truncate(text)}`);
+  assert(text.includes("fund-notice-vue-root"), "fund notice page root is missing");
+});
+
+await check("fund 005827.OF api notices", async () => {
+  const body = await fetchApi("/api/fund/notices?code=005827.OF&page=1&pageSize=5&category=0");
+  assert(Array.isArray(body.data?.rows), "fund notices rows is not an array");
+  assert(body.data.rows.length > 0, "fund notices rows are empty");
+  assert(body.data.rows.every((item) => item.id && item.title && item.publishDate), "fund notice fields are incomplete");
+});
+
 for (const stock of stocks) {
   for (const page of stockPages) {
     await check(`${stock.market} ${stock.code} page ${page}`, async () => {

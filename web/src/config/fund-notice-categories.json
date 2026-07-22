@@ -1,0 +1,9 @@
+[
+  {"value": "0", "label": "全部公告"},
+  {"value": "1", "label": "发行运作"},
+  {"value": "2", "label": "分红送配"},
+  {"value": "3", "label": "定期报告"},
+  {"value": "4", "label": "人事调整"},
+  {"value": "5", "label": "基金销售"},
+  {"value": "6", "label": "其他公告"}
+]
