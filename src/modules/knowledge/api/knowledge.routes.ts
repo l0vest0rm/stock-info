@@ -1,7 +1,17 @@
 import { Hono } from "hono";
+import { fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
+import { getAppKv, putAppKv } from "../../../db/queries";
 import { fail, ok } from '../../../shared/http';
+import { externalHttpOptions } from '../../../shared/http';
 import { normalizeSupportedCompanyCode } from "../../../shared/codes";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
+import { extractCompanyReportByLlm, type CompanyReportForecast } from "../../company/api/company.routes";
+import {
+  eastmoneyReportInfoCode,
+  runSharedReportAnalysisTask,
+  sharedReportAnalysisCacheKey,
+} from "../../company/application/report-analysis-cache";
+import { loadFinancialStatements } from "../../finance/application/load-financial-statements";
 import type { AppEnv } from '../../../types';
 
 export const knowledgeRoutes = new Hono<AppEnv>();
@@ -25,6 +35,10 @@ type KnowledgeDocRow = {
   content_preview: string | null;
   metadata_json: string | null;
   recommendation_tags_json: string | null;
+  content_type: string | null;
+  content_encoding: string | null;
+  content_bytes: number | null;
+  content_sha256: string | null;
 };
 
 type KnowledgeContentRefRow = {
@@ -35,6 +49,21 @@ type KnowledgeContentRefRow = {
   content_bytes: number | null;
   content_sha256: string | null;
 };
+
+type KnowledgeReportAnalysisRow = KnowledgeDocRow;
+
+type KnowledgeReportAnalysis = {
+  analysisCalled: boolean;
+  forecasts: CompanyReportForecast[];
+  updatedAt: number;
+};
+
+const KNOWLEDGE_REPORT_ANALYSIS_CACHE_VERSION = "v3";
+const KNOWLEDGE_REPORT_ANALYSIS_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY = 2;
+let knowledgeReportAnalysisActive = 0;
+const knowledgeReportAnalysisWaiters: Array<() => void> = [];
+const knowledgeReportAnalysisInFlight = new Map<string, Promise<KnowledgeReportAnalysis>>();
 
 type KnowledgeDocsQuery = {
   sourceType: string;
@@ -88,7 +117,7 @@ type KnowledgeFilteredDocRow = {
 const KNOWLEDGE_DOC_BASE_SELECT = `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
   d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
   d.access_method, d.summary, c.content_key, c.content_url, d.content_preview, d.metadata_json,
-  d.recommendation_tags_json
+  d.recommendation_tags_json, c.content_type, c.content_encoding, c.content_bytes, c.content_sha256
  from knowledge_docs d
  left join knowledge_doc_content_refs c on c.doc_id = d.doc_id`;
 
@@ -142,6 +171,118 @@ knowledgeRoutes.get("/knowledge/doc", async (c) => {
     return fail(c, 404, `knowledge document not found: ${id}`);
   }
   return ok(c, mapKnowledgeDocListItem(row, knowledgeContentUrlContext(c)));
+});
+
+knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { id?: string };
+  const id = String(body.id || "").trim();
+  if (!id) {
+    return fail(c, 400, "missing doc id");
+  }
+  const row = await c.env.DB.prepare(
+    `${KNOWLEDGE_DOC_BASE_SELECT}
+     where d.doc_id = ?`
+  )
+    .bind(id)
+    .first<KnowledgeReportAnalysisRow>();
+  if (!row) {
+    return fail(c, 404, `knowledge document not found: ${id}`);
+  }
+  if (row.source_type !== "research_report" || row.report_type !== "company_report") {
+    return fail(c, 400, "document is not a company report");
+  }
+
+  const metadata = parseJsonObject(row.metadata_json);
+  const cacheKey = `knowledge-report-analysis:${KNOWLEDGE_REPORT_ANALYSIS_CACHE_VERSION}:${id}`;
+  const rawMetadata = metadata.raw && typeof metadata.raw === "object" && !Array.isArray(metadata.raw)
+    ? metadata.raw as Record<string, unknown>
+    : {};
+  const sharedCacheKey = sharedReportAnalysisCacheKey(eastmoneyReportInfoCode(
+    metadata.infoCode,
+    rawMetadata.infoCode,
+    row.url,
+  ));
+  const legacyAnalysis = await readKnowledgeReportAnalysis(c.env.DB, cacheKey);
+  const sharedAnalysis = await readKnowledgeReportAnalysis(c.env.DB, sharedCacheKey);
+  let analysis = legacyAnalysis || sharedAnalysis;
+  if (legacyAnalysis && sharedCacheKey && !sharedAnalysis) {
+    await writeKnowledgeReportAnalysis(c.env.DB, sharedCacheKey, legacyAnalysis);
+  }
+  if (!analysis) {
+    await runSharedReportAnalysisTask(
+      sharedCacheKey,
+      async () => {
+        await runKnowledgeReportAnalysisTask(
+          id,
+          knowledgeReportAnalysisConcurrency(c.env),
+          async () => {
+            const cached = await readKnowledgeReportAnalysis(c.env.DB, sharedCacheKey)
+              || await readKnowledgeReportAnalysis(c.env.DB, cacheKey);
+            if (cached) {
+              return cached;
+            }
+            const content = await loadKnowledgeReportMarkdown(c.env, row, knowledgeContentUrlContext(c));
+            if (!content) {
+              throw new Error("knowledge report has no converted content and the converter is unavailable");
+            }
+            const forecasts = await extractCompanyReportByLlm(c, row.title, content, { forceLlm: true });
+            const completed = {
+              analysisCalled: true,
+              forecasts,
+              updatedAt: Date.now(),
+            };
+            await Promise.all([
+              writeKnowledgeReportAnalysis(c.env.DB, cacheKey, completed),
+              sharedCacheKey
+                ? writeKnowledgeReportAnalysis(c.env.DB, sharedCacheKey, completed)
+                : Promise.resolve(),
+            ]);
+            return completed;
+          },
+        );
+      },
+    );
+    analysis = await readKnowledgeReportAnalysis(c.env.DB, sharedCacheKey)
+      || await readKnowledgeReportAnalysis(c.env.DB, cacheKey);
+    if (!analysis) {
+      throw new Error("knowledge report analysis completed without a cached result");
+    }
+  }
+
+  const code = normalizeKnowledgeStockCode(row.target_code || "");
+  const [overview, actual2025] = code
+    ? await Promise.all([
+      fetchEastmoneyCompanyOverview(c.env.DB, code).catch(() => null),
+      loadKnowledgeActualAnnualFinancials(c.env, code, 2025).catch(() => null),
+    ])
+    : [null, null];
+  const forecastMetrics = buildKnowledgeReportForecastMetrics(
+    analysis.forecasts,
+    overview?.latestPrice ?? null,
+    overview?.marketCapYi ?? null,
+    actual2025,
+  );
+  const forecasts = forecastMetrics.map((forecast) => ({
+    ...forecast,
+    peg: calculateKnowledgeReportPeg(forecastMetrics, Number(forecast.year)),
+  }));
+  const peg2026 = calculateKnowledgeReportPeg(forecastMetrics, 2026);
+  const peg2027 = calculateKnowledgeReportPeg(forecastMetrics, 2027);
+  const peg2028 = calculateKnowledgeReportPeg(forecastMetrics, 2028);
+  const pe2028 = forecastMetrics.find((forecast) => forecast.year === 2028)?.current_pe ?? null;
+  return ok(c, {
+    doc_id: id,
+    report_pages: knowledgeReportPageCount(metadata),
+    analysis_called: analysis.analysisCalled,
+    analysis_updated_at: analysis.updatedAt,
+    latest_price: overview?.latestPrice ?? null,
+    market_cap_yi: overview?.marketCapYi ?? null,
+    forecasts,
+    peg_2026: peg2026,
+    peg_2027: peg2027,
+    peg_2028: peg2028,
+    recommended: peg2028 !== null && peg2028 < 1 && pe2028 !== null && pe2028 < 100,
+  });
 });
 
 knowledgeRoutes.get("/knowledge/filtered", async (c) => {
@@ -378,6 +519,229 @@ function resolveKnowledgeContentUrl(
   return "";
 }
 
+async function loadKnowledgeReportMarkdown(
+  env: AppEnv["Bindings"],
+  row: KnowledgeReportAnalysisRow,
+  contentContext: KnowledgeContentUrlContext,
+): Promise<string> {
+  const contentUrl = resolveKnowledgeContentUrl(row, contentContext);
+  if (contentUrl) {
+    return fetchKnowledgeReportMarkdown(contentUrl);
+  }
+  const converterUrl = String(env.KNOWLEDGE_REPORT_CONVERTER_URL || "").trim();
+  const sourceUrl = String(row.url || "").trim();
+  if (!converterUrl || !sourceUrl.toLowerCase().includes(".pdf")) {
+    return "";
+  }
+  const response = await fetch(converterUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ docId: row.doc_id, url: sourceUrl }),
+  });
+  if (!response.ok) {
+    throw new Error(`knowledge report conversion failed: ${response.status} ${(await response.text()).slice(0, 300)}`);
+  }
+  return (await response.text()).trim().slice(0, 12000);
+}
+
+async function fetchKnowledgeReportMarkdown(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`knowledge report content request failed: ${response.status}`);
+  }
+  return (await response.text()).trim().slice(0, 12000);
+}
+
+function knowledgeReportAnalysisConcurrency(env: AppEnv["Bindings"]): number {
+  const value = Number(env.KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY);
+  return Number.isInteger(value) && value > 0
+    ? value
+    : DEFAULT_KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY;
+}
+
+async function runKnowledgeReportAnalysisTask(
+  docId: string,
+  concurrency: number,
+  task: () => Promise<KnowledgeReportAnalysis>,
+): Promise<KnowledgeReportAnalysis> {
+  const existing = knowledgeReportAnalysisInFlight.get(docId);
+  if (existing) {
+    return existing;
+  }
+  const pending = runKnowledgeReportAnalysisLimited(concurrency, task)
+    .finally(() => knowledgeReportAnalysisInFlight.delete(docId));
+  knowledgeReportAnalysisInFlight.set(docId, pending);
+  return pending;
+}
+
+async function runKnowledgeReportAnalysisLimited<T>(limit: number, task: () => Promise<T>): Promise<T> {
+  if (knowledgeReportAnalysisActive >= limit) {
+    await new Promise<void>((resolve) => knowledgeReportAnalysisWaiters.push(resolve));
+  }
+  knowledgeReportAnalysisActive += 1;
+  try {
+    return await task();
+  } finally {
+    knowledgeReportAnalysisActive -= 1;
+    knowledgeReportAnalysisWaiters.shift()?.();
+  }
+}
+
+async function readKnowledgeReportAnalysis(
+  db: AppEnv["Bindings"]["DB"],
+  key: string,
+): Promise<KnowledgeReportAnalysis | null> {
+  if (!key) {
+    return null;
+  }
+  const row = await getAppKv(db, key);
+  if (!row?.valueJson) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(row.valueJson) as KnowledgeReportAnalysis;
+    return parsed && Array.isArray(parsed.forecasts) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeKnowledgeReportAnalysis(
+  db: AppEnv["Bindings"]["DB"],
+  key: string,
+  value: KnowledgeReportAnalysis,
+): Promise<void> {
+  const now = Date.now();
+  await putAppKv(db, {
+    key,
+    valueJson: JSON.stringify(value),
+    expiresAt: now + KNOWLEDGE_REPORT_ANALYSIS_CACHE_TTL_MS,
+    updatedAt: now,
+  });
+}
+
+function knowledgeReportPageCount(metadata: Record<string, unknown>): number | null {
+  const raw = metadata.raw && typeof metadata.raw === "object" && !Array.isArray(metadata.raw)
+    ? metadata.raw as Record<string, unknown>
+    : {};
+  const value = Number(raw.attachPages ?? metadata.attachPages ?? metadata.pageCount);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function buildKnowledgeReportForecastMetrics(
+  forecasts: CompanyReportForecast[],
+  latestPrice: number | null,
+  marketCapYi: number | null,
+  actualPreviousYear: { year: number; revenue: number | null; netProfit: number | null } | null = null,
+): Array<Record<string, number | null>> {
+  const sorted = forecasts
+    .filter((item) => Number.isInteger(item.year))
+    .sort((left, right) => left.year - right.year);
+  return sorted.map((item, index) => {
+    const previous = sorted[index - 1];
+    const previousRevenue = previous?.revenue
+      ?? (actualPreviousYear?.year === item.year - 1 ? actualPreviousYear.revenue ?? undefined : undefined);
+    const previousNetProfit = previous?.netProfit
+      ?? (actualPreviousYear?.year === item.year - 1 ? actualPreviousYear.netProfit ?? undefined : undefined);
+    const revenueGrowth = finiteNumberOrNull(item.revenueGrowth) ?? forecastGrowth(item.revenue, previousRevenue);
+    const profitGrowth = finiteNumberOrNull(item.profitGrowth) ?? forecastGrowth(item.netProfit, previousNetProfit);
+    const currentPe = marketCapYi !== null && marketCapYi > 0 && item.netProfit !== undefined && item.netProfit > 0
+      ? marketCapYi / item.netProfit
+      : latestPrice !== null && latestPrice > 0 && item.eps !== undefined && item.eps > 0
+        ? latestPrice / item.eps
+        : null;
+    return {
+      year: item.year,
+      revenue: finiteNumberOrNull(item.revenue),
+      revenue_growth: revenueGrowth,
+      net_profit: finiteNumberOrNull(item.netProfit),
+      profit_growth: profitGrowth,
+      current_pe: roundKnowledgeMetric(currentPe),
+    };
+  });
+}
+
+async function loadKnowledgeActualAnnualFinancials(
+  env: AppEnv["Bindings"],
+  code: string,
+  year: number,
+): Promise<{ year: number; revenue: number | null; netProfit: number | null } | null> {
+  const { rows } = await loadFinancialStatements(env, code, "income", {
+    httpOptions: externalHttpOptions(env),
+  });
+  const quarters = new Map<string, { revenue: number | null; netProfit: number | null }>();
+  for (const row of rows) {
+    if (!row.reportDate.startsWith(`${year}-`) || !row.payload || typeof row.payload !== "object") {
+      continue;
+    }
+    const month = row.reportDate.slice(5, 7);
+    if (!["03", "06", "09", "12"].includes(month) || quarters.has(month)) {
+      continue;
+    }
+    const payload = row.payload as Record<string, unknown>;
+    quarters.set(month, {
+      revenue: firstFiniteNumber(payload.TOTAL_OPERATE_INCOME, payload.OPERATE_INCOME),
+      netProfit: firstFiniteNumber(payload.PARENT_NETPROFIT, payload.NETPROFIT),
+    });
+  }
+  if (quarters.size !== 4) {
+    return null;
+  }
+  return {
+    year,
+    revenue: sumAnnualFinancialMetric(quarters, "revenue"),
+    netProfit: sumAnnualFinancialMetric(quarters, "netProfit"),
+  };
+}
+
+function sumAnnualFinancialMetric(
+  quarters: Map<string, { revenue: number | null; netProfit: number | null }>,
+  field: "revenue" | "netProfit",
+): number | null {
+  const values = [...quarters.values()].map((item) => item[field]);
+  return values.every((value): value is number => value !== null && Number.isFinite(value))
+    ? roundKnowledgeMetric(values.reduce((sum, value) => sum + value, 0) / 100_000_000)
+    : null;
+}
+
+function firstFiniteNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function calculateKnowledgeReportPeg(
+  forecasts: Array<Record<string, number | null>>,
+  year: number,
+): number | null {
+  const item = forecasts.find((forecast) => forecast.year === year);
+  const pe = item?.current_pe;
+  const growth = item?.profit_growth;
+  if (pe === null || pe === undefined || growth === null || growth === undefined || pe < 0 || growth <= 0) {
+    return null;
+  }
+  return roundKnowledgeMetric(pe / growth);
+}
+
+function forecastGrowth(current: number | undefined, previous: number | undefined): number | null {
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) {
+    return null;
+  }
+  return roundKnowledgeMetric(((current! / previous!) - 1) * 100);
+}
+
+function finiteNumberOrNull(value: number | undefined): number | null {
+  return Number.isFinite(value) ? roundKnowledgeMetric(value!) : null;
+}
+
+function roundKnowledgeMetric(value: number | null): number | null {
+  return value !== null && Number.isFinite(value) ? Math.round(value * 100) / 100 : null;
+}
+
 function isLocalRequest(request: Request | string): boolean {
   const requestUrl = typeof request === "string" ? request : request.url;
   const headerHost = typeof request === "string" ? "" : (request.headers.get("host") || "");
@@ -478,6 +842,7 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
     content_url: contentUrl,
     stock_links: stockLinks,
     tags: unique(tags),
+    report_pages: knowledgeReportPageCount(metadata),
   };
 }
 

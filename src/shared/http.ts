@@ -6,6 +6,7 @@ export type ExternalHttpOptions = {
   proxyEnabled?: boolean;
   proxyUrl?: string;
   proxyRelayUrl?: string;
+  proxyDomains?: string[];
   domainConcurrency?: number;
   timeoutMs?: number;
   cacheKey?: string;
@@ -112,7 +113,7 @@ async function fetchTextResponse(
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const attemptInit = withTimeoutSignal(init, timeoutMs);
       try {
-        if (shouldUseProxy(options)) {
+        if (shouldUseProxy(url, options)) {
           return await fetchTextViaProxy(url, attemptInit, options);
         }
         return await fetchTextDirect(url, attemptInit);
@@ -223,13 +224,29 @@ export function externalHttpOptions(env: Partial<Bindings>): ExternalHttpOptions
     proxyEnabled: Boolean(env.HTTP_PROXY_URL),
     proxyUrl: env.HTTP_PROXY_URL,
     proxyRelayUrl: env.HTTP_PROXY_RELAY_URL,
+    proxyDomains: parseDomains(env.HTTP_PROXY_DOMAINS),
     domainConcurrency: positiveInt(env.HTTP_DOMAIN_CONCURRENCY) ?? DEFAULT_DOMAIN_CONCURRENCY,
     timeoutMs: positiveInt(env.HTTP_REQUEST_TIMEOUT_MS) ?? DEFAULT_EXTERNAL_HTTP_TIMEOUT_MS,
   };
 }
 
-function shouldUseProxy(options?: ExternalHttpOptions): boolean {
-  return Boolean(options?.proxyUrl) && options?.proxyEnabled !== false;
+function shouldUseProxy(url: string, options?: ExternalHttpOptions): boolean {
+  if (!options?.proxyUrl || options.proxyEnabled === false) {
+    return false;
+  }
+  const domains = options.proxyDomains ?? [];
+  if (domains.length === 0) {
+    return false;
+  }
+  const host = new URL(url).hostname.toLowerCase();
+  return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+function parseDomains(value: string | string[] | undefined): string[] {
+  const values = Array.isArray(value) ? value : String(value ?? "").split(/[\s,]+/);
+  return values
+    .map((item) => item.trim().toLowerCase().replace(/^\./, ""))
+    .filter(Boolean);
 }
 
 function positiveInt(value: string | undefined): number | undefined {

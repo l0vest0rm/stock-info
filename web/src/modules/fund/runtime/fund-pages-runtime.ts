@@ -92,6 +92,65 @@ export function createFundPositionInitializer(context: FundPagesRuntimeContext) 
     return true
   }
 
+  function loadFundAssetAllocation() {
+    const code = getCode()
+    emitFundPositionState({ allocationStatus: '加载资产配置...', allocationSummary: '', allocationRows: [] })
+    void context.fetchRequest({
+      url: `${server}/api/fund/asset-allocation`,
+      params: { code },
+      cacheKey: `${code}-fund-asset-allocation`,
+      cacheTtl: 360000,
+    }).then((data: any) => {
+      const rows = Array.isArray(data?.rows) ? data.rows : []
+      const latest = rows[0]
+      const previous = rows[1]
+      const summaryParts: string[] = []
+      if (latest) {
+        summaryParts.push(`截至 ${latest.reportDate}`)
+        if (latest.netAssetsBillion != null) summaryParts.push(`净资产 ${Number(latest.netAssetsBillion).toFixed(2)} 亿元`)
+        if (previous && latest.netAssetsBillion != null && previous.netAssetsBillion) {
+          const change = (Number(latest.netAssetsBillion) / Number(previous.netAssetsBillion) - 1) * 100
+          summaryParts.push(`较上期${change >= 0 ? '增加' : '减少'} ${Math.abs(change).toFixed(2)}%`)
+        }
+        if (latest.stockPct != null && previous?.stockPct != null) {
+          const change = Number(latest.stockPct) - Number(previous.stockPct)
+          summaryParts.push(`股票配置较上期${change >= 0 ? '增加' : '减少'} ${Math.abs(change).toFixed(2)} 个百分点`)
+        }
+      }
+      emitFundPositionState({
+        allocationStatus: rows.length ? `共 ${rows.length} 期定期报告` : '暂无资产配置数据',
+        allocationSummary: summaryParts.join('，'),
+        allocationRows: rows,
+      })
+      renderFundAssetAllocationChart(rows)
+    }).catch(() => {
+      emitFundPositionState({ allocationStatus: '资产配置加载失败', allocationSummary: '', allocationRows: [] })
+    })
+  }
+
+  function renderFundAssetAllocationChart(rows: any[]) {
+    const chartDom = document.getElementById('assetAllocationChart')
+    if (!chartDom || !Array.isArray(rows) || rows.length === 0) return
+    const periods = rows.slice(0, 5).reverse()
+    const chart = echarts.getInstanceByDom(chartDom) || echarts.init(chartDom)
+    chart.setOption({
+      tooltip: { trigger: 'axis' },
+      legend: { data: ['股票占比', '债券占比', '现金占比', '净资产'] },
+      grid: { left: 60, right: 70, bottom: 45 },
+      xAxis: { type: 'category', data: periods.map((row: any) => row.reportDate) },
+      yAxis: [
+        { type: 'value', name: '占净比', min: 0, axisLabel: { formatter: '{value}%' } },
+        { type: 'value', name: '净资产（亿元）', min: 0 },
+      ],
+      series: [
+        { name: '股票占比', type: 'bar', data: periods.map((row: any) => row.stockPct), itemStyle: { color: '#5470c6' } },
+        { name: '债券占比', type: 'bar', data: periods.map((row: any) => row.bondPct), itemStyle: { color: '#91cc75' } },
+        { name: '现金占比', type: 'bar', data: periods.map((row: any) => row.cashPct), itemStyle: { color: '#fac858' } },
+        { name: '净资产', type: 'line', yAxisIndex: 1, data: periods.map((row: any) => row.netAssetsBillion), itemStyle: { color: '#ee6666' } },
+      ],
+    })
+  }
+
   function mapFundPositionCompareRows(positionMap: any): any[] {
     const rows: any[] = []
     let idx = 0
@@ -384,6 +443,7 @@ export function createFundPositionInitializer(context: FundPagesRuntimeContext) 
       return
     }
     dateRangeInit()
+    loadFundAssetAllocation()
     loadFundConstituents()
     fundPositionCompare()
     bsTable('fundShareChangeTable', {
@@ -427,6 +487,12 @@ export function createFundInitializer(context: FundPagesRuntimeContext) {
     dateRangeInit()
     fetchFundInfo(code, renderFundInfoTable)
     document.getElementById('klinePrice')!.addEventListener('change', klinePriceChange)
+    ;['dateRange-start', 'dateRange-end'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', () => {
+        delete context.getCache()[`${code}${(document.getElementById('klinePrice') as HTMLInputElement).value}`]
+        klinePriceChange()
+      })
+    })
     klinePriceChange()
     document.getElementById('positionCheck')!.addEventListener('change', positionCheckOnChange)
   }

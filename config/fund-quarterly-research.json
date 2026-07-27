@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "baseUrl": "http://127.0.0.1:8000",
+  "outputDir": "docs/research/funds",
+  "stateDir": "data/fund-quarterly-research",
+  "ranking": {
+    "fundType": "all",
+    "topN": 100,
+    "shareClassPriority": ["A", "B", "C", ""]
+  },
+  "sources": {
+    "noticePageSize": 100,
+    "noticeMaxPages": 3,
+    "requestTimeoutMs": 30000,
+    "requestAttempts": 3,
+    "noticeConcurrency": 5,
+    "marketConcurrency": 5
+  },
+  "analysis": {
+    "actionThresholdPct": 10,
+    "assessmentThresholdPct": 3,
+    "managementDiscussionMaxChars": 12000,
+    "topContributionCount": 10
+  },
+  "holdingsStatistics": {
+    "enabled": true,
+    "concurrency": 5,
+    "marketBatchSize": 50,
+    "forecastRequestTimeoutMs": 120000,
+    "forecastRequestAttempts": 1,
+    "forecastYears": [2026, 2027, 2028],
+    "performancePeriods": [
+      { "key": "oneWeek", "label": "近1周", "days": 7 },
+      { "key": "oneMonth", "label": "近1月", "days": 30 },
+      { "key": "threeMonths", "label": "近3月", "days": 90 },
+      { "key": "sixMonths", "label": "近6月", "days": 180 },
+      { "key": "yearToDate", "label": "今年以来", "yearStart": true },
+      { "key": "oneYear", "label": "近1年", "days": 365 }
+    ]
+  },
+  "prompts": {
+    "system": "prompts/fund-quarterly-research-system.md",
+    "user": "prompts/fund-quarterly-research-user.md"
+  },
+  "llm": {
+    "model": "gpt-5.6-luna",
+    "baseUrl": "https://api.m2ai.cc/api/v1/openai",
+    "apiKeyFile": "~/.codex/auth.json",
+    "apiKeyField": "OPENAI_API_KEY",
+    "apiKeyEnv": "OPENAI_API_KEY",
+    "concurrency": 5,
+    "maxOutputTokens": 6000,
+    "reasoningEffort": "high",
+    "temperature": 0,
+    "cacheTtlMs": 7776000000
+  }
+}

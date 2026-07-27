@@ -39,6 +39,14 @@ type FundConstituentRow = {
   navPct: string
 }
 
+type FundAssetAllocationRow = {
+  reportDate: string
+  stockPct: number | null
+  bondPct: number | null
+  cashPct: number | null
+  netAssetsBillion: number | null
+}
+
 type FundPositionStateEvent = CustomEvent<{
   currentDateLabel?: string
   previousDateLabel?: string
@@ -46,6 +54,9 @@ type FundPositionStateEvent = CustomEvent<{
   constituentStatus?: string
   constituentLabel?: string
   constituentRows?: FundConstituentRow[]
+  allocationStatus?: string
+  allocationSummary?: string
+  allocationRows?: FundAssetAllocationRow[]
   rows?: FundPositionCompareRow[]
 }>
 
@@ -123,6 +134,9 @@ const FundPositionPage = defineComponent({
     const constituentLabel = ref('')
     const constituentRows = ref<FundConstituentRow[]>([])
     const rows = ref<FundPositionCompareRow[]>([])
+    const allocationStatus = ref('加载资产配置...')
+    const allocationSummary = ref('')
+    const allocationRows = ref<FundAssetAllocationRow[]>([])
     const sortKey = ref<FundPositionSortKey>('currentPositionPct')
     const sortDirection = ref<SortDirection>('desc')
 
@@ -173,6 +187,15 @@ const FundPositionPage = defineComponent({
       if (Array.isArray(detail.rows)) {
         rows.value = detail.rows
       }
+      if (typeof detail.allocationStatus === 'string') {
+        allocationStatus.value = detail.allocationStatus
+      }
+      if (typeof detail.allocationSummary === 'string') {
+        allocationSummary.value = detail.allocationSummary
+      }
+      if (Array.isArray(detail.allocationRows)) {
+        allocationRows.value = detail.allocationRows
+      }
     }
 
     const updateSort = (key: FundPositionSortKey) => {
@@ -214,6 +237,34 @@ const FundPositionPage = defineComponent({
             h('label', { for: 'reportDate2' }, '对比老季度报'),
             h('select', { id: 'reportDate2', name: 'reportDate' }),
           ]),
+        ]),
+      ]),
+      h('div', { class: 'd-flex justify-content-between align-items-center mx-3 mt-3' }, [
+        h('h5', { class: 'mb-0' }, '资产配置'),
+        h('span', { class: 'small text-muted' }, allocationStatus.value),
+      ]),
+      allocationSummary.value
+        ? h('div', { class: 'mx-3 mt-2 small' }, allocationSummary.value)
+        : null,
+      h('div', { id: 'assetAllocationChart', style: 'height: 420px; min-width: 300px;' }),
+      h('div', { class: 'table-responsive px-3' }, [
+        h('table', { class: 'table table-bordered table-hover text-end' }, [
+          h('thead', { class: 'table-info' }, [h('tr', [
+            h('th', '报告期'),
+            h('th', '股票占净比'),
+            h('th', '债券占净比'),
+            h('th', '现金占净比'),
+            h('th', '净资产（亿元）'),
+          ])]),
+          h('tbody', allocationRows.value.length
+            ? allocationRows.value.map((row) => h('tr', [
+              h('td', row.reportDate),
+              h('td', row.stockPct == null ? '—' : `${row.stockPct.toFixed(2)}%`),
+              h('td', row.bondPct == null ? '—' : `${row.bondPct.toFixed(2)}%`),
+              h('td', row.cashPct == null ? '—' : `${row.cashPct.toFixed(2)}%`),
+              h('td', row.netAssetsBillion == null ? '—' : row.netAssetsBillion.toFixed(2)),
+            ]))
+            : [h('tr', [h('td', { colspan: 5, class: 'text-center text-muted' }, allocationStatus.value)])]),
         ]),
       ]),
       h('div', { class: 'd-flex justify-content-between align-items-center mx-3' }, [
@@ -294,7 +345,7 @@ const FundPositionPage = defineComponent({
           h('div', { id: 'positionIndustryPie', style: 'min-height: 600px; min-width: 300px;' }),
         ]),
       ]),
-      h('h5', { class: 'mx-3 mt-4' }, '持仓走势'),
+      h('h5', { class: 'mx-3 mt-4' }, '基金与重仓股价格走势'),
       h('div', { class: 'row mb-2' }, [
         h('div', { class: 'col-3' }, [
           h('div', { id: 'dateRange', class: 'mb-2' }),

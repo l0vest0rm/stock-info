@@ -27,6 +27,7 @@ import {
   TOPIC_BATCH_USER_PROMPT,
 } from "./generated/prompt-text.mjs";
 import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
+import { shouldKeepOriginalReportPdf, topicFilterBypassDecision } from "./lib/knowledge-topic-filter.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const sharedDataRoot = "/Users/terry/git/data";
@@ -575,6 +576,19 @@ function securityBaseName(name) {
 async function materializePdfIfNeeded(doc, file, cfg) {
   const url = text(doc.url);
   const accessMethod = text(doc.accessMethod ?? doc.access_method).toLowerCase();
+  if (shouldKeepOriginalReportPdf(doc, cfg)) {
+    return withStockLinkMetadata({
+      ...doc,
+      accessMethod: "remote_pdf",
+      markdown: "",
+      metadata: {
+        ...doc.metadata,
+        pdfStored: false,
+        remotePdfMaterialized: false,
+        remotePdfUrl: url,
+      },
+    });
+  }
   if (url && url.toLowerCase().includes(".pdf") && accessMethod.includes("remote_pdf")) {
     const pdfFile = await downloadRemotePdf(url, doc, cfg);
     const markdown = convertPdfToMarkdownCached(pdfFile, doc.docId || sha256(url), cfg);
@@ -862,6 +876,11 @@ async function evaluateTopics(docsToFilter, cfg) {
   }
   const uncertainDocs = [];
   for (const doc of docsToFilter) {
+    const bypassDecision = topicFilterBypassDecision(doc, filter);
+    if (bypassDecision) {
+      decisions.set(doc.docId, bypassDecision);
+      continue;
+    }
     const local = evaluateTopicLocally(doc, filter);
     if (local.score >= integer(filter.minScore, 2)) {
       decisions.set(doc.docId, { keep: true, method: "local", ...local });

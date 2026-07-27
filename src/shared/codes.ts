@@ -37,7 +37,7 @@ export function isSupportedCompanyCode(input: string): boolean {
 
 export function isSupportedSecurityCode(input: string): boolean {
   const normalized = normalizeSecurityCode(input);
-  return isSupportedCompanyCode(normalized) || /^\d{6}\.(OF|SF|ZF)$/.test(normalized);
+  return isSupportedCompanyCode(normalized) || /^\d{6}\.(OF|SF|ZF|KS|KQ)$/.test(normalized);
 }
 
 export function normalizeSupportedCompanyCode(input: string): string {

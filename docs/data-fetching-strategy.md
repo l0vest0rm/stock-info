@@ -21,10 +21,11 @@
 | --- | --- |
 | `HTTP_PROXY_URL` | 启用代理并标识本地代理客户端地址，通常是 `http://127.0.0.1:7890` |
 | `HTTP_PROXY_RELAY_URL` | Worker 调用的 fetch 转发入口，本地默认是 Rust proxy client 的 `http://127.0.0.1:7890/fetch` |
+| `HTTP_PROXY_DOMAINS` | 允许使用代理的域名列表；本地默认仅为 `yahoo.com`，空值表示所有请求直连 |
 | `HTTP_DOMAIN_CONCURRENCY` | 单个目标域名最大并发，默认 `3` |
 | `HTTP_REQUEST_TIMEOUT_MS` | 单次外部请求的硬超时，默认 `10000` 毫秒 |
 
-`HTTP_PROXY_*` 是 Worker/http client 的统一配置。本地 Wrangler 不能直接运行 Node 的 `ProxyAgent`，因此外部 fetch 请求统一交给仅监听回环地址的 Rust proxy client，再由 `config/routes.toml` 决定本机直连或通过已认证的远端代理转发；线上未配置代理时不经过该入口。
+`HTTP_PROXY_*` 是 Worker/http client 的统一配置。本地 Wrangler 不能直接运行 Node 的 `ProxyAgent`，因此只有匹配 `HTTP_PROXY_DOMAINS` 的请求才交给仅监听回环地址的 Rust proxy client；当前仅 Yahoo 请求匹配。其他本地请求直接访问目标站点，线上未配置 `HTTP_PROXY_URL`，所有请求均不经过代理入口。
 
 ### 统一 HTTP Client
 
@@ -251,10 +252,13 @@ download pdf/html/news
 项目不长期依赖 `licai` 的数据库。日常新增新闻/研报必须由 `stock-info` 自己的采集
 或本地加工流程产出。
 
-为了控制处理时间、D1 写入和 Cloudflare 免费额度，入库前默认启用 `AI产业链` 主题过滤。
-脚本会先用本地关键词过滤，只保留大模型、算力、AI 芯片、服务器、数据中心、存储、
+为了控制处理时间、D1 写入和 Cloudflare 免费额度，新闻入库前默认启用 `AI产业链` 主题过滤，
+公司研报、行业研报及其他研报不执行该过滤并全部保留。脚本会先用本地关键词过滤新闻，只保留大模型、算力、AI 芯片、服务器、数据中心、存储、
 半导体、先进封装、光模块/CPO 等相关内容。不相关文件会移动到 `processed`，
 但不会写入 D1。
+
+研报 PDF 默认保留来源站点的原始 URL，不下载或转换为 Markdown；列表页点击研报标题时
+直接在新窗口打开原始 PDF。新闻仍使用站内详情展示逻辑。
 
 每次本地执行都会在 `/Users/terry/git/data/stock-info/knowledge/reviews` 写一份
 `topic-filter-*.md` 和 `topic-filter-*.jsonl`，其中包含保留和被过滤掉的标题、分数、

@@ -7,7 +7,6 @@ import {
   fullKlineHistoryStartDate,
   getFundNavSnapshot,
   getKlineSnapshot,
-  putFundNavSnapshot,
   putKlineSnapshot,
   sliceFundNavRows,
   sliceKlineRows,
@@ -25,8 +24,10 @@ export async function loadKline(
     | "MARKET_DATA_BUCKET"
     | "HTTP_PROXY_URL"
     | "HTTP_PROXY_RELAY_URL"
+    | "HTTP_PROXY_DOMAINS"
     | "HTTP_DOMAIN_CONCURRENCY"
     | "HTTP_REQUEST_TIMEOUT_MS"
+    | "EASTMONEY_COOKIE"
   >,
   rawCode: string,
   period: string,
@@ -48,10 +49,7 @@ export async function loadKline(
     if (snapshot && isFreshEnough(fundCode, snapshot.updatedAt) && snapshotCoversRange(snapshot, from, to)) {
       return { code: fundCode, source: "r2", rows: sliceFundNavRows(snapshot.rows, from, to) };
     }
-    const historyRows = await fetchEastmoneyFundNav(env.DB, fundCode, fullKlineHistoryStartDate(), to);
-    if (historyRows.length > 0) {
-      await putFundNavSnapshot(env, fundCode, historyRows);
-    }
+    const historyRows = await fetchEastmoneyFundNav(env.DB, fundCode, from, to);
     return { code: fundCode, source: "eastmoney", rows: sliceFundNavRows(historyRows, from, to) };
   }
 
@@ -71,7 +69,8 @@ export async function loadKline(
     fq,
     fullKlineHistoryStartDate(),
     to,
-    externalHttpOptions(env)
+    externalHttpOptions(env),
+    env.EASTMONEY_COOKIE
   );
   if (fetched.security) {
     await upsertSecurity(env.DB, fetched.security);

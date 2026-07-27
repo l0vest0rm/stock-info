@@ -2877,6 +2877,8 @@ function calculateAndDisplayValuation(code: string, data: number[][], currentPri
           // 净利润单位是元，市值也是元，直接相除
           const pe = marketCap / totalNetProfit
           stockValuation += `<span class="px-1">PE(TTM): ${pe.toFixed(2)}</span>`
+        } else if (trailingProfits.length === 4 && totalNetProfit < 0) {
+          stockValuation = `<span class="px-1">PE: 亏损</span>`
         }
       }
     }

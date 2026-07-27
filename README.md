@@ -318,6 +318,12 @@ npm run preflight:cloudflare:release
 
 ### 本地手动部署
 
+部署前先生成新的东财 K 线 Cookie。该命令会同时更新本地使用的 `.dev.vars` 和生产部署使用的 `wrangler.jsonc`：
+
+```bash
+npm run refresh:eastmoney-cookie
+```
+
 ```bash
 npm run deploy
 ```
@@ -332,6 +338,8 @@ npm run deploy
 - `wrangler d1 migrations apply stock_info --remote`
 - `wrangler deploy`
 - `curl https://tinfo.cc/api/health`
+
+`wrangler.jsonc` 中的 `vars.EASTMONEY_COOKIE` 会随标准 Worker 部署一起发布，不使用 Cloudflare Secret，也不需要部署脚本读取 `.dev.vars`。
 
 只做打包检查但不真正上线：
 

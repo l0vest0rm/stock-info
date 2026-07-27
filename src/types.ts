@@ -8,6 +8,8 @@ export type Bindings = {
   MARKET_DATA_PUBLIC_BASE_URL?: string;
   KNOWLEDGE_CONTENT_PUBLIC_BASE_URL?: string;
   KNOWLEDGE_CONTENT_LOCAL_DIR?: string;
+  KNOWLEDGE_REPORT_CONVERTER_URL?: string;
+  KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY?: string;
   KNOWLEDGE_ALLOW_TEXT_SEARCH?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
@@ -18,8 +20,10 @@ export type Bindings = {
   LLM_DAILY_LIMIT?: string;
   HTTP_PROXY_URL?: string;
   HTTP_PROXY_RELAY_URL?: string;
+  HTTP_PROXY_DOMAINS?: string;
   HTTP_DOMAIN_CONCURRENCY?: string;
   HTTP_REQUEST_TIMEOUT_MS?: string;
+  EASTMONEY_COOKIE?: string;
 };
 
 export type AppEnv = {

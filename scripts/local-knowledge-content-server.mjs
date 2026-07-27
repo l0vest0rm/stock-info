@@ -1,19 +1,64 @@
 #!/usr/bin/env node
 
-import { createReadStream, statSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 
 const args = parseArgs(process.argv.slice(2));
 const host = args.host || "127.0.0.1";
 const port = Number(args.port || process.env.KNOWLEDGE_CONTENT_LOCAL_PORT || 8788);
 const contentDir = resolve(args.dir || process.env.KNOWLEDGE_CONTENT_LOCAL_DIR || "/Users/terry/git/data/stock-info/knowledge/content-cache");
+const reportWorkDir = resolve(process.env.KNOWLEDGE_REPORT_CONVERSION_WORK_DIR || "/Users/terry/git/data/stock-info/knowledge/work");
+const reportPdfDir = join(reportWorkDir, "remote-pdf");
+const reportMarkdownDir = join(reportWorkDir, "markdown-cache");
+const reportConversionConcurrency = positiveInteger(process.env.KNOWLEDGE_REPORT_CONVERSION_CONCURRENCY, 2);
+const reportConversionTimeoutMs = positiveInteger(process.env.KNOWLEDGE_REPORT_CONVERSION_TIMEOUT_MS, 120000);
+const reportConverterHosts = new Set(
+  String(process.env.KNOWLEDGE_REPORT_CONVERTER_HOSTS || "pdf.dfcfw.com")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
+const reportConversionQueue = createTaskQueue(reportConversionConcurrency);
+const reportConversionsInFlight = new Map();
+const execFileAsync = promisify(execFile);
+
+mkdirSync(reportPdfDir, { recursive: true });
+mkdirSync(reportMarkdownDir, { recursive: true });
 
 const server = createServer((req, res) => {
+  void handleRequest(req, res).catch((error) => {
+    console.error("knowledge content request failed", error);
+    if (!res.headersSent) {
+      res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+    }
+    res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+  });
+});
+
+async function handleRequest(req, res) {
   const method = String(req.method || "GET").toUpperCase();
   if (req.url === "/__health") {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8", "access-control-allow-origin": "*" });
-    res.end(JSON.stringify({ ok: true }));
+    res.end(JSON.stringify({
+      ok: true,
+      reportConversion: reportConversionQueue.status(),
+    }));
+    return;
+  }
+  if (req.url === "/__convert-report" && method === "POST") {
+    const body = await readJsonRequest(req, 32 * 1024);
+    const docId = normalizeDocId(body.docId);
+    const url = normalizeReportUrl(body.url);
+    const markdown = await convertReportCached(docId, url);
+    res.writeHead(200, {
+      "content-type": "text/markdown; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end(markdown);
     return;
   }
   if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
@@ -60,11 +105,158 @@ const server = createServer((req, res) => {
     res.writeHead(404, { "access-control-allow-origin": "*" });
     res.end("not found");
   }
-});
+}
 
 server.listen(port, host, () => {
-  console.log(JSON.stringify({ host, port, contentDir }, null, 2));
+  console.log(JSON.stringify({
+    host,
+    port,
+    contentDir,
+    reportWorkDir,
+    reportConversionConcurrency,
+  }, null, 2));
 });
+
+async function convertReportCached(docId, url) {
+  const existing = reportConversionsInFlight.get(docId);
+  if (existing) {
+    return existing;
+  }
+  const pending = reportConversionQueue.run(async () => {
+    const markdownFile = join(reportMarkdownDir, `${docId}.md`);
+    if (existsSync(markdownFile) && statSync(markdownFile).size > 0) {
+      return readFile(markdownFile, "utf8");
+    }
+    const pdfFile = join(reportPdfDir, `${docId}.pdf`);
+    await downloadReportPdfCached(url, pdfFile);
+    await convertReportPdfToMarkdown(pdfFile, markdownFile);
+    return readFile(markdownFile, "utf8");
+  }).finally(() => reportConversionsInFlight.delete(docId));
+  reportConversionsInFlight.set(docId, pending);
+  return pending;
+}
+
+async function downloadReportPdfCached(url, file) {
+  if (existsSync(file) && statSync(file).size >= 1000) {
+    return;
+  }
+  const response = await fetch(url, {
+    headers: {
+      Referer: "https://data.eastmoney.com/report/",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/125 Safari/537.36",
+      Accept: "application/pdf,*/*",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`remote pdf download failed: status=${response.status} url=${url}`);
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length < 1000) {
+    throw new Error(`remote pdf download is too small: bytes=${bytes.length} url=${url}`);
+  }
+  const temporaryFile = `${file}.tmp-${process.pid}`;
+  await writeFile(temporaryFile, bytes);
+  await rename(temporaryFile, file);
+}
+
+async function convertReportPdfToMarkdown(pdfFile, markdownFile) {
+  const python = process.env.PYTHON_BIN || "python3";
+  const code = `
+import pathlib, sys
+pdf = pathlib.Path(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+try:
+    import pymupdf4llm
+    text = pymupdf4llm.to_markdown(str(pdf))
+except Exception:
+    import fitz
+    doc = fitz.open(str(pdf))
+    text = "\\n\\n".join(page.get_text("text") for page in doc)
+out.write_text(text, encoding="utf-8")
+`;
+  try {
+    await execFileAsync(python, ["-c", code, pdfFile, markdownFile], {
+      encoding: "utf8",
+      timeout: reportConversionTimeoutMs,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+  } catch (error) {
+    const detail = error && typeof error === "object" && "stderr" in error
+      ? String(error.stderr || "").trim()
+      : "";
+    throw new Error(`pdf to markdown failed: ${detail || (error instanceof Error ? error.message : String(error))}`);
+  }
+  if (!existsSync(markdownFile) || statSync(markdownFile).size === 0) {
+    throw new Error(`pdf to markdown produced empty content: ${pdfFile}`);
+  }
+}
+
+function createTaskQueue(concurrency) {
+  let active = 0;
+  const pending = [];
+  const drain = () => {
+    while (active < concurrency && pending.length > 0) {
+      const item = pending.shift();
+      active += 1;
+      Promise.resolve()
+        .then(item.task)
+        .then(item.resolve, item.reject)
+        .finally(() => {
+          active -= 1;
+          drain();
+        });
+    }
+  };
+  return {
+    run(task) {
+      return new Promise((resolveTask, rejectTask) => {
+        pending.push({ task, resolve: resolveTask, reject: rejectTask });
+        drain();
+      });
+    },
+    status() {
+      return { active, pending: pending.length, concurrency };
+    },
+  };
+}
+
+async function readJsonRequest(req, maxBytes) {
+  const chunks = [];
+  let bytes = 0;
+  for await (const chunk of req) {
+    bytes += chunk.length;
+    if (bytes > maxBytes) {
+      throw new Error("request body is too large");
+    }
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  } catch {
+    throw new Error("invalid JSON request body");
+  }
+}
+
+function normalizeDocId(value) {
+  const docId = String(value || "").trim();
+  if (!/^[A-Za-z0-9_-]{8,120}$/.test(docId)) {
+    throw new Error("invalid report doc id");
+  }
+  return docId;
+}
+
+function normalizeReportUrl(value) {
+  const url = new URL(String(value || ""));
+  if (url.protocol !== "https:" || !reportConverterHosts.has(url.hostname.toLowerCase()) || !url.pathname.toLowerCase().endsWith(".pdf")) {
+    throw new Error("report URL is not allowed by the converter");
+  }
+  return url.toString();
+}
+
+function positiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 function parseArgs(argv) {
   const parsed = {};

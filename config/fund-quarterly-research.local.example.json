@@ -1,0 +1,5 @@
+{
+  "llm": {
+    "apiKey": "replace-with-your-openai-api-key"
+  }
+}

@@ -9,13 +9,20 @@ import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "..
 import { requestLlmText, type SupportedLlmModel } from "../../../shared/llm-client";
 import { REPORT_ANALYZE_SYSTEM_PROMPT, REPORT_ANALYZE_USER_PROMPT } from "../../../generated/prompt-text";
 import type { AppEnv, CompanyOverview, KlineBar } from "../../../types";
+import {
+  eastmoneyReportInfoCode,
+  runSharedReportAnalysisTask,
+  sharedReportAnalysisCacheKey,
+} from "../application/report-analysis-cache";
 
 export const companyRoutes = new Hono<AppEnv>();
 
-type CompanyReportForecast = {
+export type CompanyReportForecast = {
   year: number;
   revenue?: number;
+  revenueGrowth?: number;
   netProfit?: number;
+  profitGrowth?: number;
   eps?: number;
   pe?: number;
 };
@@ -27,6 +34,12 @@ type ReportForecastExtraction = {
   source: string;
   updatedAt: number;
   forecasts: CompanyReportForecast[];
+};
+
+type SharedReportAnalysis = {
+  analysisCalled: boolean;
+  forecasts: CompanyReportForecast[];
+  updatedAt: number;
 };
 
 type ReportForecastProgress = {
@@ -434,27 +447,51 @@ async function ensureSingleReportForecast(
     return;
   }
   const cacheKey = reportForecastCacheKey(reportId);
+  const sharedCacheKey = sharedReportCacheKeyForItem(item);
+  let shared = await readSharedReportAnalysis(c.env.DB, sharedCacheKey);
+  if (shared?.analysisCalled) {
+    return;
+  }
   const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, cacheKey);
   if (cached?.forecasts?.length) {
+    await writeSharedReportAnalysis(c.env.DB, item, cached.forecasts, cached.updatedAt);
     return;
   }
-  const content = await loadReportContentForForecast(c, item);
-  if (!content) {
+
+  if (!shared && sharedCacheKey) {
+    shared = await readLegacyKnowledgeReportAnalysis(c.env.DB, item);
+    if (shared) {
+      await writeAppJson(c.env.DB, sharedCacheKey, shared, REPORT_FORECAST_CACHE_TTL_MS);
+    }
+  }
+  if (shared?.analysisCalled) {
     return;
   }
-  const forecasts = await extractCompanyReportByLlm(c, text(item.title), content);
-  if (forecasts.length === 0) {
-    return;
-  }
-  const extraction: ReportForecastExtraction = {
-    reportId,
-    code,
-    title: text(item.title),
-    source: reportNeedsLlmExtraction(item) ? "sina_html" : "unknown",
-    updatedAt: Date.now(),
-    forecasts,
-  };
-  await writeAppJson(c.env.DB, cacheKey, extraction, REPORT_FORECAST_CACHE_TTL_MS);
+
+  await runSharedReportAnalysisTask(sharedCacheKey, async () => {
+    const completedByAnotherRequest = await readSharedReportAnalysis(c.env.DB, sharedCacheKey);
+    if (completedByAnotherRequest?.analysisCalled) {
+      return;
+    }
+    const content = await loadReportContentForForecast(c, item);
+    if (!content) {
+      return;
+    }
+    const forecasts = await extractCompanyReportByLlm(c, text(item.title), content);
+    const updatedAt = Date.now();
+    const extraction: ReportForecastExtraction = {
+      reportId,
+      code,
+      title: text(item.title),
+      source: reportNeedsLlmExtraction(item) ? "sina_html" : "unknown",
+      updatedAt,
+      forecasts,
+    };
+    await Promise.all([
+      writeAppJson(c.env.DB, cacheKey, extraction, REPORT_FORECAST_CACHE_TTL_MS),
+      writeSharedReportAnalysis(c.env.DB, item, forecasts, updatedAt),
+    ]);
+  });
 }
 
 async function annotateReportItemsWithForecasts(
@@ -468,7 +505,10 @@ async function annotateReportItemsWithForecasts(
       results.push(item);
       continue;
     }
-    const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, reportForecastCacheKey(reportId));
+    const shared = await readSharedReportAnalysis(c.env.DB, sharedReportCacheKeyForItem(item));
+    const cached = shared?.forecasts?.length
+      ? shared
+      : await readAppJson<ReportForecastExtraction>(c.env.DB, reportForecastCacheKey(reportId));
     if (cached?.forecasts?.length && canOverrideItemForecasts(item)) {
       results.push({
         ...item,
@@ -498,17 +538,18 @@ async function loadReportContentForForecast(
   return extractSinaReportContent(html);
 }
 
-async function extractCompanyReportByLlm(
+export async function extractCompanyReportByLlm(
   c: Context<AppEnv>,
   title: string,
-  content: string
+  content: string,
+  options: { forceLlm?: boolean } = {},
 ): Promise<CompanyReportForecast[]> {
   const trimmed = trimText(content, 12000);
   if (!trimmed) {
     return [];
   }
   const patternForecasts = extractForecastsByPattern(trimmed);
-  if (patternForecasts.length > 0) {
+  if (patternForecasts.length > 0 && !options.forceLlm) {
     return patternForecasts;
   }
   const prompt = REPORT_ANALYZE_USER_PROMPT
@@ -549,7 +590,9 @@ function parseCompanyReportForecasts(textBody: string): CompanyReportForecast[] 
         return null;
       }
       const revenue = numberOrUndefined(row.revenue);
+      const revenueGrowth = numberOrUndefined(row.revenueGrowth);
       const netProfit = numberOrUndefined(row.netProfit);
+      const profitGrowth = numberOrUndefined(row.profitGrowth);
       const eps = numberOrUndefined(row.eps);
       const pe = numberOrUndefined(row.pe);
       if (revenue === undefined && netProfit === undefined && eps === undefined && pe === undefined) {
@@ -558,7 +601,9 @@ function parseCompanyReportForecasts(textBody: string): CompanyReportForecast[] 
       return {
         year,
         ...(revenue !== undefined ? { revenue: revenue } : {}),
+        ...(revenueGrowth !== undefined ? { revenueGrowth } : {}),
         ...(netProfit !== undefined ? { netProfit: netProfit } : {}),
+        ...(profitGrowth !== undefined ? { profitGrowth } : {}),
         ...(eps !== undefined ? { eps: eps } : {}),
         ...(pe !== undefined ? { pe: pe } : {}),
       };
@@ -679,6 +724,68 @@ function enrichReportForecastsWithNetProfit(
 
 function reportForecastCacheKey(reportId: string): string {
   return `report-forecast:${REPORT_FORECAST_CACHE_VERSION}:${reportId}`;
+}
+
+function sharedReportCacheKeyForItem(item: Record<string, unknown>): string {
+  const infoCode = eastmoneyReportInfoCode(item.infoCode, item.url, item.detailUrl);
+  return sharedReportAnalysisCacheKey(infoCode);
+}
+
+async function readSharedReportAnalysis(
+  db: D1Database,
+  cacheKey: string,
+): Promise<SharedReportAnalysis | null> {
+  if (!cacheKey) {
+    return null;
+  }
+  const cached = await readAppJson<SharedReportAnalysis>(db, cacheKey);
+  return cached?.analysisCalled && Array.isArray(cached.forecasts) ? cached : null;
+}
+
+async function writeSharedReportAnalysis(
+  db: D1Database,
+  item: Record<string, unknown>,
+  forecasts: CompanyReportForecast[],
+  updatedAt: number,
+): Promise<void> {
+  const cacheKey = sharedReportCacheKeyForItem(item);
+  if (!cacheKey) {
+    return;
+  }
+  await writeAppJson(db, cacheKey, {
+    analysisCalled: true,
+    forecasts,
+    updatedAt,
+  } satisfies SharedReportAnalysis, REPORT_FORECAST_CACHE_TTL_MS);
+}
+
+async function readLegacyKnowledgeReportAnalysis(
+  db: D1Database,
+  item: Record<string, unknown>,
+): Promise<SharedReportAnalysis | null> {
+  const infoCode = eastmoneyReportInfoCode(item.infoCode, item.url, item.detailUrl);
+  if (!infoCode) {
+    return null;
+  }
+  const row = await db.prepare(
+    `select doc_id
+     from knowledge_docs
+     where source_type = 'research_report'
+       and report_type = 'company_report'
+       and url like ?
+     order by sort_time desc
+     limit 1`
+  )
+    .bind(`%${infoCode}%`)
+    .first<{ doc_id: string }>();
+  if (!row?.doc_id) {
+    return null;
+  }
+  const cached = await readAppJson<SharedReportAnalysis>(
+    db,
+    `knowledge-report-analysis:v3:${row.doc_id}`,
+  );
+  return cached?.analysisCalled && Array.isArray(cached.forecasts) ? cached : null;
 }
 
 function mergeCompanyReportsPreferPrimary(
@@ -959,21 +1066,88 @@ function reportForecastsHaveNetProfit(forecasts: Array<Record<string, unknown>>)
 }
 
 function extractForecastsByPattern(content: string): CompanyReportForecast[] {
+  const tableForecasts = extractForecastsFromMarkdownTable(content);
   const sentence = content.match(
     /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*\/\s*(\d{4})\s*\/\s*(\d{4})\s*年[^。；\n]{0,220}?归母净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*亿元/i
   );
-  if (!sentence) {
-    return [];
+  const rangeSentence = content.match(
+    /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*[-—–至]\s*(\d{4})\s*年[^。；\n]{0,220}?归母净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*(?:亿元|亿)/i
+  );
+  let sentenceForecasts: CompanyReportForecast[] = [];
+  if (sentence) {
+    const years = [Number(sentence[1]), Number(sentence[2]), Number(sentence[3])];
+    const profits = [Number(sentence[4]), Number(sentence[5]), Number(sentence[6])];
+    if (years.every(Number.isInteger) && profits.every(Number.isFinite)) {
+      sentenceForecasts = years.map((year, index) => ({ year, netProfit: round2(profits[index]) }));
+    }
+  } else if (rangeSentence) {
+    const startYear = Number(rangeSentence[1]);
+    const endYear = Number(rangeSentence[2]);
+    const profits = [Number(rangeSentence[3]), Number(rangeSentence[4]), Number(rangeSentence[5])];
+    if (Number.isInteger(startYear) && endYear === startYear + 2 && profits.every(Number.isFinite)) {
+      sentenceForecasts = profits.map((profit, index) => ({ year: startYear + index, netProfit: round2(profit) }));
+    }
   }
-  const years = [Number(sentence[1]), Number(sentence[2]), Number(sentence[3])];
-  const profits = [Number(sentence[4]), Number(sentence[5]), Number(sentence[6])];
-  if (years.some((year) => !Number.isInteger(year)) || profits.some((profit) => !Number.isFinite(profit))) {
-    return [];
+  return mergeForecastRows(tableForecasts, sentenceForecasts);
+}
+
+function extractForecastsFromMarkdownTable(content: string): CompanyReportForecast[] {
+  const lines = content.split(/\r?\n/).filter((line) => line.trim().startsWith("|"));
+  for (let headerIndex = 0; headerIndex < lines.length; headerIndex += 1) {
+    const header = markdownTableCells(lines[headerIndex]);
+    const years = header.map((cell) => Number(cell.match(/\b(20\d{2})E\b/i)?.[1] || 0));
+    if (years.filter((year) => year > 0).length < 2) {
+      continue;
+    }
+    const rows = lines.slice(headerIndex + 1, headerIndex + 14).map(markdownTableCells);
+    const revenueRow = rows.find((cells) => /营业(?:总)?收入/.test(cells[0] || ""));
+    const profitRow = rows.find((cells) => /归母净利润|归属于母公司.*净利润/.test(cells[0] || ""));
+    const epsRow = rows.find((cells) => /^EPS|每股收益/i.test(cells[0] || ""));
+    const peRow = rows.find((cells) => /^(?:P\/?E|PE)|市盈率/i.test(cells[0] || ""));
+    const growthRows = rows.filter((cells) => /YOY|同比/i.test(cells[0] || ""));
+    const revenueGrowthRow = revenueRow ? growthRows.find((row) => rows.indexOf(row) > rows.indexOf(revenueRow)) : undefined;
+    const profitGrowthRow = profitRow ? growthRows.find((row) => rows.indexOf(row) > rows.indexOf(profitRow)) : undefined;
+    const revenueDivisor = tableValueDivisor(revenueRow?.[0] || "");
+    const profitDivisor = tableValueDivisor(profitRow?.[0] || "");
+    return years.flatMap((year, columnIndex) => {
+      if (!year) return [];
+      const revenue = tableNumber(revenueRow?.[columnIndex]);
+      const netProfit = tableNumber(profitRow?.[columnIndex]);
+      const revenueGrowth = tableNumber(revenueGrowthRow?.[columnIndex]);
+      const profitGrowth = tableNumber(profitGrowthRow?.[columnIndex]);
+      const eps = tableNumber(epsRow?.[columnIndex]);
+      const pe = tableNumber(peRow?.[columnIndex]);
+      return [{
+        year,
+        ...(revenue !== undefined ? { revenue: round2(revenue / revenueDivisor) } : {}),
+        ...(revenueGrowth !== undefined ? { revenueGrowth } : {}),
+        ...(netProfit !== undefined ? { netProfit: round2(netProfit / profitDivisor) } : {}),
+        ...(profitGrowth !== undefined ? { profitGrowth } : {}),
+        ...(eps !== undefined ? { eps } : {}),
+        ...(pe !== undefined ? { pe } : {}),
+      }];
+    });
   }
-  return years.map((year, index) => ({
-    year,
-    netProfit: round2(profits[index]),
-  }));
+  return [];
+}
+
+function markdownTableCells(line: string): string[] {
+  return line.split("|").slice(1, -1).map((cell) => cell
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/\*\*/g, "")
+    .trim());
+}
+
+function tableNumber(value: string | undefined): number | undefined {
+  const match = String(value || "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+  const parsed = match ? Number(match[0]) : NaN;
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function tableValueDivisor(label: string): number {
+  if (/百万元/.test(label)) return 100;
+  if (/万元/.test(label)) return 10000;
+  return 1;
 }
 
 function mergeForecastRows(

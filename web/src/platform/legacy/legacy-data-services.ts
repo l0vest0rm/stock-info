@@ -16,6 +16,7 @@ type DataServicesContext = {
 export function createLegacyDataServices(context: DataServicesContext) {
   const { cache, codeNameMap, klineCodes, markPoints, server, usCodeMap, fetchRequest } = context
   const klineInflight = new Map<string, Promise<unknown>>()
+  const klineCacheRanges = new Map<string, string>()
 
   function fetchCodesData(codes: string[], fn: (code: string, succ: (code: string) => void) => void, callback: CodesCallback): void {
     const should = codes.length
@@ -89,21 +90,27 @@ export function createLegacyDataServices(context: DataServicesContext) {
 
   async function fetchKline(code: string, fq?: string): Promise<unknown> {
     const cacheKey = `${code}${fq}`
-    if (cache[cacheKey]) {
+    const isFund = code.endsWith('.OF')
+    const from = isFund ? (document.getElementById('dateRange-start') as HTMLInputElement | null)?.value || '' : ''
+    const to = isFund ? (document.getElementById('dateRange-end') as HTMLInputElement | null)?.value || '' : ''
+    const requestCacheKey = `${cacheKey}:${from}:${to}`
+    if (cache[cacheKey] && (!isFund || klineCacheRanges.get(cacheKey) === requestCacheKey)) {
       return cache[cacheKey]
     }
-    const existing = klineInflight.get(cacheKey)
+    const existing = klineInflight.get(requestCacheKey)
     if (existing) {
       return existing
     }
     const request = fetchRequest({
       url: `${server}/api/kline`,
-      cacheKey,
+      cacheKey: requestCacheKey,
       cacheTtl: 86400,
       silent: true,
       params: {
         code,
         fq: fq || '',
+        ...(from ? { from } : {}),
+        ...(to ? { to } : {}),
       },
     }).then((data) => {
       if (data && typeof data === 'object' && 'error' in data) {
@@ -112,11 +119,12 @@ export function createLegacyDataServices(context: DataServicesContext) {
         return undefined
       }
       cache[cacheKey] = data
+      klineCacheRanges.set(cacheKey, requestCacheKey)
       return data
     }).finally(() => {
-      klineInflight.delete(cacheKey)
+      klineInflight.delete(requestCacheKey)
     })
-    klineInflight.set(cacheKey, request)
+    klineInflight.set(requestCacheKey, request)
     return request
   }
 

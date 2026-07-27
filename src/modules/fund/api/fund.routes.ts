@@ -19,6 +19,12 @@ fundRoutes.get("/fund/position", async (c) => {
   return ok(c, await fetchFundPosition(c.env.DB, code, num));
 });
 
+fundRoutes.get("/fund/asset-allocation", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  return ok(c, await fetchFundAssetAllocation(c.env.DB, code));
+});
+
 fundRoutes.get("/fund/share-change", async (c) => {
   const code = requireQuery(c, "code");
   if (code instanceof Response) return code;
@@ -103,6 +109,50 @@ async function fetchFundPosition(db: D1Database, code: string, num: number): Pro
     })
     .slice(0, num)
     .map((row) => ({ ...row, sourceCode: `${fundCode}.OF`, sourceName: "", sourceKind: "fund" }));
+}
+
+type FundAssetAllocationRow = {
+  reportDate: string;
+  stockPct: number | null;
+  bondPct: number | null;
+  cashPct: number | null;
+  netAssetsBillion: number | null;
+};
+
+async function fetchFundAssetAllocation(db: D1Database, code: string): Promise<{
+  code: string;
+  source: "eastmoney";
+  rows: FundAssetAllocationRow[];
+}> {
+  const fundCode = bareFundCode(code);
+  const html = await fetchEastmoneyText(db, `https://fundf10.eastmoney.com/zcpz_${fundCode}.html`);
+  return {
+    code: `${fundCode}.OF`,
+    source: "eastmoney",
+    rows: parseFundAssetAllocation(html),
+  };
+}
+
+export function parseFundAssetAllocation(html: string): FundAssetAllocationRow[] {
+  const tables = [...html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/gi)].map((match) => match[1]);
+  const table = tables.find((value) => {
+    const text = normalizeText(stripTags(value));
+    return text.includes("报告期") && text.includes("股票占净比") && text.includes("净资产");
+  });
+  if (!table) return [];
+
+  return [...table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)]
+    .map((match) => [...match[1].matchAll(/<(?:th|td)[^>]*>([\s\S]*?)<\/(?:th|td)>/gi)]
+      .map((cell) => normalizeText(stripTags(cell[1]))))
+    .filter((cells) => cells.length >= 5 && /^\d{4}-\d{2}-\d{2}$/.test(cells[0]))
+    .map((cells) => ({
+      reportDate: cells[0],
+      stockPct: nullableNumber(cells[1]),
+      bondPct: nullableNumber(cells[2]),
+      cashPct: nullableNumber(cells[3]),
+      netAssetsBillion: nullableNumber(cells[4]),
+    }))
+    .sort((left, right) => right.reportDate.localeCompare(left.reportDate));
 }
 
 async function fetchFundPositionYear(db: D1Database, fundCode: string, year: number): Promise<Array<Record<string, unknown>>> {
@@ -410,6 +460,14 @@ function num(value: unknown): number {
   if (typeof value !== "string") return 0;
   const parsed = Number(value.replaceAll(",", "").replace("%", "").trim());
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.replaceAll(",", "").replace("%", "").trim();
+  if (!normalized || normalized === "---" || normalized === "-") return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function positiveInt(value: string | undefined, fallback: number): number {

@@ -12,10 +12,28 @@ type KnowledgeNewsTableRow = {
   sourceUrl: string
   contentUrl: string
   accessMethod: string
+  isReport: boolean
   stockLinks: Array<{ name: string; code: string }>
   tags: string[]
   favorited: boolean
   isFiltered: boolean
+  isCompanyReport: boolean
+  reportPages: number | null
+  analysisState: 'idle' | 'loading' | 'done' | 'failed'
+  analysisCalled: boolean
+  analysisError: string
+  latestPrice: number | null
+  forecasts: Array<{
+    year: number
+    revenue: number | null
+    revenue_growth: number | null
+    net_profit: number | null
+    profit_growth: number | null
+    current_pe: number | null
+    peg: number | null
+  }>
+  peg2028: number | null
+  recommended: boolean
   document?: Record<string, unknown>
 }
 
@@ -23,6 +41,7 @@ type KnowledgeNewsTableStateEvent = CustomEvent<{
   rows?: KnowledgeNewsTableRow[]
   currentPage?: number
   hasNext?: boolean
+  companyReportMode?: boolean
 }>
 
 type KnowledgeNewsFilterOption = {
@@ -44,6 +63,26 @@ const knowledgeNewsTargetStyle = `
   max-width: 220px;
   position: relative;
   width: 220px;
+}
+
+#knowledgeNews.knowledge-news-company-report-table th,
+#knowledgeNews.knowledge-news-company-report-table td {
+  white-space: nowrap;
+}
+
+#knowledgeNews .knowledge-news-forecast-cell {
+  font-size: .78rem;
+  line-height: 1.45;
+  min-width: 150px;
+}
+
+#knowledgeNews .knowledge-news-forecast-cell .metric-label {
+  color: #6c757d;
+}
+
+#knowledgeNews .knowledge-news-recommended-cell {
+  background: #d1e7dd;
+  box-shadow: inset 4px 0 #198754;
 }
 
 #knowledgeNews .knowledge-news-title-link {
@@ -157,7 +196,7 @@ function knowledgeNewsRemotePdfUrl(row: KnowledgeNewsTableRow) {
     return ''
   }
   const lowerAccessMethod = String(row.accessMethod || '').toLowerCase()
-  if (lowerAccessMethod.includes('remote_pdf') || lowerAccessMethod === 'pdf') {
+  if (row.isReport || lowerAccessMethod.includes('remote_pdf') || lowerAccessMethod === 'pdf') {
     return url
   }
   return ''
@@ -300,6 +339,63 @@ function knowledgeNewsTargetCell(row: KnowledgeNewsTableRow) {
   ])
 }
 
+const knowledgeNewsForecastYears = [
+  new Date().getFullYear(),
+  new Date().getFullYear() + 1,
+  new Date().getFullYear() + 2,
+]
+
+function formatKnowledgeNewsMetric(value: number | null, suffix = ''): string {
+  return value === null || !Number.isFinite(value) ? '-' : `${value.toFixed(2)}${suffix}`
+}
+
+function knowledgeNewsForecastCell(row: KnowledgeNewsTableRow, year: number) {
+  const forecast = row.forecasts.find((item) => item.year === year)
+  if (row.analysisState === 'loading' || row.analysisState === 'idle') {
+    return h('td', { class: 'knowledge-news-forecast-cell text-muted' }, '后台处理中...')
+  }
+  if (!forecast) {
+    return h('td', { class: 'knowledge-news-forecast-cell text-muted' }, '-')
+  }
+  const recommended = year === 2028 && row.recommended
+  return h('td', {
+    class: [
+      'knowledge-news-forecast-cell',
+      recommended ? 'knowledge-news-recommended-cell' : '',
+    ].filter(Boolean).join(' '),
+  }, [
+    h('div', [h('span', { class: 'metric-label' }, '营收 '), `${formatKnowledgeNewsMetric(forecast.revenue)} 亿`]),
+    h('div', [h('span', { class: 'metric-label' }, '营收增速 '), formatKnowledgeNewsMetric(forecast.revenue_growth, '%')]),
+    h('div', [h('span', { class: 'metric-label' }, '利润 '), `${formatKnowledgeNewsMetric(forecast.net_profit)} 亿`]),
+    h('div', [h('span', { class: 'metric-label' }, '利润增速 '), formatKnowledgeNewsMetric(forecast.profit_growth, '%')]),
+    h('div', [h('span', { class: 'metric-label' }, '现价 PE '), formatKnowledgeNewsMetric(forecast.current_pe)]),
+    h('div', { class: recommended ? 'fw-semibold text-success' : '' }, [
+        h('span', { class: 'metric-label' }, 'PEG '),
+        formatKnowledgeNewsMetric(forecast.peg),
+        recommended ? ' · 推荐' : '',
+      ]),
+  ])
+}
+
+function knowledgeNewsAnalysisStatus(row: KnowledgeNewsTableRow) {
+  if (row.analysisState === 'failed') {
+    return h('span', { class: 'text-danger', title: row.analysisError }, '失败')
+  }
+  if (row.analysisState === 'loading' || row.analysisState === 'idle') {
+    return h('span', { class: 'text-muted', title: '后台依次下载、转换并分析研报' }, '下载/转换/分析中')
+  }
+  if (!row.analysisCalled) {
+    return h('span', { class: 'text-warning', title: '没有可供模型分析的研报正文' }, '无正文')
+  }
+  if (row.forecasts.length === 0) {
+    return h('span', { class: 'text-muted', title: '研报正文中没有明确的未来年度公司业绩预测' }, '已分析·无年度预测')
+  }
+  return h('span', {
+    class: 'text-success',
+    title: row.latestPrice === null ? '' : `当前价格 ${row.latestPrice.toFixed(2)}`,
+  }, '已调用')
+}
+
 function knowledgeNewsSelectedTagText(options: KnowledgeNewsFilterOption[], selectedTags: string[]) {
   if (selectedTags.length === 0) {
     return '标签'
@@ -319,6 +415,7 @@ const KnowledgeNewsTable = defineComponent({
     const rows = ref<KnowledgeNewsTableRow[]>([])
     const currentPage = ref(1)
     const hasNext = ref(false)
+    const companyReportMode = ref(false)
 
     const onState = (event: Event) => {
       const detail = (event as KnowledgeNewsTableStateEvent).detail
@@ -327,6 +424,7 @@ const KnowledgeNewsTable = defineComponent({
         currentPage.value = detail.currentPage
       }
       hasNext.value = Boolean(detail?.hasNext)
+      companyReportMode.value = Boolean(detail?.companyReportMode)
     }
 
     onMounted(() => {
@@ -367,7 +465,14 @@ const KnowledgeNewsTable = defineComponent({
 
     return () => h('div', [
       h('style', knowledgeNewsTargetStyle),
-      h('table', { id: 'knowledgeNews', class: 'table table-sm table-bordered table-hover align-middle' }, [
+      h('div', { class: 'table-responsive' }, [
+      h('table', {
+        id: 'knowledgeNews',
+        class: [
+          'table table-sm table-bordered table-hover align-middle',
+          companyReportMode.value ? 'knowledge-news-company-report-table' : '',
+        ].filter(Boolean).join(' '),
+      }, [
         h('thead', { class: 'table-info' }, [
           h('tr', [
             h('th', { scope: 'col' }, '时间'),
@@ -375,6 +480,11 @@ const KnowledgeNewsTable = defineComponent({
             h('th', { scope: 'col', style: 'width: 220px;' }, '目标'),
             h('th', { scope: 'col' }, '来源'),
             h('th', { scope: 'col' }, '标题'),
+            ...(companyReportMode.value ? [
+              h('th', { scope: 'col' }, '研报页数'),
+              h('th', { scope: 'col' }, '模型分析'),
+              ...knowledgeNewsForecastYears.map((year) => h('th', { scope: 'col', key: year }, `${year} 预测`)),
+            ] : []),
           ]),
         ]),
         h('tbody', rows.value.map((row) => h('tr', { key: `${row.docId}-${row.title}` }, [
@@ -383,7 +493,13 @@ const KnowledgeNewsTable = defineComponent({
           knowledgeNewsTargetCell(row),
           h('td', row.sourceName),
           h('td', knowledgeNewsTitleContent(row)),
+          ...(companyReportMode.value ? [
+            h('td', row.reportPages === null ? '-' : String(row.reportPages)),
+            h('td', knowledgeNewsAnalysisStatus(row)),
+            ...knowledgeNewsForecastYears.map((year) => knowledgeNewsForecastCell(row, year)),
+          ] : []),
         ]))),
+      ]),
       ]),
       pagination(),
     ])

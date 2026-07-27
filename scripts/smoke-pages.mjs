@@ -50,6 +50,32 @@ await check("fund 005827.OF page fund-notice.html", async () => {
   assert(text.includes("fund-notice-vue-root"), "fund notice page root is missing");
 });
 
+await check("fund 005827.OF page fund-position.html", async () => {
+  const res = await fetchWithTimeout(pageUrl("fund-position.html", "005827.OF"));
+  const text = await res.text();
+  assert(res.status < 400, `status=${res.status} body=${truncate(text)}`);
+  assert(text.includes("fund-position-vue-root"), "fund position page root is missing");
+});
+
+await check("fund 008528.OF paginated kline range", async () => {
+  const body = await fetchApi("/api/kline?code=008528.OF&from=2026-01-01&to=2026-07-24");
+  assert(Array.isArray(body.data), "fund kline data is not an array");
+  assert(body.data.length > 20, `fund kline pagination stopped early: rows=${body.data.length}`);
+  assert(body.data[0][0] >= Date.parse("2026-01-01T00:00:00.000Z"), "fund kline starts before requested range");
+  assert(body.data.at(-1)[0] <= Date.parse("2026-07-24T00:00:00.000Z"), "fund kline ends after requested range");
+});
+
+await check("fund 005827.OF api asset allocation", async () => {
+  const body = await fetchApi("/api/fund/asset-allocation?code=005827.OF");
+  assert(Array.isArray(body.data?.rows), "fund asset allocation rows is not an array");
+  assert(body.data.rows.length >= 2, "fund asset allocation history is incomplete");
+  const latest = body.data.rows[0];
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(latest.reportDate), "fund asset allocation date is invalid");
+  assert(typeof latest.stockPct === "number", "fund stock allocation is not numeric");
+  assert(typeof latest.cashPct === "number", "fund cash allocation is not numeric");
+  assert(typeof latest.netAssetsBillion === "number", "fund net assets is not numeric");
+});
+
 await check("fund 005827.OF api notices", async () => {
   const body = await fetchApi("/api/fund/notices?code=005827.OF&page=1&pageSize=5&category=0");
   assert(Array.isArray(body.data?.rows), "fund notices rows is not an array");

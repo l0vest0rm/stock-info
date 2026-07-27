@@ -25,10 +25,28 @@ type KnowledgeNewsTableRow = {
   sourceUrl: string
   contentUrl: string
   accessMethod: string
+  isReport: boolean
   stockLinks: Array<{ name: string; code: string }>
   tags: string[]
   favorited: boolean
   isFiltered: boolean
+  isCompanyReport: boolean
+  reportPages: number | null
+  analysisState: 'idle' | 'loading' | 'done' | 'failed'
+  analysisCalled: boolean
+  analysisError: string
+  latestPrice: number | null
+  forecasts: Array<{
+    year: number
+    revenue: number | null
+    revenue_growth: number | null
+    net_profit: number | null
+    profit_growth: number | null
+    current_pe: number | null
+    peg: number | null
+  }>
+  peg2028: number | null
+  recommended: boolean
   document: Record<string, unknown>
 }
 
@@ -134,9 +152,10 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   function emitKnowledgeNewsTableState() {
     window.dispatchEvent(new CustomEvent('licai:knowledge-news-table-state', {
       detail: {
-        rows: knowledgeNewsRows,
+        rows: knowledgeNewsRows.map((row) => ({ ...row })),
         currentPage: knowledgeNewsCurrentPage,
         hasNext: knowledgeNewsHasNext,
+        companyReportMode: knowledgeNewsSelectedSourceType === 'company_report',
       },
     }))
   }
@@ -211,12 +230,70 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
       sourceUrl: String(item.url || ''),
       contentUrl: String(item.content_url || ''),
       accessMethod: String(item.access_method || ''),
+      isReport: item.source_type === 'research_report'
+        || ['company_report', 'industry_report', 'research_report'].includes(String(item.report_type || '')),
       stockLinks,
       tags,
       favorited: Boolean(item.favorited),
       isFiltered: item.source_type === 'filtered_review' || Boolean(item.filter),
+      isCompanyReport: item.source_type === 'research_report' && item.report_type === 'company_report',
+      reportPages: Number.isInteger(Number(item.report_pages)) && Number(item.report_pages) > 0
+        ? Number(item.report_pages)
+        : null,
+      analysisState: 'idle',
+      analysisCalled: false,
+      analysisError: '',
+      latestPrice: null,
+      forecasts: [],
+      peg2028: null,
+      recommended: false,
       document: item && typeof item === 'object' ? item : {},
     }
+  }
+
+  async function enrichKnowledgeCompanyReports(requestId: number) {
+    const pendingRows = knowledgeNewsRows.filter((row) => row.isCompanyReport && row.docId)
+    let nextIndex = 0
+    async function worker() {
+      while (nextIndex < pendingRows.length) {
+        const row = pendingRows[nextIndex]
+        nextIndex += 1
+        row.analysisState = 'loading'
+        emitKnowledgeNewsTableState()
+        try {
+          const response = await fetch(`${server}/api/knowledge/report-analysis`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: row.docId }),
+          })
+          const payload = await response.json() as { code?: number; data?: any; msg?: string }
+          if (!response.ok || payload.code !== 200) {
+            throw new Error(payload.msg || `研报分析请求失败：${response.status}`)
+          }
+          const data = payload.data
+          if (requestId !== knowledgeNewsRenderRequestId) {
+            return
+          }
+          row.reportPages = Number.isInteger(Number(data?.report_pages)) && Number(data.report_pages) > 0
+            ? Number(data.report_pages)
+            : row.reportPages
+          row.analysisCalled = Boolean(data?.analysis_called)
+          row.latestPrice = Number.isFinite(Number(data?.latest_price)) ? Number(data.latest_price) : null
+          row.forecasts = Array.isArray(data?.forecasts) ? data.forecasts : []
+          row.peg2028 = Number.isFinite(Number(data?.peg_2028)) ? Number(data.peg_2028) : null
+          row.recommended = Boolean(data?.recommended)
+          row.analysisState = 'done'
+        } catch (error) {
+          if (requestId !== knowledgeNewsRenderRequestId) {
+            return
+          }
+          row.analysisState = 'failed'
+          row.analysisError = error instanceof Error ? error.message : String(error)
+        }
+        emitKnowledgeNewsTableState()
+      }
+    }
+    await Promise.all([worker(), worker()])
   }
 
   async function fetchKnowledgeNewsPage(params: Record<string, unknown>) {
@@ -269,6 +346,9 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     emitKnowledgeNewsTableState()
     emitKnowledgeNewsFiltersState()
     restoreKnowledgeDocumentFromUrl('replace')
+    if (sourceType === 'company_report') {
+      void enrichKnowledgeCompanyReports(requestId)
+    }
   }
 
   function openExternalUrl(url: string) {

@@ -1,28 +1,40 @@
-import { fetchEastmoneySuggest } from "../../../adapters/eastmoney";
+import { fetchEastmoneySuggest, fetchYahooSuggest } from "../../../adapters/eastmoney";
 import { findSecurity, searchLocalSecurities, upsertSecurity } from "../../../db/queries";
 import { isSupportedSecurityCode, normalizeSecurityCode } from "../../../shared/codes";
 import type { ExternalHttpOptions } from "../../../shared/http";
 import type { SecurityRecord } from "../../../types";
+import { shouldSearchYahoo } from "../domain/search-query";
 
 export async function searchSecurities(
   db: D1Database,
   q: string,
-  _options?: { httpOptions?: ExternalHttpOptions }
+  options?: { httpOptions?: ExternalHttpOptions }
 ): Promise<SecurityRecord[]> {
   const trimmed = q.trim();
   if (!trimmed) {
     return [];
   }
   const local = (await searchLocalSecurities(db, trimmed)).map(normalizeSearchRecord);
-  const remote = await fetchEastmoneySuggest(db, trimmed).catch((err) => {
-    if (local.length === 0) {
-      throw err;
-    }
-    console.warn(`eastmoney suggest unavailable for ${trimmed}:`, err);
+  let eastmoneyError: unknown;
+  const eastmoneyPromise = fetchEastmoneySuggest(db, trimmed).catch((err) => {
+    eastmoneyError = err;
     return [] as SecurityRecord[];
   });
-  const merged = mergeSecurityResults(local, remote);
-  for (const item of remote) {
+  const yahooPromise = shouldSearchYahoo(trimmed)
+    ? fetchYahooSuggest(db, trimmed, options?.httpOptions).catch((err) => {
+        console.warn(`yahoo suggest unavailable for ${trimmed}:`, err);
+        return [] as SecurityRecord[];
+      })
+    : Promise.resolve([] as SecurityRecord[]);
+  const [remote, yahoo] = await Promise.all([eastmoneyPromise, yahooPromise]);
+  const merged = mergeSecurityResults(local, remote, yahoo);
+  if (eastmoneyError) {
+    if (merged.length === 0) {
+      throw eastmoneyError;
+    }
+    console.warn(`eastmoney suggest unavailable for ${trimmed}:`, eastmoneyError);
+  }
+  for (const item of [...remote, ...yahoo]) {
     await upsertSecurity(db, item);
   }
   return merged;

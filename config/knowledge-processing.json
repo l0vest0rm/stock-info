@@ -25,6 +25,7 @@
   "docProcessingConcurrency": 4,
   "maxNewsAgeDays": 14,
   "maxReportAgeDays": 60,
+  "reportPdfMode": "original_link",
   "pdfConversionTimeoutMs": 120000,
   "eastmoneyReports": {
     "enabled": true,
@@ -53,6 +54,8 @@
   "topicFilter": {
     "enabled": true,
     "name": "AI产业链",
+    "bypassSourceTypes": ["research_report"],
+    "bypassReportTypes": ["company_report", "industry_report", "research_report"],
     "minScore": 2,
     "uncertainMinScore": 1,
     "uncertainMaxScore": 1,

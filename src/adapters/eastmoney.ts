@@ -46,6 +46,9 @@ type EastmoneyFundNavResponse = {
       SHZT?: string;
     }>;
   };
+  TotalCount?: number;
+  PageSize?: number;
+  PageIndex?: number;
   ErrCode?: number;
   ErrMsg?: string | null;
 };
@@ -361,12 +364,18 @@ export async function fetchEastmoneyStockKline(
   fq: string,
   from: string,
   to: string,
-  httpOptions?: ExternalHttpOptions
+  httpOptions?: ExternalHttpOptions,
+  eastmoneyCookie?: string
 ): Promise<{ security?: SecurityRecord; rows: KlineBar[] }> {
   const normalized = normalizeSecurityCode(code);
   const secid = eastmoneySecId(normalized);
   if (!secid) {
     throw new Error(`unsupported Eastmoney stock code: ${code}`);
+  }
+  const isHongKong = normalized.endsWith(".HK");
+  const cookie = eastmoneyCookie?.trim();
+  if (isHongKong && !cookie) {
+    throw new Error("EASTMONEY_COOKIE is required for Eastmoney Hong Kong K-line requests");
   }
   let body: EastmoneyStockKlineResponse | undefined;
   let lastError: unknown;
@@ -375,22 +384,28 @@ export async function fetchEastmoneyStockKline(
     const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
     url.searchParams.set("cb", `jQuery3510123456789_${requestNonce}`);
     url.searchParams.set("secid", secid);
-    url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
+    url.searchParams.set("fields1", isHongKong
+      ? "f1,f2,f3,f4,f5,f6"
+      : "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13");
     url.searchParams.set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61");
     url.searchParams.set("klt", eastmoneyKlt(period));
     url.searchParams.set("fqt", eastmoneyFqt(fq));
-    url.searchParams.set("beg", from.replaceAll("-", ""));
-    url.searchParams.set("end", to.replaceAll("-", ""));
+    if (!isHongKong) {
+      url.searchParams.set("beg", from.replaceAll("-", ""));
+    }
+    url.searchParams.set("end", isHongKong ? "20500101" : to.replaceAll("-", ""));
     url.searchParams.set("lmt", "120");
     url.searchParams.set("ut", "fa5fd1943c7b386f172d6893dbfba10b");
-    url.searchParams.set("rtntype", "6");
+    if (!isHongKong) {
+      url.searchParams.set("rtntype", "6");
+    }
     url.searchParams.set("_", String(requestNonce));
     try {
       body = (await cachedFetchJson(db, url.toString(), {
         headers: {
           Accept: "*/*",
           "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-          Cookie: "nid18=1",
+          Cookie: cookie || "nid18=1",
           Referer: "https://quote.eastmoney.com/",
           "Sec-Fetch-Dest": "script",
           "Sec-Fetch-Mode": "no-cors",
@@ -400,7 +415,7 @@ export async function fetchEastmoneyStockKline(
         },
       }, marketDataCacheTtlMsForCode(normalized), {
         ...httpOptions,
-        cacheKey: `eastmoney:kline:v2:${normalized}:${period}:${fq}:${from}:${to}`,
+        cacheKey: `eastmoney:kline:v3:${normalized}:${period}:${fq}:${from}:${to}`,
       })) as EastmoneyStockKlineResponse;
       break;
     } catch (err) {
@@ -460,6 +475,7 @@ export async function fetchEastmoneyFundNav(
     : `${bareCode(code)}.OF`;
   const now = Date.now();
   const rows: FundNavRow[] = [];
+  let receivedCount = 0;
   let pageIndex = 1;
   while (true) {
     const url = new URL("https://api.fund.eastmoney.com/f10/lsjz");
@@ -476,7 +492,8 @@ export async function fetchEastmoneyFundNav(
     if (body.ErrCode && body.ErrCode !== 0) {
       throw new Error(`eastmoney fund nav error: code=${body.ErrCode} msg=${body.ErrMsg ?? ""}`);
     }
-    const pageRows = (body.Data?.LSJZList ?? [])
+    const rawPageRows = body.Data?.LSJZList ?? [];
+    const pageRows = rawPageRows
       .map((item) => ({
         code: normalized,
         date: item.FSRQ ?? "",
@@ -489,7 +506,18 @@ export async function fetchEastmoneyFundNav(
       }))
       .filter((row) => row.date);
     rows.push(...pageRows);
-    if (pageRows.length < pageSize) {
+    receivedCount += rawPageRows.length;
+    const totalCount = Number.isInteger(body.TotalCount) && (body.TotalCount ?? 0) >= 0
+      ? body.TotalCount
+      : undefined;
+    const effectivePageSize = Number.isInteger(body.PageSize) && (body.PageSize ?? 0) > 0
+      ? body.PageSize!
+      : pageSize;
+    if (
+      rawPageRows.length === 0
+      || (totalCount !== undefined && receivedCount >= totalCount)
+      || (totalCount === undefined && rawPageRows.length < effectivePageSize)
+    ) {
       break;
     }
     pageIndex += 1;
@@ -1472,16 +1500,17 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
   const latestPriceRaw = numberOrNull(data.f43);
   const changeAmountRaw = numberOrNull(data.f169);
   const pctChangeRaw = numberOrNull(data.f170);
+  const priceDivisor = 100;
   return {
     code: normalized,
     name: String(data.f58 ?? "").trim() || normalized,
     market: securityMarket(normalized),
     type: inferSecurityType(normalized),
-    latestPrice: latestPriceRaw !== null ? latestPriceRaw / 1000 : null,
+    latestPrice: latestPriceRaw !== null ? latestPriceRaw / priceDivisor : null,
     pctChange: pctChangeRaw !== null ? pctChangeRaw / 100 : null,
-    changeAmount: changeAmountRaw !== null ? changeAmountRaw / 1000 : null,
+    changeAmount: changeAmountRaw !== null ? changeAmountRaw / priceDivisor : null,
     turnover: numberOrNull(data.f168) !== null ? numberOrNull(data.f168)! / 100 : null,
-    marketCapYi: numberOrNull(data.f116) !== null ? numberOrNull(data.f116)! / 1_000_000_000 : null,
+    marketCapYi: numberOrNull(data.f116) !== null ? numberOrNull(data.f116)! / 100_000_000 : null,
     peTtm: numberOrNull(data.f162) !== null ? numberOrNull(data.f162)! / 100 : null,
     pb: numberOrNull(data.f167) !== null ? numberOrNull(data.f167)! / 1000 : null,
     source: "eastmoney",
