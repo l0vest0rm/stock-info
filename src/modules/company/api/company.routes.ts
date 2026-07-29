@@ -618,7 +618,7 @@ function aggregateForecastsForCode(
   items: Array<Record<string, unknown>>
 ): Array<Record<string, unknown>> {
   const normalized = normalizeSecurityCode(code);
-  const grouped = new Map<number, number[]>();
+  const grouped = new Map<number, Record<"revenue" | "revenueGrowth" | "netProfit" | "profitGrowth", number[]>>();
   for (const item of items) {
     if (normalizeSecurityCode(text(item.code)) !== normalized) {
       continue;
@@ -626,21 +626,40 @@ function aggregateForecastsForCode(
     const forecasts = Array.isArray(item.forecasts) ? item.forecasts as Array<Record<string, unknown>> : [];
     for (const forecast of forecasts) {
       const year = Number(forecast.year);
-      const netProfit = numberOrUndefined(forecast.netProfit);
-      if (!Number.isInteger(year) || netProfit === undefined || netProfit <= 0) {
+      if (!Number.isInteger(year)) {
         continue;
       }
       if (!grouped.has(year)) {
-        grouped.set(year, []);
+        grouped.set(year, {
+          revenue: [],
+          revenueGrowth: [],
+          netProfit: [],
+          profitGrowth: [],
+        });
       }
-      grouped.get(year)!.push(netProfit);
+      const values = grouped.get(year)!;
+      for (const field of ["revenue", "revenueGrowth", "netProfit", "profitGrowth"] as const) {
+        const value = numberOrUndefined(forecast[field]);
+        const requiresPositiveValue = field === "revenue" || field === "netProfit";
+        if (value !== undefined && (!requiresPositiveValue || value > 0)) {
+          values[field].push(value);
+        }
+      }
     }
   }
   return [...grouped.entries()]
     .map(([year, values]) => ({
       year,
-      netProfit: round2(values.reduce((sum, value) => sum + value, 0) / values.length),
+      ...Object.fromEntries(
+        Object.entries(values)
+          .filter(([, fieldValues]) => fieldValues.length > 0)
+          .map(([field, fieldValues]) => [
+            field,
+            round2(fieldValues.reduce((sum, value) => sum + value, 0) / fieldValues.length),
+          ])
+      ),
     }))
+    .filter((forecast) => Object.keys(forecast).length > 1)
     .sort((left, right) => Number(left.year) - Number(right.year));
 }
 

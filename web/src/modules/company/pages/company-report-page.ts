@@ -6,16 +6,28 @@ type CompanyReportRow = {
   title: string
   reportHref: string
   reportInfoCode: string
+  revenue2025: string
+  revenueGrowth2025: string
   profit2025: string
+  profitMargin2025: string
   growth2025: string
   pe2025: string
+  revenue2026: string
+  revenueGrowth2026: string
   profit2026: string
+  profitMargin2026: string
   growth2026: string
   pe2026: string
+  revenue2027: string
+  revenueGrowth2027: string
   profit2027: string
+  profitMargin2027: string
   growth2027: string
   pe2027: string
+  revenue2028: string
+  revenueGrowth2028: string
   profit2028: string
+  profitMargin2028: string
   growth2028: string
   pe2028: string
   orgName: string
@@ -153,69 +165,87 @@ const CompanyReportPage = defineComponent({
         id: 'companyReportStatus',
         class: `small mb-2 ${statusDanger.value ? 'text-danger' : 'text-muted'}`,
       }, statusText.value),
-      h('table', { id: 'companyReport', class: 'table table-sm table-bordered table-hover' }, [
-        h('thead', { class: 'table-info' }, [
-          h('tr', [
-            h('th', { scope: 'col' }, '编号'),
-            h('th', { scope: 'col' }, '日期'),
-            h('th', { scope: 'col' }, '报告名称'),
-            h('th', { scope: 'col' }, '2025净利润'),
-            h('th', { scope: 'col' }, '2025增长率%'),
-            h('th', { scope: 'col' }, '2025PE'),
-            h('th', { scope: 'col' }, '2026净利润'),
-            h('th', { scope: 'col' }, '2026增长率%'),
-            h('th', { scope: 'col' }, '2026PE'),
-            h('th', { scope: 'col' }, '2027净利润'),
-            h('th', { scope: 'col' }, '2027增长率%'),
-            h('th', { scope: 'col' }, '2027PE'),
-            h('th', { scope: 'col' }, '2028净利润'),
-            h('th', { scope: 'col' }, '2028增长率%'),
-            h('th', { scope: 'col' }, '2028PE'),
-            h('th', { scope: 'col' }, '机构'),
-            h('th', { scope: 'col' }, '页数'),
+      h('div', { class: 'table-responsive' }, [
+        h('table', { id: 'companyReport', class: 'table table-sm table-bordered table-hover text-nowrap' }, [
+          h('thead', { class: 'table-info' }, [
+            h('tr', [
+              h('th', { scope: 'col' }, '编号'),
+              h('th', { scope: 'col' }, '日期'),
+              h('th', { scope: 'col' }, '报告名称'),
+              h('th', { scope: 'col' }, '2025营收'),
+              h('th', { scope: 'col' }, '2025营收增速%'),
+              h('th', { scope: 'col' }, '2025净利润'),
+              h('th', { scope: 'col' }, '2025利润增速%'),
+              h('th', { scope: 'col' }, '2025PE'),
+              h('th', { scope: 'col' }, '2026营收'),
+              h('th', { scope: 'col' }, '2026营收增速%'),
+              h('th', { scope: 'col' }, '2026净利润'),
+              h('th', { scope: 'col' }, '2026利润增速%'),
+              h('th', { scope: 'col' }, '2026PE'),
+              h('th', { scope: 'col' }, '2027营收'),
+              h('th', { scope: 'col' }, '2027营收增速%'),
+              h('th', { scope: 'col' }, '2027净利润'),
+              h('th', { scope: 'col' }, '2027利润增速%'),
+              h('th', { scope: 'col' }, '2027PE'),
+              h('th', { scope: 'col' }, '2028营收'),
+              h('th', { scope: 'col' }, '2028营收增速%'),
+              h('th', { scope: 'col' }, '2028净利润'),
+              h('th', { scope: 'col' }, '2028利润增速%'),
+              h('th', { scope: 'col' }, '2028PE'),
+              h('th', { scope: 'col' }, '机构'),
+              h('th', { scope: 'col' }, '页数'),
+            ]),
           ]),
-        ]),
-        h('tbody', rows.value.length > 0
-          ? rows.value.map((row) => h('tr', { key: `${row.publishDate}-${row.title}-${row.rank}` }, [
-            h('td', row.rank),
-            h('td', row.publishDate),
-            h('td', row.reportInfoCode
-              ? h('a', {
-                href: `#${row.reportInfoCode}`,
-                name: 'infoCode',
-                'data-code': row.reportInfoCode,
-              }, row.title)
-              : row.reportHref
+          h('tbody', rows.value.length > 0
+            ? rows.value.map((row) => h('tr', { key: `${row.publishDate}-${row.title}-${row.rank}` }, [
+              h('td', row.rank),
+              h('td', row.publishDate),
+              h('td', row.reportInfoCode
                 ? h('a', {
-                  href: row.reportHref,
-                  target: '_blank',
-                  rel: 'noreferrer noopener',
+                  href: `#${row.reportInfoCode}`,
+                  name: 'infoCode',
+                  'data-code': row.reportInfoCode,
                 }, row.title)
-                : h('span', row.title)),
-            h('td', row.profit2025),
-            h('td', row.growth2025),
-            h('td', row.pe2025),
-            h('td', row.profit2026),
-            h('td', row.growth2026),
-            h('td', row.pe2026),
-            h('td', row.profit2027),
-            h('td', row.growth2027),
-            h('td', row.pe2027),
-            h('td', row.profit2028),
-            h('td', row.growth2028),
-            h('td', row.pe2028),
-            h('td', row.orgName),
-            h('td', row.pages),
-          ]))
-          : [
+                : row.reportHref
+                  ? h('a', {
+                    href: row.reportHref,
+                    target: '_blank',
+                    rel: 'noreferrer noopener',
+                  }, row.title)
+                  : h('span', row.title)),
+              h('td', row.revenue2025),
+              h('td', row.revenueGrowth2025),
+              h('td', { title: row.profitMargin2025 }, row.profit2025),
+              h('td', row.growth2025),
+              h('td', row.pe2025),
+              h('td', row.revenue2026),
+              h('td', row.revenueGrowth2026),
+              h('td', { title: row.profitMargin2026 }, row.profit2026),
+              h('td', row.growth2026),
+              h('td', row.pe2026),
+              h('td', row.revenue2027),
+              h('td', row.revenueGrowth2027),
+              h('td', { title: row.profitMargin2027 }, row.profit2027),
+              h('td', row.growth2027),
+              h('td', row.pe2027),
+              h('td', row.revenue2028),
+              h('td', row.revenueGrowth2028),
+              h('td', { title: row.profitMargin2028 }, row.profit2028),
+              h('td', row.growth2028),
+              h('td', row.pe2028),
+              h('td', row.orgName),
+              h('td', row.pages),
+            ]))
+            : [
               h('tr', { key: 'company-report-empty' }, [
                 h('td', {
-                  colSpan: 17,
+                  colSpan: 25,
                   class: `text-center ${statusDanger.value ? 'text-danger' : 'text-muted'}`,
                 }, statusText.value || '暂无公司研报'),
               ]),
             ]),
-      ]),
+          ]),
+        ]),
       pagination(),
     ])
   },

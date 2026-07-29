@@ -35,6 +35,16 @@ await check("health", async () => {
   assert(body.code === 200, `unexpected api code: ${body.code}`);
 });
 
+await check("company report counts", async () => {
+  const body = await fetchApi("/api/companies/report/cnt?days=90");
+  const entries = Object.entries(body.data || {});
+  assert(entries.length > 0, "company report counts are empty");
+  assert(
+    entries.every(([code, count]) => /^[A-Z0-9]+\.[A-Z]+$/.test(code) && Number.isInteger(count) && count > 0),
+    `company report counts contain invalid entries: ${truncate(JSON.stringify(entries.slice(0, 5)))}`
+  );
+});
+
 await check("fund search 易方达蓝筹精选混合", async () => {
   const body = await fetchApi(`/api/search?q=${encodeURIComponent("易方达蓝筹精选混合")}`);
   assert(

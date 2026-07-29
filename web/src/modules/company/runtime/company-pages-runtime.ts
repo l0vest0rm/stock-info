@@ -11,8 +11,10 @@ type FetchRequest = (request: {
 type Callback = (data: unknown) => void
 
 type AnnualFinancial = {
+  revenue?: number
+  revenueGrowth?: number
   profit?: number
-  growth?: number
+  profitGrowth?: number
 }
 
 type CompanyPagesRuntimeContext = {
@@ -73,8 +75,10 @@ type CompanyNewsRow = {
 function mergeAnnualFinancial(target: Map<number, AnnualFinancial>, year: number, value: AnnualFinancial): void {
   const current = target.get(year) || {}
   target.set(year, {
+    revenue: current.revenue !== undefined ? current.revenue : value.revenue,
+    revenueGrowth: current.revenueGrowth !== undefined ? current.revenueGrowth : value.revenueGrowth,
     profit: current.profit !== undefined ? current.profit : value.profit,
-    growth: current.growth !== undefined ? current.growth : value.growth,
+    profitGrowth: current.profitGrowth !== undefined ? current.profitGrowth : value.profitGrowth,
   })
 }
 
@@ -124,6 +128,36 @@ function getForecastProfitMap(report: any): Map<number, number> {
       result.set(startYear + index, parsed)
     }
   })
+  return result
+}
+
+function getForecastRevenueMap(report: any): Map<number, number> {
+  const result = new Map<number, number>()
+  if (!Array.isArray(report?.forecasts)) {
+    return result
+  }
+  for (const item of report.forecasts) {
+    const year = Number(item?.year)
+    const revenue = parseReportForecastNumber(item?.revenue)
+    if (Number.isFinite(year) && revenue !== undefined) {
+      result.set(year, revenue)
+    }
+  }
+  return result
+}
+
+function getForecastGrowthMap(report: any, field: 'revenueGrowth' | 'profitGrowth'): Map<number, number> {
+  const result = new Map<number, number>()
+  if (!Array.isArray(report?.forecasts)) {
+    return result
+  }
+  for (const item of report.forecasts) {
+    const year = Number(item?.year)
+    const growth = parseReportForecastNumber(item?.[field])
+    if (Number.isFinite(year) && growth !== undefined) {
+      result.set(year, growth)
+    }
+  }
   return result
 }
 
@@ -186,7 +220,12 @@ function getActualAnnualFinancialMap(cache: Record<string, unknown>, code: strin
   if (!Array.isArray(financeItems)) {
     return result
   }
-  const annual = new Map<number, { sum: number, months: Set<string> }>()
+  const annual = new Map<number, {
+    revenueSum: number
+    revenueMonths: Set<string>
+    profitSum: number
+    profitMonths: Set<string>
+  }>()
   for (const item of financeItems) {
     const reportDate = String(item?.reportDate || '')
     if (reportDate.length < 10) {
@@ -197,23 +236,48 @@ function getActualAnnualFinancialMap(cache: Record<string, unknown>, code: strin
       continue
     }
     const year = Number(reportDate.substring(0, 4))
-    const profit = Number(item?.parentNetprofit ?? item?.netProfit)
-    if (!Number.isFinite(year) || !Number.isFinite(profit)) {
+    const profit = parseReportForecastNumber(item?.parentNetprofit ?? item?.netProfit)
+    const revenue = parseReportForecastNumber(item?.totalOperateIncome ?? item?.operateIncome)
+    if (!Number.isFinite(year)) {
       continue
     }
     if (!annual.has(year)) {
-      annual.set(year, { sum: 0, months: new Set<string>() })
+      annual.set(year, {
+        revenueSum: 0,
+        revenueMonths: new Set<string>(),
+        profitSum: 0,
+        profitMonths: new Set<string>(),
+      })
     }
     const current = annual.get(year)!
-    if (current.months.has(month)) {
-      continue
+    if (revenue !== undefined && !current.revenueMonths.has(month)) {
+      current.revenueSum += revenue
+      current.revenueMonths.add(month)
     }
-    current.sum += profit
-    current.months.add(month)
+    if (profit !== undefined && !current.profitMonths.has(month)) {
+      current.profitSum += profit
+      current.profitMonths.add(month)
+    }
   }
   annual.forEach((item, year) => {
-    if (item.months.size === 4 && Number.isFinite(item.sum)) {
-      mergeAnnualFinancial(result, year, { profit: Math.round(item.sum / 1e6) / 100 })
+    const financial: AnnualFinancial = {}
+    if (item.revenueMonths.size === 4 && Number.isFinite(item.revenueSum)) {
+      financial.revenue = Math.round(item.revenueSum / 1e6) / 100
+    }
+    if (item.profitMonths.size === 4 && Number.isFinite(item.profitSum)) {
+      financial.profit = Math.round(item.profitSum / 1e6) / 100
+    }
+    if (financial.revenue !== undefined || financial.profit !== undefined) {
+      mergeAnnualFinancial(result, year, financial)
+    }
+  })
+  result.forEach((financial, year) => {
+    const previous = result.get(year - 1)
+    if (financial.revenue !== undefined && previous?.revenue !== undefined && previous.revenue > 0) {
+      financial.revenueGrowth = (financial.revenue / previous.revenue - 1) * 100
+    }
+    if (financial.profit !== undefined && previous?.profit !== undefined && previous.profit > 0) {
+      financial.profitGrowth = (financial.profit / previous.profit - 1) * 100
     }
   })
   return result
@@ -319,14 +383,52 @@ function getResolvedProfitMap(report: any, actualFinancialMap: Map<number, Annua
   return profitMap
 }
 
+function getResolvedRevenueMap(report: any, actualFinancialMap: Map<number, AnnualFinancial>): Map<number, number> {
+  const revenueMap = getForecastRevenueMap(report)
+  actualFinancialMap.forEach((financial, year) => {
+    if (financial.revenue !== undefined) {
+      revenueMap.set(year, financial.revenue)
+    }
+  })
+  return revenueMap
+}
+
+function resolveGrowth(
+  report: any,
+  year: number,
+  values: Map<number, number>,
+  actualGrowth: number | undefined,
+  forecastField: 'revenueGrowth' | 'profitGrowth',
+): number | undefined {
+  if (actualGrowth !== undefined) {
+    return actualGrowth
+  }
+  const reportedGrowth = getForecastGrowthMap(report, forecastField).get(year)
+  if (reportedGrowth !== undefined) {
+    return reportedGrowth
+  }
+  const value = values.get(year)
+  const previousValue = values.get(year - 1)
+  if (value !== undefined && previousValue !== undefined && previousValue > 0) {
+    return (value / previousValue - 1) * 100
+  }
+  return undefined
+}
+
+function formatForecastRevenueCells(report: any, year: number, actualFinancialMap: Map<number, AnnualFinancial>): string[] {
+  const revenueMap = getResolvedRevenueMap(report, actualFinancialMap)
+  const revenue = revenueMap.get(year)
+  const growth = resolveGrowth(report, year, revenueMap, actualFinancialMap.get(year)?.revenueGrowth, 'revenueGrowth')
+  return [
+    revenue !== undefined ? revenue.toFixed(2) : '-',
+    growth !== undefined ? growth.toFixed(2) : '-',
+  ]
+}
+
 function formatForecastProfitGrowthPeCells(report: any, year: number, actualFinancialMap: Map<number, AnnualFinancial>): string[] {
   const profitMap = getResolvedProfitMap(report, actualFinancialMap)
   const profit = profitMap.get(year)
-  const previousProfit = profitMap.get(year - 1)
-  let growth = actualFinancialMap.get(year)?.growth
-  if (growth === undefined && profit !== undefined && previousProfit !== undefined && previousProfit > 0) {
-    growth = (profit / previousProfit - 1) * 100
-  }
+  const growth = resolveGrowth(report, year, profitMap, actualFinancialMap.get(year)?.profitGrowth, 'profitGrowth')
   let pe: number | undefined
   if (profit !== undefined && profit > 0) {
     const marketCap = getCurrentMarketCapYi()
@@ -345,6 +447,15 @@ function formatForecastProfitGrowthPeCells(report: any, year: number, actualFina
     growth !== undefined ? growth.toFixed(2) : '-',
     pe !== undefined ? pe.toFixed(2) : '-',
   ]
+}
+
+function formatForecastProfitMargin(report: any, year: number, actualFinancialMap: Map<number, AnnualFinancial>): string {
+  const revenue = getResolvedRevenueMap(report, actualFinancialMap).get(year)
+  const profit = getResolvedProfitMap(report, actualFinancialMap).get(year)
+  if (revenue === undefined || revenue <= 0 || profit === undefined) {
+    return ''
+  }
+  return `净利率：${((profit / revenue) * 100).toFixed(2)}%`
 }
 
 export function createCompanyFinanceInitializer(context: CompanyPagesRuntimeContext) {
@@ -478,6 +589,10 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       }
 
       const ts = item.publishDate ? Math.floor(Date.parse(item.publishDate.substring(0, 10)) / 1000) : item.ts
+      const revenue2025 = formatForecastRevenueCells(item, 2025, actualFinancialMap)
+      const revenue2026 = formatForecastRevenueCells(item, 2026, actualFinancialMap)
+      const revenue2027 = formatForecastRevenueCells(item, 2027, actualFinancialMap)
+      const revenue2028 = formatForecastRevenueCells(item, 2028, actualFinancialMap)
       const profit2025 = formatForecastProfitGrowthPeCells(item, 2025, actualFinancialMap)
       const profit2026 = formatForecastProfitGrowthPeCells(item, 2026, actualFinancialMap)
       const profit2027 = formatForecastProfitGrowthPeCells(item, 2027, actualFinancialMap)
@@ -489,16 +604,28 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         title: String(item.title || ''),
         reportHref,
         reportInfoCode,
+        revenue2025: revenue2025[0],
+        revenueGrowth2025: revenue2025[1],
         profit2025: profit2025[0],
+        profitMargin2025: formatForecastProfitMargin(item, 2025, actualFinancialMap),
         growth2025: profit2025[1],
         pe2025: profit2025[2],
+        revenue2026: revenue2026[0],
+        revenueGrowth2026: revenue2026[1],
         profit2026: profit2026[0],
+        profitMargin2026: formatForecastProfitMargin(item, 2026, actualFinancialMap),
         growth2026: profit2026[1],
         pe2026: profit2026[2],
+        revenue2027: revenue2027[0],
+        revenueGrowth2027: revenue2027[1],
         profit2027: profit2027[0],
+        profitMargin2027: formatForecastProfitMargin(item, 2027, actualFinancialMap),
         growth2027: profit2027[1],
         pe2027: profit2027[2],
+        revenue2028: revenue2028[0],
+        revenueGrowth2028: revenue2028[1],
         profit2028: profit2028[0],
+        profitMargin2028: formatForecastProfitMargin(item, 2028, actualFinancialMap),
         growth2028: profit2028[1],
         pe2028: profit2028[2],
         orgName: String(item.orgSName || item.org || ''),

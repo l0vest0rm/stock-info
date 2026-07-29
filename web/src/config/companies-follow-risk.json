@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "minimumBars": 65,
+  "movingAverage": {
+    "short": 20,
+    "long": 60,
+    "slopeDays": 5
+  },
+  "atrPeriod": 14,
+  "supportLookback": 20,
+  "drawdownLookback": 60,
+  "drawdownSignalPct": 10,
+  "supportBufferAtr": 0.5,
+  "riskScoreThresholds": {
+    "high": 5,
+    "down": 3,
+    "weak": 1
+  },
+  "atrMultipliers": {
+    "high": 1.5,
+    "down": 2,
+    "weak": 2.5,
+    "stable": 3
+  },
+  "positionSizing": {
+    "defaultAccountRiskPct": 0.8,
+    "defaultMaxStockPositionPct": 10,
+    "buildTranches": 3,
+    "takeProfitRemainingRatio": 0.6667,
+    "riskReduceRemainingRatio": 0.5,
+    "overextendedAtr": 2
+  }
+}

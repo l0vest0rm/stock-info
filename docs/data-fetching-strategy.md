@@ -22,8 +22,8 @@
 | `HTTP_PROXY_URL` | 启用代理并标识本地代理客户端地址，通常是 `http://127.0.0.1:7890` |
 | `HTTP_PROXY_RELAY_URL` | Worker 调用的 fetch 转发入口，本地默认是 Rust proxy client 的 `http://127.0.0.1:7890/fetch` |
 | `HTTP_PROXY_DOMAINS` | 允许使用代理的域名列表；本地默认仅为 `yahoo.com`，空值表示所有请求直连 |
-| `HTTP_DOMAIN_CONCURRENCY` | 单个目标域名最大并发，默认 `3` |
-| `HTTP_REQUEST_TIMEOUT_MS` | 单次外部请求的硬超时，默认 `10000` 毫秒 |
+| `HTTP_DOMAIN_CONCURRENCY` | 单个目标域名最大并发，默认 `5` |
+| `HTTP_REQUEST_TIMEOUT_MS` | 并发槽位等待和单次外部请求的硬超时，默认 `10000` 毫秒 |
 
 `HTTP_PROXY_*` 是 Worker/http client 的统一配置。本地 Wrangler 不能直接运行 Node 的 `ProxyAgent`，因此只有匹配 `HTTP_PROXY_DOMAINS` 的请求才交给仅监听回环地址的 Rust proxy client；当前仅 Yahoo 请求匹配。其他本地请求直接访问目标站点，线上未配置 `HTTP_PROXY_URL`，所有请求均不经过代理入口。
 
@@ -32,7 +32,8 @@
 除 LLM 调用外，所有外部 HTTP 请求都必须通过 `src/shared/http.ts` 的统一 http client：
 
 - Worker API、Cron、同步任务共用同一套请求、缓存、限流、超时、代理逻辑。
-- 默认按目标域名限流，单域名最大 3 并发，可由 `HTTP_DOMAIN_CONCURRENCY` 调整。
+- 默认按目标域名限流，单域名最大 5 并发，可由 `HTTP_DOMAIN_CONCURRENCY` 调整。
+- 超过并发上限的请求会等待空闲槽位；等待超时返回 504，异常中断遗留的槽位会按租约自动回收。
 - 每次外部请求都有硬超时；GET/HEAD 网络失败最多重试一次，避免请求长期占用 Worker。
 - 本地请求的直连/代理路由由 proxy client 的 `config/routes.toml` 决定，不由业务 adapter 或 Worker 重复配置。
 - 调用方可以提供 `cacheKey` 和 `cacheTtlMs`；不提供时由请求 method/url/header/body 生成稳定 cache key。

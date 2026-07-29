@@ -27,6 +27,15 @@ export class ExternalRequestTimeoutError extends Error {
   }
 }
 
+export class ExternalConcurrencyTimeoutError extends Error {
+  readonly status = 504;
+
+  constructor(host: string, limit: number, timeoutMs: number) {
+    super(`external request concurrency wait timed out: host=${host} limit=${limit} timeoutMs=${timeoutMs}`);
+    this.name = "ExternalConcurrencyTimeoutError";
+  }
+}
+
 export function ok<T>(c: Context, data: T): Response {
   const body: ApiSuccess<T> = { code: 200, msg: "OK", data };
   return c.json(body);
@@ -106,8 +115,8 @@ async function fetchTextResponse(
 ): Promise<{ status: number; headers: Record<string, string>; text: string }> {
   const host = new URL(url).hostname.toLowerCase();
   const concurrency = options?.domainConcurrency ?? DEFAULT_DOMAIN_CONCURRENCY;
-  return runWithDomainLimit(host, concurrency, async () => {
-    const timeoutMs = options?.timeoutMs ?? DEFAULT_EXTERNAL_HTTP_TIMEOUT_MS;
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_EXTERNAL_HTTP_TIMEOUT_MS;
+  return runWithDomainLimit(host, concurrency, timeoutMs, async () => {
     const attempts = isRetryableMethod(init?.method) ? 2 : 1;
     let lastError: unknown;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -255,32 +264,57 @@ function positiveInt(value: string | undefined): number | undefined {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-async function runWithDomainLimit<T>(host: string, concurrency: number, fn: () => Promise<T>): Promise<T> {
+async function runWithDomainLimit<T>(
+  host: string,
+  concurrency: number,
+  timeoutMs: number,
+  fn: () => Promise<T>
+): Promise<T> {
   const limit = Math.max(1, concurrency || DEFAULT_DOMAIN_CONCURRENCY);
   let limiter = domainLimiters.get(host);
   if (!limiter || limiter.limit !== limit) {
     limiter = new DomainLimiter(limit);
     domainLimiters.set(host, limiter);
   }
-  return limiter.run(fn);
+  return limiter.run(fn, host, timeoutMs);
 }
 
 class DomainLimiter {
-  active = 0;
-  queue: Array<() => void> = [];
+  slots = new Map<symbol, number>();
 
   constructor(public readonly limit: number) {}
 
-  async run<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.active >= this.limit) {
-      await new Promise<void>((resolve) => this.queue.push(resolve));
+  async run<T>(fn: () => Promise<T>, host: string, timeoutMs: number): Promise<T> {
+    const token = Symbol(host);
+    const deadline = Date.now() + timeoutMs;
+    const leaseMs = Math.max(timeoutMs * 3, timeoutMs + 1_000);
+    while (true) {
+      const now = Date.now();
+      this.pruneExpiredSlots(now);
+      if (this.slots.size < this.limit) {
+        this.slots.set(token, now + leaseMs);
+        break;
+      }
+      const remainingMs = deadline - now;
+      if (remainingMs <= 0) {
+        throw new ExternalConcurrencyTimeoutError(host, this.limit, timeoutMs);
+      }
+      // Keep the wait promise owned by the current Worker request. Resolving a
+      // queued promise from another request context causes workerd to cancel it.
+      await scheduler.wait(Math.min(25, remainingMs));
     }
-    this.active += 1;
     try {
       return await fn();
     } finally {
-      this.active -= 1;
-      this.queue.shift()?.();
+      this.slots.delete(token);
+    }
+  }
+
+  private pruneExpiredSlots(now: number): void {
+    for (const [token, expiresAt] of this.slots) {
+      if (expiresAt <= now) {
+        this.slots.delete(token);
+      }
     }
   }
 }

@@ -79,9 +79,33 @@ marketRoutes.get("/companies/holding/rank", async (c) => {
   return ok(c, Array.isArray(body) ? body : (body as any).data ?? []);
 });
 
-marketRoutes.get("/companies/report/cnt", (c) => ok(c, {}));
+marketRoutes.get("/companies/report/cnt", async (c) => {
+  const days = parseReportCountDays(c.req.query("days"));
+  const rows = await c.env.DB.prepare(
+    `select target_code_normalized as code, count(*) as count
+       from knowledge_docs
+      where source_type = 'research_report'
+        and report_type = 'company_report'
+        and target_code_normalized != ''
+        and sort_time >= date('now', ?)
+      group by target_code_normalized`
+  )
+    .bind(`-${days} days`)
+    .all<{ code: string; count: number }>();
+
+  const counts: Record<string, number> = {};
+  for (const row of rows.results ?? []) {
+    counts[row.code] = row.count;
+  }
+  return ok(c, counts);
+});
 marketRoutes.get("/index/positionDates", (c) => ok(c, []));
 marketRoutes.get("/index/position", (c) => ok(c, []));
+
+function parseReportCountDays(value: string | undefined): number {
+  const days = Number(value ?? "90");
+  return Number.isInteger(days) && days >= 1 && days <= 3650 ? days : 90;
+}
 
 async function fetchJson(db: D1Database, url: URL, referer: string, ttlMs: number): Promise<unknown> {
   const text = await cachedFetchText(

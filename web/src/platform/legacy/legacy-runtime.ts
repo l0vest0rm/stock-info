@@ -11,6 +11,7 @@ import {
 import { convertResponse, parseResponseData } from '../../api'
 import { createBsTable } from '../../bs-table'
 import { createCompanyTableRuntime } from '../../modules/company/runtime/company-table-runtime'
+import { calculateKlineDrawdowns } from '../../modules/market/domain/kline-drawdown'
 import { findInsertIndex, findTsIndex } from '../../chart'
 import { toDateString, toTimeString, toTimestamp, zeroPad } from '../../date'
 import { createDateRangeHelpers } from '../../date-range-ui'
@@ -585,7 +586,7 @@ function renderKline(codes: string[], startTs: number, endTs: number, fq: string
       xAxis.push(ts)
     }
     //yAxisIndex: 1,
-    series.push({
+    const klineSeries: any = {
       name: `${codeNameMap[code]}(${code})`,
       type: 'line',
       showSymbol: false,
@@ -609,7 +610,15 @@ function renderKline(codes: string[], startTs: number, endTs: number, fq: string
           return codeNameMap[code] + ': ' + (100*ratio-100).toFixed(2) + '%'
         }
       }
-    })
+    }
+    if (codeNum === 1) {
+      addDrawdownMarkLines(klineSeries, calculateKlineDrawdowns(data.map((point) => ({
+        x: point[0],
+        high: point[1],
+        low: point[1],
+      }))))
+    }
+    series.push(klineSeries)
   }
 
   const yAxis: any = [{
@@ -741,6 +750,11 @@ function rerenderCandlestick(code: string, startTs: number, endTs: number, fq: s
       }
     })
   }
+  addDrawdownMarkLines(series[0], calculateKlineDrawdowns(data.categoryData.map((x, index) => ({
+    x,
+    high: data.values[index][3],
+    low: data.values[index][2],
+  }))))
   const option = {
     animation: false,
     legend: {
@@ -944,7 +958,39 @@ function addMarkPoints(seriesI: any, xAxis: any) {
       
     },
     data: data
+  }
 }
+
+function addDrawdownMarkLines(seriesI: any, segments: ReturnType<typeof calculateKlineDrawdowns>) {
+  if (segments.length === 0) {
+    return
+  }
+  seriesI.markLine = {
+    silent: true,
+    symbol: ['circle', 'arrow'],
+    symbolSize: [5, 8],
+    lineStyle: {
+      color: '#d97706',
+      type: 'dashed',
+      width: 1.25,
+    },
+    label: {
+      show: true,
+      position: 'middle',
+      color: '#b45309',
+      backgroundColor: 'rgba(255,255,255,0.88)',
+      borderRadius: 3,
+      padding: [2, 4],
+      formatter: (params: any) => params.data?.drawdownLabel ?? '',
+    },
+    data: segments.map((segment) => [
+      {coord: [segment.peakX, segment.peak]},
+      {
+        coord: [segment.troughX, segment.trough],
+        drawdownLabel: `${segment.percent.toFixed(2)}%`,
+      },
+    ]),
+  }
 }
 
 function markPoints2Str(axisValue: string|number, xAxis: any) {
@@ -1009,7 +1055,7 @@ function splitCandlestickData(rawData: any[][], startTs: number, endTs: number) 
     }
     categoryData.push(toDateString(rawData[i][0]))
     //转成：开盘、收盘、最低、最高、交易量、和开始比、结束比、分位值
-    values.push([rawData[i][2], rawData[i][1], rawData[i][3], rawData[i][4], rawData[i][5], ratio, ratio2,change, quantile])
+    values.push([rawData[i][2], rawData[i][1], rawData[i][4], rawData[i][3], rawData[i][5], ratio, ratio2,change, quantile])
     //收盘是否大于昨天收盘
     volumes.push([i, rawData[i][5], i > 0 && rawData[i][1] > rawData[i-1][1] ? 1 : -1])
   }
