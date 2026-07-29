@@ -525,6 +525,35 @@ function renderLineChart(startTs: number, endTs: number, fq: string = '') {
   }
 }
 
+const movingAverageWindows = [5, 10, 20, 30, 60]
+
+function getSelectedMovingAverageWindows(): number[] {
+  if (selectedCodes.length !== 1) {
+    return []
+  }
+  return movingAverageWindows.filter((window) =>
+    (document.getElementById(`movingAverage${window}`) as HTMLInputElement | null)?.checked,
+  )
+}
+
+function syncMovingAverageControls(codeCount: number = selectedCodes.length): void {
+  const enabled = codeCount === 1
+  const button = document.getElementById('movingAverageOptionsButton') as HTMLButtonElement | null
+  if (button) {
+    button.disabled = !enabled
+  }
+  for (const window of movingAverageWindows) {
+    const input = document.getElementById(`movingAverage${window}`) as HTMLInputElement | null
+    if (!input) {
+      continue
+    }
+    input.disabled = !enabled
+    if (!enabled) {
+      input.checked = false
+    }
+  }
+}
+
 function renderKline(codes: string[], startTs: number, endTs: number, fq: string = '') {
   const series: any = []
   let ts = 0
@@ -619,6 +648,24 @@ function renderKline(codes: string[], startTs: number, endTs: number, fq: string
       }))))
     }
     series.push(klineSeries)
+    if (selectedCodes.length === 1 && code === selectedCodes[0]) {
+      const movingAverages = getSelectedMovingAverageWindows()
+      if (movingAverages.length > 0) {
+        for (const window of movingAverages) {
+          const values = calculateMA(rawData, window)
+          series.push({
+            name: `MA${window}`,
+            type: 'line',
+            showSymbol: false,
+            data: rawData.slice(begin, end).map((point, index) => [point[0], values[begin + index] ?? '-']),
+            smooth: true,
+            lineStyle: {
+              opacity: 0.7,
+            },
+          })
+        }
+      }
+    }
   }
 
   const yAxis: any = [{
@@ -647,6 +694,7 @@ function renderKline(codes: string[], startTs: number, endTs: number, fq: string
 
 function myChartSetOption(series: any, xAxis: any,  yAxis: any) {
   const id = 'kline'
+  const codeSeriesCount = series.filter((item: any) => !/^MA\d+$/.test(item.name)).length
   //let html = `<div id="${id}" style="min-height: 600px; min-width: 300px;"></div>`
   const chartDom: any = document.getElementById(id)
   // @ts-ignore
@@ -670,8 +718,12 @@ function myChartSetOption(series: any, xAxis: any,  yAxis: any) {
         let str = toTimeString(params[0].value[0])
         for (const param of params) { // get data sorted
           const name = param.seriesName
+          if (/^MA\d+$/.test(name)) {
+            str += `</br>${param.marker}${name}: ${formatKlineValue(param.value[1])}`
+            continue
+          }
           let value, ratio
-          if (series.length > 1) {
+          if (codeSeriesCount > 1) {
             ratio = (100*param.value[1]-100).toFixed(2)
             value = param.value[2]
           } else {
@@ -736,7 +788,7 @@ function rerenderCandlestick(code: string, startTs: number, endTs: number, fq: s
   ]
 
   const legend: string[] = ['K线图']
-  for (const ma of [5, 10, 20, 30, 60]) {
+  for (const ma of getSelectedMovingAverageWindows()) {
     const name = 'MA' + ma
     legend.push(name)
     series.push({
@@ -1576,11 +1628,13 @@ function klineOptionsChange() {
 export function onKlineCodeSelectChange() {
   const nextSelectedCodes = selectedOptionValues(document.getElementById('codes'))
   if (nextSelectedCodes.length === 0) {
+    syncMovingAverageControls(0)
     console.log('codes none')
     return
   }
 
   replaceArrayItems(selectedCodes, nextSelectedCodes)
+  syncMovingAverageControls(nextSelectedCodes.length)
   klineCodes.length = 0 //清空
   changeCodeSpecHref()
   fetchKlines(selectedCodes, '', function (_codes) {
@@ -2296,6 +2350,10 @@ export function klineOptionsInit() {
     placeholder: '财务指标...',
     noSearch: true,
     urlParam: 'klineOptions'
+  })
+  syncMovingAverageControls()
+  document.querySelectorAll<HTMLInputElement>('#movingAverageOptions input[type="checkbox"]').forEach((input) => {
+    input.addEventListener('change', () => rerenderMyChart())
   })
 }
 
