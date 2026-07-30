@@ -1,0 +1,14 @@
+[
+  {"id":"us-technology","market":"us","name":"美股科技","series":{"DFII10":-1.0,"DGS10":-0.7,"SOFR":-0.4,"INDPRO":0.4}},
+  {"id":"us-financials","market":"us","name":"美股金融","series":{"DGS10":0.4,"NFCI":-1.0,"DFF":0.2,"LNS14000000":-0.5}},
+  {"id":"us-small-cap","market":"us","name":"美股小盘","series":{"SOFR":-0.8,"NFCI":-1.0,"INDPRO":0.7,"CES0000000001":0.5}},
+  {"id":"cn-consumer","market":"cn","name":"A股消费","series":{"DEXCHUS":-0.5,"CN_SOCIAL_FINANCING":0.8,"CN_MANUFACTURING_PMI":0.6}},
+  {"id":"cn-technology","market":"cn","name":"A股科技","series":{"DFII10":-0.5,"CN_SOCIAL_FINANCING":0.7,"KR_SEMICON_EXPORTS":0.4}},
+  {"id":"cn-financials","market":"cn","name":"A股金融","series":{"CN_SOCIAL_FINANCING":1.0,"CN_MANUFACTURING_PMI":0.5,"DEXCHUS":-0.3}},
+  {"id":"hk-technology","market":"hk","name":"港股科技","series":{"DFII10":-0.9,"HKMA_HIBOR_1M":-0.7,"CN_MANUFACTURING_PMI":0.8,"CN_SOCIAL_FINANCING":0.8}},
+  {"id":"hk-property","market":"hk","name":"港股地产","series":{"HKMA_HIBOR_1M":-1.0,"SOFR":-0.6,"CN_SOCIAL_FINANCING":0.8}},
+  {"id":"hk-financials","market":"hk","name":"港股金融","series":{"HKMA_HIBOR_3M":0.3,"NFCI":-0.7,"CN_MANUFACTURING_PMI":0.5}},
+  {"id":"kr-semiconductor","market":"kr","name":"韩国半导体","series":{"KR_SEMICON_EXPORTS":1.0,"DEXKOUS":-0.7,"DFII10":-0.5}},
+  {"id":"kr-industrials","market":"kr","name":"韩国工业","series":{"KR_SEMICON_EXPORTS":0.5,"DEXKOUS":-0.5,"INDPRO":0.5}},
+  {"id":"kr-consumer","market":"kr","name":"韩国消费","series":{"KR_CPI":-0.6,"BOK_POLICY_RATE":-0.7,"DEXKOUS":-0.4}}
+]
