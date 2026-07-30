@@ -575,7 +575,7 @@ async function fetchJsonWithRetry(url, sourceConfig) {
 async function createLlmClient(config, stateDir) {
   const model = process.env.FUND_RESEARCH_LLM_MODEL || config.llm.model;
   const baseUrl = String(process.env.FUND_RESEARCH_LLM_BASE_URL || process.env.LLM_BASE_URL || config.llm.baseUrl).replace(/\/$/, "");
-  const provider = inferProvider(baseUrl, model);
+  const provider = "openai";
   const apiKeyEnv = process.env.FUND_RESEARCH_LLM_API_KEY_ENV || config.llm.apiKeyEnv;
   const apiKey = await resolveApiKey(config.llm, apiKeyEnv);
   if (!apiKey) {
@@ -639,12 +639,6 @@ function deepMerge(base, override) {
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function inferProvider(baseUrl, model) {
-  return String(model).startsWith("doubao-") || String(baseUrl).includes("volces.com") || String(baseUrl).includes("ark.")
-    ? "doubao"
-    : "openai";
 }
 
 function parseArgs(args) {

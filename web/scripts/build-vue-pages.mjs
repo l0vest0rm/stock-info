@@ -4,6 +4,11 @@ import { build, defineConfig } from 'vite'
 
 const pageEntries = [
   {
+    entry: 'src/modules/macro/pages/macro-page.ts',
+    globalName: 'LicaiMacroPage',
+    fileName: 'js/macro-page.js',
+  },
+  {
     entry: 'src/modules/company/pages/company-option-theta-page.ts',
     globalName: 'LicaiCompanyOptionThetaPage',
     fileName: 'js/company-option-theta-page.js',
@@ -49,6 +54,11 @@ const pageEntries = [
     fileName: 'js/company-page.js',
   },
   {
+    entry: 'src/modules/company/pages/company-trade-page.ts',
+    globalName: 'LicaiCompanyTradePage',
+    fileName: 'js/company-trade-page.js',
+  },
+  {
     entry: 'src/modules/knowledge/pages/knowledge-news-page.ts',
     globalName: 'LicaiKnowledgeNewsPage',
     fileName: 'js/knowledge-news-page.js',
@@ -77,6 +87,11 @@ const pageEntries = [
     entry: 'src/modules/companies/pages/companies-filter-page.ts',
     globalName: 'LicaiCompaniesFilterPage',
     fileName: 'js/companies-filter-page.js',
+  },
+  {
+    entry: 'src/modules/companies/pages/institutional-tracks-page.ts',
+    globalName: 'LicaiInstitutionalTracksPage',
+    fileName: 'js/institutional-tracks-page.js',
   },
   {
     entry: 'src/modules/companies/pages/companies-change-page.ts',

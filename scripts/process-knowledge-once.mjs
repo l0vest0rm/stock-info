@@ -817,7 +817,7 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
     throw new Error(`LLM is enabled but ${llm.apiKeyEnv || "OPENAI_API_KEY"} or LLM_API_KEY is missing`);
   }
   const baseUrl = (process.env.LLM_BASE_URL || llm.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
-  const model = process.env.KNOWLEDGE_PROCESS_LLM_MODEL || llm.model || "gpt-5.4-mini";
+  const model = process.env.KNOWLEDGE_PROCESS_LLM_MODEL || llm.model || "gpt-5.6-luna";
   const content = truncate(doc.markdown || doc.summary || "", integer(llm.maxInputChars, 12000));
   const cacheKey = [
     "knowledge_enrich",
@@ -1025,7 +1025,7 @@ function matchedKeywords(haystack, keywords) {
 }
 
 async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user }) {
-  const provider = inferProvider(baseUrl, model);
+  const provider = "openai";
   const client = getLocalLlmClient(provider, baseUrl, apiKey);
   const request = {
     provider,
@@ -1105,35 +1105,25 @@ function getLocalLlmClient(provider, baseUrl, apiKey) {
   return localLlmClients.get(key);
 }
 
-function inferProvider(baseUrl, model) {
-  return model.startsWith("doubao-") || baseUrl.toLowerCase().includes("volces.com") || baseUrl.toLowerCase().includes("ark.")
-    ? "doubao"
-    : "openai";
-}
-
 function resolveTopicFilterLlmRequest(cfg) {
   const llm = cfg.llm || {};
   const filter = cfg.topicFilter || {};
   const envModel = process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_MODEL || process.env.KNOWLEDGE_PROCESS_LLM_MODEL;
-  const model = text(envModel || filter.llmModel || "gpt-5.4-mini");
-  const provider = inferProvider(
-    text(process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_BASE_URL || process.env.LLM_BASE_URL || filter.llmBaseUrl || llm.baseUrl || ""),
-    model,
-  );
-  const defaultBaseUrl = provider === "doubao"
-    ? "https://ark.cn-beijing.volces.com/api/v3"
-    : "https://api.openai.com/v1";
+  const model = text(envModel || filter.llmModel || "gpt-5.6-luna");
+  const provider = "openai";
+  const defaultBaseUrl = "https://api.m2ai.cc/api/v1/openai";
   const baseUrl = text(
     process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_BASE_URL
       || process.env.LLM_BASE_URL
       || filter.llmBaseUrl
-      || (provider === "doubao" ? llm.baseUrl : process.env.OPENAI_BASE_URL)
+      || process.env.OPENAI_BASE_URL
+      || llm.baseUrl
       || defaultBaseUrl,
   ).replace(/\/$/, "");
   const apiKeyEnv = text(
     process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_API_KEY_ENV
       || filter.llmApiKeyEnv
-      || (provider === "doubao" ? "VOLC_ARK_API_KEY" : "OPENAI_API_KEY"),
+      || "OPENAI_API_KEY",
   );
   const apiKey = process.env[apiKeyEnv] || process.env.LLM_API_KEY || "";
   return { provider, model, baseUrl, apiKeyEnv, apiKey };

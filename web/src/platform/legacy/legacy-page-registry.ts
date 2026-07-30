@@ -233,6 +233,15 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
         getCache: context.getCache,
       })
     }
+    case 'company-trade.html': {
+      const { createCompanyTradeInitializer } = await import('../../modules/company/runtime/company-trade-runtime')
+      return createCompanyTradeInitializer({
+        getCode: context.getCode,
+        server: context.server,
+        fetchRequest: context.fetchRequest,
+        fetchKline: context.fetchKline,
+      })
+    }
     case 'company-notice.html': {
       const { createCompanyNoticeInitializer } = await import('../../modules/company/runtime/company-notice-runtime')
       return createCompanyNoticeInitializer({

@@ -37,7 +37,10 @@ export function isSupportedCompanyCode(input: string): boolean {
 
 export function isSupportedSecurityCode(input: string): boolean {
   const normalized = normalizeSecurityCode(input);
-  return isSupportedCompanyCode(normalized) || /^\d{6}\.(OF|SF|ZF|KS|KQ)$/.test(normalized);
+  return isSupportedCompanyCode(normalized)
+    || /^\d{6}\.(OF|SF|ZF|KS|KQ)$/.test(normalized)
+    || normalized === "KS11.UI"
+    || normalized === "HSI.HK";
 }
 
 export function normalizeSupportedCompanyCode(input: string): string {
@@ -75,6 +78,8 @@ export function securityMarket(code: string): string {
       return "hk";
     case "OF":
       return "fund";
+    case "UI":
+      return normalized === "KS11.UI" ? "kr" : "global";
     default:
       return "global";
   }
@@ -97,6 +102,15 @@ export function inferSecurityType(code: string): string {
 
 export function eastmoneySecId(code: string): string | null {
   const normalized = normalizeSecurityCode(code);
+  if (normalized === "SPX.US") {
+    return "100.SPX";
+  }
+  if (normalized === "HSI.HK") {
+    return "100.HSI";
+  }
+  if (normalized === "KS11.UI") {
+    return "100.KS11";
+  }
   const [base, suffix] = normalized.split(".");
   if (!base || !suffix) {
     return null;

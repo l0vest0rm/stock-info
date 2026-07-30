@@ -68,7 +68,7 @@ const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REPORT_FORECAST_CACHE_VERSION = "v3";
 const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
-const REPORT_LLM_MODEL: SupportedLlmModel = "doubao-seed-2-0-mini-260215";
+const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
 
 companyRoutes.get("/company/overview", async (c) => {
   const code = requireQuery(c, "code");

@@ -13,8 +13,6 @@ export type Bindings = {
   KNOWLEDGE_ALLOW_TEXT_SEARCH?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
-  VOLC_ARK_API_KEY?: string;
-  VOLC_ARK_BASE_URL?: string;
   LLM_API_KEY?: string;
   LLM_BASE_URL?: string;
   LLM_DAILY_LIMIT?: string;
@@ -24,6 +22,11 @@ export type Bindings = {
   HTTP_DOMAIN_CONCURRENCY?: string;
   HTTP_REQUEST_TIMEOUT_MS?: string;
   EASTMONEY_COOKIE?: string;
+  FRED_API_KEY?: string;
+  BLS_API_KEY?: string;
+  BOK_ECOS_API_KEY?: string;
+  KOSIS_API_KEY?: string;
+  MACRO_FETCH_RELAY_URL?: string;
 };
 
 export type AppEnv = {

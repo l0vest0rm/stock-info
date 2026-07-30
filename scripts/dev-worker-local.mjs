@@ -14,8 +14,6 @@ const llmDailyLimit = process.env.LLM_DAILY_LIMIT || '1000000'
 const passthroughVarNames = [
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
-  'VOLC_ARK_API_KEY',
-  'VOLC_ARK_BASE_URL',
   'LLM_API_KEY',
   'LLM_BASE_URL',
 ]

@@ -2,7 +2,7 @@ import { SharedLlmClient, D1LlmCacheStore, createResponsesProvider } from "@m2ai
 import { consumeDailyLlmQuota, releaseDailyLlmQuota } from "../db/queries";
 import type { Bindings } from "../types";
 
-export type SupportedLlmModel = "gpt-5.4-mini" | "doubao-seed-2-0-mini-260215";
+export type SupportedLlmModel = "gpt-5.4-mini" | "gpt-5.6-luna";
 
 export type LlmMessage = {
   role: "system" | "user" | "assistant";
@@ -59,19 +59,11 @@ function getSharedClient(env: Bindings): SharedLlmClient {
   }
   cachedKey = key;
   const providers: Record<string, ReturnType<typeof createResponsesProvider>> = {};
-  const doubaoApiKey = requireOptionalEnv(env, ["VOLC_ARK_API_KEY", "LLM_API_KEY"]);
   const openaiApiKey = requireOptionalEnv(env, ["OPENAI_API_KEY", "LLM_API_KEY"]);
-  if (doubaoApiKey) {
-    providers.doubao = createResponsesProvider({
-      name: "doubao",
-      baseUrl: env.VOLC_ARK_BASE_URL ?? env.LLM_BASE_URL ?? "https://ark.cn-beijing.volces.com/api/v3",
-      apiKey: doubaoApiKey,
-    });
-  }
   if (openaiApiKey) {
     providers.openai = createResponsesProvider({
       name: "openai",
-      baseUrl: env.OPENAI_BASE_URL ?? env.LLM_BASE_URL ?? "https://api.openai.com/v1",
+      baseUrl: env.OPENAI_BASE_URL ?? env.LLM_BASE_URL ?? "https://api.m2ai.cc/api/v1/openai",
       apiKey: openaiApiKey,
     });
   }
@@ -79,7 +71,6 @@ function getSharedClient(env: Bindings): SharedLlmClient {
     cacheStore: new D1LlmCacheStore(env.DB),
     providers,
     providerConcurrency: {
-      doubao: 3,
       openai: 3,
     },
     beforeRemoteCall: async (context) => {
@@ -103,12 +94,9 @@ function getSharedClient(env: Bindings): SharedLlmClient {
   return cachedClient;
 }
 
-function providerForModel(model: SupportedLlmModel): "openai" | "doubao" {
-  if (model === "gpt-5.4-mini") {
+function providerForModel(model: SupportedLlmModel): "openai" {
+  if (model === "gpt-5.4-mini" || model === "gpt-5.6-luna") {
     return "openai";
-  }
-  if (model === "doubao-seed-2-0-mini-260215") {
-    return "doubao";
   }
   throw new Error(`unsupported llm model: ${model}`);
 }
@@ -165,9 +153,7 @@ function nextShanghaiDayTs(now = Date.now()): number {
 
 function stableClientKey(env: Bindings): string {
   return [
-    env.OPENAI_BASE_URL ?? env.LLM_BASE_URL ?? "https://api.openai.com/v1",
-    env.VOLC_ARK_BASE_URL ?? env.LLM_BASE_URL ?? "https://ark.cn-beijing.volces.com/api/v3",
+    env.OPENAI_BASE_URL ?? env.LLM_BASE_URL ?? "https://api.m2ai.cc/api/v1/openai",
     requireOptionalEnv(env, ["OPENAI_API_KEY", "LLM_API_KEY"]) ?? "",
-    requireOptionalEnv(env, ["VOLC_ARK_API_KEY", "LLM_API_KEY"]) ?? "",
   ].join("::");
 }

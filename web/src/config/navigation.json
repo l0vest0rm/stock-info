@@ -1,6 +1,7 @@
 {
   "nav": [
     {"href": "/", "text": "首页"},
+    {"href": "macro.html", "text": "宏观"},
     {"href": "companies-filter.html", "text": "公司"},
     {"href": "funds.html", "text": "基金"},
     {"href": "research-news.html", "text": "研报资讯"},
@@ -11,10 +12,12 @@
     {"href": "companies-change.html", "text": "股票涨跌"},
     {"href": "sector-flow.html", "text": "板块资金流"},
     {"href": "companies-holding.html", "text": "机构持仓"},
+    {"href": "institutional-tracks.html", "text": "机构赛道"},
     {"href": "companies-follow.html", "text": "我关注的"}
   ],
   "companyNav": [
     {"href": "company.html", "text": "股价表现"},
+    {"href": "company-trade.html", "text": "买卖建议"},
     {"href": "company-option.html", "text": "期权"},
     {"href": "company-option-theta.html", "text": "时间损耗"},
     {"href": "company-finance.html", "text": "财务指标"},

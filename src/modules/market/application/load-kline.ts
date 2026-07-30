@@ -46,7 +46,7 @@ export async function loadKline(
   if (inferSecurityType(code) === "fund" || code.endsWith(".OF")) {
     const fundCode = code.endsWith(".OF") ? code : `${code.split(".")[0]}.OF`;
     const snapshot = await getFundNavSnapshot(env, fundCode);
-    if (snapshot && isFreshEnough(fundCode, snapshot.updatedAt) && snapshotCoversRange(snapshot, from, to)) {
+    if (snapshot && isFreshEnough(fundCode, snapshot.updatedAt) && snapshotCoversRequestedRange(snapshot, from, to)) {
       return { code: fundCode, source: "r2", rows: sliceFundNavRows(snapshot.rows, from, to) };
     }
     const historyRows = await fetchEastmoneyFundNav(env.DB, fundCode, from, to);
@@ -58,7 +58,7 @@ export async function loadKline(
     snapshot
     && snapshot.source === "eastmoney"
     && isFreshEnough(code, snapshot.updatedAt)
-    && snapshotCoversRange(snapshot, from, to)
+    && snapshotCoversRequestedRange(snapshot, from, to)
   ) {
     return { code, source: "r2", rows: sliceKlineRows(snapshot.rows, from, to) };
   }
@@ -86,4 +86,15 @@ function isFreshEnough(code: string, updatedAt: number | undefined): boolean {
     return false;
   }
   return Date.now() < marketDataCacheExpiresAtMsForCode(code, updatedAt);
+}
+
+function snapshotCoversRequestedRange(
+  snapshot: { startDate: string | null; endDate: string | null },
+  from: string,
+  to: string
+): boolean {
+  if (snapshotCoversRange(snapshot, from, to)) {
+    return true;
+  }
+  return from === fullKlineHistoryStartDate() && Boolean(snapshot.startDate && snapshot.endDate && snapshot.endDate >= to);
 }

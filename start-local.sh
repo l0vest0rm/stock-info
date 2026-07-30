@@ -7,6 +7,8 @@ PROJECT_ROOT="$SCRIPT_DIR"
 PORT="${PORT:-8000}"
 BASE_URL="http://127.0.0.1:${PORT}"
 CONTENT_PORT="${KNOWLEDGE_CONTENT_LOCAL_PORT:-8788}"
+MACRO_FETCH_RELAY_PORT="${MACRO_FETCH_RELAY_PORT:-8791}"
+MACRO_FETCH_RELAY_URL="${MACRO_FETCH_RELAY_URL:-http://127.0.0.1:${MACRO_FETCH_RELAY_PORT}/fetch}"
 CONTENT_BASE_URL="${KNOWLEDGE_CONTENT_PUBLIC_BASE_URL:-http://127.0.0.1:${CONTENT_PORT}}"
 CONTENT_DIR="${KNOWLEDGE_CONTENT_LOCAL_DIR:-/Users/terry/git/data/stock-info/knowledge/content-cache}"
 LOG_DIR="${PROJECT_ROOT}/data/logs"
@@ -14,6 +16,7 @@ LOG_FILE="${LOG_DIR}/stock-info-wrangler.log"
 CONTENT_LOG_FILE="${LOG_DIR}/stock-info-knowledge-content.log"
 CRON_LOG_FILE="${LOG_DIR}/stock-info-local-cron.log"
 CRON_PID_FILE="${LOG_DIR}/stock-info-local-cron.pid"
+MACRO_FETCH_RELAY_LOG_FILE="${LOG_DIR}/stock-info-macro-fetch-relay.log"
 
 export HTTP_PROXY_URL="${HTTP_PROXY_URL:-http://127.0.0.1:7890}"
 export HTTP_PROXY_RELAY_URL="${HTTP_PROXY_RELAY_URL:-${HTTP_PROXY_URL%/}/fetch}"
@@ -37,9 +40,10 @@ WORKER_VARS=(
   --var "KNOWLEDGE_CONTENT_PUBLIC_BASE_URL:$KNOWLEDGE_CONTENT_PUBLIC_BASE_URL"
   --var "KNOWLEDGE_REPORT_CONVERTER_URL:$KNOWLEDGE_REPORT_CONVERTER_URL"
   --var "KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY:$KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY"
+  --var "MACRO_FETCH_RELAY_URL:$MACRO_FETCH_RELAY_URL"
 )
 
-for key in OPENAI_API_KEY OPENAI_BASE_URL VOLC_ARK_API_KEY VOLC_ARK_BASE_URL LLM_API_KEY LLM_BASE_URL; do
+for key in OPENAI_API_KEY OPENAI_BASE_URL LLM_API_KEY LLM_BASE_URL; do
   value="${(P)key-}"
   if [[ -n "$value" ]]; then
     WORKER_VARS+=(--var "${key}:$value")
@@ -82,6 +86,13 @@ EXISTING_CONTENT_LISTENERS=$(lsof -tiTCP:"$CONTENT_PORT" -sTCP:LISTEN 2>/dev/nul
 if [[ -n "$EXISTING_CONTENT_LISTENERS" ]]; then
   echo "Stopping existing content listener(s) on port ${CONTENT_PORT}: ${EXISTING_CONTENT_LISTENERS}"
   echo "$EXISTING_CONTENT_LISTENERS" | xargs kill
+  sleep 1
+fi
+
+EXISTING_MACRO_RELAY_LISTENERS=$(lsof -tiTCP:"$MACRO_FETCH_RELAY_PORT" -sTCP:LISTEN 2>/dev/null || true)
+if [[ -n "$EXISTING_MACRO_RELAY_LISTENERS" ]]; then
+  echo "Stopping existing macro fetch relay listener(s) on port ${MACRO_FETCH_RELAY_PORT}: ${EXISTING_MACRO_RELAY_LISTENERS}"
+  echo "$EXISTING_MACRO_RELAY_LISTENERS" | xargs kill
   sleep 1
 fi
 
@@ -131,6 +142,28 @@ if ! curl -fsS "$HTTP_PROXY_RELAY_HEALTH_URL" >/dev/null 2>&1; then
   kill "$CONTENT_PID" >/dev/null 2>&1 || true
   exit 1
 fi
+
+
+echo "Starting local macro fetch relay on ${MACRO_FETCH_RELAY_URL} ..."
+: >"$MACRO_FETCH_RELAY_LOG_FILE"
+MACRO_FETCH_RELAY_PORT="$MACRO_FETCH_RELAY_PORT" nohup node scripts/local-macro-fetch-relay.mjs >"$MACRO_FETCH_RELAY_LOG_FILE" 2>&1 &
+MACRO_FETCH_RELAY_PID=$!
+MACRO_RELAY_ATTEMPTS=0
+until curl -fsS "http://127.0.0.1:${MACRO_FETCH_RELAY_PORT}/__health" >/dev/null 2>&1; do
+  MACRO_RELAY_ATTEMPTS=$((MACRO_RELAY_ATTEMPTS + 1))
+  if ! kill -0 "$MACRO_FETCH_RELAY_PID" >/dev/null 2>&1; then
+    echo "Local macro fetch relay exited before becoming healthy."
+    echo "Check log: $MACRO_FETCH_RELAY_LOG_FILE"
+    wait "$MACRO_FETCH_RELAY_PID" || true
+    exit 1
+  fi
+  if [[ "$MACRO_RELAY_ATTEMPTS" -ge 30 ]]; then
+    echo "Timed out waiting for local macro fetch relay"
+    kill "$MACRO_FETCH_RELAY_PID" >/dev/null 2>&1 || true
+    exit 1
+  fi
+  sleep 1
+done
 
 echo "Starting local Worker on ${BASE_URL} ..."
 : >"$LOG_FILE"
@@ -193,5 +226,8 @@ echo "HTTP domain concurrency: ${HTTP_DOMAIN_CONCURRENCY}"
 echo "HTTP request timeout: ${HTTP_REQUEST_TIMEOUT_MS}ms"
 echo "LLM daily limit: ${LLM_DAILY_LIMIT}"
 echo "Knowledge content PID: ${CONTENT_PID}"
+echo "Macro fetch relay URL: ${MACRO_FETCH_RELAY_URL}"
+echo "Macro fetch relay log: ${MACRO_FETCH_RELAY_LOG_FILE}"
+echo "Macro fetch relay PID: ${MACRO_FETCH_RELAY_PID}"
 echo "Worker PID: ${WORKER_PID}"
 echo "Cron PID: ${CRON_PID}"

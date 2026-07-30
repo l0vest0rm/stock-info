@@ -16,6 +16,7 @@ const klineRegressions = [
 
 const stockPages = [
   "company.html",
+  "company-trade.html",
   "company-finance.html",
   "company-holders.html",
   "company-dividend.html",
@@ -33,6 +34,68 @@ let passed = 0;
 await check("health", async () => {
   const body = await fetchApi("/api/health");
   assert(body.code === 200, `unexpected api code: ${body.code}`);
+});
+
+await check("macro page and dashboard schema", async () => {
+  const page = await fetchWithTimeout(`${baseUrl}/macro.html`);
+  const html = await page.text();
+  assert(page.status < 400, `macro page status=${page.status}`);
+  assert(html.includes("macro-vue-root"), "macro page root is missing");
+  assert(html.includes("js/macro-page.js"), "macro page bundle is missing");
+
+  const body = await fetchApi("/api/macro/dashboard?regions=us,cn,hk,kr");
+  assert(Array.isArray(body.data?.indicators), "macro indicators are not an array");
+  assert(body.data.indicators.length >= 10, "macro indicator catalog is incomplete");
+  assert(typeof body.data?.status?.state === "string", "macro source status is missing");
+  assert(
+    body.data.indicators.every((item) => item.id && item.name && ["fresh", "stale", "missing"].includes(item.quality)),
+    "macro indicators contain invalid quality metadata"
+  );
+});
+
+await check("macro research, vintage, watch and source-health APIs", async () => {
+  const series = await fetchApi("/api/macro/series?ids=SOFR&from=2024-01-01&transform=zscore&window=20");
+  assert(Array.isArray(series.data) && Array.isArray(series.data[0]?.points), "macro transformed series is invalid");
+  assert(series.data[0]?.transform === "zscore", "macro transform was not applied");
+
+  const revisions = await fetchApi("/api/macro/revisions?id=SOFR&from=2024-01-01");
+  assert(Array.isArray(revisions.data?.observations), "macro revisions are not an array");
+
+  const signals = await fetchApi("/api/macro/signals");
+  assert(Array.isArray(signals.data?.markets), "macro market signals are not an array");
+  assert(typeof signals.data?.methodology === "string", "macro signal methodology is missing");
+
+  const scenario = await fetchApi("/api/macro/research/scenario?ids=SOFR&from=2024-01-01&to=2026-07-30&asOf=2026-07-30T23%3A59%3A59Z");
+  assert(Array.isArray(scenario.data?.results), "macro scenario results are not an array");
+
+  const correlation = await fetchApi("/api/macro/research/correlation?seriesId=SOFR&market=cn&from=2026-01-01&to=2026-07-30&window=20");
+  assert(correlation.data?.benchmark === "000300.SH", "macro correlation benchmark is incorrect");
+  assert(Array.isArray(correlation.data?.points), "macro correlation points are not an array");
+
+  const industries = await fetchApi("/api/macro/research/industries?markets=us,cn,hk,kr");
+  assert(Array.isArray(industries.data?.sectors) && industries.data.sectors.length >= 8, "macro industry sensitivity coverage is incomplete");
+  assert(industries.data.sectors.every((item) => item.coverage?.configured > 0), "macro industry sensitivity metadata is invalid");
+
+  const backtest = await fetchApi("/api/macro/research/backtest?seriesId=SOFR&market=cn&from=2026-01-01&to=2026-07-30&window=20&horizon=20");
+  assert(backtest.data?.vintagePolicy === "initial-release-only", "macro backtest vintage policy is unsafe");
+  assert(Array.isArray(backtest.data?.trades), "macro backtest trades are not an array");
+  const retrospective = await fetchApi("/api/macro/research/backtest?seriesId=SOFR&market=cn&from=2024-01-01&to=2026-07-30&window=20&horizon=20&vintageMode=retrospective");
+  assert(retrospective.data?.vintagePolicy === "retrospective-latest-revision", "macro retrospective backtest mode is missing");
+  assert(retrospective.data?.lookAheadSafe === false, "macro retrospective backtest must disclose look-ahead risk");
+
+  await fetchApi("/api/macro/watch", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ownerKey: "smoke-macro", seriesId: "SOFR", enabled: true, alertRules: [{ operator: "gte", threshold: -999 }] }),
+  });
+  const watches = await fetchApi("/api/macro/watch?owner=smoke-macro");
+  assert(watches.data?.some((item) => item.seriesId === "SOFR" && item.enabled), "macro watch was not persisted");
+  const alerts = await fetchApi("/api/macro/alerts/evaluate?owner=smoke-macro");
+  assert(Array.isArray(alerts.data?.triggered), "macro alerts result is invalid");
+
+  const status = await fetchApi("/api/macro/status");
+  assert(Array.isArray(status.data?.sources), "macro source health is not an array");
+  assert(status.data.sources.every((item) => ["healthy", "degraded", "failed", "disabled"].includes(item.state)), "macro source health contains an invalid state");
 });
 
 await check("company report counts", async () => {
@@ -181,8 +244,8 @@ async function check(name, fn) {
   }
 }
 
-async function fetchApi(path) {
-  const res = await fetchWithTimeout(`${baseUrl}${path}`);
+async function fetchApi(path, init) {
+  const res = await fetchWithTimeout(`${baseUrl}${path}`, init);
   const text = await res.text();
   assert(res.status < 400, `status=${res.status} body=${truncate(text)}`);
   const body = JSON.parse(text);
@@ -190,15 +253,16 @@ async function fetchApi(path) {
   return body;
 }
 
-async function fetchWithTimeout(url) {
+async function fetchWithTimeout(url, init = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const headers = new Headers(init.headers);
+    if (!headers.has("User-Agent")) headers.set("User-Agent", "stock-info-smoke/0.1");
     return await fetch(url, {
+      ...init,
       signal: controller.signal,
-      headers: {
-        "User-Agent": "stock-info-smoke/0.1",
-      },
+      headers,
     });
   } finally {
     clearTimeout(timer);

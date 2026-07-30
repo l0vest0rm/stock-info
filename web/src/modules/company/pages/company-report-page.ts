@@ -48,6 +48,14 @@ function emitCompanyReportPageChange(page: number) {
   }))
 }
 
+function growthTitle(label: string, growth: string): string {
+  return `${label}同比增速：${growth === '-' ? '暂无' : `${growth}%`}`
+}
+
+function profitTitle(growth: string, margin: string): string {
+  return [growthTitle('净利润', growth), margin].filter(Boolean).join('；')
+}
+
 function companyReportPagination(currentPage: number, hasNext: boolean) {
   const items: Array<{
     active?: boolean
@@ -173,24 +181,16 @@ const CompanyReportPage = defineComponent({
               h('th', { scope: 'col' }, '日期'),
               h('th', { scope: 'col' }, '报告名称'),
               h('th', { scope: 'col' }, '2025营收'),
-              h('th', { scope: 'col' }, '2025营收增速%'),
               h('th', { scope: 'col' }, '2025净利润'),
-              h('th', { scope: 'col' }, '2025利润增速%'),
               h('th', { scope: 'col' }, '2025PE'),
               h('th', { scope: 'col' }, '2026营收'),
-              h('th', { scope: 'col' }, '2026营收增速%'),
               h('th', { scope: 'col' }, '2026净利润'),
-              h('th', { scope: 'col' }, '2026利润增速%'),
               h('th', { scope: 'col' }, '2026PE'),
               h('th', { scope: 'col' }, '2027营收'),
-              h('th', { scope: 'col' }, '2027营收增速%'),
               h('th', { scope: 'col' }, '2027净利润'),
-              h('th', { scope: 'col' }, '2027利润增速%'),
               h('th', { scope: 'col' }, '2027PE'),
               h('th', { scope: 'col' }, '2028营收'),
-              h('th', { scope: 'col' }, '2028营收增速%'),
               h('th', { scope: 'col' }, '2028净利润'),
-              h('th', { scope: 'col' }, '2028利润增速%'),
               h('th', { scope: 'col' }, '2028PE'),
               h('th', { scope: 'col' }, '机构'),
               h('th', { scope: 'col' }, '页数'),
@@ -213,25 +213,17 @@ const CompanyReportPage = defineComponent({
                     rel: 'noreferrer noopener',
                   }, row.title)
                   : h('span', row.title)),
-              h('td', row.revenue2025),
-              h('td', row.revenueGrowth2025),
-              h('td', { title: row.profitMargin2025 }, row.profit2025),
-              h('td', row.growth2025),
+              h('td', { title: growthTitle('营收', row.revenueGrowth2025) }, row.revenue2025),
+              h('td', { title: profitTitle(row.growth2025, row.profitMargin2025) }, row.profit2025),
               h('td', row.pe2025),
-              h('td', row.revenue2026),
-              h('td', row.revenueGrowth2026),
-              h('td', { title: row.profitMargin2026 }, row.profit2026),
-              h('td', row.growth2026),
+              h('td', { title: growthTitle('营收', row.revenueGrowth2026) }, row.revenue2026),
+              h('td', { title: profitTitle(row.growth2026, row.profitMargin2026) }, row.profit2026),
               h('td', row.pe2026),
-              h('td', row.revenue2027),
-              h('td', row.revenueGrowth2027),
-              h('td', { title: row.profitMargin2027 }, row.profit2027),
-              h('td', row.growth2027),
+              h('td', { title: growthTitle('营收', row.revenueGrowth2027) }, row.revenue2027),
+              h('td', { title: profitTitle(row.growth2027, row.profitMargin2027) }, row.profit2027),
               h('td', row.pe2027),
-              h('td', row.revenue2028),
-              h('td', row.revenueGrowth2028),
-              h('td', { title: row.profitMargin2028 }, row.profit2028),
-              h('td', row.growth2028),
+              h('td', { title: growthTitle('营收', row.revenueGrowth2028) }, row.revenue2028),
+              h('td', { title: profitTitle(row.growth2028, row.profitMargin2028) }, row.profit2028),
               h('td', row.pe2028),
               h('td', row.orgName),
               h('td', row.pages),
@@ -239,7 +231,7 @@ const CompanyReportPage = defineComponent({
             : [
               h('tr', { key: 'company-report-empty' }, [
                 h('td', {
-                  colSpan: 25,
+                  colSpan: 17,
                   class: `text-center ${statusDanger.value ? 'text-danger' : 'text-muted'}`,
                 }, statusText.value || '暂无公司研报'),
               ]),

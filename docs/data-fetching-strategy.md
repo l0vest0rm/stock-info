@@ -270,14 +270,14 @@ LLM 增强默认关闭。需要本地批量抽取摘要、标签和推荐分时�
 `KNOWLEDGE_PROCESS_LLM=1 ./process-knowledge.sh`；这样不会在普通无参数执行时消耗
 模型额度。
 
-对“本地关键词不确定”的内容，可以启用豆包 mini 做主题复核：
+对“本地关键词不确定”的内容，可以启用 `gpt-5.6-luna` 做主题复核：
 
 ```text
 KNOWLEDGE_PROCESS_TOPIC_LLM=1 ./process-knowledge.sh
 ```
 
-默认模型配置在 `config/knowledge-processing.json`：`doubao-seed-2-0-mini-260215`，
-API key 读取 `VOLC_ARK_API_KEY`。复核会把边界样本按标题/摘要列表批量提交，
+默认模型配置在 `config/knowledge-processing.json`：`gpt-5.6-luna`，
+API key 读取 `OPENAI_API_KEY`。复核会把边界样本按标题/摘要列表批量提交，
 默认每批最多 50 条；不会对所有新闻/研报逐条调用模型。
 
 ## 当前需要优先调整的接口

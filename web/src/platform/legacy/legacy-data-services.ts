@@ -115,6 +115,7 @@ export function createLegacyDataServices(context: DataServicesContext) {
     }).then((data) => {
       if (data && typeof data === 'object' && 'error' in data) {
         delete cache[cacheKey]
+        delete cache[requestCacheKey]
         console.warn(`Kline unavailable for ${code}:`, data)
         return undefined
       }

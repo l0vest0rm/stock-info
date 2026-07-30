@@ -45,9 +45,9 @@
   "maxMarkdownChars": 30000,
   "llm": {
     "enabled": false,
-    "model": "doubao-seed-2-0-mini-260215",
-    "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
-    "apiKeyEnv": "VOLC_ARK_API_KEY",
+    "model": "gpt-5.6-luna",
+    "baseUrl": "https://api.m2ai.cc/api/v1/openai",
+    "apiKeyEnv": "OPENAI_API_KEY",
     "maxInputChars": 12000,
     "maxTokens": 1200
   },

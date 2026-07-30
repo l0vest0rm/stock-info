@@ -65,10 +65,10 @@ function toLegacyKlineRows(rows: Array<KlineBar | FundNavRow>): unknown[][] {
       row.low ?? 0,
       row.volume ?? 0,
       row.turnover,
-      null,
-      null,
-      null,
-      null,
+      row.amount,
+      row.amplitude,
+      row.pctChange,
+      row.changeAmount,
       null,
     ];
   });

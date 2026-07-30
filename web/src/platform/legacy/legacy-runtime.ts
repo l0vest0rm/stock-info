@@ -469,6 +469,23 @@ function formatKlineValue(value: number) {
   }
 }
 
+function formatMarketActivityValue(value: unknown) {
+  if (value === null || value === undefined || value === '') {
+    return '-'
+  }
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) {
+    return '-'
+  }
+  if (Math.abs(numericValue) >= 1e8) {
+    return `${(numericValue / 1e8).toFixed(2)}亿`
+  }
+  if (Math.abs(numericValue) >= 1e4) {
+    return `${(numericValue / 1e4).toFixed(2)}万`
+  }
+  return numericValue.toFixed(0)
+}
+
 function resolveKlineRange(rawData: any[][], startTs: number, endTs: number) {
   let lastBeforeIdx = -1
   let firstInRangeIdx = -1
@@ -559,6 +576,7 @@ function renderKline(codes: string[], startTs: number, endTs: number, fq: string
   let ts = 0
   let value = 0
   const codeNum = codes.length
+  const showTradingActivity = codeNum === 1 && ['SZ', 'SH', 'SF', 'ZF', 'BJ', 'HK', 'US', 'KS'].includes(codes[0].split('.')[1])
   let xAxis: number[] = []
   for (const code of codes) {
     const cacheKey = `${code}${fq}`
@@ -610,7 +628,15 @@ function renderKline(codes: string[], startTs: number, endTs: number, fq: string
         // 把起始数据作为标准1进行比较
         data.push([ts, ratio, value, ratio2, change, quantile])
       } else {
-        data.push([ts, value, ratio, ratio2, change, quantile])
+        data.push([
+          ts,
+          value,
+          ratio,
+          ratio2,
+          change,
+          quantile,
+          ...(showTradingActivity ? [rawData[j][5] ?? null, rawData[j][7] ?? null] : []),
+        ])
       }
       xAxis.push(ts)
     }
@@ -648,6 +674,32 @@ function renderKline(codes: string[], startTs: number, endTs: number, fq: string
       }))))
     }
     series.push(klineSeries)
+    if (showTradingActivity) {
+      series.push({
+        name: '成交量',
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: rawData.slice(begin, end).map((point, index) => [
+          point[0],
+          point[5] ?? 0,
+          begin + index > 0 && point[1] > rawData[begin + index - 1][1] ? 1 : -1,
+        ]),
+      })
+      series.push({
+        name: '成交额',
+        type: 'line',
+        xAxisIndex: 1,
+        yAxisIndex: 2,
+        showSymbol: false,
+        connectNulls: false,
+        lineStyle: {
+          width: 1.5,
+          color: '#5470c6',
+        },
+        data: rawData.slice(begin, end).map((point) => [point[0], point[7] ?? null]),
+      })
+    }
     if (selectedCodes.length === 1 && code === selectedCodes[0]) {
       const movingAverages = getSelectedMovingAverageWindows()
       if (movingAverages.length > 0) {
@@ -694,7 +746,10 @@ function renderKline(codes: string[], startTs: number, endTs: number, fq: string
 
 function myChartSetOption(series: any, xAxis: any,  yAxis: any) {
   const id = 'kline'
-  const codeSeriesCount = series.filter((item: any) => !/^MA\d+$/.test(item.name)).length
+  const activitySeriesNames = new Set(['成交量', '成交额'])
+  const codeSeriesCount = series.filter((item: any) => !/^MA\d+$/.test(item.name) && !activitySeriesNames.has(item.name)).length
+  const volumeSeriesIndex = series.findIndex((item: any) => item.name === '成交量')
+  const hasTradingActivity = volumeSeriesIndex >= 0
   //let html = `<div id="${id}" style="min-height: 600px; min-width: 300px;"></div>`
   const chartDom: any = document.getElementById(id)
   // @ts-ignore
@@ -718,6 +773,10 @@ function myChartSetOption(series: any, xAxis: any,  yAxis: any) {
         let str = toTimeString(params[0].value[0])
         for (const param of params) { // get data sorted
           const name = param.seriesName
+          if (name === '成交量' || name === '成交额') {
+            str += `</br>${param.marker}${name}: ${formatMarketActivityValue(param.value[1])}`
+            continue
+          }
           if (/^MA\d+$/.test(name)) {
             str += `</br>${param.marker}${name}: ${formatKlineValue(param.value[1])}`
             continue
@@ -734,6 +793,10 @@ function myChartSetOption(series: any, xAxis: any,  yAxis: any) {
           const change = (100*param.value[4]).toFixed(2)
           const quantile = param.value[5].toFixed(2)
           str += `</br>${param.marker}${name}: ${formatKlineValue(value)}/当天:${change}%/比开始:${ratio}%/到结束:${ratio2}%/分位:${quantile}%`
+          if (hasTradingActivity) {
+            str += `</br>成交量: ${formatMarketActivityValue(param.value[6])}`
+            str += `</br>成交额: ${formatMarketActivityValue(param.value[7])}`
+          }
         }
 
         //带上markLines
@@ -744,13 +807,57 @@ function myChartSetOption(series: any, xAxis: any,  yAxis: any) {
     legend: {
       middle: 10
     },
-    xAxis: {
+    grid: hasTradingActivity ? [
+      { left: '10%', right: '10%', height: '58%' },
+      { left: '10%', right: '10%', bottom: '8%', height: '20%' },
+    ] : undefined,
+    xAxis: hasTradingActivity ? [
+      {
+        type: 'time',
+        splitLine: { show: false },
+        axisLabel: { show: false },
+      },
+      {
+        type: 'time',
+        gridIndex: 1,
+        splitLine: { show: false },
+      },
+    ] : {
       type: 'time',
       splitLine: {
         show: false
       }
     },
-    yAxis: yAxis,
+    yAxis: hasTradingActivity ? [
+      ...yAxis,
+      {
+        type: 'value',
+        scale: true,
+        gridIndex: 1,
+        position: 'left',
+        splitNumber: 2,
+        axisLabel: { formatter: formatMarketActivityValue },
+        splitLine: { show: false },
+      },
+      {
+        type: 'value',
+        scale: true,
+        gridIndex: 1,
+        position: 'right',
+        splitNumber: 2,
+        axisLabel: { formatter: formatMarketActivityValue },
+        splitLine: { show: false },
+      },
+    ] : yAxis,
+    visualMap: hasTradingActivity ? {
+      show: false,
+      seriesIndex: volumeSeriesIndex,
+      dimension: 2,
+      pieces: [
+        { value: 1, color: '#ec0000' },
+        { value: -1, color: '#00da3c' },
+      ],
+    } : undefined,
     series: series
   })
 }
@@ -779,15 +886,28 @@ function rerenderCandlestick(code: string, startTs: number, endTs: number, fq: s
       }
     },
     {
-      name: 'Volume',
+      name: '成交量',
       type: 'bar',
       xAxisIndex: 1,
       yAxisIndex: 1,
       data: data.volumes
+    },
+    {
+      name: '成交额',
+      type: 'line',
+      xAxisIndex: 1,
+      yAxisIndex: 2,
+      showSymbol: false,
+      connectNulls: false,
+      lineStyle: {
+        width: 1.5,
+        color: '#5470c6'
+      },
+      data: data.amounts
     }
   ]
 
-  const legend: string[] = ['K线图']
+  const legend: string[] = ['K线图', '成交量', '成交额']
   for (const ma of getSelectedMovingAverageWindows()) {
     const name = 'MA' + ma
     legend.push(name)
@@ -829,33 +949,30 @@ function rerenderCandlestick(code: string, startTs: number, endTs: number, fq: s
       },
       formatter: function (params: any) {
         let str = `${params[0].axisValue}`
-        for (let i = 0; i< params.length;i++) {
-          if (i === 0) {
-            let volume = params[i].value[5]
-            if (volume > 1e8) {
-              volume = (volume/1e8).toFixed(1) + '亿'
-            } else if (volume > 1e4) {
-              volume = (volume/1e4).toFixed(0) + '万'
-            }
-
-            const changeColor = params[i].value[8] > 0? 'danger': 'success'
-            const compareStartColor = params[i].value[6] > 0? 'danger': 'success'
-            const compareEndColor = params[i].value[7] > 0? 'danger': 'success'
-            str += `<br>${params[i].marker}${params[i].seriesName}
-            <br>开盘: ${params[i].value[1]}
-            <br>收盘: ${params[i].value[2]}
-            <br>最低: ${params[i].value[3]}
-            <br>最高: ${params[i].value[4]}
-            <br>当天: <span class="text-${changeColor}">${params[i].value[8]}%</span>
-            <br>交易量: ${volume}
-            <br>比开始: <span class="text-${compareStartColor}">${params[i].value[6]}%</span>
-            <br>到结束: <span class="text-${compareEndColor}">${params[i].value[7]}%</span>
-            <br>分位值: ${params[i].value[9]}%`
-          } else {
-            const valueColor = params[0].value[2] > params[i].value ? 'danger': 'success'
-            const value = typeof params[i].value === 'number' ? params[i].value.toFixed(3): params[i].value
-            str += `<br>${params[i].marker}${params[i].seriesName}: <span class="text-${valueColor}">${value}</span>`
+        const candlestickParam = params.find((param: any) => param.seriesName === 'K线图')
+        if (candlestickParam) {
+          const changeColor = candlestickParam.value[8] > 0? 'danger': 'success'
+          const compareStartColor = candlestickParam.value[6] > 0? 'danger': 'success'
+          const compareEndColor = candlestickParam.value[7] > 0? 'danger': 'success'
+          str += `<br>${candlestickParam.marker}${candlestickParam.seriesName}
+          <br>开盘: ${candlestickParam.value[1]}
+          <br>收盘: ${candlestickParam.value[2]}
+          <br>最低: ${candlestickParam.value[3]}
+          <br>最高: ${candlestickParam.value[4]}
+          <br>当天: <span class="text-${changeColor}">${candlestickParam.value[8]}%</span>
+          <br>成交量: ${formatMarketActivityValue(candlestickParam.value[5])}
+          <br>成交额: ${formatMarketActivityValue(candlestickParam.value[10])}
+          <br>比开始: <span class="text-${compareStartColor}">${candlestickParam.value[6]}%</span>
+          <br>到结束: <span class="text-${compareEndColor}">${candlestickParam.value[7]}%</span>
+          <br>分位值: ${candlestickParam.value[9]}%`
+        }
+        for (const param of params) {
+          if (param.seriesName === 'K线图' || param.seriesName === '成交量' || param.seriesName === '成交额') {
+            continue
           }
+          const valueColor = candlestickParam?.value[2] > param.value ? 'danger': 'success'
+          const value = typeof param.value === 'number' ? param.value.toFixed(3): param.value
+          str += `<br>${param.marker}${param.seriesName}: <span class="text-${valueColor}">${value}</span>`
         }
 
         //带上markLines
@@ -905,6 +1022,7 @@ function rerenderCandlestick(code: string, startTs: number, endTs: number, fq: s
         boundaryGap: false,
         axisLine: { onZero: false },
         splitLine: { show: false },
+        axisLabel: { show: false },
         min: 'dataMin',
         max: 'dataMax',
         axisPointer: {
@@ -920,7 +1038,6 @@ function rerenderCandlestick(code: string, startTs: number, endTs: number, fq: s
         axisLine: { onZero: false },
         axisTick: { show: false },
         splitLine: { show: false },
-        axisLabel: { show: false },
         min: 'dataMin',
         max: 'dataMax'
       }
@@ -936,8 +1053,19 @@ function rerenderCandlestick(code: string, startTs: number, endTs: number, fq: s
       {
         scale: true,
         gridIndex: 1,
+        position: 'left',
         splitNumber: 2,
-        axisLabel: { show: false },
+        axisLabel: { formatter: formatMarketActivityValue },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false }
+      },
+      {
+        scale: true,
+        gridIndex: 1,
+        position: 'right',
+        splitNumber: 2,
+        axisLabel: { formatter: formatMarketActivityValue },
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { show: false }
@@ -1071,6 +1199,7 @@ function splitCandlestickData(rawData: any[][], startTs: number, endTs: number) 
   const categoryData: string[] = []
   const values: any[] = []
   const volumes: any[] = []
+  const amounts: Array<number | null> = []
   let baseStart = -1
   let baseEnd = -1
   const arr: number[] = []
@@ -1079,7 +1208,8 @@ function splitCandlestickData(rawData: any[][], startTs: number, endTs: number) 
     return {
       categoryData: categoryData,
       values: values,
-      volumes: volumes
+      volumes: volumes,
+      amounts: amounts
     }
   }
   for (let j = begin; j < end; j++) {
@@ -1106,16 +1236,18 @@ function splitCandlestickData(rawData: any[][], startTs: number, endTs: number) 
       quantile = Math.round(idx * 10000 / arr.length)/100
     }
     categoryData.push(toDateString(rawData[i][0]))
-    //转成：开盘、收盘、最低、最高、交易量、和开始比、结束比、分位值
-    values.push([rawData[i][2], rawData[i][1], rawData[i][4], rawData[i][3], rawData[i][5], ratio, ratio2,change, quantile])
+    //转成：开盘、收盘、最低、最高、成交量、和开始比、结束比、涨跌、分位值、成交额
+    values.push([rawData[i][2], rawData[i][1], rawData[i][4], rawData[i][3], rawData[i][5], ratio, ratio2,change, quantile, rawData[i][7] ?? null])
     //收盘是否大于昨天收盘
     volumes.push([i, rawData[i][5], i > 0 && rawData[i][1] > rawData[i-1][1] ? 1 : -1])
+    amounts.push(Number.isFinite(rawData[i][7]) ? rawData[i][7] : null)
   }
 
   return {
     categoryData: categoryData,
     values: values,
-    volumes: volumes
+    volumes: volumes,
+    amounts: amounts
   }
 }
 
