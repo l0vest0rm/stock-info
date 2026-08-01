@@ -17,6 +17,10 @@ CONTENT_LOG_FILE="${LOG_DIR}/stock-info-knowledge-content.log"
 CRON_LOG_FILE="${LOG_DIR}/stock-info-local-cron.log"
 CRON_PID_FILE="${LOG_DIR}/stock-info-local-cron.pid"
 MACRO_FETCH_RELAY_LOG_FILE="${LOG_DIR}/stock-info-macro-fetch-relay.log"
+COOKIE_REFRESH_LOG_FILE="${LOG_DIR}/stock-info-eastmoney-cookie-refresh.log"
+COOKIE_REFRESH_PID_FILE="${LOG_DIR}/stock-info-eastmoney-cookie-refresh.pid"
+WORKER_PID_FILE="${LOG_DIR}/stock-info-wrangler.pid"
+EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS="${EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
 
 export HTTP_PROXY_URL="${HTTP_PROXY_URL:-http://127.0.0.1:7890}"
 export HTTP_PROXY_RELAY_URL="${HTTP_PROXY_RELAY_URL:-${HTTP_PROXY_URL%/}/fetch}"
@@ -54,6 +58,25 @@ mkdir -p "$LOG_DIR"
 
 cd "$PROJECT_ROOT"
 
+if [[ "$EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS" != <-> || "$EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS" -lt 300 ]]; then
+  echo "EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS must be an integer of at least 300 seconds."
+  exit 1
+fi
+
+if [[ -f "$COOKIE_REFRESH_PID_FILE" ]]; then
+  EXISTING_COOKIE_REFRESH_PID=$(<"$COOKIE_REFRESH_PID_FILE")
+  EXISTING_COOKIE_REFRESH_COMMAND=""
+  if [[ "$EXISTING_COOKIE_REFRESH_PID" == <-> ]]; then
+    EXISTING_COOKIE_REFRESH_COMMAND=$(ps -p "$EXISTING_COOKIE_REFRESH_PID" -o command= 2>/dev/null || true)
+  fi
+  if [[ "$EXISTING_COOKIE_REFRESH_COMMAND" == *"start-local.sh"* ]]; then
+    echo "Stopping existing Eastmoney cookie refresher: ${EXISTING_COOKIE_REFRESH_PID}"
+    kill "$EXISTING_COOKIE_REFRESH_PID" || true
+    sleep 1
+  fi
+  rm -f "$COOKIE_REFRESH_PID_FILE"
+fi
+
 if [[ -f "$CRON_PID_FILE" ]]; then
   EXISTING_CRON_PID=$(<"$CRON_PID_FILE")
   EXISTING_CRON_COMMAND=""
@@ -67,6 +90,67 @@ if [[ -f "$CRON_PID_FILE" ]]; then
   fi
   rm -f "$CRON_PID_FILE"
 fi
+
+refresh_eastmoney_cookie() {
+  if npm run refresh:eastmoney-cookie >>"$COOKIE_REFRESH_LOG_FILE" 2>&1; then
+    echo "Eastmoney cookie refreshed in .dev.vars and wrangler.jsonc."
+    return 0
+  fi
+  echo "Eastmoney cookie refresh failed; keeping the existing local variables. Check ${COOKIE_REFRESH_LOG_FILE}." >&2
+  return 1
+}
+
+start_worker() {
+  nohup npm run dev:worker:bare -- \
+    --port "$PORT" \
+    --show-interactive-dev-session=false \
+    "${WORKER_VARS[@]}" \
+    </dev/null >>"$LOG_FILE" 2>&1 &
+  WORKER_PID=$!
+  echo "$WORKER_PID" >"$WORKER_PID_FILE"
+}
+
+wait_for_worker() {
+  ATTEMPTS=0
+  until curl -fsS "${BASE_URL}/api/health" >/dev/null 2>&1; do
+    ATTEMPTS=$((ATTEMPTS + 1))
+    if ! kill -0 "$WORKER_PID" >/dev/null 2>&1; then
+      echo "Local Worker exited before becoming healthy."
+      echo "Check log: $LOG_FILE"
+      wait "$WORKER_PID" || true
+      return 1
+    fi
+    if [[ "$ATTEMPTS" -ge 60 ]]; then
+      echo "Timed out waiting for ${BASE_URL}/api/health"
+      echo "Check log: $LOG_FILE"
+      kill "$WORKER_PID" >/dev/null 2>&1 || true
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+restart_worker_with_refreshed_cookie() {
+  if [[ -f "$WORKER_PID_FILE" ]]; then
+    ACTIVE_WORKER_PID=$(<"$WORKER_PID_FILE")
+    if [[ "$ACTIVE_WORKER_PID" == <-> ]] && kill -0 "$ACTIVE_WORKER_PID" >/dev/null 2>&1; then
+      echo "Restarting local Worker to load the refreshed Eastmoney cookie."
+      kill "$ACTIVE_WORKER_PID" || true
+      sleep 1
+    fi
+  fi
+  EXISTING_LISTENERS=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+  if [[ -n "$EXISTING_LISTENERS" ]]; then
+    echo "$EXISTING_LISTENERS" | xargs kill
+    sleep 1
+  fi
+  start_worker
+  wait_for_worker
+}
+
+: >"$COOKIE_REFRESH_LOG_FILE"
+echo "Refreshing Eastmoney cookie before starting local services..."
+refresh_eastmoney_cookie || true
 
 EXISTING_WRANGLER_PIDS=$(pgrep -f "node .*wrangler dev --local --port ${PORT}" || true)
 if [[ -n "$EXISTING_WRANGLER_PIDS" ]]; then
@@ -110,11 +194,11 @@ node scripts/materialize-local-knowledge-content.mjs --content-dir "$CONTENT_DIR
 
 echo "Starting local knowledge content server on ${CONTENT_BASE_URL} ..."
 : >"$CONTENT_LOG_FILE"
-node scripts/local-knowledge-content-server.mjs \
+nohup node scripts/local-knowledge-content-server.mjs \
   --host 127.0.0.1 \
   --port "$CONTENT_PORT" \
   --dir "$CONTENT_DIR" \
-  >"$CONTENT_LOG_FILE" 2>&1 &
+  </dev/null >"$CONTENT_LOG_FILE" 2>&1 &
 CONTENT_PID=$!
 
 CONTENT_ATTEMPTS=0
@@ -146,7 +230,7 @@ fi
 
 echo "Starting local macro fetch relay on ${MACRO_FETCH_RELAY_URL} ..."
 : >"$MACRO_FETCH_RELAY_LOG_FILE"
-MACRO_FETCH_RELAY_PORT="$MACRO_FETCH_RELAY_PORT" nohup node scripts/local-macro-fetch-relay.mjs >"$MACRO_FETCH_RELAY_LOG_FILE" 2>&1 &
+MACRO_FETCH_RELAY_PORT="$MACRO_FETCH_RELAY_PORT" nohup node scripts/local-macro-fetch-relay.mjs </dev/null >"$MACRO_FETCH_RELAY_LOG_FILE" 2>&1 &
 MACRO_FETCH_RELAY_PID=$!
 MACRO_RELAY_ATTEMPTS=0
 until curl -fsS "http://127.0.0.1:${MACRO_FETCH_RELAY_PORT}/__health" >/dev/null 2>&1; do
@@ -168,37 +252,17 @@ done
 echo "Starting local Worker on ${BASE_URL} ..."
 : >"$LOG_FILE"
 
-npm run dev:worker:bare -- \
-  --port "$PORT" \
-  --show-interactive-dev-session=false \
-  "${WORKER_VARS[@]}" \
-  >"$LOG_FILE" 2>&1 &
-WORKER_PID=$!
-
-ATTEMPTS=0
-until curl -fsS "${BASE_URL}/api/health" >/dev/null 2>&1; do
-  ATTEMPTS=$((ATTEMPTS + 1))
-  if ! kill -0 "$WORKER_PID" >/dev/null 2>&1; then
-    echo "Local Worker exited before becoming healthy."
-    echo "Check log: $LOG_FILE"
-    wait "$WORKER_PID" || true
-    exit 1
-  fi
-  if [[ "$ATTEMPTS" -ge 60 ]]; then
-    echo "Timed out waiting for ${BASE_URL}/api/health"
-    echo "Check log: $LOG_FILE"
-    kill "$WORKER_PID" >/dev/null 2>&1 || true
-    exit 1
-  fi
-  sleep 1
-done
+start_worker
+if ! wait_for_worker; then
+  exit 1
+fi
 
 echo "Starting local cron runner from wrangler.jsonc ..."
 : >"$CRON_LOG_FILE"
-node scripts/local-cron-runner.mjs \
+nohup node scripts/local-cron-runner.mjs \
   --base-url "$BASE_URL" \
   --config "$PROJECT_ROOT/wrangler.jsonc" \
-  >"$CRON_LOG_FILE" 2>&1 &
+  </dev/null >"$CRON_LOG_FILE" 2>&1 &
 CRON_PID=$!
 echo "$CRON_PID" >"$CRON_PID_FILE"
 sleep 1
@@ -208,6 +272,18 @@ if ! kill -0 "$CRON_PID" >/dev/null 2>&1; then
   wait "$CRON_PID" || true
   exit 1
 fi
+
+(
+  trap '' HUP
+  while true; do
+    sleep "$EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS"
+    if refresh_eastmoney_cookie; then
+      restart_worker_with_refreshed_cookie || echo "Local Worker restart after Eastmoney cookie refresh failed. Check ${LOG_FILE}." >&2
+    fi
+  done
+) >>"$COOKIE_REFRESH_LOG_FILE" 2>&1 &
+COOKIE_REFRESH_PID=$!
+echo "$COOKIE_REFRESH_PID" >"$COOKIE_REFRESH_PID_FILE"
 
 echo "Local site is ready."
 echo "URL: ${BASE_URL}"
@@ -231,3 +307,6 @@ echo "Macro fetch relay log: ${MACRO_FETCH_RELAY_LOG_FILE}"
 echo "Macro fetch relay PID: ${MACRO_FETCH_RELAY_PID}"
 echo "Worker PID: ${WORKER_PID}"
 echo "Cron PID: ${CRON_PID}"
+echo "Eastmoney cookie refresh interval: ${EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS}s"
+echo "Eastmoney cookie refresh log: ${COOKIE_REFRESH_LOG_FILE}"
+echo "Eastmoney cookie refresher PID: ${COOKIE_REFRESH_PID}"

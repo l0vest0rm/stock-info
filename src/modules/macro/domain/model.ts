@@ -39,7 +39,9 @@ export type MacroEvent = {
   eventId: string;
   scheduledAt: number;
   region: string;
-  importance: "low" | "medium" | "high";
+  // "unclassified" is deliberate: a source title alone is not enough to
+  // infer market importance. Profiles may promote it after verification.
+  importance: "low" | "medium" | "high" | "unclassified";
   title: string;
   seriesId: string | null;
   actual: number | null;

@@ -65,7 +65,7 @@ const REPORT_SOURCE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const REPORT_SOURCE_CACHE_VERSION = "v6";
 const REPORT_PAGE_SIZE = 10;
 const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const REPORT_FORECAST_CACHE_VERSION = "v3";
+const REPORT_FORECAST_CACHE_VERSION = "v7";
 const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
@@ -549,7 +549,7 @@ export async function extractCompanyReportByLlm(
     return [];
   }
   const patternForecasts = extractForecastsByPattern(trimmed);
-  if (patternForecasts.length > 0 && !options.forceLlm) {
+  if (patternForecasts.length > 0 && (!options.forceLlm || hasCompleteForecastMetrics(patternForecasts))) {
     return patternForecasts;
   }
   const prompt = REPORT_ANALYZE_USER_PROMPT
@@ -1084,13 +1084,13 @@ function reportForecastsHaveNetProfit(forecasts: Array<Record<string, unknown>>)
   return forecasts.some((forecast) => numberOrUndefined(forecast.netProfit) !== undefined);
 }
 
-function extractForecastsByPattern(content: string): CompanyReportForecast[] {
+export function extractForecastsByPattern(content: string): CompanyReportForecast[] {
   const tableForecasts = extractForecastsFromMarkdownTable(content);
   const sentence = content.match(
-    /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*\/\s*(\d{4})\s*\/\s*(\d{4})\s*年[^。；\n]{0,220}?归母净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*亿元/i
+    /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*\/\s*(\d{4})\s*\/\s*(\d{4})\s*年[^。；\n]{0,220}?归母\s*净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*亿元/i
   );
   const rangeSentence = content.match(
-    /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*[-—–至]\s*(\d{4})\s*年[^。；\n]{0,220}?归母净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*(?:亿元|亿)/i
+    /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*[-—–至]\s*(\d{4})\s*年[^。；\n]{0,220}?归母\s*净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*(?:亿元|亿)/i
   );
   let sentenceForecasts: CompanyReportForecast[] = [];
   if (sentence) {
@@ -1107,36 +1107,86 @@ function extractForecastsByPattern(content: string): CompanyReportForecast[] {
       sentenceForecasts = profits.map((profit, index) => ({ year: startYear + index, netProfit: round2(profit) }));
     }
   }
-  return mergeForecastRows(tableForecasts, sentenceForecasts);
+  return mergeForecastRows(
+    mergeForecastRows(tableForecasts, sentenceForecasts),
+    extractForecastsFromAnnualSentence(content),
+  );
+}
+
+function extractForecastsFromAnnualSentence(content: string): CompanyReportForecast[] {
+  const normalized = content.replace(/[`*]/g, "").replace(/\s+/g, " ");
+  const range = normalized.match(/(?:预计|预期|我们预计)[^。；]{0,120}?(20\d{2})\s*[-—–至]\s*(20\d{2})\s*年/);
+  if (!range) {
+    return [];
+  }
+  const startYear = Number(range[1]);
+  const endYear = Number(range[2]);
+  if (!Number.isInteger(startYear) || endYear !== startYear + 2 || range.index === undefined) {
+    return [];
+  }
+  const sentence = normalized.slice(range.index, normalized.indexOf("。", range.index) > 0
+    ? normalized.indexOf("。", range.index)
+    : range.index + 500);
+  const netProfits = annualMetricTriplet(sentence, /(?:归母\s*)?净利润/i);
+  const epsValues = annualMetricTriplet(sentence, /EPS|每股收益/i);
+  const peValues = annualMetricTriplet(sentence, /P\s*\/?\s*E|市盈率/i);
+  if (!netProfits && !epsValues && !peValues) {
+    return [];
+  }
+  return [0, 1, 2].map((index) => ({
+    year: startYear + index,
+    ...(netProfits?.[index] !== undefined ? { netProfit: netProfits[index] } : {}),
+    ...(epsValues?.[index] !== undefined ? { eps: epsValues[index] } : {}),
+    ...(peValues?.[index] !== undefined ? { pe: peValues[index] } : {}),
+  })).filter(hasForecastMetric);
+}
+
+function annualMetricTriplet(sentence: string, label: RegExp): number[] | null {
+  const match = label.exec(sentence);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+  const valueText = sentence.slice(match.index + match[0].length, match.index + match[0].length + 160);
+  const values = [...valueText.matchAll(/[-+]?\d+(?:\.\d+)?/g)]
+    .slice(0, 3)
+    .map((item) => Number(item[0]));
+  return values.length === 3 && values.every(Number.isFinite) ? values : null;
 }
 
 function extractForecastsFromMarkdownTable(content: string): CompanyReportForecast[] {
-  const lines = content.split(/\r?\n/).filter((line) => line.trim().startsWith("|"));
-  for (let headerIndex = 0; headerIndex < lines.length; headerIndex += 1) {
-    const header = markdownTableCells(lines[headerIndex]);
-    const years = header.map((cell) => Number(cell.match(/\b(20\d{2})E\b/i)?.[1] || 0));
-    if (years.filter((year) => year > 0).length < 2) {
-      continue;
-    }
-    const rows = lines.slice(headerIndex + 1, headerIndex + 14).map(markdownTableCells);
-    const revenueRow = rows.find((cells) => /营业(?:总)?收入/.test(cells[0] || ""));
-    const profitRow = rows.find((cells) => /归母净利润|归属于母公司.*净利润/.test(cells[0] || ""));
-    const epsRow = rows.find((cells) => /^EPS|每股收益/i.test(cells[0] || ""));
-    const peRow = rows.find((cells) => /^(?:P\/?E|PE)|市盈率/i.test(cells[0] || ""));
-    const growthRows = rows.filter((cells) => /YOY|同比/i.test(cells[0] || ""));
-    const revenueGrowthRow = revenueRow ? growthRows.find((row) => rows.indexOf(row) > rows.indexOf(revenueRow)) : undefined;
-    const profitGrowthRow = profitRow ? growthRows.find((row) => rows.indexOf(row) > rows.indexOf(profitRow)) : undefined;
-    const revenueDivisor = tableValueDivisor(revenueRow?.[0] || "");
-    const profitDivisor = tableValueDivisor(profitRow?.[0] || "");
-    return years.flatMap((year, columnIndex) => {
-      if (!year) return [];
-      const revenue = tableNumber(revenueRow?.[columnIndex]);
-      const netProfit = tableNumber(profitRow?.[columnIndex]);
-      const revenueGrowth = tableNumber(revenueGrowthRow?.[columnIndex]);
-      const profitGrowth = tableNumber(profitGrowthRow?.[columnIndex]);
-      const eps = tableNumber(epsRow?.[columnIndex]);
-      const pe = tableNumber(peRow?.[columnIndex]);
-      return [{
+  let bestForecasts: CompanyReportForecast[] = [];
+  for (const table of markdownTables(content)) {
+    for (let headerIndex = 0; headerIndex < table.length; headerIndex += 1) {
+      const header = table[headerIndex];
+      const yearColumns = forecastYearColumns(header);
+      if (yearColumns.length < 2) {
+        continue;
+      }
+      const rows = table.slice(headerIndex, headerIndex + 20);
+      const firstYearColumn = yearColumns[0].columnIndex;
+      const revenueRowIndex = findForecastMetricRow(rows, firstYearColumn, /营业(?:总)?收入|营业额|营收|主营业务收入|销售收入/i);
+      const profitRowIndex = findForecastMetricRow(rows, firstYearColumn, /归母\s*净利润|归属于母公司.*净利润|母公司股东.*净利润/i);
+      const epsRowIndex = findForecastMetricRow(rows, firstYearColumn, /EPS|每股收益/i);
+      const peRowIndex = findForecastMetricRow(rows, firstYearColumn, /P\s*\/?\s*E|市盈率/i);
+      if (revenueRowIndex === -1 && profitRowIndex === -1 && epsRowIndex === -1 && peRowIndex === -1) {
+        continue;
+      }
+      const revenueRow = revenueRowIndex >= 0 ? rows[revenueRowIndex] : undefined;
+      const profitRow = profitRowIndex >= 0 ? rows[profitRowIndex] : undefined;
+      const epsRow = epsRowIndex >= 0 ? rows[epsRowIndex] : undefined;
+      const peRow = peRowIndex >= 0 ? rows[peRowIndex] : undefined;
+      const revenueGrowthRow = findFollowingGrowthRow(rows, revenueRowIndex, firstYearColumn);
+      const profitGrowthRow = findFollowingGrowthRow(rows, profitRowIndex, firstYearColumn);
+      const revenueDivisor = tableValueDivisor(tableRowLabel(revenueRow ?? [], firstYearColumn));
+      const profitDivisor = tableValueDivisor(tableRowLabel(profitRow ?? [], firstYearColumn));
+      const forecasts = yearColumns.flatMap(({ year, columnIndex }) => {
+        const revenue = tableNumberForForecastColumn(revenueRow?.[columnIndex], year);
+        const netProfit = tableNumberForForecastColumn(profitRow?.[columnIndex], year);
+        const revenueGrowth = tableNumberForForecastColumn(revenueGrowthRow?.[columnIndex], year);
+        const profitGrowth = tableNumberForForecastColumn(profitGrowthRow?.[columnIndex], year);
+        const eps = tableNumberForForecastColumn(epsRow?.[columnIndex], year);
+        const pe = tableNumberForForecastColumn(peRow?.[columnIndex], year);
+      const forecast: CompanyReportForecast = {
         year,
         ...(revenue !== undefined ? { revenue: round2(revenue / revenueDivisor) } : {}),
         ...(revenueGrowth !== undefined ? { revenueGrowth } : {}),
@@ -1144,10 +1194,69 @@ function extractForecastsFromMarkdownTable(content: string): CompanyReportForeca
         ...(profitGrowth !== undefined ? { profitGrowth } : {}),
         ...(eps !== undefined ? { eps } : {}),
         ...(pe !== undefined ? { pe } : {}),
-      }];
-    });
+      };
+      return hasForecastMetric(forecast) ? [forecast] : [];
+      });
+      if (forecastCompletenessScore(forecasts) > forecastCompletenessScore(bestForecasts)) {
+        bestForecasts = forecasts;
+      }
+    }
   }
-  return [];
+  return bestForecasts;
+}
+
+function markdownTables(content: string): string[][][] {
+  const tables: string[][][] = [];
+  let current: string[][] = [];
+  for (const line of content.split(/\r?\n/)) {
+    if (line.trim().startsWith("|")) {
+      current.push(markdownTableCells(line));
+    } else if (current.length > 0) {
+      tables.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) {
+    tables.push(current);
+  }
+  return tables;
+}
+
+function forecastYearColumns(cells: string[]): Array<{ year: number; columnIndex: number }> {
+  return cells.flatMap((cell, columnIndex) => {
+    const match = cell.match(/(20\d{2})\s*(?:E|预测|预计)/i);
+    const year = Number(match?.[1] || 0);
+    return Number.isInteger(year) && year > 0 ? [{ year, columnIndex }] : [];
+  });
+}
+
+function findForecastMetricRow(cellsRows: string[][], firstYearColumn: number, pattern: RegExp): number {
+  return cellsRows.findIndex((cells) => {
+    const label = tableRowLabel(cells, firstYearColumn);
+    return pattern.test(label) && cells.slice(firstYearColumn).some((value) => tableNumberForForecastColumn(value) !== undefined);
+  });
+}
+
+function findFollowingGrowthRow(cellsRows: string[][], metricRowIndex: number, firstYearColumn: number): string[] | undefined {
+  if (metricRowIndex < 0) {
+    return undefined;
+  }
+  return cellsRows.slice(metricRowIndex + 1, metricRowIndex + 4).find((cells) => (
+    /同比|YOY|增长率|增速/i.test(tableRowLabel(cells, firstYearColumn))
+    && cells.slice(firstYearColumn).some((value) => tableNumberForForecastColumn(value) !== undefined)
+  ));
+}
+
+function tableRowLabel(cells: string[], firstYearColumn: number): string {
+  return cells.slice(0, Math.max(firstYearColumn, 1)).join(" ").replace(/\s+/g, " ").trim();
+}
+
+function tableNumberForForecastColumn(value: string | undefined, year?: number): number | undefined {
+  const normalized = String(value || "").replace(/(20\d{2})\s*(?:E|预测|预计)/gi, "");
+  if (year !== undefined && normalized === String(value || "")) {
+    return tableNumber(value);
+  }
+  return tableNumber(normalized);
 }
 
 function markdownTableCells(line: string): string[] {
@@ -1164,9 +1273,37 @@ function tableNumber(value: string | undefined): number | undefined {
 }
 
 function tableValueDivisor(label: string): number {
-  if (/百万元/.test(label)) return 100;
+  if (/百万元|百万(?:元)?/.test(label)) return 100;
+  if (/千万元/.test(label)) return 10;
   if (/万元/.test(label)) return 10000;
+  if (/千元/.test(label)) return 100000;
+  if (/(?:^|\W)元(?:$|\W)/.test(label)) return 100000000;
   return 1;
+}
+
+function hasForecastMetric(forecast: CompanyReportForecast): boolean {
+  return forecast.revenue !== undefined
+    || forecast.netProfit !== undefined
+    || forecast.eps !== undefined
+    || forecast.pe !== undefined;
+}
+
+function forecastCompletenessScore(forecasts: CompanyReportForecast[]): number {
+  return forecasts.reduce((score, forecast) => score + [
+    forecast.revenue,
+    forecast.revenueGrowth,
+    forecast.netProfit,
+    forecast.profitGrowth,
+    forecast.eps,
+    forecast.pe,
+  ].filter((value) => value !== undefined).length, 0);
+}
+
+function hasCompleteForecastMetrics(forecasts: CompanyReportForecast[]): boolean {
+  return forecasts.length >= 2 && forecasts.every((forecast) => (
+    forecast.netProfit !== undefined
+    && (forecast.revenue !== undefined || forecast.eps !== undefined)
+  ));
 }
 
 function mergeForecastRows(

@@ -43,6 +43,18 @@ async function testHkma(): Promise<void> {
   equal(result.observations[0].vintage, "revised", "HKMA vintage");
 }
 
+async function testHkmaRetry(): Promise<void> {
+  let attempts = 0;
+  const fetcher = (async () => {
+    attempts += 1;
+    if (attempts === 1) throw new DOMException("timed out", "TimeoutError");
+    return new Response(JSON.stringify({ result: { records: [{ end_of_date: "2026-07-28", base_rate: "4.75" }] } }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as MacroFetch;
+  const result = await new HkmaOpenApiAdapter(fetcher, 100, 2).load({ dataset: "market-data-and-statistics/daily-monetary-statistics/example", fields: [{ field: "base_rate", id: "HKMA_BASE_RATE", name: "Base Rate", unit: "%" }] });
+  equal(attempts, 2, "HKMA retry count");
+  equal(result.observations.length, 1, "HKMA retry result");
+}
+
 async function testFred(): Promise<void> {
   let requested = "";
   const adapter = new FredAdapter("secret-key", jsonFetch({ observations: [{ realtime_start: "2026-07-01", realtime_end: "2026-07-29", date: "2026-06-01", value: "3.2" }] }, (url) => { requested = url; }));
@@ -105,6 +117,7 @@ async function testBls(): Promise<void> {
 
 await testNyFed();
 await testHkma();
+await testHkmaRetry();
 await testFred();
 await testFredCalendar();
 await testBok();

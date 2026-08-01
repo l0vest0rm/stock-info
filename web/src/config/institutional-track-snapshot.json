@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-29T22:21:37.521Z",
-  "dataDate": "2026-07-29",
+  "generatedAt": "2026-07-30T23:09:35.357Z",
+  "dataDate": "2026-07-30",
   "rankingField": "ALLCORP_NUM",
   "source": "Eastmoney via stock-info",
   "rows": [
@@ -8,7 +8,7 @@
       "rank": 1,
       "code": "300308.SZ",
       "name": "中际旭创",
-      "institutionCount": 2725,
+      "institutionCount": 2739,
       "industry": "通信设备",
       "concepts": [
         "5G概念",
@@ -26,7 +26,7 @@
       "rank": 2,
       "code": "300750.SZ",
       "name": "宁德时代",
-      "institutionCount": 2166,
+      "institutionCount": 2175,
       "industry": "电源设备",
       "concepts": [
         "电池技术",
@@ -48,22 +48,22 @@
       "rank": 3,
       "code": "300502.SZ",
       "name": "新易盛",
-      "institutionCount": 1984,
+      "institutionCount": 1989,
       "industry": "通信设备",
       "concepts": [
         "5G概念",
+        "CPO概念",
         "通信技术",
         "西部大开发",
         "算力概念",
-        "光通信模块",
-        "CPO概念"
+        "光通信模块"
       ]
     },
     {
       "rank": 4,
       "code": "688256.SH",
       "name": "寒武纪",
-      "institutionCount": 1594,
+      "institutionCount": 1595,
       "industry": "半导体",
       "concepts": [
         "先进封装",
@@ -81,7 +81,7 @@
       "rank": 5,
       "code": "603986.SH",
       "name": "兆易创新",
-      "institutionCount": 1338,
+      "institutionCount": 1345,
       "industry": "半导体",
       "concepts": [
         "半导体概念",
@@ -103,7 +103,7 @@
       "rank": 6,
       "code": "688041.SH",
       "name": "海光信息",
-      "institutionCount": 1110,
+      "institutionCount": 1112,
       "industry": "半导体",
       "concepts": [
         "国产芯片",
@@ -138,7 +138,6 @@
         "锂电池概念",
         "高带宽内存",
         "氮化镓",
-        "OLED",
         "光伏概念"
       ]
     },
@@ -146,7 +145,7 @@
       "rank": 8,
       "code": "600519.SH",
       "name": "贵州茅台",
-      "institutionCount": 988,
+      "institutionCount": 992,
       "industry": "饮料",
       "concepts": [
         "电商概念",
@@ -180,7 +179,7 @@
       "rank": 10,
       "code": "601899.SH",
       "name": "紫金矿业",
-      "institutionCount": 928,
+      "institutionCount": 931,
       "industry": "贵金属",
       "concepts": [
         "黄金概念",
@@ -196,7 +195,7 @@
       "rank": 11,
       "code": "002384.SZ",
       "name": "东山精密",
-      "institutionCount": 912,
+      "institutionCount": 918,
       "industry": "电子器件",
       "concepts": [
         "MiniLED",
@@ -205,6 +204,7 @@
         "苹果概念",
         "OLED",
         "创投",
+        "数据中心",
         "特斯拉概念",
         "LED概念",
         "长江三角",
@@ -212,7 +212,6 @@
         "PCB",
         "光通信模块",
         "华为概念",
-        "数据中心",
         "通信技术"
       ]
     },
@@ -235,7 +234,7 @@
       "code": "002475.SZ",
       "name": "立讯精密",
       "institutionCount": 799,
-      "industry": "消费电子",
+      "industry": "消费电子设备",
       "concepts": [
         "混合现实",
         "消费电子概念",
@@ -279,7 +278,7 @@
       "rank": 15,
       "code": "000333.SZ",
       "name": "美的集团",
-      "institutionCount": 752,
+      "institutionCount": 753,
       "industry": "白色家电",
       "concepts": [
         "工业互联",
@@ -302,7 +301,7 @@
       "rank": 16,
       "code": "688498.SH",
       "name": "源杰科技",
-      "institutionCount": 717,
+      "institutionCount": 719,
       "industry": "电子设备制造",
       "concepts": [
         "半导体概念",
@@ -325,7 +324,6 @@
         "云计算",
         "半导体概念",
         "算力概念",
-        "AIPC",
         "中芯概念",
         "数据安全",
         "人工智能",
@@ -337,8 +335,8 @@
       "rank": 18,
       "code": "601318.SH",
       "name": "中国平安",
-      "institutionCount": 684,
-      "industry": "非银行金融",
+      "institutionCount": 685,
+      "industry": "保险Ⅱ",
       "concepts": [
         "互联网金融",
         "养老概念",
@@ -355,8 +353,8 @@
       "rank": 19,
       "code": "300408.SZ",
       "name": "三环集团",
-      "institutionCount": 663,
-      "industry": "元件",
+      "institutionCount": 664,
+      "industry": "电子元件",
       "concepts": [
         "小米概念",
         "被动元件概念",
@@ -387,8 +385,8 @@
       "rank": 21,
       "code": "600036.SH",
       "name": "招商银行",
-      "institutionCount": 592,
-      "industry": "银行",
+      "institutionCount": 595,
+      "industry": "银行Ⅱ",
       "concepts": [
         "互联网金融",
         "深圳特区",
@@ -399,8 +397,8 @@
       "rank": 22,
       "code": "300274.SZ",
       "name": "阳光电源",
-      "institutionCount": 584,
-      "industry": "光伏设备",
+      "institutionCount": 586,
+      "industry": "电源设备",
       "concepts": [
         "新能源车",
         "阿里概念",
@@ -429,7 +427,7 @@
       "rank": 24,
       "code": "600183.SH",
       "name": "生益科技",
-      "institutionCount": 515,
+      "institutionCount": 519,
       "industry": "电子元件",
       "concepts": [
         "华为概念",
@@ -455,15 +453,15 @@
       "rank": 26,
       "code": "600176.SH",
       "name": "中国巨石",
-      "institutionCount": 443,
+      "institutionCount": 445,
       "industry": "合成纤维及树脂",
       "concepts": [
+        "PCB",
         "DeepSeek概念",
         "新材料",
         "风能",
         "一带一路",
         "央国企改革",
-        "PCB",
         "PEEK材料概念"
       ]
     },
@@ -471,7 +469,7 @@
       "rank": 27,
       "code": "002463.SZ",
       "name": "沪电股份",
-      "institutionCount": 441,
+      "institutionCount": 444,
       "industry": "电子元件",
       "concepts": [
         "无人驾驶",
@@ -487,7 +485,7 @@
       "rank": 28,
       "code": "688521.SH",
       "name": "芯原股份",
-      "institutionCount": 436,
+      "institutionCount": 439,
       "industry": "半导体",
       "concepts": [
         "国产芯片",
@@ -506,8 +504,8 @@
       "rank": 29,
       "code": "301666.SZ",
       "name": "大普微",
-      "institutionCount": 435,
-      "industry": "计算机设备",
+      "institutionCount": 438,
+      "industry": "计算机硬件",
       "concepts": [
         "抖音概念(字节概念)",
         "小红书概念",
@@ -525,7 +523,7 @@
       "rank": 30,
       "code": "600276.SH",
       "name": "恒瑞医药",
-      "institutionCount": 417,
+      "institutionCount": 419,
       "industry": "化学制药",
       "concepts": [
         "医疗器械概念",
@@ -539,7 +537,7 @@
       "rank": 31,
       "code": "001248.SZ",
       "name": "华润新能源",
-      "institutionCount": 392,
+      "institutionCount": 395,
       "industry": "电力",
       "concepts": [
         "风能",
@@ -555,7 +553,7 @@
       "code": "600030.SH",
       "name": "中信证券",
       "institutionCount": 392,
-      "industry": "证券Ⅱ",
+      "industry": "非银行金融",
       "concepts": [
         "互联网金融",
         "华为概念",
@@ -570,7 +568,7 @@
       "rank": 33,
       "code": "688808.SH",
       "name": "联讯仪器",
-      "institutionCount": 384,
+      "institutionCount": 386,
       "industry": "通用设备",
       "concepts": [
         "半导体概念",
@@ -584,7 +582,7 @@
       "rank": 34,
       "code": "600900.SH",
       "name": "长江电力",
-      "institutionCount": 381,
+      "institutionCount": 383,
       "industry": "电力",
       "concepts": [
         "风能",
@@ -618,7 +616,7 @@
       "code": "601138.SH",
       "name": "工业富联",
       "institutionCount": 352,
-      "industry": "消费电子设备",
+      "industry": "消费电子",
       "concepts": [
         "算力概念",
         "深圳特区",
@@ -655,9 +653,10 @@
       "rank": 38,
       "code": "002353.SZ",
       "name": "杰瑞股份",
-      "institutionCount": 338,
+      "institutionCount": 343,
       "industry": "石油天然气",
       "concepts": [
+        "核能核电",
         "油气设服",
         "油气资源",
         "海工装备",
@@ -666,7 +665,6 @@
         "数据中心",
         "页岩气",
         "天然气",
-        "核能核电",
         "动力电池回收",
         "一带一路"
       ]
@@ -700,7 +698,7 @@
       "code": "688525.SH",
       "name": "佰维存储",
       "institutionCount": 332,
-      "industry": "电子设备制造",
+      "industry": "半导体",
       "concepts": [
         "AIPC",
         "数据中心",
@@ -722,10 +720,11 @@
       "rank": 41,
       "code": "000725.SZ",
       "name": "京东方A",
-      "institutionCount": 327,
-      "industry": "电子器件",
+      "institutionCount": 328,
+      "industry": "光学光电子",
       "concepts": [
         "小米概念",
+        "医美概念",
         "柔性屏(折叠屏)",
         "混合现实",
         "央国企改革",
@@ -754,7 +753,6 @@
         "物联网",
         "屏下摄像",
         "荣耀概念",
-        "医美概念",
         "先进封装"
       ]
     },
@@ -788,7 +786,7 @@
       "rank": 43,
       "code": "688002.SH",
       "name": "睿创微纳",
-      "institutionCount": 308,
+      "institutionCount": 309,
       "industry": "电子设备制造",
       "concepts": [
         "传感器",
@@ -809,8 +807,8 @@
       "rank": 44,
       "code": "002008.SZ",
       "name": "大族激光",
-      "institutionCount": 303,
-      "industry": "自动化设备",
+      "institutionCount": 304,
+      "industry": "电子设备制造",
       "concepts": [
         "TOPCon电池",
         "PCB",
@@ -836,8 +834,8 @@
       "rank": 45,
       "code": "300857.SZ",
       "name": "协创数据",
-      "institutionCount": 297,
-      "industry": "消费电子",
+      "institutionCount": 300,
+      "industry": "消费电子设备",
       "concepts": [
         "AIGC概念",
         "大数据",
@@ -884,28 +882,32 @@
       "code": "603382.SH",
       "name": "海阳科技",
       "institutionCount": 290,
-      "industry": "未分类",
+      "industry": "化学纤维",
       "concepts": []
     },
     {
       "rank": 48,
-      "code": "688120.SH",
-      "name": "华海清科",
+      "code": "002916.SZ",
+      "name": "深南电路",
       "institutionCount": 283,
-      "industry": "电子设备制造",
+      "industry": "电子元件",
       "concepts": [
-        "存储芯片",
+        "苹果概念",
+        "通信技术",
         "央国企改革",
-        "半导体概念",
-        "高带宽内存",
-        "中芯概念"
+        "深圳特区",
+        "PCB",
+        "国产芯片",
+        "存储芯片",
+        "华为概念",
+        "5G概念"
       ]
     },
     {
       "rank": 49,
       "code": "002415.SZ",
       "name": "海康威视",
-      "institutionCount": 282,
+      "institutionCount": 283,
       "industry": "计算机硬件",
       "concepts": [
         "无人驾驶",
@@ -932,20 +934,16 @@
     },
     {
       "rank": 50,
-      "code": "002916.SZ",
-      "name": "深南电路",
-      "institutionCount": 279,
-      "industry": "电子元件",
+      "code": "688120.SH",
+      "name": "华海清科",
+      "institutionCount": 283,
+      "industry": "半导体",
       "concepts": [
-        "苹果概念",
-        "通信技术",
-        "央国企改革",
-        "深圳特区",
-        "PCB",
-        "国产芯片",
         "存储芯片",
-        "华为概念",
-        "5G概念"
+        "央国企改革",
+        "半导体概念",
+        "高带宽内存",
+        "中芯概念"
       ]
     },
     {
@@ -969,7 +967,7 @@
       "rank": 52,
       "code": "600487.SH",
       "name": "亨通光电",
-      "institutionCount": 274,
+      "institutionCount": 275,
       "industry": "通信设备",
       "concepts": [
         "网络安全",
@@ -1021,7 +1019,7 @@
       "code": "600309.SH",
       "name": "万华化学",
       "institutionCount": 267,
-      "industry": "化学原料",
+      "industry": "化学制品",
       "concepts": [
         "煤化工概念",
         "创投",
@@ -1038,7 +1036,7 @@
       "code": "601211.SH",
       "name": "国泰海通",
       "institutionCount": 264,
-      "industry": "证券Ⅱ",
+      "industry": "非银行金融",
       "concepts": [
         "互联网金融",
         "并购重组概念",
@@ -1051,7 +1049,7 @@
       "rank": 56,
       "code": "688630.SH",
       "name": "芯碁微装",
-      "institutionCount": 255,
+      "institutionCount": 257,
       "industry": "专用设备",
       "concepts": [
         "PCB",
@@ -1077,7 +1075,7 @@
       "rank": 58,
       "code": "600549.SH",
       "name": "厦门钨业",
-      "institutionCount": 249,
+      "institutionCount": 250,
       "industry": "稀有金属",
       "concepts": [
         "固态电池",
@@ -1100,7 +1098,7 @@
       "rank": 59,
       "code": "300059.SZ",
       "name": "东方财富",
-      "institutionCount": 246,
+      "institutionCount": 247,
       "industry": "互联网金融",
       "concepts": [
         "虚拟机器人",
@@ -1127,6 +1125,7 @@
       "industry": "通用设备",
       "concepts": [
         "华为概念",
+        "中芯概念",
         "高带宽内存",
         "存储芯片",
         "显示技术",
@@ -1140,8 +1139,7 @@
         "混合现实",
         "OLED",
         "苹果概念",
-        "电池技术",
-        "中芯概念"
+        "电池技术"
       ]
     },
     {
@@ -1172,17 +1170,9 @@
     },
     {
       "rank": 62,
-      "code": "002142.SZ",
-      "name": "宁波银行",
-      "institutionCount": 239,
-      "industry": "银行",
-      "concepts": []
-    },
-    {
-      "rank": 63,
       "code": "601398.SH",
       "name": "工商银行",
-      "institutionCount": 239,
+      "institutionCount": 241,
       "industry": "银行",
       "concepts": [
         "跨境支付",
@@ -1192,6 +1182,14 @@
         "区块链",
         "一带一路"
       ]
+    },
+    {
+      "rank": 63,
+      "code": "002142.SZ",
+      "name": "宁波银行",
+      "institutionCount": 239,
+      "industry": "银行",
+      "concepts": []
     },
     {
       "rank": 64,
@@ -1211,6 +1209,19 @@
     },
     {
       "rank": 65,
+      "code": "300475.SZ",
+      "name": "香农芯创",
+      "institutionCount": 236,
+      "industry": "电子元件",
+      "concepts": [
+        "高带宽内存",
+        "存储芯片",
+        "半导体概念",
+        "抖音概念(字节概念)"
+      ]
+    },
+    {
+      "rank": 66,
       "code": "605117.SH",
       "name": "德业股份",
       "institutionCount": 232,
@@ -1222,23 +1233,10 @@
       ]
     },
     {
-      "rank": 66,
-      "code": "300475.SZ",
-      "name": "香农芯创",
-      "institutionCount": 232,
-      "industry": "电子元件",
-      "concepts": [
-        "高带宽内存",
-        "存储芯片",
-        "半导体概念",
-        "抖音概念(字节概念)"
-      ]
-    },
-    {
       "rank": 67,
       "code": "600887.SH",
       "name": "伊利股份",
-      "institutionCount": 230,
+      "institutionCount": 231,
       "industry": "食品",
       "concepts": [
         "新零售",
@@ -1254,7 +1252,7 @@
       "code": "301308.SZ",
       "name": "江波龙",
       "institutionCount": 230,
-      "industry": "电子设备制造",
+      "industry": "半导体",
       "concepts": [
         "AIPC",
         "国产芯片",
@@ -1311,7 +1309,7 @@
       "rank": 72,
       "code": "688409.SH",
       "name": "富创精密",
-      "institutionCount": 214,
+      "institutionCount": 215,
       "industry": "半导体",
       "concepts": [
         "光刻机",
@@ -1322,7 +1320,7 @@
       "rank": 73,
       "code": "002281.SZ",
       "name": "光迅科技",
-      "institutionCount": 212,
+      "institutionCount": 215,
       "industry": "通信设备",
       "concepts": [
         "百度概念",
@@ -1363,7 +1361,7 @@
       "code": "600938.SH",
       "name": "中国海油",
       "institutionCount": 205,
-      "industry": "石油天然气",
+      "industry": "油气开采Ⅱ",
       "concepts": [
         "新能源",
         "风能",
@@ -1378,7 +1376,7 @@
       "rank": 76,
       "code": "603993.SH",
       "name": "洛阳钼业",
-      "institutionCount": 202,
+      "institutionCount": 203,
       "industry": "基本金属",
       "concepts": [
         "稀缺资源",
@@ -1391,7 +1389,7 @@
       "rank": 77,
       "code": "001309.SZ",
       "name": "德明利",
-      "institutionCount": 199,
+      "institutionCount": 200,
       "industry": "半导体",
       "concepts": [
         "半导体概念",
@@ -1425,10 +1423,21 @@
     },
     {
       "rank": 79,
+      "code": "688627.SH",
+      "name": "精智达",
+      "institutionCount": 195,
+      "industry": "电子设备制造",
+      "concepts": [
+        "高带宽内存",
+        "存储芯片"
+      ]
+    },
+    {
+      "rank": 80,
       "code": "300476.SZ",
       "name": "胜宏科技",
       "institutionCount": 193,
-      "industry": "电子元件",
+      "industry": "元件",
       "concepts": [
         "通信技术",
         "5G概念",
@@ -1444,21 +1453,10 @@
       ]
     },
     {
-      "rank": 80,
-      "code": "688627.SH",
-      "name": "精智达",
-      "institutionCount": 193,
-      "industry": "电子设备制造",
-      "concepts": [
-        "高带宽内存",
-        "存储芯片"
-      ]
-    },
-    {
       "rank": 81,
       "code": "600105.SH",
       "name": "永鼎股份",
-      "institutionCount": 191,
+      "institutionCount": 192,
       "industry": "通信设备",
       "concepts": [
         "长江三角",
@@ -1485,7 +1483,7 @@
       "code": "601166.SH",
       "name": "兴业银行",
       "institutionCount": 189,
-      "industry": "银行",
+      "industry": "银行Ⅱ",
       "concepts": [
         "互联网金融",
         "跨境支付"
@@ -1493,6 +1491,24 @@
     },
     {
       "rank": 83,
+      "code": "300054.SZ",
+      "name": "鼎龙股份",
+      "institutionCount": 182,
+      "industry": "半导体",
+      "concepts": [
+        "存储芯片",
+        "OLED",
+        "光刻胶",
+        "玻璃基板",
+        "国产芯片",
+        "半导体概念",
+        "显示技术",
+        "中芯概念",
+        "柔性屏(折叠屏)"
+      ]
+    },
+    {
+      "rank": 84,
       "code": "300014.SZ",
       "name": "亿纬锂能",
       "institutionCount": 181,
@@ -1516,7 +1532,7 @@
       ]
     },
     {
-      "rank": 84,
+      "rank": 85,
       "code": "600031.SH",
       "name": "三一重工",
       "institutionCount": 181,
@@ -1532,25 +1548,26 @@
       ]
     },
     {
-      "rank": 85,
-      "code": "300054.SZ",
-      "name": "鼎龙股份",
-      "institutionCount": 178,
-      "industry": "半导体",
+      "rank": 86,
+      "code": "000338.SZ",
+      "name": "潍柴动力",
+      "institutionCount": 180,
+      "industry": "汽车",
       "concepts": [
-        "存储芯片",
-        "OLED",
-        "光刻胶",
-        "玻璃基板",
-        "国产芯片",
-        "半导体概念",
-        "显示技术",
-        "中芯概念",
-        "柔性屏(折叠屏)"
+        "数据中心",
+        "氢能源",
+        "新能源车",
+        "燃料电池概念",
+        "节能环保",
+        "固态电池",
+        "电池技术",
+        "一带一路",
+        "央国企改革",
+        "无人驾驶"
       ]
     },
     {
-      "rank": 86,
+      "rank": 87,
       "code": "600690.SH",
       "name": "海尔智家",
       "institutionCount": 177,
@@ -1565,25 +1582,6 @@
         "阿里概念",
         "节能环保",
         "智能家居"
-      ]
-    },
-    {
-      "rank": 87,
-      "code": "000338.SZ",
-      "name": "潍柴动力",
-      "institutionCount": 177,
-      "industry": "汽车",
-      "concepts": [
-        "数据中心",
-        "氢能源",
-        "新能源车",
-        "燃料电池概念",
-        "节能环保",
-        "固态电池",
-        "电池技术",
-        "一带一路",
-        "央国企改革",
-        "无人驾驶"
       ]
     },
     {
@@ -1616,7 +1614,7 @@
       "code": "000776.SZ",
       "name": "广发证券",
       "institutionCount": 173,
-      "industry": "证券Ⅱ",
+      "industry": "非银行金融",
       "concepts": [
         "券商概念",
         "互联网金融"
@@ -1634,7 +1632,7 @@
       "rank": 91,
       "code": "002714.SZ",
       "name": "牧原股份",
-      "institutionCount": 170,
+      "institutionCount": 171,
       "industry": "畜牧业",
       "concepts": [
         "猪肉概念",
@@ -1692,10 +1690,28 @@
     },
     {
       "rank": 95,
+      "code": "000657.SZ",
+      "name": "中钨高新",
+      "institutionCount": 166,
+      "industry": "稀有金属",
+      "concepts": [
+        "PCB",
+        "可控核聚变",
+        "创投",
+        "医疗器械概念",
+        "新材料",
+        "海南自贸",
+        "央国企改革",
+        "工业母机",
+        "小金属概念"
+      ]
+    },
+    {
+      "rank": 96,
       "code": "605376.SH",
       "name": "博迁新材",
       "institutionCount": 165,
-      "industry": "金属新材料",
+      "industry": "稀有金属",
       "concepts": [
         "电池技术",
         "锂电池概念",
@@ -1707,7 +1723,7 @@
       ]
     },
     {
-      "rank": 96,
+      "rank": 97,
       "code": "002821.SZ",
       "name": "凯莱英",
       "institutionCount": 164,
@@ -1724,7 +1740,7 @@
       ]
     },
     {
-      "rank": 97,
+      "rank": 98,
       "code": "002311.SZ",
       "name": "海大集团",
       "institutionCount": 163,
@@ -1735,11 +1751,11 @@
       ]
     },
     {
-      "rank": 98,
+      "rank": 99,
       "code": "688777.SH",
       "name": "中控技术",
       "institutionCount": 163,
-      "industry": "自动化设备",
+      "industry": "计算机软件",
       "concepts": [
         "工业互联",
         "AI应用",
@@ -1754,11 +1770,11 @@
       ]
     },
     {
-      "rank": 99,
+      "rank": 100,
       "code": "301682.SZ",
       "name": "宏明电子",
       "institutionCount": 163,
-      "industry": "军工电子Ⅱ",
+      "industry": "电子元件",
       "concepts": [
         "央国企改革",
         "苹果概念",
@@ -1778,11 +1794,28 @@
       ]
     },
     {
-      "rank": 100,
+      "rank": 101,
+      "code": "300666.SZ",
+      "name": "江丰电子",
+      "institutionCount": 162,
+      "industry": "半导体",
+      "concepts": [
+        "OLED",
+        "半导体概念",
+        "中芯概念",
+        "国产芯片",
+        "新材料",
+        "存储芯片",
+        "第三代半导体",
+        "华为概念"
+      ]
+    },
+    {
+      "rank": 102,
       "code": "600150.SH",
       "name": "中国船舶",
       "institutionCount": 162,
-      "industry": "航海装备Ⅱ",
+      "industry": "船舶与海洋装备",
       "concepts": [
         "IPO受益",
         "央国企改革",
@@ -1798,24 +1831,7 @@
       ]
     },
     {
-      "rank": 101,
-      "code": "300666.SZ",
-      "name": "江丰电子",
-      "institutionCount": 161,
-      "industry": "半导体",
-      "concepts": [
-        "OLED",
-        "半导体概念",
-        "中芯概念",
-        "国产芯片",
-        "新材料",
-        "存储芯片",
-        "第三代半导体",
-        "华为概念"
-      ]
-    },
-    {
-      "rank": 102,
+      "rank": 103,
       "code": "300661.SZ",
       "name": "圣邦股份",
       "institutionCount": 161,
@@ -1833,41 +1849,10 @@
       ]
     },
     {
-      "rank": 103,
-      "code": "000657.SZ",
-      "name": "中钨高新",
-      "institutionCount": 160,
-      "industry": "稀有金属",
-      "concepts": [
-        "可控核聚变",
-        "创投",
-        "医疗器械概念",
-        "新材料",
-        "海南自贸",
-        "央国企改革",
-        "工业母机",
-        "PCB",
-        "小金属概念"
-      ]
-    },
-    {
       "rank": 104,
-      "code": "688702.SH",
-      "name": "盛科通信",
-      "institutionCount": 154,
-      "industry": "半导体",
-      "concepts": [
-        "数据中心",
-        "国产芯片",
-        "工业互联",
-        "半导体概念"
-      ]
-    },
-    {
-      "rank": 105,
       "code": "002028.SZ",
       "name": "思源电气",
-      "institutionCount": 154,
+      "institutionCount": 156,
       "industry": "输变电设备",
       "concepts": [
         "智能电网",
@@ -1882,6 +1867,19 @@
         "超级电容",
         "磁悬浮概念",
         "电网概念"
+      ]
+    },
+    {
+      "rank": 105,
+      "code": "688702.SH",
+      "name": "盛科通信",
+      "institutionCount": 154,
+      "industry": "半导体",
+      "concepts": [
+        "数据中心",
+        "国产芯片",
+        "工业互联",
+        "半导体概念"
       ]
     },
     {
@@ -1921,7 +1919,7 @@
       "code": "601857.SH",
       "name": "中国石油",
       "institutionCount": 151,
-      "industry": "石油天然气",
+      "industry": "炼化及贸易",
       "concepts": [
         "页岩气",
         "油气资源",
@@ -2119,7 +2117,7 @@
       "code": "603019.SH",
       "name": "中科曙光",
       "institutionCount": 145,
-      "industry": "计算机硬件",
+      "industry": "计算机设备",
       "concepts": [
         "算力概念",
         "人工智能",
@@ -2236,6 +2234,7 @@
       "industry": "化学原料",
       "concepts": [
         "半导体概念",
+        "氟化工概念",
         "锂电池概念",
         "液冷概念",
         "碳交易",
@@ -2247,8 +2246,7 @@
         "中芯概念",
         "央国企改革",
         "电池技术",
-        "PVDF概念",
-        "氟化工概念"
+        "PVDF概念"
       ]
     },
     {
@@ -2256,7 +2254,7 @@
       "code": "601288.SH",
       "name": "农业银行",
       "institutionCount": 135,
-      "industry": "银行",
+      "industry": "银行Ⅱ",
       "concepts": [
         "互联网金融",
         "跨境支付"
@@ -2318,17 +2316,17 @@
       "code": "301526.SZ",
       "name": "国际复材",
       "institutionCount": 133,
-      "industry": "合成纤维及树脂",
+      "industry": "玻璃玻纤",
       "concepts": [
         "5G概念",
         "西部大开发",
         "央国企改革",
         "华为概念",
+        "消费电子概念",
         "风能",
         "PEEK材料概念",
         "PCB",
-        "通信技术",
-        "消费电子概念"
+        "通信技术"
       ]
     },
     {
@@ -2391,7 +2389,7 @@
       "code": "603345.SH",
       "name": "安井食品",
       "institutionCount": 130,
-      "industry": "食品",
+      "industry": "食品加工",
       "concepts": [
         "味蕾经济",
         "预制菜概念"
@@ -2443,6 +2441,25 @@
     },
     {
       "rank": 134,
+      "code": "300285.SZ",
+      "name": "国瓷材料",
+      "institutionCount": 127,
+      "industry": "化学新材料",
+      "concepts": [
+        "商业航天",
+        "节能环保",
+        "MLCC",
+        "被动元件概念",
+        "3D打印",
+        "固态电池",
+        "新能源车",
+        "电池技术",
+        "蓝宝石",
+        "新材料"
+      ]
+    },
+    {
+      "rank": 135,
       "code": "300373.SZ",
       "name": "扬杰科技",
       "institutionCount": 127,
@@ -2468,7 +2485,7 @@
       ]
     },
     {
-      "rank": 135,
+      "rank": 136,
       "code": "300124.SZ",
       "name": "汇川技术",
       "institutionCount": 127,
@@ -2487,7 +2504,7 @@
       ]
     },
     {
-      "rank": 136,
+      "rank": 137,
       "code": "603061.SH",
       "name": "金海通",
       "institutionCount": 127,
@@ -2495,49 +2512,11 @@
       "concepts": []
     },
     {
-      "rank": 137,
-      "code": "300285.SZ",
-      "name": "国瓷材料",
-      "institutionCount": 125,
-      "industry": "化学新材料",
-      "concepts": [
-        "商业航天",
-        "节能环保",
-        "MLCC",
-        "被动元件概念",
-        "3D打印",
-        "固态电池",
-        "新能源车",
-        "电池技术",
-        "蓝宝石",
-        "新材料"
-      ]
-    },
-    {
       "rank": 138,
-      "code": "688266.SH",
-      "name": "泽璟制药",
-      "institutionCount": 122,
-      "industry": "化学制药",
-      "concepts": [
-        "单抗概念",
-        "免疫治疗"
-      ]
-    },
-    {
-      "rank": 139,
-      "code": "601100.SH",
-      "name": "恒立液压",
-      "institutionCount": 122,
-      "industry": "通用设备",
-      "concepts": []
-    },
-    {
-      "rank": 140,
       "code": "688313.SH",
       "name": "仕佳光子",
-      "institutionCount": 122,
-      "industry": "通信设备",
+      "institutionCount": 126,
+      "industry": "电子设备制造",
       "concepts": [
         "5G概念",
         "光纤概念",
@@ -2551,10 +2530,10 @@
       ]
     },
     {
-      "rank": 141,
+      "rank": 139,
       "code": "002709.SZ",
       "name": "天赐材料",
-      "institutionCount": 121,
+      "institutionCount": 123,
       "industry": "金属非金属新材料",
       "concepts": [
         "电池技术",
@@ -2570,6 +2549,25 @@
         "新材料",
         "氢能源"
       ]
+    },
+    {
+      "rank": 140,
+      "code": "688266.SH",
+      "name": "泽璟制药",
+      "institutionCount": 122,
+      "industry": "化学制药",
+      "concepts": [
+        "单抗概念",
+        "免疫治疗"
+      ]
+    },
+    {
+      "rank": 141,
+      "code": "601100.SH",
+      "name": "恒立液压",
+      "institutionCount": 122,
+      "industry": "通用设备",
+      "concepts": []
     },
     {
       "rank": 142,
@@ -2642,6 +2640,24 @@
     },
     {
       "rank": 147,
+      "code": "300548.SZ",
+      "name": "长芯博创",
+      "institutionCount": 115,
+      "industry": "通信设备",
+      "concepts": [
+        "光纤概念",
+        "CPO概念",
+        "光通信模块",
+        "国产芯片",
+        "铜缆高速连接",
+        "F5G概念",
+        "5G概念",
+        "通信技术",
+        "华为概念"
+      ]
+    },
+    {
+      "rank": 148,
       "code": "688110.SH",
       "name": "东芯股份",
       "institutionCount": 115,
@@ -2654,7 +2670,7 @@
       ]
     },
     {
-      "rank": 148,
+      "rank": 149,
       "code": "601939.SH",
       "name": "建设银行",
       "institutionCount": 114,
@@ -2666,25 +2682,18 @@
       ]
     },
     {
-      "rank": 149,
-      "code": "300548.SZ",
-      "name": "长芯博创",
-      "institutionCount": 114,
-      "industry": "通信设备",
+      "rank": 150,
+      "code": "688082.SH",
+      "name": "盛美上海",
+      "institutionCount": 112,
+      "industry": "电子设备制造",
       "concepts": [
-        "华为概念",
-        "光纤概念",
-        "CPO概念",
-        "光通信模块",
-        "国产芯片",
-        "铜缆高速连接",
-        "F5G概念",
-        "5G概念",
-        "通信技术"
+        "高带宽内存",
+        "半导体概念"
       ]
     },
     {
-      "rank": 150,
+      "rank": 151,
       "code": "002126.SZ",
       "name": "银轮股份",
       "institutionCount": 112,
@@ -2717,7 +2726,7 @@
       ]
     },
     {
-      "rank": 151,
+      "rank": 152,
       "code": "002001.SZ",
       "name": "新和成",
       "institutionCount": 112,
@@ -2731,18 +2740,21 @@
       ]
     },
     {
-      "rank": 152,
-      "code": "688082.SH",
-      "name": "盛美上海",
+      "rank": 153,
+      "code": "301511.SZ",
+      "name": "德福科技",
       "institutionCount": 111,
       "industry": "电子设备制造",
       "concepts": [
-        "高带宽内存",
-        "半导体概念"
+        "柔性屏(折叠屏)",
+        "PCB",
+        "锂电池概念",
+        "固态电池",
+        "电池技术"
       ]
     },
     {
-      "rank": 153,
+      "rank": 154,
       "code": "688025.SH",
       "name": "杰普特",
       "institutionCount": 111,
@@ -2758,20 +2770,6 @@
         "虚拟现实",
         "BC电池",
         "通信技术"
-      ]
-    },
-    {
-      "rank": 154,
-      "code": "301511.SZ",
-      "name": "德福科技",
-      "institutionCount": 110,
-      "industry": "电子设备制造",
-      "concepts": [
-        "柔性屏(折叠屏)",
-        "PCB",
-        "锂电池概念",
-        "固态电池",
-        "电池技术"
       ]
     },
     {
@@ -2794,6 +2792,33 @@
     },
     {
       "rank": 156,
+      "code": "002138.SZ",
+      "name": "顺络电子",
+      "institutionCount": 109,
+      "industry": "电子元件",
+      "concepts": [
+        "数据中心",
+        "通信技术",
+        "物联网",
+        "移动支付",
+        "光通信模块",
+        "被动元件概念",
+        "小米概念",
+        "深圳特区",
+        "消费电子概念",
+        "电池技术",
+        "5G概念",
+        "传感器",
+        "华为概念",
+        "PCB",
+        "无线充电",
+        "无人机",
+        "燃料电池概念",
+        "储能概念"
+      ]
+    },
+    {
+      "rank": 157,
       "code": "300498.SZ",
       "name": "温氏股份",
       "institutionCount": 109,
@@ -2808,7 +2833,7 @@
       ]
     },
     {
-      "rank": 157,
+      "rank": 158,
       "code": "600674.SH",
       "name": "川投能源",
       "institutionCount": 109,
@@ -2822,7 +2847,7 @@
       ]
     },
     {
-      "rank": 158,
+      "rank": 159,
       "code": "600141.SH",
       "name": "兴发集团",
       "institutionCount": 109,
@@ -2848,7 +2873,7 @@
       ]
     },
     {
-      "rank": 159,
+      "rank": 160,
       "code": "688506.SH",
       "name": "百利天恒",
       "institutionCount": 109,
@@ -2859,7 +2884,7 @@
       ]
     },
     {
-      "rank": 160,
+      "rank": 161,
       "code": "300033.SZ",
       "name": "同花顺",
       "institutionCount": 108,
@@ -2882,11 +2907,11 @@
       ]
     },
     {
-      "rank": 161,
+      "rank": 162,
       "code": "600188.SH",
       "name": "兖矿能源",
       "institutionCount": 107,
-      "industry": "煤炭",
+      "industry": "煤炭开采",
       "concepts": [
         "煤化工概念",
         "稀缺资源",
@@ -2897,7 +2922,7 @@
       ]
     },
     {
-      "rank": 162,
+      "rank": 163,
       "code": "300776.SZ",
       "name": "帝尔激光",
       "institutionCount": 107,
@@ -2910,7 +2935,7 @@
       ]
     },
     {
-      "rank": 163,
+      "rank": 164,
       "code": "002078.SZ",
       "name": "太阳纸业",
       "institutionCount": 107,
@@ -2921,7 +2946,7 @@
       ]
     },
     {
-      "rank": 164,
+      "rank": 165,
       "code": "002653.SZ",
       "name": "海思科",
       "institutionCount": 106,
@@ -2935,7 +2960,7 @@
       ]
     },
     {
-      "rank": 165,
+      "rank": 166,
       "code": "300757.SZ",
       "name": "罗博特科",
       "institutionCount": 106,
@@ -2956,7 +2981,7 @@
       ]
     },
     {
-      "rank": 166,
+      "rank": 167,
       "code": "300751.SZ",
       "name": "迈为股份",
       "institutionCount": 105,
@@ -2971,7 +2996,32 @@
       ]
     },
     {
-      "rank": 167,
+      "rank": 168,
+      "code": "603459.SH",
+      "name": "红板科技",
+      "institutionCount": 104,
+      "industry": "元件",
+      "concepts": [
+        "小米概念",
+        "锂电池概念",
+        "光通信模块",
+        "无人驾驶",
+        "华为概念",
+        "PCB",
+        "荣耀概念",
+        "次新股",
+        "MicroLED",
+        "存储芯片",
+        "MiniLED",
+        "新能源车",
+        "传感器",
+        "LED概念",
+        "CPO概念",
+        "消费电子概念"
+      ]
+    },
+    {
+      "rank": 169,
       "code": "000811.SZ",
       "name": "冰轮环境",
       "institutionCount": 103,
@@ -3002,36 +3052,48 @@
       ]
     },
     {
-      "rank": 168,
-      "code": "603459.SH",
-      "name": "红板科技",
+      "rank": 170,
+      "code": "000792.SZ",
+      "name": "盐湖股份",
       "institutionCount": 103,
-      "industry": "电子元件",
+      "industry": "化肥农药",
       "concepts": [
-        "小米概念",
-        "锂电池概念",
-        "光通信模块",
-        "无人驾驶",
-        "华为概念",
-        "PCB",
-        "荣耀概念",
-        "次新股",
-        "MicroLED",
-        "存储芯片",
-        "MiniLED",
         "新能源车",
-        "传感器",
-        "LED概念",
-        "CPO概念",
-        "消费电子概念"
+        "锂矿概念",
+        "稀缺资源",
+        "锂电池概念",
+        "化工原料",
+        "电池技术",
+        "西部大开发",
+        "央国企改革"
       ]
     },
     {
-      "rank": 169,
+      "rank": 171,
+      "code": "002409.SZ",
+      "name": "雅克科技",
+      "institutionCount": 102,
+      "industry": "半导体",
+      "concepts": [
+        "国产芯片",
+        "天然气",
+        "工业气体",
+        "氟化工概念",
+        "光刻胶",
+        "OLED",
+        "半导体概念",
+        "存储芯片",
+        "中芯概念",
+        "高带宽内存",
+        "磷化工"
+      ]
+    },
+    {
+      "rank": 172,
       "code": "002938.SZ",
       "name": "鹏鼎控股",
       "institutionCount": 102,
-      "industry": "电子元件",
+      "industry": "元件",
       "concepts": [
         "光通信模块",
         "无线耳机",
@@ -3049,30 +3111,30 @@
       ]
     },
     {
-      "rank": 170,
+      "rank": 173,
       "code": "000636.SZ",
       "name": "风华高科",
       "institutionCount": 102,
-      "industry": "元件",
+      "industry": "电子元件",
       "concepts": [
+        "超级电容",
         "机器人概念",
         "虚拟机器人",
         "5G概念",
         "AI眼镜",
         "央国企改革",
+        "商业航天",
         "华为概念",
         "锂电池概念",
         "MLCC",
         "通信技术",
         "被动元件概念",
         "高压快充",
-        "超级电容",
-        "商业航天",
         "电池技术"
       ]
     },
     {
-      "rank": 171,
+      "rank": 174,
       "code": "002179.SZ",
       "name": "中航光电",
       "institutionCount": 102,
@@ -3100,48 +3162,23 @@
       ]
     },
     {
-      "rank": 172,
-      "code": "002409.SZ",
-      "name": "雅克科技",
+      "rank": 175,
+      "code": "601328.SH",
+      "name": "交通银行",
       "institutionCount": 101,
-      "industry": "半导体",
+      "industry": "银行Ⅱ",
       "concepts": [
-        "国产芯片",
-        "天然气",
-        "工业气体",
-        "氟化工概念",
-        "光刻胶",
-        "OLED",
-        "半导体概念",
-        "存储芯片",
-        "中芯概念",
-        "高带宽内存",
-        "磷化工"
+        "互联网金融",
+        "跨境支付",
+        "长江三角"
       ]
     },
     {
-      "rank": 173,
-      "code": "000792.SZ",
-      "name": "盐湖股份",
-      "institutionCount": 101,
-      "industry": "化肥农药",
-      "concepts": [
-        "新能源车",
-        "锂矿概念",
-        "稀缺资源",
-        "锂电池概念",
-        "化工原料",
-        "电池技术",
-        "西部大开发",
-        "央国企改革"
-      ]
-    },
-    {
-      "rank": 174,
+      "rank": 176,
       "code": "000425.SZ",
       "name": "徐工机械",
       "institutionCount": 101,
-      "industry": "专用设备",
+      "industry": "工程机械",
       "concepts": [
         "机器人概念",
         "央国企改革",
@@ -3156,11 +3193,11 @@
       ]
     },
     {
-      "rank": 175,
+      "rank": 177,
       "code": "002602.SZ",
       "name": "世纪华通",
       "institutionCount": 101,
-      "industry": "游戏Ⅱ",
+      "industry": "互联网服务",
       "concepts": [
         "人工智能",
         "数据中心",
@@ -3179,7 +3216,7 @@
       ]
     },
     {
-      "rank": 176,
+      "rank": 178,
       "code": "601336.SH",
       "name": "新华保险",
       "institutionCount": 101,
@@ -3190,7 +3227,7 @@
       ]
     },
     {
-      "rank": 177,
+      "rank": 179,
       "code": "600660.SH",
       "name": "福耀玻璃",
       "institutionCount": 101,
@@ -3203,34 +3240,7 @@
       ]
     },
     {
-      "rank": 178,
-      "code": "002138.SZ",
-      "name": "顺络电子",
-      "institutionCount": 100,
-      "industry": "电子元件",
-      "concepts": [
-        "数据中心",
-        "通信技术",
-        "物联网",
-        "移动支付",
-        "光通信模块",
-        "被动元件概念",
-        "小米概念",
-        "深圳特区",
-        "消费电子概念",
-        "电池技术",
-        "5G概念",
-        "传感器",
-        "华为概念",
-        "PCB",
-        "无线充电",
-        "无人机",
-        "燃料电池概念",
-        "储能概念"
-      ]
-    },
-    {
-      "rank": 179,
+      "rank": 180,
       "code": "601668.SH",
       "name": "中国建筑",
       "institutionCount": 100,
@@ -3242,18 +3252,6 @@
         "装配建筑",
         "数字孪生",
         "一带一路"
-      ]
-    },
-    {
-      "rank": 180,
-      "code": "601328.SH",
-      "name": "交通银行",
-      "institutionCount": 99,
-      "industry": "银行",
-      "concepts": [
-        "互联网金融",
-        "跨境支付",
-        "长江三角"
       ]
     },
     {
@@ -3300,7 +3298,7 @@
       "code": "600809.SH",
       "name": "山西汾酒",
       "institutionCount": 99,
-      "industry": "饮料",
+      "industry": "白酒Ⅱ",
       "concepts": [
         "味蕾经济",
         "酿酒概念",
@@ -3439,7 +3437,7 @@
       "code": "601077.SH",
       "name": "渝农商行",
       "institutionCount": 94,
-      "industry": "银行",
+      "industry": "银行Ⅱ",
       "concepts": [
         "西部大开发",
         "小米概念",
@@ -3452,7 +3450,7 @@
       "code": "601628.SH",
       "name": "中国人寿",
       "institutionCount": 93,
-      "industry": "保险Ⅱ",
+      "industry": "非银行金融",
       "concepts": [
         "参股银行",
         "蚂蚁概念",
@@ -3640,10 +3638,25 @@
     },
     {
       "rank": 205,
+      "code": "688111.SH",
+      "name": "金山办公",
+      "institutionCount": 91,
+      "industry": "计算机软件",
+      "concepts": [
+        "人工智能",
+        "Kimi概念",
+        "科创板做市股",
+        "信创",
+        "国产软件",
+        "AI应用"
+      ]
+    },
+    {
+      "rank": 206,
       "code": "000568.SZ",
       "name": "泸州老窖",
       "institutionCount": 91,
-      "industry": "白酒Ⅱ",
+      "industry": "饮料",
       "concepts": [
         "央国企改革",
         "味蕾经济",
@@ -3658,7 +3671,7 @@
       ]
     },
     {
-      "rank": 206,
+      "rank": 207,
       "code": "603067.SH",
       "name": "振华股份",
       "institutionCount": 90,
@@ -3675,7 +3688,7 @@
       ]
     },
     {
-      "rank": 207,
+      "rank": 208,
       "code": "688048.SH",
       "name": "长光华芯",
       "institutionCount": 90,
@@ -3694,21 +3707,6 @@
       ]
     },
     {
-      "rank": 208,
-      "code": "688111.SH",
-      "name": "金山办公",
-      "institutionCount": 90,
-      "industry": "计算机软件",
-      "concepts": [
-        "人工智能",
-        "Kimi概念",
-        "科创板做市股",
-        "信创",
-        "国产软件",
-        "AI应用"
-      ]
-    },
-    {
       "rank": 209,
       "code": "300677.SZ",
       "name": "英科医疗",
@@ -3722,6 +3720,17 @@
     },
     {
       "rank": 210,
+      "code": "920136.BJ",
+      "name": "永励精密",
+      "institutionCount": 89,
+      "industry": "汽车",
+      "concepts": [
+        "新能源车",
+        "次新股"
+      ]
+    },
+    {
+      "rank": 211,
       "code": "002851.SZ",
       "name": "麦格米特",
       "institutionCount": 88,
@@ -3741,7 +3750,30 @@
       ]
     },
     {
-      "rank": 211,
+      "rank": 212,
+      "code": "920193.BJ",
+      "name": "吉和昌",
+      "institutionCount": 87,
+      "industry": "化学制品",
+      "concepts": [
+        "次新股",
+        "新材料",
+        "锂电池概念"
+      ]
+    },
+    {
+      "rank": 213,
+      "code": "301377.SZ",
+      "name": "鼎泰高科",
+      "institutionCount": 86,
+      "industry": "金属制品",
+      "concepts": [
+        "工业母机",
+        "PCB"
+      ]
+    },
+    {
+      "rank": 214,
       "code": "688017.SH",
       "name": "绿的谐波",
       "institutionCount": 86,
@@ -3757,11 +3789,11 @@
       ]
     },
     {
-      "rank": 212,
+      "rank": 215,
       "code": "000001.SZ",
       "name": "平安银行",
       "institutionCount": 86,
-      "industry": "银行",
+      "industry": "银行Ⅱ",
       "concepts": [
         "深圳特区",
         "跨境支付",
@@ -3770,22 +3802,11 @@
       ]
     },
     {
-      "rank": 213,
-      "code": "301377.SZ",
-      "name": "鼎泰高科",
-      "institutionCount": 85,
-      "industry": "金属制品",
-      "concepts": [
-        "工业母机",
-        "PCB"
-      ]
-    },
-    {
-      "rank": 214,
+      "rank": 216,
       "code": "002466.SZ",
       "name": "天齐锂业",
       "institutionCount": 85,
-      "industry": "能源金属",
+      "industry": "稀有金属",
       "concepts": [
         "固态电池",
         "刀片电池",
@@ -3800,7 +3821,7 @@
       ]
     },
     {
-      "rank": 215,
+      "rank": 217,
       "code": "688388.SH",
       "name": "嘉元科技",
       "institutionCount": 84,
@@ -3817,7 +3838,7 @@
       ]
     },
     {
-      "rank": 216,
+      "rank": 218,
       "code": "600066.SH",
       "name": "宇通客车",
       "institutionCount": 84,
@@ -3832,7 +3853,7 @@
       ]
     },
     {
-      "rank": 217,
+      "rank": 219,
       "code": "000962.SZ",
       "name": "东方钽业",
       "institutionCount": 83,
@@ -3852,7 +3873,7 @@
       ]
     },
     {
-      "rank": 218,
+      "rank": 220,
       "code": "002436.SZ",
       "name": "兴森科技",
       "institutionCount": 83,
@@ -3876,7 +3897,7 @@
       ]
     },
     {
-      "rank": 219,
+      "rank": 221,
       "code": "601009.SH",
       "name": "南京银行",
       "institutionCount": 83,
@@ -3887,7 +3908,7 @@
       ]
     },
     {
-      "rank": 220,
+      "rank": 222,
       "code": "600111.SH",
       "name": "北方稀土",
       "institutionCount": 83,
@@ -3904,7 +3925,7 @@
       ]
     },
     {
-      "rank": 221,
+      "rank": 223,
       "code": "300760.SZ",
       "name": "迈瑞医疗",
       "institutionCount": 82,
@@ -3918,7 +3939,7 @@
       ]
     },
     {
-      "rank": 222,
+      "rank": 224,
       "code": "600926.SH",
       "name": "杭州银行",
       "institutionCount": 82,
@@ -3926,7 +3947,7 @@
       "concepts": []
     },
     {
-      "rank": 223,
+      "rank": 225,
       "code": "603288.SH",
       "name": "海天味业",
       "institutionCount": 81,
@@ -3938,7 +3959,7 @@
       ]
     },
     {
-      "rank": 224,
+      "rank": 226,
       "code": "688396.SH",
       "name": "华润微",
       "institutionCount": 80,
@@ -3963,7 +3984,7 @@
       ]
     },
     {
-      "rank": 225,
+      "rank": 227,
       "code": "000408.SZ",
       "name": "藏格矿业",
       "institutionCount": 79,
@@ -3978,7 +3999,7 @@
       ]
     },
     {
-      "rank": 226,
+      "rank": 228,
       "code": "688790.SH",
       "name": "昂瑞微",
       "institutionCount": 79,
@@ -3999,7 +4020,7 @@
       ]
     },
     {
-      "rank": 227,
+      "rank": 229,
       "code": "688519.SH",
       "name": "南亚新材",
       "institutionCount": 78,
@@ -4014,7 +4035,7 @@
       ]
     },
     {
-      "rank": 228,
+      "rank": 230,
       "code": "688146.SH",
       "name": "中船特气",
       "institutionCount": 78,
@@ -4031,7 +4052,7 @@
       ]
     },
     {
-      "rank": 229,
+      "rank": 231,
       "code": "000895.SZ",
       "name": "双汇发展",
       "institutionCount": 76,
@@ -4048,11 +4069,11 @@
       ]
     },
     {
-      "rank": 230,
+      "rank": 232,
       "code": "002558.SZ",
       "name": "巨人网络",
       "institutionCount": 76,
-      "industry": "游戏Ⅱ",
+      "industry": "互联网服务",
       "concepts": [
         "华为概念",
         "阿里概念",
@@ -4074,7 +4095,7 @@
       ]
     },
     {
-      "rank": 231,
+      "rank": 233,
       "code": "688578.SH",
       "name": "艾力斯",
       "institutionCount": 76,
@@ -4082,7 +4103,7 @@
       "concepts": []
     },
     {
-      "rank": 232,
+      "rank": 234,
       "code": "688372.SH",
       "name": "伟测科技",
       "institutionCount": 75,
@@ -4094,7 +4115,7 @@
       ]
     },
     {
-      "rank": 233,
+      "rank": 235,
       "code": "301396.SZ",
       "name": "宏景科技",
       "institutionCount": 75,
@@ -4118,7 +4139,7 @@
       ]
     },
     {
-      "rank": 234,
+      "rank": 236,
       "code": "600584.SH",
       "name": "长电科技",
       "institutionCount": 75,
@@ -4147,7 +4168,7 @@
       ]
     },
     {
-      "rank": 235,
+      "rank": 237,
       "code": "601012.SH",
       "name": "隆基绿能",
       "institutionCount": 75,
@@ -4165,7 +4186,7 @@
       ]
     },
     {
-      "rank": 236,
+      "rank": 238,
       "code": "600323.SH",
       "name": "瀚蓝环境",
       "institutionCount": 75,
@@ -4182,7 +4203,7 @@
       ]
     },
     {
-      "rank": 237,
+      "rank": 239,
       "code": "600256.SH",
       "name": "广汇能源",
       "institutionCount": 75,
@@ -4198,7 +4219,7 @@
       ]
     },
     {
-      "rank": 238,
+      "rank": 240,
       "code": "002352.SZ",
       "name": "顺丰控股",
       "institutionCount": 75,
@@ -4220,7 +4241,7 @@
       ]
     },
     {
-      "rank": 239,
+      "rank": 241,
       "code": "002027.SZ",
       "name": "分众传媒",
       "institutionCount": 74,
@@ -4233,7 +4254,7 @@
       ]
     },
     {
-      "rank": 240,
+      "rank": 242,
       "code": "600298.SH",
       "name": "安琪酵母",
       "institutionCount": 74,
@@ -4247,7 +4268,7 @@
       ]
     },
     {
-      "rank": 241,
+      "rank": 243,
       "code": "001389.SZ",
       "name": "广合科技",
       "institutionCount": 73,
@@ -4262,7 +4283,7 @@
       ]
     },
     {
-      "rank": 242,
+      "rank": 244,
       "code": "688147.SH",
       "name": "微导纳米",
       "institutionCount": 73,
@@ -4278,11 +4299,11 @@
       ]
     },
     {
-      "rank": 243,
+      "rank": 245,
       "code": "000858.SZ",
       "name": "五粮液",
       "institutionCount": 73,
-      "industry": "饮料",
+      "industry": "白酒Ⅱ",
       "concepts": [
         "超级品牌",
         "成渝特区",
@@ -4294,29 +4315,6 @@
         "酿酒概念",
         "央国企改革",
         "电商概念"
-      ]
-    },
-    {
-      "rank": 244,
-      "code": "920136.BJ",
-      "name": "永励精密",
-      "institutionCount": 73,
-      "industry": "汽车",
-      "concepts": [
-        "新能源车",
-        "次新股"
-      ]
-    },
-    {
-      "rank": 245,
-      "code": "920193.BJ",
-      "name": "吉和昌",
-      "institutionCount": 73,
-      "industry": "化学制品",
-      "concepts": [
-        "次新股",
-        "新材料",
-        "锂电池概念"
       ]
     },
     {
@@ -4339,6 +4337,18 @@
     },
     {
       "rank": 247,
+      "code": "603268.SH",
+      "name": "松发股份",
+      "institutionCount": 72,
+      "industry": "船舶与海洋装备",
+      "concepts": [
+        "贬值受益",
+        "船舶制造",
+        "并购重组概念"
+      ]
+    },
+    {
+      "rank": 248,
       "code": "920011.BJ",
       "name": "晨光电机",
       "institutionCount": 72,
@@ -4349,11 +4359,11 @@
       ]
     },
     {
-      "rank": 248,
+      "rank": 249,
       "code": "601918.SH",
       "name": "新集能源",
       "institutionCount": 72,
-      "industry": "煤炭开采",
+      "industry": "煤炭",
       "concepts": [
         "煤化工概念",
         "超超临界发电",
@@ -4361,7 +4371,7 @@
       ]
     },
     {
-      "rank": 249,
+      "rank": 250,
       "code": "605358.SH",
       "name": "立昂微",
       "institutionCount": 71,
@@ -4390,7 +4400,7 @@
       ]
     },
     {
-      "rank": 250,
+      "rank": 251,
       "code": "601111.SH",
       "name": "中国国航",
       "institutionCount": 71,
@@ -4401,7 +4411,7 @@
       ]
     },
     {
-      "rank": 251,
+      "rank": 252,
       "code": "920181.BJ",
       "name": "赛英电子",
       "institutionCount": 71,
@@ -4413,7 +4423,7 @@
       ]
     },
     {
-      "rank": 252,
+      "rank": 253,
       "code": "688785.SH",
       "name": "恒运昌",
       "institutionCount": 71,
@@ -4424,7 +4434,7 @@
       ]
     },
     {
-      "rank": 253,
+      "rank": 254,
       "code": "688322.SH",
       "name": "奥比中光",
       "institutionCount": 70,
@@ -4447,11 +4457,11 @@
       ]
     },
     {
-      "rank": 254,
+      "rank": 255,
       "code": "002428.SZ",
       "name": "云南锗业",
       "institutionCount": 70,
-      "industry": "小金属",
+      "industry": "稀有金属",
       "concepts": [
         "商业航天",
         "稀缺资源",
@@ -4467,12 +4477,13 @@
       ]
     },
     {
-      "rank": 255,
+      "rank": 256,
       "code": "002230.SZ",
       "name": "科大讯飞",
       "institutionCount": 70,
       "industry": "计算机软件",
       "concepts": [
+        "无线耳机",
         "量子科技",
         "创新医疗服务",
         "车联网(车路云)",
@@ -4502,12 +4513,11 @@
         "虚拟数字人",
         "信创",
         "消费电子概念",
-        "ChatGPT概念",
-        "无线耳机"
+        "ChatGPT概念"
       ]
     },
     {
-      "rank": 256,
+      "rank": 257,
       "code": "300972.SZ",
       "name": "万辰集团",
       "institutionCount": 70,
@@ -4518,7 +4528,7 @@
       ]
     },
     {
-      "rank": 257,
+      "rank": 258,
       "code": "002832.SZ",
       "name": "比音勒芬",
       "institutionCount": 70,
@@ -4530,18 +4540,33 @@
       ]
     },
     {
-      "rank": 258,
+      "rank": 259,
+      "code": "920189.BJ",
+      "name": "康美特",
+      "institutionCount": 70,
+      "industry": "化学新材料",
+      "concepts": [
+        "次新股",
+        "LED概念",
+        "新材料",
+        "半导体概念",
+        "小米概念",
+        "MiniLED"
+      ]
+    },
+    {
+      "rank": 260,
       "code": "601229.SH",
       "name": "上海银行",
       "institutionCount": 69,
-      "industry": "银行",
+      "industry": "银行Ⅱ",
       "concepts": [
         "长江三角",
         "互联网金融"
       ]
     },
     {
-      "rank": 259,
+      "rank": 261,
       "code": "688392.SH",
       "name": "骄成超声",
       "institutionCount": 69,
@@ -4557,22 +4582,7 @@
       ]
     },
     {
-      "rank": 260,
-      "code": "920189.BJ",
-      "name": "康美特",
-      "institutionCount": 69,
-      "industry": "化学新材料",
-      "concepts": [
-        "次新股",
-        "LED概念",
-        "新材料",
-        "半导体概念",
-        "小米概念",
-        "MiniLED"
-      ]
-    },
-    {
-      "rank": 261,
+      "rank": 262,
       "code": "688099.SH",
       "name": "晶晨股份",
       "institutionCount": 69,
@@ -4584,18 +4594,6 @@
         "超清视频",
         "人工智能",
         "科创板做市股"
-      ]
-    },
-    {
-      "rank": 262,
-      "code": "603268.SH",
-      "name": "松发股份",
-      "institutionCount": 68,
-      "industry": "船舶与海洋装备",
-      "concepts": [
-        "贬值受益",
-        "船舶制造",
-        "并购重组概念"
       ]
     },
     {
@@ -4631,7 +4629,7 @@
       "code": "002731.SZ",
       "name": "*ST萃华",
       "institutionCount": 67,
-      "industry": "贵金属",
+      "industry": "饰品",
       "concepts": [
         "黄金概念",
         "小红书概念",
@@ -4673,7 +4671,7 @@
       "code": "603678.SH",
       "name": "火炬电子",
       "institutionCount": 66,
-      "industry": "电子元件",
+      "industry": "军工电子Ⅱ",
       "concepts": [
         "核能核电",
         "军工",
@@ -4709,7 +4707,7 @@
       "code": "601058.SH",
       "name": "赛轮轮胎",
       "institutionCount": 65,
-      "industry": "未分类",
+      "industry": "汽车零部件",
       "concepts": []
     },
     {
@@ -4726,17 +4724,25 @@
     },
     {
       "rank": 272,
+      "code": "605499.SH",
+      "name": "东鹏饮料",
+      "institutionCount": 65,
+      "industry": "饮料",
+      "concepts": []
+    },
+    {
+      "rank": 273,
       "code": "601006.SH",
       "name": "大秦铁路",
       "institutionCount": 65,
-      "industry": "公路铁路",
+      "industry": "铁路公路",
       "concepts": [
         "铁路基建",
         "央国企改革"
       ]
     },
     {
-      "rank": 273,
+      "rank": 274,
       "code": "601689.SH",
       "name": "拓普集团",
       "institutionCount": 64,
@@ -4759,7 +4765,7 @@
       ]
     },
     {
-      "rank": 274,
+      "rank": 275,
       "code": "600547.SH",
       "name": "山东黄金",
       "institutionCount": 64,
@@ -4772,7 +4778,7 @@
       ]
     },
     {
-      "rank": 275,
+      "rank": 276,
       "code": "601665.SH",
       "name": "齐鲁银行",
       "institutionCount": 64,
@@ -4780,7 +4786,30 @@
       "concepts": []
     },
     {
-      "rank": 276,
+      "rank": 277,
+      "code": "002407.SZ",
+      "name": "多氟多",
+      "institutionCount": 64,
+      "industry": "化学原料",
+      "concepts": [
+        "电池技术",
+        "创投",
+        "新材料",
+        "特斯拉概念",
+        "储能概念",
+        "新能源车",
+        "独角兽",
+        "锂电池概念",
+        "化工原料",
+        "半导体概念",
+        "PVDF概念",
+        "固态电池",
+        "氟化工概念",
+        "钠离子电池"
+      ]
+    },
+    {
+      "rank": 278,
       "code": "605111.SH",
       "name": "新洁能",
       "institutionCount": 63,
@@ -4803,7 +4832,7 @@
       ]
     },
     {
-      "rank": 277,
+      "rank": 279,
       "code": "002156.SZ",
       "name": "通富微电",
       "institutionCount": 63,
@@ -4832,11 +4861,11 @@
       ]
     },
     {
-      "rank": 278,
+      "rank": 280,
       "code": "002859.SZ",
       "name": "洁美科技",
       "institutionCount": 63,
-      "industry": "电子设备制造",
+      "industry": "其他电子Ⅱ",
       "concepts": [
         "新材料",
         "被动元件概念",
@@ -4856,7 +4885,7 @@
       ]
     },
     {
-      "rank": 279,
+      "rank": 281,
       "code": "002831.SZ",
       "name": "裕同科技",
       "institutionCount": 63,
@@ -4871,7 +4900,7 @@
       ]
     },
     {
-      "rank": 280,
+      "rank": 282,
       "code": "300570.SZ",
       "name": "太辰光",
       "institutionCount": 63,
@@ -4890,11 +4919,11 @@
       ]
     },
     {
-      "rank": 281,
+      "rank": 283,
       "code": "000938.SZ",
       "name": "紫光股份",
       "institutionCount": 63,
-      "industry": "IT服务Ⅱ",
+      "industry": "计算机软件",
       "concepts": [
         "国产芯片",
         "大数据",
@@ -4921,7 +4950,7 @@
       ]
     },
     {
-      "rank": 282,
+      "rank": 284,
       "code": "600028.SH",
       "name": "中国石化",
       "institutionCount": 63,
@@ -4937,30 +4966,7 @@
       ]
     },
     {
-      "rank": 283,
-      "code": "002407.SZ",
-      "name": "多氟多",
-      "institutionCount": 63,
-      "industry": "化学原料",
-      "concepts": [
-        "电池技术",
-        "创投",
-        "新材料",
-        "特斯拉概念",
-        "储能概念",
-        "新能源车",
-        "独角兽",
-        "锂电池概念",
-        "化工原料",
-        "半导体概念",
-        "PVDF概念",
-        "固态电池",
-        "氟化工概念",
-        "钠离子电池"
-      ]
-    },
-    {
-      "rank": 284,
+      "rank": 285,
       "code": "001979.SZ",
       "name": "招商蛇口",
       "institutionCount": 63,
@@ -4979,11 +4985,37 @@
       ]
     },
     {
-      "rank": 285,
+      "rank": 286,
+      "code": "601816.SH",
+      "name": "京沪高铁",
+      "institutionCount": 62,
+      "industry": "公路铁路",
+      "concepts": [
+        "央国企改革",
+        "铁路基建"
+      ]
+    },
+    {
+      "rank": 287,
+      "code": "601377.SH",
+      "name": "兴业证券",
+      "institutionCount": 62,
+      "industry": "非银行金融",
+      "concepts": [
+        "科创板做市商",
+        "央国企改革",
+        "碳交易",
+        "IPO受益",
+        "互联网金融",
+        "券商概念"
+      ]
+    },
+    {
+      "rank": 288,
       "code": "601208.SH",
       "name": "东材科技",
       "institutionCount": 62,
-      "industry": "塑料",
+      "industry": "化学新材料",
       "concepts": [
         "苹果概念",
         "半导体概念",
@@ -5004,7 +5036,7 @@
       ]
     },
     {
-      "rank": 286,
+      "rank": 289,
       "code": "000975.SZ",
       "name": "山金国际",
       "institutionCount": 62,
@@ -5017,7 +5049,7 @@
       ]
     },
     {
-      "rank": 287,
+      "rank": 290,
       "code": "601021.SH",
       "name": "春秋航空",
       "institutionCount": 62,
@@ -5030,7 +5062,7 @@
       ]
     },
     {
-      "rank": 288,
+      "rank": 291,
       "code": "688300.SH",
       "name": "联瑞新材",
       "institutionCount": 62,
@@ -5042,33 +5074,7 @@
       ]
     },
     {
-      "rank": 289,
-      "code": "601816.SH",
-      "name": "京沪高铁",
-      "institutionCount": 61,
-      "industry": "公路铁路",
-      "concepts": [
-        "央国企改革",
-        "铁路基建"
-      ]
-    },
-    {
-      "rank": 290,
-      "code": "601377.SH",
-      "name": "兴业证券",
-      "institutionCount": 61,
-      "industry": "非银行金融",
-      "concepts": [
-        "科创板做市商",
-        "央国企改革",
-        "碳交易",
-        "IPO受益",
-        "互联网金融",
-        "券商概念"
-      ]
-    },
-    {
-      "rank": 291,
+      "rank": 292,
       "code": "689009.SH",
       "name": "九号公司",
       "institutionCount": 61,
@@ -5082,14 +5088,6 @@
         "机器人概念",
         "交运设备"
       ]
-    },
-    {
-      "rank": 292,
-      "code": "605499.SH",
-      "name": "东鹏饮料",
-      "institutionCount": 61,
-      "industry": "饮料乳品",
-      "concepts": []
     },
     {
       "rank": 293,
@@ -5107,7 +5105,7 @@
       "code": "000933.SZ",
       "name": "神火股份",
       "institutionCount": 60,
-      "industry": "基本金属",
+      "industry": "工业金属",
       "concepts": [
         "钠离子电池",
         "煤化工概念",
@@ -5146,8 +5144,8 @@
         "次新股",
         "CPO概念",
         "氢能源",
-        "PCB",
-        "央国企改革"
+        "央国企改革",
+        "PCB"
       ]
     },
     {
@@ -5201,7 +5199,7 @@
       "code": "688635.SH",
       "name": "长进光子",
       "institutionCount": 59,
-      "industry": "通信设备",
+      "industry": "光电子器件",
       "concepts": [
         "商业航天",
         "军工",

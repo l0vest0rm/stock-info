@@ -28,39 +28,105 @@ export function initialReleasePoints(
 export type FactorExposure = {
   market: string;
   factor: string;
-  signal: number;
+  /** Stable configured identifier; exposed so clients can audit data quality. */
+  seriesId?: string;
+  signal?: number | null;
   weight: number;
   direction?: 1 | -1;
+  quality?: "fresh" | "stale" | "missing";
+  /**
+   * Fresh data has a weight of 1. Stale data is supplied by the API as a
+   * bounded age-based decay; missing or unusable signals always receive 0.
+   */
+  freshnessWeight?: number;
+};
+
+export type SignalCoverage = {
+  configured: number;
+  available: number;
+  fresh: number;
+  stale: number;
+  missing: number;
+  configuredWeight: number;
+  availableWeight: number;
+  effectiveWeight: number;
 };
 
 export type MarketFactorResult = {
   market: string;
   score: number | null;
-  contributions: Array<{ factor: string; contribution: number; signal: number; weight: number }>;
+  /** 0..1, the effective configured exposure weight supported by usable data. */
+  confidence: number;
+  confidenceLevel: "high" | "medium" | "low" | "unavailable";
+  coverage: SignalCoverage;
+  contributions: Array<{
+    factor: string;
+    seriesId?: string;
+    contribution: number;
+    signal: number | null;
+    weight: number;
+    quality: "fresh" | "stale" | "missing";
+    freshnessWeight: number;
+  }>;
 };
 
 export function calculateMarketFactorContributions(exposures: readonly FactorExposure[]): MarketFactorResult[] {
   const markets = new Map<string, FactorExposure[]>();
   for (const exposure of exposures) {
-    if (!Number.isFinite(exposure.signal) || !Number.isFinite(exposure.weight)) continue;
+    if (!Number.isFinite(exposure.weight)) continue;
     const group = markets.get(exposure.market) ?? [];
     group.push(exposure);
     markets.set(exposure.market, group);
   }
   return [...markets].map(([market, items]) => {
-    const contributions = items.map((item) => ({
-      factor: item.factor,
-      contribution: item.signal * item.weight * (item.direction ?? 1),
-      signal: item.signal,
-      weight: item.weight,
-    })).sort((left, right) => Math.abs(right.contribution) - Math.abs(left.contribution));
-    const denominator = items.reduce((sum, item) => sum + Math.abs(item.weight), 0);
+    const contributions = items.map((item) => {
+      const signal = Number.isFinite(item.signal) ? item.signal! : null;
+      const quality = signal === null ? "missing" : item.quality ?? "fresh";
+      const freshnessWeight = quality === "fresh"
+        ? 1
+        : quality === "stale"
+          ? boundedWeight(item.freshnessWeight ?? 0.5)
+          : 0;
+      return {
+        factor: item.factor,
+        ...(item.seriesId ? { seriesId: item.seriesId } : {}),
+        contribution: signal === null ? 0 : signal * item.weight * (item.direction ?? 1) * freshnessWeight,
+        signal,
+        weight: item.weight,
+        quality,
+        freshnessWeight,
+      };
+    }).sort((left, right) => Math.abs(right.contribution) - Math.abs(left.contribution));
+    const configuredWeight = items.reduce((sum, item) => sum + Math.abs(item.weight), 0);
+    const available = contributions.filter((item) => item.signal !== null);
+    const effectiveWeight = contributions.reduce((sum, item) => sum + Math.abs(item.weight) * item.freshnessWeight, 0);
+    const confidence = configuredWeight === 0 ? 0 : effectiveWeight / configuredWeight;
+    const confidenceLevel: MarketFactorResult["confidenceLevel"] = confidence >= 0.85 ? "high" : confidence >= 0.6 ? "medium" : confidence > 0 ? "low" : "unavailable";
+    const coverage: SignalCoverage = {
+      configured: items.length,
+      available: available.length,
+      fresh: contributions.filter((item) => item.quality === "fresh").length,
+      stale: contributions.filter((item) => item.quality === "stale").length,
+      missing: contributions.filter((item) => item.quality === "missing").length,
+      configuredWeight,
+      availableWeight: available.reduce((sum, item) => sum + Math.abs(item.weight), 0),
+      effectiveWeight,
+    };
     return {
       market,
-      score: denominator === 0 ? null : contributions.reduce((sum, item) => sum + item.contribution, 0) / denominator,
+      // Divide by the configured exposure, rather than only the available
+      // exposure, so stale/missing inputs cannot create a full-strength score.
+      score: configuredWeight === 0 || coverage.available === 0 ? null : contributions.reduce((sum, item) => sum + item.contribution, 0) / configuredWeight,
+      confidence,
+      confidenceLevel,
+      coverage,
       contributions,
     };
   }).sort((left, right) => left.market.localeCompare(right.market));
+}
+
+function boundedWeight(value: number): number {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 }
 
 export function rollingCorrelation(

@@ -58,7 +58,7 @@ type KnowledgeReportAnalysis = {
   updatedAt: number;
 };
 
-const KNOWLEDGE_REPORT_ANALYSIS_CACHE_VERSION = "v3";
+const KNOWLEDGE_REPORT_ANALYSIS_CACHE_VERSION = "v7";
 const KNOWLEDGE_REPORT_ANALYSIS_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY = 2;
 let knowledgeReportAnalysisActive = 0;

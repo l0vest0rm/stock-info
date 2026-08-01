@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "description": "Parameter sweep for initial-loss reduction and lower-price repurchase. All thresholds are absolute losses from the entry price; repurchase restores only the shares sold.",
+  "rules": [
+    { "id": "hold", "name": "死扛持有（基准）", "sellFraction": 0, "buyMode": "none" }
+  ],
+  "entryLossGrids": [
+    {
+      "idPrefix": "loss-grid",
+      "firstLossPcts": [10, 15, 20],
+      "secondLossPcts": [20, 25, 30, 35, 40],
+      "sellFractions": [0.35, 0.5, 0.7],
+      "buyMode": "restore"
+    }
+  ]
+}

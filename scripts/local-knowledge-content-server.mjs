@@ -2,10 +2,14 @@
 
 import { execFile } from "node:child_process";
 import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { open, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import {
+  downloadPdfBytes,
+  isPdfBytes,
+} from "./lib/eastmoney-report-content.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 const host = args.host || "127.0.0.1";
@@ -137,26 +141,25 @@ async function convertReportCached(docId, url) {
 }
 
 async function downloadReportPdfCached(url, file) {
-  if (existsSync(file) && statSync(file).size >= 1000) {
+  if (await hasCachedPdf(file)) {
     return;
   }
-  const response = await fetch(url, {
-    headers: {
-      Referer: "https://data.eastmoney.com/report/",
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/125 Safari/537.36",
-      Accept: "application/pdf,*/*",
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`remote pdf download failed: status=${response.status} url=${url}`);
-  }
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length < 1000) {
-    throw new Error(`remote pdf download is too small: bytes=${bytes.length} url=${url}`);
-  }
+  const bytes = await downloadPdfBytes(url);
   const temporaryFile = `${file}.tmp-${process.pid}`;
   await writeFile(temporaryFile, bytes);
   await rename(temporaryFile, file);
+}
+
+async function hasCachedPdf(file) {
+  if (!existsSync(file) || statSync(file).size < 1000) return false;
+  const handle = await open(file, "r");
+  try {
+    const bytes = Buffer.alloc(5);
+    await handle.read(bytes, 0, bytes.length, 0);
+    return isPdfBytes(bytes);
+  } finally {
+    await handle.close();
+  }
 }
 
 async function convertReportPdfToMarkdown(pdfFile, markdownFile) {

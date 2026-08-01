@@ -11,6 +11,7 @@ import {
 import { convertResponse, parseResponseData } from '../../api'
 import { createBsTable } from '../../bs-table'
 import { createCompanyTableRuntime } from '../../modules/company/runtime/company-table-runtime'
+import { addFollowedCompany, removeFollowedCompany } from '../../modules/companies/domain/follow-storage'
 import { calculateKlineDrawdowns } from '../../modules/market/domain/kline-drawdown'
 import { findInsertIndex, findTsIndex } from '../../chart'
 import { toDateString, toTimeString, toTimestamp, zeroPad } from '../../date'
@@ -2870,27 +2871,11 @@ export function fillReportDates(id: string, selectIdx: number) {
 }
 
 function follow(code: string) {
-  let followArr: string[] = []
-  const followStr = localStorage.getItem('follow')
-    if (followStr) {
-      followArr = followStr.split(',')
-    }
-    followArr.push(code)
-    localStorage.setItem('follow', followArr.join(','))
+  addFollowedCompany(code)
 }
 
 function unFollow(code: string) {
-  let followArr: string[] = []
-  const followStr = localStorage.getItem('follow')
-    if (followStr) {
-      followArr = followStr.split(',')
-    }
-    const idx = followArr.indexOf(code)
-    if (idx > -1) {
-      followArr.splice(idx, 1)
-    }
-
-    localStorage.setItem('follow', followArr.join(','))
+  removeFollowedCompany(code)
 }
 
 

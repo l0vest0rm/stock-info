@@ -5,7 +5,7 @@ import industryExposureConfig from "../config/industry-exposures.json";
 import { buildResearchSeries } from "../application/build-research-series";
 import { D1MacroRepository } from "../application/macro-repository";
 import { syncMacroData } from "../application/sync-macro-data";
-import type { MacroSeries, MacroUserWatchConfig, DatedValue } from "../domain/model";
+import type { MacroObservationVintage, MacroSeries, MacroUserWatchConfig, DatedValue } from "../domain/model";
 import { transformSeries, type SeriesTransform } from "../domain/transforms";
 import { backtestSignal, calculateMarketFactorContributions, initialReleasePoints, replayScenario, rollingCorrelation } from "../domain/research";
 import { loadKline } from "../../market/application/load-kline";
@@ -95,7 +95,16 @@ macroRoutes.get("/macro/revisions", async (c) => {
     to: validDate(c.req.query("to")) ?? undefined,
     includeAllVintages: true,
   });
-  return ok(c, { seriesId: id, observations });
+  const revisions = summarizeRevisions(observations);
+  return ok(c, {
+    seriesId: id,
+    coverage: { observedPeriods: new Set(observations.map((item) => item.observationDate)).size, revisedPeriods: revisions.length },
+    revisions,
+    // Kept temporarily for callers that need the raw vintages. New UI code
+    // should use revisions so a long observation history is not mislabeled as
+    // a revision count.
+    observations,
+  });
 });
 
 macroRoutes.get("/macro/events", async (c) => {
@@ -110,19 +119,34 @@ macroRoutes.get("/macro/status", async (c) => ok(c, { generatedAt: new Date().to
 
 macroRoutes.get("/macro/signals", async (c) => {
   const repository = new D1MacroRepository(c.env.DB);
-  const signals = new Map<string, number>();
+  const now = Date.now();
+  const signals = new Map<string, { signal: number | null; quality: Quality; freshnessWeight: number; latestDate: string | null; ageDays: number | null; reason: string }>();
   for (const definition of await loadCatalog(repository)) {
     const observations = await repository.getObservationSeries(definition.seriesId, { from: dateDaysAgo(3650) });
     const series = buildResearchSeries(observations, "zscore", { window: 60 });
     const latest = [...series].reverse().find((item) => item.value !== null)?.value;
-    if (latest !== null && latest !== undefined) signals.set(definition.seriesId, latest);
+    signals.set(definition.seriesId, assessSignalQuality(definition, observations, latest ?? null, now));
   }
   const factorExposures = exposures.flatMap((exposure) => {
-    const signal = signals.get(exposure.seriesId);
-    if (signal === undefined) return [];
-    return Object.entries(exposure.markets).map(([market, weight]) => ({ market, factor: `${exposure.factor}/${exposure.seriesId}`, signal, weight }));
+    const signal = signals.get(exposure.seriesId) ?? {
+      signal: null, quality: "missing" as const, freshnessWeight: 0, latestDate: null, ageDays: null, reason: "series_not_configured",
+    };
+    return Object.entries(exposure.markets).map(([market, weight]) => ({
+      market,
+      factor: `${exposure.factor}/${exposure.seriesId}`,
+      seriesId: exposure.seriesId,
+      signal: signal.signal,
+      weight,
+      quality: signal.quality,
+      freshnessWeight: signal.freshnessWeight,
+    }));
   });
-  return ok(c, { generatedAt: new Date().toISOString(), methodology: "60-observation rolling z-score × configured market exposure; components remain visible", markets: calculateMarketFactorContributions(factorExposures) });
+  return ok(c, {
+    generatedAt: new Date(now).toISOString(),
+    methodology: "60-observation rolling z-score × configured market exposure. Scores are divided by total configured exposure; stale inputs decay by staleAfterSeconds / observation age and missing inputs contribute zero.",
+    markets: calculateMarketFactorContributions(factorExposures),
+    indicators: [...signals.entries()].map(([seriesId, item]) => ({ seriesId, ...item })),
+  });
 });
 
 macroRoutes.get("/macro/research/industries", async (c) => {
@@ -267,6 +291,51 @@ function summarize(item: MacroSeries, points: DatedValue[], now: number) {
   const ageDays = latest ? Math.max(0, Math.floor((now - freshnessTimestamp(latest.date, item.frequency)) / 86_400_000)) : null;
   const quality: Quality = ageDays === null ? "missing" : ageDays > item.staleAfterSeconds / 86_400 ? "stale" : "fresh";
   return { ...toApiDefinition(item), latest: latest?.value ?? null, previous: previous?.value ?? null, change: latest && previous ? latest.value - previous.value : null, latestDate: latest?.date ?? null, ageDays, quality };
+}
+
+function assessSignalQuality(
+  definition: MacroSeries,
+  observations: Awaited<ReturnType<D1MacroRepository["getObservationSeries"]>>,
+  signal: number | null,
+  now: number,
+): { signal: number | null; quality: Quality; freshnessWeight: number; latestDate: string | null; ageDays: number | null; reason: string } {
+  const latest = [...observations].reverse().find((item) => item.qualityStatus === "valid");
+  if (!latest) return { signal: null, quality: "missing", freshnessWeight: 0, latestDate: null, ageDays: null, reason: "missing_valid_observation" };
+  const ageDays = Math.max(0, Math.floor((now - freshnessTimestamp(latest.observationDate, definition.frequency)) / 86_400_000));
+  if (signal === null || !Number.isFinite(signal)) {
+    return { signal: null, quality: "missing", freshnessWeight: 0, latestDate: latest.observationDate, ageDays, reason: "insufficient_valid_history" };
+  }
+  const staleAfterDays = definition.staleAfterSeconds / 86_400;
+  if (ageDays <= staleAfterDays) {
+    return { signal, quality: "fresh", freshnessWeight: 1, latestDate: latest.observationDate, ageDays, reason: "fresh_observation" };
+  }
+  return {
+    signal,
+    quality: "stale",
+    freshnessWeight: Math.min(1, staleAfterDays / Math.max(ageDays, 1)),
+    latestDate: latest.observationDate,
+    ageDays,
+    reason: "stale_observation",
+  };
+}
+
+function summarizeRevisions(observations: MacroObservationVintage[]) {
+  const byPeriod = new Map<string, MacroObservationVintage[]>();
+  for (const item of observations) byPeriod.set(item.observationDate, [...(byPeriod.get(item.observationDate) ?? []), item]);
+  return [...byPeriod.entries()].flatMap(([observationDate, rows]) => {
+    const ordered = [...rows].sort((left, right) => left.vintageAt - right.vintageAt);
+    const first = ordered[0]; const latest = ordered.at(-1);
+    if (!first || !latest || (ordered.length === 1 && latest.revisionNumber === 0)) return [];
+    return [{
+      observationDate,
+      firstValue: first.value,
+      latestValue: latest.value,
+      delta: latest.value - first.value,
+      revisionCount: Math.max(...ordered.map((item) => item.revisionNumber)),
+      firstSeenAt: first.vintageAt,
+      latestSeenAt: latest.vintageAt,
+    }];
+  }).sort((left, right) => right.observationDate.localeCompare(left.observationDate));
 }
 
 function freshnessTimestamp(date: string, frequency: MacroSeries["frequency"]): number {

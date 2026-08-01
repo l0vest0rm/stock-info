@@ -55,16 +55,42 @@ test("market aggregation preserves auditable factor contributions and direction"
     {
       market: "hk",
       score: 0,
+      confidence: 1,
+      confidenceLevel: "high",
+      coverage: { configured: 2, available: 2, fresh: 2, stale: 0, missing: 0, configuredWeight: 1.5, availableWeight: 1.5, effectiveWeight: 1.5 },
       contributions: [
-        { factor: "real-rate", contribution: -1, signal: 2, weight: 0.5 },
-        { factor: "cn-growth", contribution: 1, signal: 1, weight: 1 },
+        { factor: "real-rate", contribution: -1, signal: 2, weight: 0.5, quality: "fresh", freshnessWeight: 1 },
+        { factor: "cn-growth", contribution: 1, signal: 1, weight: 1, quality: "fresh", freshnessWeight: 1 },
       ],
     },
     {
       market: "us",
       score: 0.5,
-      contributions: [{ factor: "growth", contribution: 0.5, signal: 0.5, weight: 1 }],
+      confidence: 1,
+      confidenceLevel: "high",
+      coverage: { configured: 1, available: 1, fresh: 1, stale: 0, missing: 0, configuredWeight: 1, availableWeight: 1, effectiveWeight: 1 },
+      contributions: [{ factor: "growth", contribution: 0.5, signal: 0.5, weight: 1, quality: "fresh", freshnessWeight: 1 }],
     },
+  ]);
+});
+
+test("market aggregation attenuates stale signals and reports missing configured exposure", () => {
+  const [market] = calculateMarketFactorContributions([
+    { market: "hk", factor: "fresh", seriesId: "FRESH", signal: 2, weight: 1, quality: "fresh", freshnessWeight: 1 },
+    { market: "hk", factor: "stale", seriesId: "STALE", signal: 2, weight: 1, quality: "stale", freshnessWeight: 0.5 },
+    { market: "hk", factor: "missing", seriesId: "MISSING", signal: null, weight: 1, quality: "missing", freshnessWeight: 0 },
+  ]);
+  assert.equal(market.score, 1);
+  assert.equal(market.confidence, 0.5);
+  assert.equal(market.confidenceLevel, "low");
+  assert.deepEqual(market.coverage, {
+    configured: 3, available: 2, fresh: 1, stale: 1, missing: 1,
+    configuredWeight: 3, availableWeight: 2, effectiveWeight: 1.5,
+  });
+  assert.deepEqual(market.contributions, [
+    { factor: "fresh", seriesId: "FRESH", contribution: 2, signal: 2, weight: 1, quality: "fresh", freshnessWeight: 1 },
+    { factor: "stale", seriesId: "STALE", contribution: 1, signal: 2, weight: 1, quality: "stale", freshnessWeight: 0.5 },
+    { factor: "missing", seriesId: "MISSING", contribution: 0, signal: null, weight: 1, quality: "missing", freshnessWeight: 0 },
   ]);
 });
 

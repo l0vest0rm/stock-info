@@ -63,8 +63,9 @@
     "llmBatchSize": 10,
     "llmMinConfidence": 0.65,
     "keywordGroupsFile": "/Users/terry/git/mitmproxy/config/capture-title-keyword-filters/shared-groups.json",
-    "allowKeywordGroups": ["allowKeywords"],
+    "allowKeywordGroups": ["allowKeywords", "institutionalTop300"],
     "denyKeywordGroups": ["denyKeywords"],
+    "denyBypassKeywordGroups": ["institutionalTop300"],
     "coreKeywords": [],
     "supportKeywords": [],
     "denyKeywords": []

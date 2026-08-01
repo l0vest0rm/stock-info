@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { shouldKeepOriginalReportPdf, topicFilterBypassDecision } from "./knowledge-topic-filter.mjs";
+import {
+  shouldKeepOriginalReportPdf,
+  topicFilterBypassDecision,
+  topicFilterKeywordDecision,
+} from "./knowledge-topic-filter.mjs";
 
 const filter = {
   bypassSourceTypes: ["research_report"],
@@ -43,4 +47,28 @@ test("remote report PDFs stay as original links when conversion is disabled", ()
     reportType: "company_report",
     url: "https://example.com/report.pdf",
   }, { reportPdfMode: "markdown" }), false);
+});
+
+test("institutional priority keyword survives a matching topic denial", () => {
+  const decision = topicFilterKeywordDecision(
+    { title: "招商银行发布半年报" },
+    {
+      coreKeywords: ["招商银行"],
+      denyBypassKeywords: ["招商银行"],
+      denyKeywords: ["银行"],
+    }
+  );
+
+  assert.equal(decision.score, 2);
+  assert.deepEqual(decision.reasons, ["核心:招商银行", "优先:招商银行"]);
+});
+
+test("topic denial continues to apply when no priority keyword matches", () => {
+  const decision = topicFilterKeywordDecision(
+    { title: "银行行业周报" },
+    { coreKeywords: ["行业"], denyKeywords: ["银行"] }
+  );
+
+  assert.equal(decision.score, 0);
+  assert.deepEqual(decision.reasons, ["核心:行业", "排除:银行"]);
 });

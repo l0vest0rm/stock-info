@@ -346,21 +346,18 @@ const CompaniesFilterPage = defineComponent({
           h('td', [h('a', { href: `company.html?code=${encodeURIComponent(row.code)}`, target: '_blank' }, row.code)]),
           h('td', [
             row.name,
-            h('a', {
-              class: 'ps-1',
-              href: '#',
+            h('button', {
+              type: 'button',
+              class: 'btn p-0 border-0 text-decoration-none align-baseline',
+              style: `color: ${row.followed ? '#eab308' : '#94a3b8'}; font-size: 1.25rem; line-height: 1;`,
+              title: row.followed ? '从我关注的移除' : '加入我关注的',
+              'aria-label': row.followed ? `取消关注 ${row.name}` : `关注 ${row.name}`,
               onClick: (event: Event) => {
                 event.preventDefault()
                 row.followed = !row.followed
                 emitFollowToggle(row.code, row.followed)
               },
-            }, [
-              h('img', {
-                name: 'star',
-                'data-code': row.code,
-                src: row.followed ? 'images/star.png' : 'images/star2.png',
-              }),
-            ]),
+            }, h('span', { 'aria-hidden': 'true' }, row.followed ? '★' : '☆')),
           ]),
           h('td', row.price),
           h('td', { class: signedClass(row.changeRate) }, row.changeRate),

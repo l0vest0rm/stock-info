@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "description": "Optional normalization for Eastmoney industry labels before industry-level backtest reporting. Unlisted labels retain their source industry name.",
+  "aliases": {
+    "银行": "银行",
+    "银行Ⅱ": "银行",
+    "饮料": "饮料（含白酒）",
+    "饮料乳品": "饮料（含白酒）",
+    "白酒": "饮料（含白酒）"
+  }
+}

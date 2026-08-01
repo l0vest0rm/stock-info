@@ -2,6 +2,7 @@ import { computed, createApp, defineComponent, h, onMounted, ref } from 'vue'
 import trackOverridesConfig from '../../../config/institutional-track-overrides.json'
 import trackRulesConfig from '../../../config/institutional-track-rules.json'
 import trackSnapshotConfig from '../../../config/institutional-track-snapshot.json'
+import { isCompanyFollowed, toggleFollowedCompany } from '../domain/follow-storage'
 
 type TrackRule = {
   primaryTrack: string
@@ -122,6 +123,9 @@ const pageStyle = `
 .institutional-tracks-table input:focus { border-color: #0d9488; box-shadow: 0 0 0 .15rem rgba(13,148,136,.14); outline: none; }
 .institutional-tracks-concepts { color: #64748b; max-width: 25rem; }
 .institutional-tracks-sticky { position: sticky; left: 0; z-index: 1; background: #fff; }
+.institutional-tracks-follow-button { background: transparent; border: 0; font-size: 1.25rem; line-height: 1; padding: 0; }
+.institutional-tracks-follow-button.is-followed { color: #eab308; }
+.institutional-tracks-follow-button:not(.is-followed) { color: #94a3b8; }
 `
 
 const InstitutionalTracksPage = defineComponent({
@@ -134,6 +138,7 @@ const InstitutionalTracksPage = defineComponent({
     const primaryFilter = ref('')
     const secondaryFilter = ref('')
     const overrides = ref<Record<string, TrackOverride>>({ ...bundledOverrides, ...loadLocalOverrides() })
+    const followedCodes = ref(new Set<string>())
     const fileInput = ref<HTMLInputElement | null>(null)
 
     const persistOverrides = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides.value))
@@ -217,6 +222,7 @@ const InstitutionalTracksPage = defineComponent({
           }
         })
         applyOverridesToRows()
+        followedCodes.value = new Set(rows.value.map((row) => row.code).filter(isCompanyFollowed))
       } catch (caught) {
         error.value = caught instanceof Error ? caught.message : String(caught)
       } finally {
@@ -257,6 +263,17 @@ const InstitutionalTracksPage = defineComponent({
       overrides.value = { ...bundledOverrides }
       persistOverrides()
       loadRows()
+    }
+
+    function isFollowed(code: string): boolean {
+      return followedCodes.value.has(code)
+    }
+
+    function toggleFollow(code: string): void {
+      const followed = toggleFollowedCompany(code)
+      followedCodes.value = new Set(followed
+        ? [...followedCodes.value, code]
+        : [...followedCodes.value].filter((item) => item !== code))
     }
 
     onMounted(loadRows)
@@ -320,6 +337,13 @@ const InstitutionalTracksPage = defineComponent({
               h('td', row.rank),
               h('td', { class: 'institutional-tracks-sticky' }, [
                 h('a', { href: `company.html?code=${encodeURIComponent(row.code)}`, target: '_blank' }, row.name),
+                h('button', {
+                  type: 'button',
+                  class: `institutional-tracks-follow-button ms-1 ${isFollowed(row.code) ? 'is-followed' : ''}`,
+                  title: isFollowed(row.code) ? '从我关注的移除' : '加入我关注的',
+                  'aria-label': isFollowed(row.code) ? `取消关注 ${row.name}` : `关注 ${row.name}`,
+                  onClick: () => toggleFollow(row.code),
+                }, h('span', { 'aria-hidden': 'true' }, isFollowed(row.code) ? '★' : '☆')),
                 h('div', { class: 'text-muted small' }, row.code),
               ]),
               h('td', { class: 'fw-semibold' }, row.institutionCount.toLocaleString()),

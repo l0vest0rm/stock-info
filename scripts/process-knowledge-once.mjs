@@ -27,7 +27,11 @@ import {
   TOPIC_BATCH_USER_PROMPT,
 } from "./generated/prompt-text.mjs";
 import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
-import { shouldKeepOriginalReportPdf, topicFilterBypassDecision } from "./lib/knowledge-topic-filter.mjs";
+import { shouldKeepOriginalReportPdf, topicFilterBypassDecision, topicFilterKeywordDecision } from "./lib/knowledge-topic-filter.mjs";
+import {
+  downloadPdfBytes,
+  isPdfBytes,
+} from "./lib/eastmoney-report-content.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const sharedDataRoot = "/Users/terry/git/data";
@@ -625,7 +629,7 @@ async function materializePdfIfNeeded(doc, file, cfg) {
 
 async function downloadRemotePdf(url, doc, cfg) {
   const file = join(remotePdfCacheDir, `${safeFilename(doc.docId || sha256(url))}.pdf`);
-  if (existsSync(file)) {
+  if (existsSync(file) && isPdfBytes(readFileSync(file).subarray(0, 5))) {
     const stat = statSync(file);
     if (stat.size >= 1000) {
       logProgress("reusing downloaded remote pdf", { title: doc.title, file: basename(file) });
@@ -633,22 +637,16 @@ async function downloadRemotePdf(url, doc, cfg) {
     }
   }
   logProgress("downloading remote pdf", { title: doc.title, url });
-  const headers = {
-    Referer: cfg.eastmoneyReports?.referer || "https://data.eastmoney.com/report/",
-    "User-Agent": cfg.eastmoneyReports?.userAgent || "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
-    Accept: "application/pdf,*/*",
-  };
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`remote pdf download failed: status=${response.status} url=${url} body=${body.slice(0, 200)}`);
-  }
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length < 1000) {
-    throw new Error(`remote pdf download is too small: bytes=${bytes.length} url=${url}`);
-  }
+  const bytes = await downloadPdfBytes(url, { headers: eastmoneyReportHeaders(cfg) });
   writeFileSync(file, bytes);
   return file;
+}
+
+function eastmoneyReportHeaders(cfg) {
+  return {
+    Referer: cfg.eastmoneyReports?.referer || "https://data.eastmoney.com/report/",
+    "User-Agent": cfg.eastmoneyReports?.userAgent || "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125 Safari/537.36",
+  };
 }
 
 function withStockLinkMetadata(doc) {
@@ -881,7 +879,7 @@ async function evaluateTopics(docsToFilter, cfg) {
       decisions.set(doc.docId, bypassDecision);
       continue;
     }
-    const local = evaluateTopicLocally(doc, filter);
+    const local = topicFilterKeywordDecision(doc, filter);
     if (local.score >= integer(filter.minScore, 2)) {
       decisions.set(doc.docId, { keep: true, method: "local", ...local });
       continue;
@@ -1004,24 +1002,6 @@ async function reviewTopicBatchWithLlm(items, cfg, context = {}) {
     batchIndex: integer(context.batchIndex, 0),
     totalBatches: integer(context.totalBatches, 1),
   };
-}
-
-function evaluateTopicLocally(doc, filter) {
-  const haystack = text(doc.title).toLowerCase();
-  const matchedCore = matchedKeywords(haystack, filter.coreKeywords);
-  const matchedSupport = matchedKeywords(haystack, filter.supportKeywords);
-  const matchedDeny = matchedKeywords(haystack, filter.denyKeywords);
-  const score = matchedCore.length * 2 + matchedSupport.length - matchedDeny.length * 2;
-  const reasons = [
-    ...matchedCore.map((item) => `核心:${item}`),
-    ...matchedSupport.map((item) => `相关:${item}`),
-    ...matchedDeny.map((item) => `排除:${item}`),
-  ];
-  return { score, reasons };
-}
-
-function matchedKeywords(haystack, keywords) {
-  return unique(array(keywords).filter((keyword) => haystack.includes(text(keyword).toLowerCase())));
 }
 
 async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user }) {
@@ -1875,6 +1855,7 @@ function resolveTopicFilterConfig(filter, configDir) {
   const groups = object(groupsPayload?.groups);
   const allowGroupNames = array(filter.allowKeywordGroups || filter.coreKeywordGroups).map(text).filter(Boolean);
   const denyGroupNames = array(filter.denyKeywordGroups).map(text).filter(Boolean);
+  const denyBypassGroupNames = array(filter.denyBypassKeywordGroups).map(text).filter(Boolean);
   next.coreKeywords = unique([
     ...resolveKeywordGroups(groups, allowGroupNames),
     ...array(filter.coreKeywords).map(text).filter(Boolean),
@@ -1882,6 +1863,10 @@ function resolveTopicFilterConfig(filter, configDir) {
   next.denyKeywords = unique([
     ...resolveKeywordGroups(groups, denyGroupNames),
     ...array(filter.denyKeywords).map(text).filter(Boolean),
+  ]);
+  next.denyBypassKeywords = unique([
+    ...resolveKeywordGroups(groups, denyBypassGroupNames),
+    ...array(filter.denyBypassKeywords).map(text).filter(Boolean),
   ]);
   return next;
 }

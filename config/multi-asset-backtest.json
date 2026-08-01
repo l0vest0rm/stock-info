@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "description": "Default A-share style proxies. Growth, dividend and bond are Eastmoney index series; cash is an uninvested constant-value sleeve.",
+  "assets": {
+    "growth": { "code": "399006.SZ", "label": "创业板指（成长代理）" },
+    "dividend": { "code": "000922.SH", "label": "中证红利（红利代理）" },
+    "bond": { "code": "000012.SH", "label": "上证国债指数（债券代理）" },
+    "cash": { "kind": "cash", "label": "现金（零收益代理）" }
+  },
+  "allocationSets": [
+    { "id": "growth50-dividend20-bond20-cash10", "weights": { "growth": 50, "dividend": 20, "bond": 20, "cash": 10 } },
+    { "id": "balanced35-dividend25-bond30-cash10", "weights": { "growth": 35, "dividend": 25, "bond": 30, "cash": 10 } },
+    { "id": "defensive25-dividend25-bond35-cash15", "weights": { "growth": 25, "dividend": 25, "bond": 35, "cash": 15 } }
+  ],
+  "deployment": {
+    "drawdownSleeve": "growth",
+    "rungs": [{ "lossPct": 10, "reservePct": 50 }, { "lossPct": 20, "reservePct": 50 }],
+    "fundingOrder": ["cash", "bond"],
+    "target": "growth"
+  },
+  "rotation": {
+    "mode": "none",
+    "frequency": "monthly",
+    "priceLookbackDays": 60,
+    "stockWeights": { "favored": 70, "other": 30 }
+  }
+}

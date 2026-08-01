@@ -20,6 +20,28 @@ export function topicFilterBypassDecision(doc, filter) {
   };
 }
 
+export function topicFilterKeywordDecision(doc, filter) {
+  const haystack = String(doc?.title || "").toLowerCase();
+  const matchedCore = matchedKeywords(haystack, filter?.coreKeywords);
+  const matchedSupport = matchedKeywords(haystack, filter?.supportKeywords);
+  const matchedDenyBypass = matchedKeywords(haystack, filter?.denyBypassKeywords);
+  const matchedDeny = matchedDenyBypass.length
+    ? []
+    : matchedKeywords(haystack, filter?.denyKeywords);
+  const score = matchedCore.length * 2 + matchedSupport.length - matchedDeny.length * 2;
+  const reasons = [
+    ...matchedCore.map((item) => `核心:${item}`),
+    ...matchedSupport.map((item) => `相关:${item}`),
+    ...matchedDenyBypass.map((item) => `优先:${item}`),
+    ...matchedDeny.map((item) => `排除:${item}`),
+  ];
+  return { score, reasons };
+}
+
+function matchedKeywords(haystack, keywords) {
+  return [...new Set(normalizedValues(keywords).filter((keyword) => haystack.includes(keyword.toLowerCase())))];
+}
+
 export function shouldKeepOriginalReportPdf(doc, config) {
   if (String(config?.reportPdfMode || "").trim() !== "original_link") {
     return false;
