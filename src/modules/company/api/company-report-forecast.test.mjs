@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { extractForecastsByPattern } from "./company.routes.ts";
+import { extractForecastsByPattern, normalizeReportTitleCore } from "./company.routes.ts";
 
 test("extracts annual metrics when PDF conversion puts revenue values in the header", () => {
   const forecasts = extractForecastsByPattern(`
@@ -74,4 +74,40 @@ test("extracts annual net profit, EPS, and PE from prose with Markdown formattin
     { year: 2027, netProfit: 214.6, eps: 2.3, pe: 15 },
     { year: 2028, netProfit: 239.5, eps: 2.6, pe: 13 },
   ]);
+});
+
+test("extracts two-year revenue, net-profit, and EPS forecasts from prose", () => {
+  assert.deepEqual(extractForecastsByPattern(
+    "我们预测兆易创新2026/27 年总营收和毛利率分别为255.6/339.8 亿元和65.3%/65.8%；预测归母净利润和基本EPS 分别为139.7/165.8 亿元和21.02/24.95 元。",
+  ), [
+    { year: 2026, revenue: 255.6, netProfit: 139.7, eps: 21.02 },
+    { year: 2027, revenue: 339.8, netProfit: 165.8, eps: 24.95 },
+  ]);
+});
+
+test("extracts revenue forecasts from an Eastmoney PDF financial-statement table", () => {
+  assert.deepEqual(extractForecastsByPattern(
+    "附一：合并损益表 百万元 2024 2025F 2026F 2027F 2028F 营业收入 1174 6497 17075 35795 63213 经营成本 508 2914 7513 16537 30532",
+  ), [
+    { year: 2025, revenue: 64.97 },
+    { year: 2026, revenue: 170.75 },
+    { year: 2027, revenue: 357.95 },
+    { year: 2028, revenue: 632.13 },
+  ]);
+});
+
+test("extracts three-year revenue and revenue growth forecasts from prose", () => {
+  assert.deepEqual(extractForecastsByPattern(
+    "投资建议：我们预计公司2026 年-2028 年营业收入为165.38 亿元、284.32 亿元、434.91 亿元，分别同比增长154.5%、71.9%、53.0%。",
+  ), [
+    { year: 2026, revenue: 165.38, revenueGrowth: 154.5 },
+    { year: 2027, revenue: 284.32, revenueGrowth: 71.9 },
+    { year: 2028, revenue: 434.91, revenueGrowth: 53 },
+  ]);
+});
+
+test("preserves a report title's own colon while removing only a company-code prefix", () => {
+  const eastmoneyTitle = "产能替代窗口开启：大厂淡出与长鑫赋能共振";
+  const sinaTitle = "兆易创新(603986)：产能替代窗口开启：大厂淡出与长鑫赋能共振";
+  assert.equal(normalizeReportTitleCore(eastmoneyTitle), normalizeReportTitleCore(sinaTitle));
 });

@@ -1,9 +1,11 @@
 import { syncProvisionalFinancialStatements } from "../modules/finance/application/sync-provisional-financial-statements";
 import { syncMacroData } from "../modules/macro/application/sync-macro-data";
+import { syncSituationData } from "../modules/situation/application/sync-situation-data";
 import type { Bindings } from "../types";
 
 export const FINANCIAL_SYNC_CRON = "*/15 * * * *";
 export const MACRO_SYNC_CRON = "17 * * * *";
+export const SITUATION_SYNC_CRON = "*/10 * * * *";
 
 export async function dispatchScheduledTask(event: ScheduledEvent, env: Bindings): Promise<void> {
   if (event.cron === FINANCIAL_SYNC_CRON) {
@@ -12,6 +14,10 @@ export async function dispatchScheduledTask(event: ScheduledEvent, env: Bindings
   }
   if (event.cron === MACRO_SYNC_CRON) {
     await syncMacroData(env, event.scheduledTime);
+    return;
+  }
+  if (event.cron === SITUATION_SYNC_CRON) {
+    await syncSituationData(env, event.scheduledTime);
     return;
   }
   throw new Error(`unsupported scheduled cron: ${event.cron}`);

@@ -20,7 +20,12 @@
         "光通信模块",
         "F5G概念",
         "节能环保"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 2,
@@ -42,7 +47,12 @@
         "华为概念",
         "蚂蚁概念",
         "固态电池"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "锂电池",
+      "classificationBasis": "company",
+      "classificationLabel": "主营锂电池及电池系统",
+      "classificationNote": "公司级主营校正：主营锂电池及电池系统。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 3,
@@ -57,7 +67,12 @@
         "西部大开发",
         "算力概念",
         "光通信模块"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 4,
@@ -75,7 +90,12 @@
         "算力概念",
         "人工智能",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 5,
@@ -97,7 +117,12 @@
         "AI眼镜",
         "人工智能",
         "人形机器人"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 6,
@@ -116,7 +141,12 @@
         "人工智能",
         "百度概念",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 7,
@@ -139,7 +169,12 @@
         "高带宽内存",
         "氮化镓",
         "光伏概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 8,
@@ -155,7 +190,12 @@
         "西部大开发",
         "酿酒概念",
         "味蕾经济"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "白酒",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：饮料",
+      "classificationNote": "按东财行业“饮料”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 9,
@@ -173,7 +213,12 @@
         "区块链",
         "中芯概念",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 10,
@@ -189,7 +234,12 @@
         "央国企改革",
         "稀缺资源",
         "一带一路"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "贵金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：贵金属",
+      "classificationNote": "按东财行业“贵金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 11,
@@ -213,7 +263,12 @@
         "光通信模块",
         "华为概念",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 12,
@@ -227,7 +282,12 @@
         "半导体概念",
         "国产芯片",
         "科创板做市股"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "晶圆制造",
+      "classificationBasis": "company",
+      "classificationLabel": "主营晶圆代工制造",
+      "classificationNote": "公司级主营校正：主营晶圆代工制造。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 13,
@@ -258,7 +318,12 @@
         "液冷概念",
         "华为概念",
         "数据中心"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "消费电子",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：消费电子设备",
+      "classificationNote": "按东财行业“消费电子设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 14,
@@ -272,7 +337,12 @@
         "独角兽",
         "创新医疗服务",
         "CAR-T细胞疗法"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "医疗服务",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：医疗服务",
+      "classificationNote": "按东财行业“医疗服务”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 15,
@@ -295,7 +365,12 @@
         "物联网",
         "空气能热泵",
         "医疗器械概念"
-      ]
+      ],
+      "primaryTrack": "可选消费",
+      "secondaryTrack": "家电",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：白色家电",
+      "classificationNote": "按东财行业“白色家电”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 16,
@@ -310,7 +385,12 @@
         "国产芯片",
         "光通信模块",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光芯片、光器件或高速连接器",
+      "classificationNote": "公司级主营校正：主营光芯片、光器件或高速连接器。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 17,
@@ -329,7 +409,12 @@
         "人工智能",
         "国产芯片",
         "贬值受益"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "company",
+      "classificationLabel": "主营芯片设计或IDM业务",
+      "classificationNote": "公司级主营校正：主营芯片设计或IDM业务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 18,
@@ -347,7 +432,12 @@
         "互联医疗",
         "参股券商",
         "深圳特区"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "保险",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：保险Ⅱ",
+      "classificationNote": "按东财行业“保险Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 19,
@@ -367,7 +457,12 @@
         "智能穿戴",
         "电池技术",
         "华为概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "被动元件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营被动元件或电子陶瓷",
+      "classificationNote": "公司级主营校正：主营被动元件或电子陶瓷。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 20,
@@ -379,7 +474,12 @@
         "国产芯片",
         "半导体概念",
         "存储芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 21,
@@ -391,7 +491,12 @@
         "互联网金融",
         "深圳特区",
         "跨境支付"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行Ⅱ",
+      "classificationNote": "按东财行业“银行Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 22,
@@ -407,7 +512,12 @@
         "充电桩",
         "储能概念",
         "光伏概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "光伏与储能系统",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光伏逆变器与储能系统",
+      "classificationNote": "公司级主营校正：主营光伏逆变器与储能系统。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 23,
@@ -421,7 +531,12 @@
         "高带宽内存",
         "半导体概念",
         "存储芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 24,
@@ -435,7 +550,12 @@
         "5G概念",
         "存储芯片",
         "PCB"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 25,
@@ -447,7 +567,12 @@
         "央国企改革",
         "半导体概念",
         "存储芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "晶圆制造",
+      "classificationBasis": "company",
+      "classificationLabel": "主营晶圆代工制造",
+      "classificationNote": "公司级主营校正：主营晶圆代工制造。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 26,
@@ -463,7 +588,12 @@
         "一带一路",
         "央国企改革",
         "PEEK材料概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "先进材料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：合成纤维及树脂",
+      "classificationNote": "按东财行业“合成纤维及树脂”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 27,
@@ -479,7 +609,12 @@
         "PCB",
         "华为概念",
         "5G概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 28,
@@ -498,7 +633,12 @@
         "虚拟现实",
         "上海自贸",
         "数字货币"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 29,
@@ -517,7 +657,12 @@
         "半导体概念",
         "英伟达概念",
         "国产芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "计算硬件与服务器",
+      "classificationBasis": "company",
+      "classificationLabel": "主营服务器、计算硬件或企业存储设备",
+      "classificationNote": "公司级主营校正：主营服务器、计算硬件或企业存储设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 30,
@@ -531,7 +676,12 @@
         "单抗概念",
         "中药概念",
         "创新药"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "化学药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学制药",
+      "classificationNote": "按东财行业“化学制药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 31,
@@ -546,7 +696,12 @@
         "绿色电力",
         "光伏概念",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "公用事业与环保",
+      "secondaryTrack": "新能源发电",
+      "classificationBasis": "company",
+      "classificationLabel": "主营风电、光伏等新能源发电运营",
+      "classificationNote": "公司级主营校正：主营风电、光伏等新能源发电运营。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 32,
@@ -562,7 +717,12 @@
         "科创板做市商",
         "参股期货",
         "参股银行"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "证券",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：非银行金融",
+      "classificationNote": "按东财行业“非银行金融”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 33,
@@ -576,7 +736,12 @@
         "光通信模块",
         "先进封装",
         "CPO概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 34,
@@ -594,7 +759,12 @@
         "水利建设",
         "储能概念",
         "创投"
-      ]
+      ],
+      "primaryTrack": "公用事业与环保",
+      "secondaryTrack": "水电运营",
+      "classificationBasis": "company",
+      "classificationLabel": "主营水电站运营",
+      "classificationNote": "公司级主营校正：主营水电站运营。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 35,
@@ -609,7 +779,12 @@
         "5G概念",
         "光纤概念",
         "CPO概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：光电子器件",
+      "classificationNote": "按东财行业“光电子器件”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 36,
@@ -635,7 +810,12 @@
         "工业互联",
         "独角兽",
         "CPO概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "计算硬件与服务器",
+      "classificationBasis": "company",
+      "classificationLabel": "主营服务器、计算硬件或企业存储设备",
+      "classificationNote": "公司级主营校正：主营服务器、计算硬件或企业存储设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 37,
@@ -647,7 +827,12 @@
         "半导体概念",
         "中芯概念",
         "高带宽内存"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 38,
@@ -667,7 +852,12 @@
         "天然气",
         "动力电池回收",
         "一带一路"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "油服设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营油气田装备与技术服务",
+      "classificationNote": "公司级主营校正：主营油气田装备与技术服务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 39,
@@ -691,7 +881,12 @@
         "国产芯片",
         "汽车芯片",
         "机器人概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 40,
@@ -714,7 +909,12 @@
         "存储芯片",
         "机器人概念",
         "先进封装"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "存储产品",
+      "classificationBasis": "company",
+      "classificationLabel": "主营存储芯片、模组或存储产品",
+      "classificationNote": "公司级主营校正：主营存储芯片、模组或存储产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 41,
@@ -754,7 +954,12 @@
         "屏下摄像",
         "荣耀概念",
         "先进封装"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "显示与光电",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：光学光电子",
+      "classificationNote": "按东财行业“光学光电子”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 42,
@@ -780,7 +985,12 @@
         "空气能热泵",
         "超级品牌",
         "智能家居"
-      ]
+      ],
+      "primaryTrack": "可选消费",
+      "secondaryTrack": "家电",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：白色家电",
+      "classificationNote": "按东财行业“白色家电”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 43,
@@ -801,7 +1011,12 @@
         "国产芯片",
         "机器人概念",
         "军民融合"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "传感与机器视觉",
+      "classificationBasis": "company",
+      "classificationLabel": "主营视觉感知、红外或机器视觉产品",
+      "classificationNote": "公司级主营校正：主营视觉感知、红外或机器视觉产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 44,
@@ -828,7 +1043,12 @@
         "OLED",
         "华为概念",
         "第三代半导体"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "激光与精密设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营激光或精密加工设备",
+      "classificationNote": "公司级主营校正：主营激光或精密加工设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 45,
@@ -861,7 +1081,12 @@
         "车联网(车路云)",
         "阿里概念",
         "深圳特区"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "计算硬件与服务器",
+      "classificationBasis": "company",
+      "classificationLabel": "主营服务器、计算硬件或企业存储设备",
+      "classificationNote": "公司级主营校正：主营服务器、计算硬件或企业存储设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 46,
@@ -875,7 +1100,12 @@
         "国产芯片",
         "氮化镓",
         "华为概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 47,
@@ -883,7 +1113,12 @@
       "name": "海阳科技",
       "institutionCount": 290,
       "industry": "化学纤维",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "先进材料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学纤维",
+      "classificationNote": "按东财行业“化学纤维”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 48,
@@ -901,7 +1136,12 @@
         "存储芯片",
         "华为概念",
         "5G概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 49,
@@ -930,7 +1170,12 @@
         "超清视频",
         "云计算",
         "光纤概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "传感与机器视觉",
+      "classificationBasis": "company",
+      "classificationLabel": "主营视觉感知、红外或机器视觉产品",
+      "classificationNote": "公司级主营校正：主营视觉感知、红外或机器视觉产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 50,
@@ -944,7 +1189,12 @@
         "半导体概念",
         "高带宽内存",
         "中芯概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 51,
@@ -961,7 +1211,12 @@
         "MiniLED",
         "次新股",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "显示与光电",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：光学光电子",
+      "classificationNote": "按东财行业“光学光电子”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 52,
@@ -992,7 +1247,12 @@
         "光纤概念",
         "CPO概念",
         "电网概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 53,
@@ -1012,7 +1272,12 @@
         "华为概念",
         "小米概念",
         "消费电子概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 54,
@@ -1029,7 +1294,12 @@
         "电池技术",
         "锂电池概念",
         "环氧丙烷"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "化工",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学制品",
+      "classificationNote": "按东财行业“化学制品”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 55,
@@ -1043,7 +1313,12 @@
         "券商概念",
         "科创板做市商",
         "长江三角"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "证券",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：非银行金融",
+      "classificationNote": "按东财行业“非银行金融”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 56,
@@ -1057,7 +1332,12 @@
         "光刻机",
         "OLED",
         "先进封装"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 57,
@@ -1069,7 +1349,12 @@
         "次新股",
         "半导体概念",
         "先进封装"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体封测",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体封装或测试服务",
+      "classificationNote": "公司级主营校正：主营半导体封装或测试服务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 58,
@@ -1092,7 +1377,12 @@
         "MLCC",
         "新材料",
         "电池技术"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 59,
@@ -1115,7 +1405,12 @@
         "互联网服务",
         "人工智能",
         "鸿蒙概念"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "金融科技",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：互联网金融",
+      "classificationNote": "按东财行业“互联网金融”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 60,
@@ -1140,7 +1435,12 @@
         "OLED",
         "苹果概念",
         "电池技术"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 61,
@@ -1166,7 +1466,12 @@
         "柔性屏(折叠屏)",
         "AI眼镜",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "显示与光电",
+      "classificationBasis": "company",
+      "classificationLabel": "主营显示面板或显示器件",
+      "classificationNote": "公司级主营校正：主营显示面板或显示器件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 62,
@@ -1181,7 +1486,12 @@
         "参股保险",
         "区块链",
         "一带一路"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行",
+      "classificationNote": "按东财行业“银行”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 63,
@@ -1189,7 +1499,12 @@
       "name": "宁波银行",
       "institutionCount": 239,
       "industry": "银行",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行",
+      "classificationNote": "按东财行业“银行”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 64,
@@ -1205,7 +1520,12 @@
         "中芯概念",
         "先进封装",
         "国产芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 65,
@@ -1218,7 +1538,12 @@
         "存储芯片",
         "半导体概念",
         "抖音概念(字节概念)"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "存储产品",
+      "classificationBasis": "company",
+      "classificationLabel": "主营存储芯片、模组或存储产品",
+      "classificationNote": "公司级主营校正：主营存储芯片、模组或存储产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 66,
@@ -1230,7 +1555,12 @@
         "储能概念",
         "国产芯片",
         "光伏概念"
-      ]
+      ],
+      "primaryTrack": "可选消费",
+      "secondaryTrack": "家电",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：其他家电",
+      "classificationNote": "按东财行业“其他家电”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 67,
@@ -1245,7 +1575,12 @@
         "乳业",
         "婴童概念",
         "西部大开发"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "食品饮料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：食品",
+      "classificationNote": "按东财行业“食品”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 68,
@@ -1263,7 +1598,12 @@
         "AI眼镜",
         "AI手机",
         "存储芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "存储产品",
+      "classificationBasis": "company",
+      "classificationLabel": "主营存储芯片、模组或存储产品",
+      "classificationNote": "公司级主营校正：主营存储芯片、模组或存储产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 69,
@@ -1278,7 +1618,12 @@
         "券商概念",
         "科创板做市商",
         "阿里概念"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "证券",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：非银行金融",
+      "classificationNote": "按东财行业“非银行金融”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 70,
@@ -1289,7 +1634,12 @@
       "concepts": [
         "互联网金融",
         "区块链"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行",
+      "classificationNote": "按东财行业“银行”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 71,
@@ -1303,7 +1653,12 @@
         "国产芯片",
         "次新股",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 72,
@@ -1314,7 +1669,12 @@
       "concepts": [
         "光刻机",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 73,
@@ -1340,7 +1700,12 @@
         "湖北自贸",
         "央国企改革",
         "数据中心"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 74,
@@ -1354,7 +1719,12 @@
         "算力概念",
         "次新股",
         "AI芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 75,
@@ -1370,7 +1740,12 @@
         "天然气",
         "央国企改革",
         "油气设服"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "油气开采与炼化",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：油气开采Ⅱ",
+      "classificationNote": "按东财行业“油气开采Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 76,
@@ -1383,7 +1758,12 @@
         "小金属概念",
         "黄金概念",
         "磷化工"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：基本金属",
+      "classificationNote": "按东财行业“基本金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 77,
@@ -1399,7 +1779,12 @@
         "信创",
         "通信技术",
         "AIPC"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "存储产品",
+      "classificationBasis": "company",
+      "classificationLabel": "主营存储芯片、模组或存储产品",
+      "classificationNote": "公司级主营校正：主营存储芯片、模组或存储产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 78,
@@ -1419,7 +1804,12 @@
         "新能源车",
         "氟化工概念",
         "特斯拉概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 79,
@@ -1430,7 +1820,12 @@
       "concepts": [
         "高带宽内存",
         "存储芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 80,
@@ -1450,7 +1845,12 @@
         "特斯拉概念",
         "小米概念",
         "物联网"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 81,
@@ -1476,7 +1876,12 @@
         "超导概念",
         "网络安全",
         "华为概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 82,
@@ -1487,7 +1892,12 @@
       "concepts": [
         "互联网金融",
         "跨境支付"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行Ⅱ",
+      "classificationNote": "按东财行业“银行Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 83,
@@ -1505,7 +1915,12 @@
         "显示技术",
         "中芯概念",
         "柔性屏(折叠屏)"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 84,
@@ -1529,7 +1944,12 @@
         "钠离子电池",
         "储能概念",
         "消费电子概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "锂电池",
+      "classificationBasis": "company",
+      "classificationLabel": "主营锂电池及电池系统",
+      "classificationNote": "公司级主营校正：主营锂电池及电池系统。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 85,
@@ -1545,7 +1965,12 @@
         "一带一路",
         "工程机械概念",
         "军民融合"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "工程机械",
+      "classificationBasis": "company",
+      "classificationLabel": "主营工程机械或液压系统",
+      "classificationNote": "公司级主营校正：主营工程机械或液压系统。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 86,
@@ -1564,7 +1989,12 @@
         "一带一路",
         "央国企改革",
         "无人驾驶"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "汽车零部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营汽车动力、热管理、玻璃或底盘零部件",
+      "classificationNote": "公司级主营校正：主营汽车动力、热管理、玻璃或底盘零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 87,
@@ -1582,7 +2012,12 @@
         "阿里概念",
         "节能环保",
         "智能家居"
-      ]
+      ],
+      "primaryTrack": "可选消费",
+      "secondaryTrack": "家电",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：白色家电",
+      "classificationNote": "按东财行业“白色家电”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 88,
@@ -1607,7 +2042,12 @@
         "燃料电池概念",
         "风能",
         "军工"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "先进材料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：合成纤维及树脂",
+      "classificationNote": "按东财行业“合成纤维及树脂”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 89,
@@ -1618,7 +2058,12 @@
       "concepts": [
         "券商概念",
         "互联网金融"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "证券",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：非银行金融",
+      "classificationNote": "按东财行业“非银行金融”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 90,
@@ -1626,7 +2071,12 @@
       "name": "桐昆股份",
       "institutionCount": 172,
       "industry": "合成纤维及树脂",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "先进材料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：合成纤维及树脂",
+      "classificationNote": "按东财行业“合成纤维及树脂”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 91,
@@ -1639,7 +2089,12 @@
         "合成生物",
         "参股银行",
         "乡村振兴"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "农业与养殖",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：畜牧业",
+      "classificationNote": "按东财行业“畜牧业”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 92,
@@ -1654,7 +2109,12 @@
         "流感",
         "幽门螺杆菌概念",
         "创新药"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "化学药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学制药",
+      "classificationNote": "按东财行业“化学制药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 93,
@@ -1673,7 +2133,12 @@
         "军工",
         "通信技术",
         "5G概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "被动元件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营被动元件或电子陶瓷",
+      "classificationNote": "公司级主营校正：主营被动元件或电子陶瓷。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 94,
@@ -1686,7 +2151,12 @@
         "煤化工概念",
         "央国企改革",
         "铁路基建"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "煤炭",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：煤炭",
+      "classificationNote": "按东财行业“煤炭”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 95,
@@ -1704,7 +2174,12 @@
         "央国企改革",
         "工业母机",
         "小金属概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 96,
@@ -1720,7 +2195,12 @@
         "MLCC",
         "新材料",
         "小金属概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 97,
@@ -1737,7 +2217,12 @@
         "合成生物",
         "创新药",
         "创新医疗服务"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "化学药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学制药",
+      "classificationNote": "按东财行业“化学制药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 98,
@@ -1748,7 +2233,12 @@
       "concepts": [
         "猪肉概念",
         "水产概念"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "农业与养殖",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：畜牧业",
+      "classificationNote": "按东财行业“畜牧业”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 99,
@@ -1767,7 +2257,12 @@
         "国产软件",
         "机器人概念",
         "新型工业化"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "工业自动化与机器人",
+      "classificationBasis": "company",
+      "classificationLabel": "主营工业自动化、控制或机器人核心部件",
+      "classificationNote": "公司级主营校正：主营工业自动化、控制或机器人核心部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 100,
@@ -1791,7 +2286,12 @@
         "算力概念",
         "商业航天",
         "被动元件概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "被动元件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营被动元件或电子陶瓷",
+      "classificationNote": "公司级主营校正：主营被动元件或电子陶瓷。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 101,
@@ -1808,7 +2308,12 @@
         "存储芯片",
         "第三代半导体",
         "华为概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 102,
@@ -1828,7 +2333,12 @@
         "风能",
         "一带一路",
         "航母概念"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "船舶与海工",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：船舶与海洋装备",
+      "classificationNote": "按东财行业“船舶与海洋装备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 103,
@@ -1846,7 +2356,12 @@
         "LED概念",
         "人工智能",
         "无线耳机"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 104,
@@ -1867,7 +2382,12 @@
         "超级电容",
         "磁悬浮概念",
         "电网概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电网设备",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：输变电设备",
+      "classificationNote": "按东财行业“输变电设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 105,
@@ -1880,7 +2400,12 @@
         "国产芯片",
         "工业互联",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 106,
@@ -1900,7 +2425,12 @@
         "锂矿概念",
         "储能概念",
         "固态电池"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 107,
@@ -1912,7 +2442,12 @@
         "存储芯片",
         "半导体概念",
         "次新股"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "存储产品",
+      "classificationBasis": "company",
+      "classificationLabel": "主营存储芯片、模组或存储产品",
+      "classificationNote": "公司级主营校正：主营存储芯片、模组或存储产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 108,
@@ -1927,7 +2462,12 @@
         "天然气",
         "央国企改革",
         "一带一路"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "油气开采与炼化",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：炼化及贸易",
+      "classificationNote": "按东财行业“炼化及贸易”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 109,
@@ -1943,7 +2483,12 @@
         "LED概念",
         "光刻胶",
         "OLED"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 110,
@@ -1955,7 +2500,12 @@
         "新能源车",
         "次新股",
         "传感器"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "其他工业设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营专用工业设备或工业零部件",
+      "classificationNote": "公司级主营校正：主营专用工业设备或工业零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 111,
@@ -1979,7 +2529,12 @@
         "锂电池概念",
         "钠离子电池",
         "机器人概念"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "航天电源设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营航天特种电源设备",
+      "classificationNote": "公司级主营校正：主营航天特种电源设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 112,
@@ -1991,7 +2546,12 @@
         "养老概念",
         "长江三角",
         "蚂蚁概念"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "保险",
+      "classificationBasis": "company",
+      "classificationLabel": "主营保险业务",
+      "classificationNote": "公司级主营校正：主营保险业务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 113,
@@ -2020,7 +2580,12 @@
         "锂电池概念",
         "储能概念",
         "IGBT概念"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "整车",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：乘用车",
+      "classificationNote": "按东财行业“乘用车”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 114,
@@ -2044,7 +2609,12 @@
         "钠离子电池",
         "电网概念",
         "消费电子概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "锂电池",
+      "classificationBasis": "company",
+      "classificationLabel": "主营锂电池及电池系统",
+      "classificationNote": "公司级主营校正：主营锂电池及电池系统。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 115,
@@ -2069,7 +2639,12 @@
         "电子竞技",
         "虚拟数字人",
         "网络安全"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "通信运营",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信运营",
+      "classificationNote": "按东财行业“通信运营”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 116,
@@ -2081,7 +2656,12 @@
         "央国企改革",
         "次新股",
         "小金属概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 117,
@@ -2110,7 +2690,12 @@
         "央国企改革",
         "信创",
         "算力概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "计算硬件与服务器",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：计算机硬件",
+      "classificationNote": "按东财行业“计算机硬件”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 118,
@@ -2141,7 +2726,12 @@
         "区块链",
         "数字孪生",
         "云计算"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "计算硬件与服务器",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：计算机设备",
+      "classificationNote": "按东财行业“计算机设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 119,
@@ -2156,7 +2746,12 @@
         "氦气概念",
         "华为概念",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 120,
@@ -2169,7 +2764,12 @@
         "抖音概念(字节概念)",
         "AI眼镜",
         "次新股"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "显示与光电",
+      "classificationBasis": "company",
+      "classificationLabel": "主营显示面板或显示器件",
+      "classificationNote": "公司级主营校正：主营显示面板或显示器件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 121,
@@ -2180,7 +2780,12 @@
       "concepts": [
         "单抗概念",
         "创新药"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "生物药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：生物医药",
+      "classificationNote": "按东财行业“生物医药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 122,
@@ -2194,7 +2799,12 @@
         "海洋经济",
         "一带一路",
         "油气资源"
-      ]
+      ],
+      "primaryTrack": "交通运输与物流",
+      "secondaryTrack": "航运港口",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：港口航运",
+      "classificationNote": "按东财行业“港口航运”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 123,
@@ -2202,7 +2812,12 @@
       "name": "荣昌生物",
       "institutionCount": 137,
       "industry": "生物医药",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "生物药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：生物医药",
+      "classificationNote": "按东财行业“生物医药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 124,
@@ -2224,7 +2839,12 @@
         "液冷概念",
         "边缘计算",
         "信创"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 125,
@@ -2247,7 +2867,12 @@
         "央国企改革",
         "电池技术",
         "PVDF概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "化工",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学原料",
+      "classificationNote": "按东财行业“化学原料”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 126,
@@ -2258,7 +2883,12 @@
       "concepts": [
         "互联网金融",
         "跨境支付"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行Ⅱ",
+      "classificationNote": "按东财行业“银行Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 127,
@@ -2291,7 +2921,12 @@
         "深圳特区",
         "混合现实",
         "6G概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "射频与消费电子部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营射频及消费电子零部件",
+      "classificationNote": "公司级主营校正：主营射频及消费电子零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 128,
@@ -2309,7 +2944,12 @@
         "新能源车",
         "固态电池",
         "机器人概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 129,
@@ -2327,7 +2967,12 @@
         "PEEK材料概念",
         "PCB",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "先进材料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：玻璃玻纤",
+      "classificationNote": "按东财行业“玻璃玻纤”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 130,
@@ -2382,7 +3027,12 @@
         "通信技术",
         "电池技术",
         "机器人概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 131,
@@ -2393,7 +3043,12 @@
       "concepts": [
         "味蕾经济",
         "预制菜概念"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "食品饮料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：食品加工",
+      "classificationNote": "按东财行业“食品加工”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 132,
@@ -2419,7 +3074,12 @@
         "固态电池",
         "航母概念",
         "电池技术"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "船舶与海工",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：船舶与海洋装备",
+      "classificationNote": "按东财行业“船舶与海洋装备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 133,
@@ -2437,7 +3097,12 @@
         "一带一路",
         "特斯拉概念",
         "华为汽车"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电网设备",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：输变电设备",
+      "classificationNote": "按东财行业“输变电设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 134,
@@ -2456,7 +3121,12 @@
         "电池技术",
         "蓝宝石",
         "新材料"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "先进材料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学新材料",
+      "classificationNote": "按东财行业“化学新材料”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 135,
@@ -2482,7 +3152,12 @@
         "华为概念",
         "5G概念",
         "储能概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 136,
@@ -2501,7 +3176,12 @@
         "机器人概念",
         "深圳特区",
         "工业母机"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "工业自动化与机器人",
+      "classificationBasis": "company",
+      "classificationLabel": "主营工业自动化、控制或机器人核心部件",
+      "classificationNote": "公司级主营校正：主营工业自动化、控制或机器人核心部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 137,
@@ -2509,7 +3189,12 @@
       "name": "金海通",
       "institutionCount": 127,
       "industry": "半导体",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 138,
@@ -2527,7 +3212,12 @@
         "CPO概念",
         "国产芯片",
         "激光雷达"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光芯片、光器件或高速连接器",
+      "classificationNote": "公司级主营校正：主营光芯片、光器件或高速连接器。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 139,
@@ -2548,7 +3238,12 @@
         "动力电池回收",
         "新材料",
         "氢能源"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 140,
@@ -2559,7 +3254,12 @@
       "concepts": [
         "单抗概念",
         "免疫治疗"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "化学药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学制药",
+      "classificationNote": "按东财行业“化学制药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 141,
@@ -2567,7 +3267,12 @@
       "name": "恒立液压",
       "institutionCount": 122,
       "industry": "通用设备",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "工程机械",
+      "classificationBasis": "company",
+      "classificationLabel": "主营工程机械或液压系统",
+      "classificationNote": "公司级主营校正：主营工程机械或液压系统。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 142,
@@ -2578,7 +3283,12 @@
       "concepts": [
         "交运设备",
         "体育产业"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "摩托车与轻型出行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：其他交运设备",
+      "classificationNote": "按东财行业“其他交运设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 143,
@@ -2590,7 +3300,12 @@
         "液冷概念",
         "铜缆高速连接",
         "新能源车"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光芯片、光器件或高速连接器",
+      "classificationNote": "公司级主营校正：主营光芯片、光器件或高速连接器。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 144,
@@ -2601,7 +3316,12 @@
       "concepts": [
         "小米汽车",
         "新能源车"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "汽车零部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营汽车动力、热管理、玻璃或底盘零部件",
+      "classificationNote": "公司级主营校正：主营汽车动力、热管理、玻璃或底盘零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 145,
@@ -2623,7 +3343,12 @@
         "冷链物流",
         "汽车热管理",
         "华为汽车"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "汽车零部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营汽车动力、热管理、玻璃或底盘零部件",
+      "classificationNote": "公司级主营校正：主营汽车动力、热管理、玻璃或底盘零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 146,
@@ -2636,7 +3361,12 @@
         "次新股",
         "高带宽内存",
         "存储芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 147,
@@ -2654,7 +3384,12 @@
         "5G概念",
         "通信技术",
         "华为概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 148,
@@ -2667,7 +3402,12 @@
         "汽车芯片",
         "半导体概念",
         "存储芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 149,
@@ -2679,7 +3419,12 @@
         "跨境支付",
         "央国企改革",
         "互联网金融"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行",
+      "classificationNote": "按东财行业“银行”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 150,
@@ -2690,7 +3435,12 @@
       "concepts": [
         "高带宽内存",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 151,
@@ -2723,7 +3473,12 @@
         "小米汽车",
         "独角兽",
         "汽车热管理"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "汽车零部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营汽车动力、热管理、玻璃或底盘零部件",
+      "classificationNote": "公司级主营校正：主营汽车动力、热管理、玻璃或底盘零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 152,
@@ -2737,7 +3492,12 @@
         "化工原料",
         "维生素",
         "青蒿素"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "医药与健康产品",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：保健护理",
+      "classificationNote": "按东财行业“保健护理”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 153,
@@ -2751,7 +3511,12 @@
         "锂电池概念",
         "固态电池",
         "电池技术"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 154,
@@ -2770,7 +3535,12 @@
         "虚拟现实",
         "BC电池",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "激光与精密设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营激光或精密加工设备",
+      "classificationNote": "公司级主营校正：主营激光或精密加工设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 155,
@@ -2788,7 +3558,12 @@
         "通信技术",
         "超清视频",
         "第三代半导体"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 156,
@@ -2815,7 +3590,12 @@
         "无人机",
         "燃料电池概念",
         "储能概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "被动元件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营被动元件或电子陶瓷",
+      "classificationNote": "公司级主营校正：主营被动元件或电子陶瓷。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 157,
@@ -2830,7 +3610,12 @@
         "乳业",
         "华为概念",
         "乡村振兴"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "农业与养殖",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：畜牧业",
+      "classificationNote": "按东财行业“畜牧业”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 158,
@@ -2844,7 +3629,12 @@
         "西部大开发",
         "绿色电力",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "公用事业与环保",
+      "secondaryTrack": "水电运营",
+      "classificationBasis": "company",
+      "classificationLabel": "主营水电站运营",
+      "classificationNote": "公司级主营校正：主营水电站运营。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 159,
@@ -2870,7 +3660,12 @@
         "磷化工",
         "固态电池",
         "有机硅概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "化工",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学原料",
+      "classificationNote": "按东财行业“化学原料”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 160,
@@ -2881,7 +3676,12 @@
       "concepts": [
         "西部大开发",
         "创新药"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "生物药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：生物医药",
+      "classificationNote": "按东财行业“生物医药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 161,
@@ -2904,7 +3704,12 @@
         "鸿蒙概念",
         "人工智能",
         "虚拟机器人"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "金融科技",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：互联网金融",
+      "classificationNote": "按东财行业“互联网金融”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 162,
@@ -2919,7 +3724,12 @@
         "参股期货",
         "央国企改革",
         "小金属概念"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "煤炭",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：煤炭开采",
+      "classificationNote": "按东财行业“煤炭开采”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 163,
@@ -2932,7 +3742,12 @@
         "光伏概念",
         "BC电池",
         "玻璃基板"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "光伏设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光伏制造设备",
+      "classificationNote": "公司级主营校正：主营光伏制造设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 164,
@@ -2943,7 +3758,12 @@
       "concepts": [
         "代糖概念",
         "造纸印刷"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "纸与包装",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：造纸印刷",
+      "classificationNote": "按东财行业“造纸印刷”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 165,
@@ -2957,7 +3777,12 @@
         "参股保险",
         "单抗概念",
         "医疗器械概念"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "化学药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学制药",
+      "classificationNote": "按东财行业“化学制药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 166,
@@ -2978,7 +3803,12 @@
         "商业航天",
         "半导体概念",
         "CPO概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "光伏设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光伏制造设备",
+      "classificationNote": "公司级主营校正：主营光伏制造设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 167,
@@ -2993,7 +3823,12 @@
         "钙钛矿电池",
         "OLED",
         "光伏概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "光伏设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光伏制造设备",
+      "classificationNote": "公司级主营校正：主营光伏制造设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 168,
@@ -3018,7 +3853,12 @@
         "LED概念",
         "CPO概念",
         "消费电子概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 169,
@@ -3049,7 +3889,12 @@
         "雅下水电概念",
         "创投",
         "可控核聚变"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "制冷与热管理",
+      "classificationBasis": "company",
+      "classificationLabel": "主营工业制冷与热管理设备",
+      "classificationNote": "公司级主营校正：主营工业制冷与热管理设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 170,
@@ -3066,7 +3911,12 @@
         "电池技术",
         "西部大开发",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "化肥农药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化肥农药",
+      "classificationNote": "按东财行业“化肥农药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 171,
@@ -3086,7 +3936,12 @@
         "中芯概念",
         "高带宽内存",
         "磷化工"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 172,
@@ -3108,7 +3963,12 @@
         "PCB",
         "苹果概念",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 173,
@@ -3131,7 +3991,12 @@
         "被动元件概念",
         "高压快充",
         "电池技术"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "被动元件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营被动元件或电子陶瓷",
+      "classificationNote": "公司级主营校正：主营被动元件或电子陶瓷。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 174,
@@ -3159,7 +4024,12 @@
         "低空经济",
         "华为概念",
         "充电桩"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光芯片、光器件或高速连接器",
+      "classificationNote": "公司级主营校正：主营光芯片、光器件或高速连接器。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 175,
@@ -3171,7 +4041,12 @@
         "互联网金融",
         "跨境支付",
         "长江三角"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行Ⅱ",
+      "classificationNote": "按东财行业“银行Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 176,
@@ -3190,7 +4065,12 @@
         "一带一路",
         "乡村振兴",
         "工程机械概念"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "工程机械",
+      "classificationBasis": "company",
+      "classificationLabel": "主营工程机械或液压系统",
+      "classificationNote": "公司级主营校正：主营工程机械或液压系统。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 177,
@@ -3213,7 +4093,12 @@
         "电子竞技",
         "虚拟现实",
         "新能源车"
-      ]
+      ],
+      "primaryTrack": "传媒与互联网",
+      "secondaryTrack": "游戏与数字内容",
+      "classificationBasis": "company",
+      "classificationLabel": "主营网络游戏与数字内容",
+      "classificationNote": "公司级主营校正：主营网络游戏与数字内容。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 178,
@@ -3224,7 +4109,12 @@
       "concepts": [
         "养老概念",
         "蚂蚁概念"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "保险",
+      "classificationBasis": "company",
+      "classificationLabel": "主营保险业务",
+      "classificationNote": "公司级主营校正：主营保险业务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 179,
@@ -3237,7 +4127,12 @@
         "特斯拉概念",
         "小米汽车",
         "光伏概念"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "汽车零部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营汽车动力、热管理、玻璃或底盘零部件",
+      "classificationNote": "公司级主营校正：主营汽车动力、热管理、玻璃或底盘零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 180,
@@ -3252,7 +4147,12 @@
         "装配建筑",
         "数字孪生",
         "一带一路"
-      ]
+      ],
+      "primaryTrack": "地产与基建",
+      "secondaryTrack": "建筑工程",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：建筑施工",
+      "classificationNote": "按东财行业“建筑施工”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 181,
@@ -3263,7 +4163,12 @@
       "concepts": [
         "西部大开发",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "煤炭",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：煤炭",
+      "classificationNote": "按东财行业“煤炭”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 182,
@@ -3277,7 +4182,12 @@
         "电池技术",
         "锂电池概念",
         "化工原料"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "化肥农药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化肥农药",
+      "classificationNote": "按东财行业“化肥农药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 183,
@@ -3291,7 +4201,12 @@
         "华为概念",
         "5G概念",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "先进材料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：合成纤维及树脂",
+      "classificationNote": "按东财行业“合成纤维及树脂”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 184,
@@ -3304,7 +4219,12 @@
         "酿酒概念",
         "央国企改革",
         "白酒"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "白酒",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：白酒Ⅱ",
+      "classificationNote": "按东财行业“白酒Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 185,
@@ -3317,7 +4237,12 @@
         "AI制药（医疗）",
         "人工智能",
         "创新医疗服务"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "生物药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：生物医药",
+      "classificationNote": "按东财行业“生物医药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 186,
@@ -3332,7 +4257,12 @@
         "券商概念",
         "科创板做市商",
         "互联网金融"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "证券",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：非银行金融",
+      "classificationNote": "按东财行业“非银行金融”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 187,
@@ -3358,7 +4288,12 @@
         "人工智能",
         "国产芯片",
         "AI芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 188,
@@ -3370,7 +4305,12 @@
         "央国企改革",
         "小金属概念",
         "稀土永磁"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：基本金属",
+      "classificationNote": "按东财行业“基本金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 189,
@@ -3390,7 +4330,12 @@
         "光伏概念",
         "液冷概念",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 190,
@@ -3407,7 +4352,12 @@
         "半导体概念",
         "光通信模块",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 191,
@@ -3419,7 +4369,12 @@
         "跨境支付",
         "互联网金融",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行",
+      "classificationNote": "按东财行业“银行”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 192,
@@ -3430,7 +4385,12 @@
       "concepts": [
         "央国企改革",
         "稀缺资源"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "煤炭",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：煤炭",
+      "classificationNote": "按东财行业“煤炭”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 193,
@@ -3443,7 +4403,12 @@
         "小米概念",
         "成渝特区",
         "互联网金融"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行Ⅱ",
+      "classificationNote": "按东财行业“银行Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 194,
@@ -3456,7 +4421,12 @@
         "蚂蚁概念",
         "参股期货",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "保险",
+      "classificationBasis": "company",
+      "classificationLabel": "主营保险业务",
+      "classificationNote": "公司级主营校正：主营保险业务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 195,
@@ -3473,7 +4443,12 @@
         "电池技术",
         "小金属概念",
         "固态电池"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 196,
@@ -3490,7 +4465,12 @@
         "阿里概念",
         "央国企改革",
         "西部大开发"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光芯片、光器件或高速连接器",
+      "classificationNote": "公司级主营校正：主营光芯片、光器件或高速连接器。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 197,
@@ -3501,7 +4481,12 @@
       "concepts": [
         "新材料",
         "PCB"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "轮胎模具与工具",
+      "classificationBasis": "company",
+      "classificationLabel": "主营轮胎模具或工业刀具",
+      "classificationNote": "公司级主营校正：主营轮胎模具或工业刀具。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 198,
@@ -3513,7 +4498,12 @@
         "央国企改革",
         "一带一路",
         "海洋经济"
-      ]
+      ],
+      "primaryTrack": "交通运输与物流",
+      "secondaryTrack": "航运港口",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：港口航运",
+      "classificationNote": "按东财行业“港口航运”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 199,
@@ -3532,7 +4522,12 @@
         "CRO",
         "人工智能",
         "病毒防治"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "医疗服务",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：医疗服务",
+      "classificationNote": "按东财行业“医疗服务”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 200,
@@ -3563,7 +4558,12 @@
         "节能环保",
         "显示技术",
         "AI眼镜"
-      ]
+      ],
+      "primaryTrack": "可选消费",
+      "secondaryTrack": "家电",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：视听器材",
+      "classificationNote": "按东财行业“视听器材”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 201,
@@ -3577,7 +4577,12 @@
         "精准医疗",
         "医疗器械概念",
         "PCB"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "医疗器械",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：医疗器械",
+      "classificationNote": "按东财行业“医疗器械”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 202,
@@ -3594,7 +4599,12 @@
         "新能源",
         "可控核聚变",
         "储能概念"
-      ]
+      ],
+      "primaryTrack": "公用事业与环保",
+      "secondaryTrack": "核电运营",
+      "classificationBasis": "company",
+      "classificationLabel": "主营核电站运营",
+      "classificationNote": "公司级主营校正：主营核电站运营。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 203,
@@ -3616,7 +4626,12 @@
         "新能源车",
         "新材料",
         "储能概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 204,
@@ -3634,7 +4649,12 @@
         "央国企改革",
         "电池技术",
         "锂矿概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：基本金属",
+      "classificationNote": "按东财行业“基本金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 205,
@@ -3649,7 +4669,12 @@
         "信创",
         "国产软件",
         "AI应用"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "软件与信息服务",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：计算机软件",
+      "classificationNote": "按东财行业“计算机软件”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 206,
@@ -3668,7 +4693,12 @@
         "农业种植",
         "参股券商",
         "西部大开发"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "白酒",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：饮料",
+      "classificationNote": "按东财行业“饮料”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 207,
@@ -3685,7 +4715,12 @@
         "钛白粉概念",
         "维生素",
         "钒电池"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "化工",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学原料",
+      "classificationNote": "按东财行业“化学原料”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 208,
@@ -3704,7 +4739,12 @@
         "通信技术",
         "无人驾驶",
         "医美概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光芯片、光器件或高速连接器",
+      "classificationNote": "公司级主营校正：主营光芯片、光器件或高速连接器。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 209,
@@ -3716,7 +4756,12 @@
         "贬值受益",
         "医疗器械概念",
         "养老概念"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "医疗器械",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：医疗器械",
+      "classificationNote": "按东财行业“医疗器械”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 210,
@@ -3727,7 +4772,12 @@
       "concepts": [
         "新能源车",
         "次新股"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "汽车零部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营汽车动力、热管理、玻璃或底盘零部件",
+      "classificationNote": "公司级主营校正：主营汽车动力、热管理、玻璃或底盘零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 211,
@@ -3747,7 +4797,12 @@
         "碳化硅",
         "国产芯片",
         "充电桩"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电源与储能设备",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：其他电气设备",
+      "classificationNote": "按东财行业“其他电气设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 212,
@@ -3759,7 +4814,12 @@
         "次新股",
         "新材料",
         "锂电池概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 213,
@@ -3770,7 +4830,12 @@
       "concepts": [
         "工业母机",
         "PCB"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "激光与精密设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营激光或精密加工设备",
+      "classificationNote": "公司级主营校正：主营激光或精密加工设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 214,
@@ -3786,7 +4851,12 @@
         "新能源",
         "医疗器械概念",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "工业自动化与机器人",
+      "classificationBasis": "company",
+      "classificationLabel": "主营工业自动化、控制或机器人核心部件",
+      "classificationNote": "公司级主营校正：主营工业自动化、控制或机器人核心部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 215,
@@ -3799,7 +4869,12 @@
         "跨境支付",
         "区块链",
         "互联网金融"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行Ⅱ",
+      "classificationNote": "按东财行业“银行Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 216,
@@ -3818,7 +4893,12 @@
         "电池技术",
         "无人机",
         "新材料"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 217,
@@ -3835,7 +4915,12 @@
         "锂电池概念",
         "光通信模块",
         "新能源车"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 218,
@@ -3850,7 +4935,12 @@
         "汽车整车",
         "车联网(车路云)",
         "燃料电池概念"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "商用车",
+      "classificationBasis": "company",
+      "classificationLabel": "主营客车等商用车整车",
+      "classificationNote": "公司级主营校正：主营客车等商用车整车。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 219,
@@ -3870,7 +4960,12 @@
         "西部大开发",
         "半导体概念",
         "光伏概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 220,
@@ -3894,7 +4989,12 @@
         "PCB",
         "低空经济",
         "机器人概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 221,
@@ -3905,7 +5005,12 @@
       "concepts": [
         "长江三角",
         "互联网金融"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行",
+      "classificationNote": "按东财行业“银行”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 222,
@@ -3922,7 +5027,12 @@
         "电池技术",
         "新材料",
         "锂电池概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 223,
@@ -3936,7 +5046,12 @@
         "精准诊断",
         "医疗器械概念",
         "深圳特区"
-      ]
+      ],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "医疗器械",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：医疗器械",
+      "classificationNote": "按东财行业“医疗器械”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 224,
@@ -3944,7 +5059,12 @@
       "name": "杭州银行",
       "institutionCount": 82,
       "industry": "银行",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行",
+      "classificationNote": "按东财行业“银行”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 225,
@@ -3956,7 +5076,12 @@
         "超级品牌",
         "味蕾经济",
         "调味品概念"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "食品饮料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：食品",
+      "classificationNote": "按东财行业“食品”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 226,
@@ -3981,7 +5106,12 @@
         "氮化镓",
         "IGBT概念",
         "先进封装"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 227,
@@ -3996,7 +5126,12 @@
         "西部大开发",
         "小金属概念",
         "锂电池概念"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "化肥农药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化肥农药",
+      "classificationNote": "按东财行业“化肥农药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 228,
@@ -4017,7 +5152,12 @@
         "阿里概念",
         "汽车芯片",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 229,
@@ -4032,7 +5172,12 @@
         "智能穿戴",
         "消费电子概念",
         "虚拟现实"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 230,
@@ -4049,7 +5194,12 @@
         "光刻机",
         "氟化工概念",
         "中芯概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 231,
@@ -4066,7 +5216,12 @@
         "味蕾经济",
         "社区团购",
         "猪肉概念"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "食品饮料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：食品",
+      "classificationNote": "按东财行业“食品”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 232,
@@ -4092,7 +5247,12 @@
         "西部大开发",
         "文娱消费",
         "鸿蒙概念"
-      ]
+      ],
+      "primaryTrack": "传媒与互联网",
+      "secondaryTrack": "游戏与数字内容",
+      "classificationBasis": "company",
+      "classificationLabel": "主营网络游戏与数字内容",
+      "classificationNote": "公司级主营校正：主营网络游戏与数字内容。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 233,
@@ -4100,7 +5260,12 @@
       "name": "艾力斯",
       "institutionCount": 76,
       "industry": "化学制药",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "化学药",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学制药",
+      "classificationNote": "按东财行业“化学制药”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 234,
@@ -4112,7 +5277,12 @@
         "半导体概念",
         "汽车芯片",
         "算力概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体封测",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体封装或测试服务",
+      "classificationNote": "公司级主营校正：主营半导体封装或测试服务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 235,
@@ -4136,7 +5306,12 @@
         "新型城镇化",
         "云计算",
         "互联网服务"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "软件与信息服务",
+      "classificationBasis": "company",
+      "classificationLabel": "主营智慧城市与数字化解决方案",
+      "classificationNote": "公司级主营校正：主营智慧城市与数字化解决方案。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 236,
@@ -4165,7 +5340,12 @@
         "半导体概念",
         "智能穿戴",
         "消费电子概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体封测",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体封装或测试服务",
+      "classificationNote": "公司级主营校正：主营半导体封装或测试服务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 237,
@@ -4183,7 +5363,12 @@
         "储能概念",
         "钙钛矿电池",
         "西部大开发"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "光伏产品",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光伏硅片和组件产品",
+      "classificationNote": "公司级主营校正：主营光伏硅片和组件产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 238,
@@ -4200,7 +5385,12 @@
         "节能环保",
         "碳交易",
         "油气资源"
-      ]
+      ],
+      "primaryTrack": "公用事业与环保",
+      "secondaryTrack": "环保与水务",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：环保",
+      "classificationNote": "按东财行业“环保”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 239,
@@ -4216,7 +5406,12 @@
         "氢能源",
         "天然气",
         "油气资源"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "油气开采与炼化",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：石油天然气",
+      "classificationNote": "按东财行业“石油天然气”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 240,
@@ -4238,7 +5433,12 @@
         "人工智能",
         "冷链物流",
         "深圳特区"
-      ]
+      ],
+      "primaryTrack": "交通运输与物流",
+      "secondaryTrack": "物流快递",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：物流",
+      "classificationNote": "按东财行业“物流”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 241,
@@ -4251,7 +5451,12 @@
         "电子竞技",
         "文娱消费",
         "大数据"
-      ]
+      ],
+      "primaryTrack": "传媒与互联网",
+      "secondaryTrack": "广告营销",
+      "classificationBasis": "company",
+      "classificationLabel": "主营广告与营销服务",
+      "classificationNote": "公司级主营校正：主营广告与营销服务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 242,
@@ -4265,7 +5470,12 @@
         "湖北自贸",
         "长寿药",
         "合成生物"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "食品饮料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：食品",
+      "classificationNote": "按东财行业“食品”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 243,
@@ -4280,7 +5490,12 @@
         "PCB",
         "存储芯片",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "PCB与覆铜板",
+      "classificationBasis": "company",
+      "classificationLabel": "主营PCB、覆铜板或相关材料",
+      "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 244,
@@ -4296,7 +5511,12 @@
         "先进封装",
         "存储芯片",
         "TOPCon电池"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 245,
@@ -4315,7 +5535,12 @@
         "酿酒概念",
         "央国企改革",
         "电商概念"
-      ]
+      ],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "白酒",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：白酒Ⅱ",
+      "classificationNote": "按东财行业“白酒Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 246,
@@ -4333,7 +5558,12 @@
         "航天航空",
         "军工",
         "无人机"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "航空航天与军工",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：航空航天装备",
+      "classificationNote": "按东财行业“航空航天装备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 247,
@@ -4345,7 +5575,12 @@
         "贬值受益",
         "船舶制造",
         "并购重组概念"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "船舶与海工",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：船舶与海洋装备",
+      "classificationNote": "按东财行业“船舶与海洋装备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 248,
@@ -4356,7 +5591,12 @@
       "concepts": [
         "机器人概念",
         "次新股"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "其他工业设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营专用工业设备或工业零部件",
+      "classificationNote": "公司级主营校正：主营专用工业设备或工业零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 249,
@@ -4368,7 +5608,12 @@
         "煤化工概念",
         "超超临界发电",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "煤炭",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：煤炭",
+      "classificationNote": "按东财行业“煤炭”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 250,
@@ -4397,7 +5642,12 @@
         "通信技术",
         "存储芯片",
         "电网概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 251,
@@ -4408,7 +5658,12 @@
       "concepts": [
         "央国企改革",
         "通用航空"
-      ]
+      ],
+      "primaryTrack": "交通运输与物流",
+      "secondaryTrack": "航空运输",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：航空机场",
+      "classificationNote": "按东财行业“航空机场”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 252,
@@ -4420,7 +5675,12 @@
         "IGBT概念",
         "次新股",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "company",
+      "classificationLabel": "主营芯片设计或IDM业务",
+      "classificationNote": "公司级主营校正：主营芯片设计或IDM业务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 253,
@@ -4431,7 +5691,12 @@
       "concepts": [
         "次新股",
         "半导体概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+      "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 254,
@@ -4454,7 +5719,12 @@
         "传感器",
         "英伟达概念",
         "机器人概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "传感与机器视觉",
+      "classificationBasis": "company",
+      "classificationLabel": "主营视觉感知、红外或机器视觉产品",
+      "classificationNote": "公司级主营校正：主营视觉感知、红外或机器视觉产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 255,
@@ -4474,7 +5744,12 @@
         "半导体概念",
         "小金属概念",
         "西部大开发"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：稀有金属",
+      "classificationNote": "按东财行业“稀有金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 256,
@@ -4514,7 +5789,12 @@
         "信创",
         "消费电子概念",
         "ChatGPT概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "软件与信息服务",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：计算机软件",
+      "classificationNote": "按东财行业“计算机软件”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 257,
@@ -4525,7 +5805,12 @@
       "concepts": [
         "农业种植",
         "新零售"
-      ]
+      ],
+      "primaryTrack": "可选消费",
+      "secondaryTrack": "服装与零售",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：零售",
+      "classificationNote": "按东财行业“零售”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 258,
@@ -4537,7 +5822,12 @@
         "小红书概念",
         "网红经济",
         "新零售"
-      ]
+      ],
+      "primaryTrack": "可选消费",
+      "secondaryTrack": "服装与零售",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：服装家纺",
+      "classificationNote": "按东财行业“服装家纺”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 259,
@@ -4552,7 +5842,12 @@
         "半导体概念",
         "小米概念",
         "MiniLED"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 260,
@@ -4563,7 +5858,12 @@
       "concepts": [
         "长江三角",
         "互联网金融"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行Ⅱ",
+      "classificationNote": "按东财行业“银行Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 261,
@@ -4579,7 +5879,12 @@
         "复合集流体",
         "固态电池",
         "存储芯片"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "其他工业设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营专用工业设备或工业零部件",
+      "classificationNote": "公司级主营校正：主营专用工业设备或工业零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 262,
@@ -4594,7 +5899,12 @@
         "超清视频",
         "人工智能",
         "科创板做市股"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 263,
@@ -4608,7 +5918,12 @@
         "黄金概念",
         "贬值受益",
         "稀缺资源"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "贵金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：贵金属",
+      "classificationNote": "按东财行业“贵金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 264,
@@ -4622,7 +5937,12 @@
         "贬值受益",
         "黄金概念",
         "稀缺资源"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "贵金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：贵金属",
+      "classificationNote": "按东财行业“贵金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 265,
@@ -4636,7 +5956,12 @@
         "电池技术",
         "谷子经济",
         "锂电池概念"
-      ]
+      ],
+      "primaryTrack": "可选消费",
+      "secondaryTrack": "珠宝零售",
+      "classificationBasis": "company",
+      "classificationLabel": "主营珠宝首饰产品",
+      "classificationNote": "公司级主营校正：主营珠宝首饰产品。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 266,
@@ -4647,7 +5972,12 @@
       "concepts": [
         "次新股",
         "储能概念"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电源与储能设备",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：其他电气设备",
+      "classificationNote": "按东财行业“其他电气设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 267,
@@ -4664,7 +5994,12 @@
         "小米概念",
         "人工智能",
         "无人驾驶"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 268,
@@ -4687,7 +6022,12 @@
         "被动元件概念",
         "商业航天",
         "超级电容"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "被动元件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营被动元件或电子陶瓷",
+      "classificationNote": "公司级主营校正：主营被动元件或电子陶瓷。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 269,
@@ -4700,7 +6040,12 @@
         "央国企改革",
         "电商概念",
         "通用航空"
-      ]
+      ],
+      "primaryTrack": "交通运输与物流",
+      "secondaryTrack": "航空运输",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：航空机场",
+      "classificationNote": "按东财行业“航空机场”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 270,
@@ -4708,7 +6053,12 @@
       "name": "赛轮轮胎",
       "institutionCount": 65,
       "industry": "汽车零部件",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "轮胎",
+      "classificationBasis": "company",
+      "classificationLabel": "主营汽车轮胎",
+      "classificationNote": "公司级主营校正：主营汽车轮胎。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 271,
@@ -4720,7 +6070,12 @@
         "半导体概念",
         "中芯概念",
         "国产芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 272,
@@ -4728,7 +6083,12 @@
       "name": "东鹏饮料",
       "institutionCount": 65,
       "industry": "饮料",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "必选消费",
+      "secondaryTrack": "软饮料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营非酒精饮料",
+      "classificationNote": "公司级主营校正：主营非酒精饮料。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 273,
@@ -4739,7 +6099,12 @@
       "concepts": [
         "铁路基建",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "交通运输与物流",
+      "secondaryTrack": "铁路公路",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：铁路公路",
+      "classificationNote": "按东财行业“铁路公路”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 274,
@@ -4762,7 +6127,12 @@
         "汽车一体化压铸",
         "小米汽车",
         "机器人概念"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "汽车零部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营汽车动力、热管理、玻璃或底盘零部件",
+      "classificationNote": "公司级主营校正：主营汽车动力、热管理、玻璃或底盘零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 275,
@@ -4775,7 +6145,12 @@
         "稀缺资源",
         "黄金概念",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "贵金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：贵金属",
+      "classificationNote": "按东财行业“贵金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 276,
@@ -4783,7 +6158,12 @@
       "name": "齐鲁银行",
       "institutionCount": 64,
       "industry": "银行",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "金融",
+      "secondaryTrack": "银行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：银行",
+      "classificationNote": "按东财行业“银行”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 277,
@@ -4806,7 +6186,12 @@
         "固态电池",
         "氟化工概念",
         "钠离子电池"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电池材料与部件",
+      "classificationBasis": "company",
+      "classificationLabel": "主营电池材料或结构件",
+      "classificationNote": "公司级主营校正：主营电池材料或结构件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 278,
@@ -4829,7 +6214,12 @@
         "碳化硅",
         "算力概念",
         "汽车芯片"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "芯片设计与IDM",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：半导体",
+      "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 279,
@@ -4858,7 +6248,12 @@
         "华为海思",
         "特斯拉概念",
         "通信技术"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体封测",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体封装或测试服务",
+      "classificationNote": "公司级主营校正：主营半导体封装或测试服务。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 280,
@@ -4882,7 +6277,12 @@
         "PCB",
         "机器人概念",
         "华为概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "电子元件与制造",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：其他电子Ⅱ",
+      "classificationNote": "按东财行业“其他电子Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 281,
@@ -4897,7 +6297,12 @@
         "液冷概念",
         "机器人概念",
         "降解塑料"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "纸与包装",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：造纸印刷",
+      "classificationNote": "按东财行业“造纸印刷”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 282,
@@ -4916,7 +6321,12 @@
         "光纤概念",
         "国产芯片",
         "铜缆高速连接"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：通信设备",
+      "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 283,
@@ -4947,7 +6357,12 @@
         "网络安全",
         "5G概念",
         "算力概念"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "计算硬件与服务器",
+      "classificationBasis": "company",
+      "classificationLabel": "主营服务器、计算硬件或企业存储设备",
+      "classificationNote": "公司级主营校正：主营服务器、计算硬件或企业存储设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 284,
@@ -4963,7 +6378,12 @@
         "油气资源",
         "碳交易",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "能源",
+      "secondaryTrack": "油气开采与炼化",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：炼化及贸易",
+      "classificationNote": "按东财行业“炼化及贸易”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 285,
@@ -4982,7 +6402,12 @@
         "雄安新区",
         "养老概念",
         "一带一路"
-      ]
+      ],
+      "primaryTrack": "地产与基建",
+      "secondaryTrack": "房地产",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：房地产开发",
+      "classificationNote": "按东财行业“房地产开发”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 286,
@@ -4993,7 +6418,12 @@
       "concepts": [
         "央国企改革",
         "铁路基建"
-      ]
+      ],
+      "primaryTrack": "交通运输与物流",
+      "secondaryTrack": "铁路公路",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：公路铁路",
+      "classificationNote": "按东财行业“公路铁路”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 287,
@@ -5008,7 +6438,12 @@
         "IPO受益",
         "互联网金融",
         "券商概念"
-      ]
+      ],
+      "primaryTrack": "金融",
+      "secondaryTrack": "证券",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：非银行金融",
+      "classificationNote": "按东财行业“非银行金融”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 288,
@@ -5033,7 +6468,12 @@
         "通信技术",
         "6G概念",
         "电池技术"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "先进材料",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：化学新材料",
+      "classificationNote": "按东财行业“化学新材料”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 289,
@@ -5046,7 +6486,12 @@
         "小金属概念",
         "黄金概念",
         "西部大开发"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "贵金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：贵金属",
+      "classificationNote": "按东财行业“贵金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 290,
@@ -5059,7 +6504,12 @@
         "通用航空",
         "免税概念",
         "跨境电商"
-      ]
+      ],
+      "primaryTrack": "交通运输与物流",
+      "secondaryTrack": "航空运输",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：航空机场",
+      "classificationNote": "按东财行业“航空机场”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 291,
@@ -5071,7 +6521,12 @@
         "5G概念",
         "PCB",
         "高带宽内存"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "半导体材料",
+      "classificationBasis": "company",
+      "classificationLabel": "主营半导体材料或硅片",
+      "classificationNote": "公司级主营校正：主营半导体材料或硅片。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 292,
@@ -5087,7 +6542,12 @@
         "英伟达概念",
         "机器人概念",
         "交运设备"
-      ]
+      ],
+      "primaryTrack": "汽车与出行",
+      "secondaryTrack": "摩托车与轻型出行",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：其他交运设备",
+      "classificationNote": "按东财行业“其他交运设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 293,
@@ -5098,7 +6558,12 @@
       "concepts": [
         "央国企改革",
         "绿色电力"
-      ]
+      ],
+      "primaryTrack": "公用事业与环保",
+      "secondaryTrack": "水电运营",
+      "classificationBasis": "company",
+      "classificationLabel": "主营水电站运营",
+      "classificationNote": "公司级主营校正：主营水电站运营。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 294,
@@ -5111,7 +6576,12 @@
         "煤化工概念",
         "稀缺资源",
         "央国企改革"
-      ]
+      ],
+      "primaryTrack": "原材料",
+      "secondaryTrack": "稀有与有色金属",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：工业金属",
+      "classificationNote": "按东财行业“工业金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 295,
@@ -5131,7 +6601,12 @@
         "LED概念",
         "新材料",
         "培育钻石"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "光伏设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营光伏制造设备",
+      "classificationNote": "公司级主营校正：主营光伏制造设备。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 296,
@@ -5146,7 +6621,12 @@
         "氢能源",
         "央国企改革",
         "PCB"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "其他工业设备",
+      "classificationBasis": "company",
+      "classificationLabel": "主营专用工业设备或工业零部件",
+      "classificationNote": "公司级主营校正：主营专用工业设备或工业零部件。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 297,
@@ -5173,7 +6653,12 @@
         "煤化工概念",
         "数据中心",
         "超超临界发电"
-      ]
+      ],
+      "primaryTrack": "电力设备与新能源",
+      "secondaryTrack": "电网设备",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：输变电设备",
+      "classificationNote": "按东财行业“输变电设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 298,
@@ -5184,7 +6669,12 @@
       "concepts": [
         "风能",
         "工业母机"
-      ]
+      ],
+      "primaryTrack": "工业与高端制造",
+      "secondaryTrack": "轮胎模具与工具",
+      "classificationBasis": "company",
+      "classificationLabel": "主营轮胎模具或工业刀具",
+      "classificationNote": "公司级主营校正：主营轮胎模具或工业刀具。东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 299,
@@ -5192,7 +6682,12 @@
       "name": "联影医疗",
       "institutionCount": 60,
       "industry": "医疗器械",
-      "concepts": []
+      "concepts": [],
+      "primaryTrack": "医药健康",
+      "secondaryTrack": "医疗器械",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：医疗器械",
+      "classificationNote": "按东财行业“医疗器械”映射主营赛道；东财主题概念不参与主营赛道判定。"
     },
     {
       "rank": 300,
@@ -5205,7 +6700,13 @@
         "军工",
         "光纤概念",
         "次新股"
-      ]
+      ],
+      "primaryTrack": "信息技术",
+      "secondaryTrack": "光通信与连接",
+      "classificationBasis": "industry",
+      "classificationLabel": "东财行业：光电子器件",
+      "classificationNote": "按东财行业“光电子器件”映射主营赛道；东财主题概念不参与主营赛道判定。"
     }
-  ]
+  ],
+  "classificationVersion": 2
 }

@@ -36,6 +36,31 @@ await check("health", async () => {
   assert(body.code === 200, `unexpected api code: ${body.code}`);
 });
 
+await check("situation pages and API schemas", async () => {
+  const pages = [
+    ["situation.html", "situation-today-vue-root", "js/situation-today-page.js"],
+    ["situation-holdings.html", "situation-holdings-vue-root", "js/situation-holdings-page.js"],
+    ["situation-opportunities.html", "situation-opportunities-vue-root", "js/situation-opportunities-page.js"],
+    ["situation-evidence.html", "situation-evidence-vue-root", "js/situation-evidence-page.js"],
+  ];
+  for (const [pageName, rootId, bundle] of pages) {
+    const page = await fetchWithTimeout(`${baseUrl}/${pageName}`);
+    const html = await page.text();
+    assert(page.status < 400, `${pageName} status=${page.status}`);
+    assert(html.includes(rootId), `${pageName} root is missing`);
+    assert(html.includes(bundle), `${pageName} bundle is missing`);
+  }
+
+  const today = await fetchApi("/api/situations/today");
+  assert(today.data && typeof today.data === "object", "situation today payload is missing");
+  const status = await fetchApi("/api/situations/status");
+  assert(status.data && typeof status.data === "object", "situation status payload is missing");
+  for (const endpoint of ["markets", "industries", "holdings?codes=600519.SH", "opportunities"]) {
+    const body = await fetchApi(`/api/situations/${endpoint}`);
+    assert(body.data && typeof body.data === "object", `situation ${endpoint} payload is missing`);
+  }
+});
+
 await check("macro page and dashboard schema", async () => {
   const page = await fetchWithTimeout(`${baseUrl}/macro.html`);
   const html = await page.text();

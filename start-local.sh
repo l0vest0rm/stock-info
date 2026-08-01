@@ -16,6 +16,8 @@ LOG_FILE="${LOG_DIR}/stock-info-wrangler.log"
 CONTENT_LOG_FILE="${LOG_DIR}/stock-info-knowledge-content.log"
 CRON_LOG_FILE="${LOG_DIR}/stock-info-local-cron.log"
 CRON_PID_FILE="${LOG_DIR}/stock-info-local-cron.pid"
+KNOWLEDGE_INGEST_LOG_FILE="${LOG_DIR}/stock-info-knowledge-ingest.log"
+KNOWLEDGE_INGEST_PID_FILE="${LOG_DIR}/stock-info-knowledge-ingest.pid"
 MACRO_FETCH_RELAY_LOG_FILE="${LOG_DIR}/stock-info-macro-fetch-relay.log"
 COOKIE_REFRESH_LOG_FILE="${LOG_DIR}/stock-info-eastmoney-cookie-refresh.log"
 COOKIE_REFRESH_PID_FILE="${LOG_DIR}/stock-info-eastmoney-cookie-refresh.pid"
@@ -89,6 +91,20 @@ if [[ -f "$CRON_PID_FILE" ]]; then
     sleep 1
   fi
   rm -f "$CRON_PID_FILE"
+fi
+
+if [[ -f "$KNOWLEDGE_INGEST_PID_FILE" ]]; then
+  EXISTING_KNOWLEDGE_INGEST_PID=$(<"$KNOWLEDGE_INGEST_PID_FILE")
+  EXISTING_KNOWLEDGE_INGEST_COMMAND=""
+  if [[ "$EXISTING_KNOWLEDGE_INGEST_PID" == <-> ]]; then
+    EXISTING_KNOWLEDGE_INGEST_COMMAND=$(ps -p "$EXISTING_KNOWLEDGE_INGEST_PID" -o command= 2>/dev/null || true)
+  fi
+  if [[ "$EXISTING_KNOWLEDGE_INGEST_COMMAND" == *"knowledge-ingest-scheduler.mjs"* ]]; then
+    echo "Stopping existing knowledge ingest scheduler: ${EXISTING_KNOWLEDGE_INGEST_PID}"
+    kill "$EXISTING_KNOWLEDGE_INGEST_PID" || true
+    sleep 1
+  fi
+  rm -f "$KNOWLEDGE_INGEST_PID_FILE"
 fi
 
 refresh_eastmoney_cookie() {
@@ -273,6 +289,20 @@ if ! kill -0 "$CRON_PID" >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "Starting local knowledge ingest scheduler ..."
+: >"$KNOWLEDGE_INGEST_LOG_FILE"
+nohup node scripts/knowledge-ingest-scheduler.mjs "$PROJECT_ROOT/config/knowledge-processing.json" \
+  </dev/null >"$KNOWLEDGE_INGEST_LOG_FILE" 2>&1 &
+KNOWLEDGE_INGEST_PID=$!
+echo "$KNOWLEDGE_INGEST_PID" >"$KNOWLEDGE_INGEST_PID_FILE"
+sleep 1
+if ! kill -0 "$KNOWLEDGE_INGEST_PID" >/dev/null 2>&1; then
+  echo "Knowledge ingest scheduler exited during startup."
+  echo "Check log: $KNOWLEDGE_INGEST_LOG_FILE"
+  wait "$KNOWLEDGE_INGEST_PID" || true
+  exit 1
+fi
+
 (
   trap '' HUP
   while true; do
@@ -291,6 +321,7 @@ echo "Health: ${BASE_URL}/api/health"
 echo "Log: ${LOG_FILE}"
 echo "Cron config: ${PROJECT_ROOT}/wrangler.jsonc"
 echo "Cron log: ${CRON_LOG_FILE}"
+echo "Knowledge ingest log: ${KNOWLEDGE_INGEST_LOG_FILE}"
 echo "Knowledge content URL: ${CONTENT_BASE_URL}"
 echo "Knowledge report converter URL: ${KNOWLEDGE_REPORT_CONVERTER_URL}"
 echo "Knowledge report conversion concurrency: ${KNOWLEDGE_REPORT_CONVERSION_CONCURRENCY}"
@@ -307,6 +338,7 @@ echo "Macro fetch relay log: ${MACRO_FETCH_RELAY_LOG_FILE}"
 echo "Macro fetch relay PID: ${MACRO_FETCH_RELAY_PID}"
 echo "Worker PID: ${WORKER_PID}"
 echo "Cron PID: ${CRON_PID}"
+echo "Knowledge ingest scheduler PID: ${KNOWLEDGE_INGEST_PID}"
 echo "Eastmoney cookie refresh interval: ${EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS}s"
 echo "Eastmoney cookie refresh log: ${COOKIE_REFRESH_LOG_FILE}"
 echo "Eastmoney cookie refresher PID: ${COOKIE_REFRESH_PID}"

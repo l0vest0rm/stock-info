@@ -216,14 +216,20 @@ function copyStaticAssets() {
   if (!fs.existsSync(staticDir)) {
     return
   }
-  copyDir(staticDir, distDir)
+  // Topic-filter audits can be tens of MiB. They are read by the local-only
+  // review API from the local cache, not shipped as Worker assets.
+  fs.rmSync(path.join(distDir, 'knowledge-review'), { recursive: true, force: true })
+  copyDir(staticDir, distDir, new Set(['knowledge-review']))
 }
 
-function copyDir(sourceDir, targetDir) {
+function copyDir(sourceDir, targetDir, excludedRootNames = new Set()) {
   fs.mkdirSync(targetDir, { recursive: true })
   for (const item of fs.readdirSync(sourceDir, { withFileTypes: true })) {
     const sourcePath = path.join(sourceDir, item.name)
     const targetPath = path.join(targetDir, item.name)
+    if (sourceDir === staticDir && excludedRootNames.has(item.name)) {
+      continue
+    }
     if (item.isDirectory()) {
       copyDir(sourcePath, targetPath)
       continue

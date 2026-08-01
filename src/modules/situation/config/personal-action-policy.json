@@ -1,0 +1,10 @@
+{
+  "version": "2026-08-01.1",
+  "companyWeight": {
+    "activeCap": 0.15,
+    "rebalanceThreshold": 0.2
+  },
+  "urgentExitTerms": ["财务造假", "债务违约", "退市", "暂停上市"],
+  "entryRequirements": ["researchComplete", "fundamentalsConfirmed", "marketConfirmed", "valuationEntryReady", "thesisIntact"],
+  "addRequirements": ["fundamentalsConfirmed", "valuationAddReady", "thesisIntact"]
+}

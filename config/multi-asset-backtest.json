@@ -12,16 +12,10 @@
     { "id": "balanced35-dividend25-bond30-cash10", "weights": { "growth": 35, "dividend": 25, "bond": 30, "cash": 10 } },
     { "id": "defensive25-dividend25-bond35-cash15", "weights": { "growth": 25, "dividend": 25, "bond": 35, "cash": 15 } }
   ],
-  "deployment": {
-    "drawdownSleeve": "growth",
-    "rungs": [{ "lossPct": 10, "reservePct": 50 }, { "lossPct": 20, "reservePct": 50 }],
-    "fundingOrder": ["cash", "bond"],
-    "target": "growth"
-  },
   "rotation": {
-    "mode": "none",
+    "mode": "price",
     "frequency": "monthly",
-    "priceLookbackDays": 60,
-    "stockWeights": { "favored": 70, "other": 30 }
+    "priceLookbackDays": 20,
+    "stockWeights": { "favored": 80, "other": 20 }
   }
 }

@@ -17,7 +17,7 @@
     "HTTP_REQUEST_TIMEOUT_MS": "10000",
     "KNOWLEDGE_CONTENT_PUBLIC_BASE_URL": "https://content.tinfo.cc",
     "KNOWLEDGE_ALLOW_TEXT_SEARCH": "false",
-    "EASTMONEY_COOKIE": "nid18=05c55201bf244ec46e40cbea2f1be79b; nid18_create_time=1785539362580",
+    "EASTMONEY_COOKIE": "nid18=05c55201bf244ec46e40cbea2f1be79b; nid18_create_time=1785584122012",
   },
   "assets": {
     "directory": "./web/dist",
@@ -33,7 +33,7 @@
     },
   ],
   "triggers": {
-    "crons": ["*/15 * * * *", "17 * * * *"],
+    "crons": ["*/15 * * * *", "17 * * * *", "*/10 * * * *"],
   },
   "d1_databases": [
     {

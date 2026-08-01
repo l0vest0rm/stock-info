@@ -1,4 +1,3 @@
-const SHARED_REPORT_ANALYSIS_CACHE_VERSION = "v5";
 const sharedReportAnalysisInFlight = new Map<string, Promise<void>>();
 
 export function eastmoneyReportInfoCode(...values: unknown[]): string {
@@ -14,7 +13,7 @@ export function eastmoneyReportInfoCode(...values: unknown[]): string {
 export function sharedReportAnalysisCacheKey(infoCode: string): string {
   const normalized = eastmoneyReportInfoCode(infoCode);
   return normalized
-    ? `shared-report-analysis:${SHARED_REPORT_ANALYSIS_CACHE_VERSION}:eastmoney:${normalized}`
+    ? `shared-report-analysis:eastmoney:${normalized}`
     : "";
 }
 

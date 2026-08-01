@@ -5,7 +5,7 @@ import { isLocalDevelopmentRuntime } from "../../../shared/request";
 import type { AppEnv } from "../../../types";
 
 export const localDataRoutes = new Hono<AppEnv>();
-const COMPANIES_FOLLOW_CONFIG_KEY = "companies-follow-config:v1";
+const COMPANIES_FOLLOW_CONFIG_KEY = "companies-follow-config";
 
 localDataRoutes.get("/knowledge/docs", (c) => ok(c, { items: [], total: 0, hasNext: false }));
 localDataRoutes.get("/knowledge/doc", (c) => ok(c, null));

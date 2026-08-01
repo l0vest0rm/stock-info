@@ -43,7 +43,6 @@ const failedDir = resolve(root, config.failedDir || `${sharedDataRoot}/stock-inf
 const workDir = resolve(root, config.workDir || `${sharedDataRoot}/stock-info/knowledge/work`);
 const reviewDir = resolve(root, config.reviewDir || `${sharedDataRoot}/stock-info/knowledge/reviews`);
 const localReviewCacheDir = join(root, "data", "knowledge-review");
-const localReviewStaticDir = join(root, "web", "static", "knowledge-review");
 const stateDir = resolve(root, config.stateDir || `${sharedDataRoot}/stock-info/knowledge/state`);
 const inputDirs = resolveInputDirs(args.inboxDir, config, args.extraInputs);
 const remotePdfCacheDir = join(workDir, "remote-pdf");
@@ -246,6 +245,7 @@ if (filteredDocs.length > 0 && filteredReviewImportEnabled) {
       filteredResultFile,
       "--sync-file",
       importSyncFile,
+      ...(dbTarget ? ["--upload-content-remote"] : []),
       dbTarget ? "--remote" : "--local",
       "--database",
       config.database || "stock_info",
@@ -1145,8 +1145,6 @@ function writeTopicReview(rows, cfg) {
   const mdFile = join(reviewDir, `topic-filter-${runId}.md`);
   const latestJsonlFile = join(localReviewCacheDir, "topic-filter-latest.jsonl");
   const latestMdFile = join(localReviewCacheDir, "topic-filter-latest.md");
-  const staticJsonlFile = join(localReviewStaticDir, "topic-filter-latest.jsonl");
-  const staticMdFile = join(localReviewStaticDir, "topic-filter-latest.md");
   const kept = rows.filter((row) => row.keep);
   const filteredOut = rows.filter((row) => !row.keep);
   const jsonlBody = `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
@@ -1167,8 +1165,6 @@ function writeTopicReview(rows, cfg) {
   writeFileSync(mdFile, mdBody);
   writeFileSync(latestJsonlFile, jsonlBody);
   writeFileSync(latestMdFile, mdBody);
-  writeFileSync(staticJsonlFile, jsonlBody);
-  writeFileSync(staticMdFile, mdBody);
   return {
     jsonlFile,
     mdFile,

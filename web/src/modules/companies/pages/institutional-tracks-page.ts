@@ -1,15 +1,7 @@
 import { computed, createApp, defineComponent, h, onMounted, ref } from 'vue'
-import trackOverridesConfig from '../../../config/institutional-track-overrides.json'
-import trackRulesConfig from '../../../config/institutional-track-rules.json'
 import trackSnapshotConfig from '../../../config/institutional-track-snapshot.json'
+import valuationConfig from '../../../config/institutional-track-valuation.json'
 import { isCompanyFollowed, toggleFollowedCompany } from '../domain/follow-storage'
-
-type TrackRule = {
-  primaryTrack: string
-  secondaryTrack: string
-  keywords?: string[]
-  industries?: string[]
-}
 
 type StockSource = {
   SECUCODE: string
@@ -21,12 +13,6 @@ type StockSource = {
   MAX_TRADE_DATE?: string
 }
 
-type TrackOverride = {
-  primaryTrack?: string
-  secondaryTrack?: string
-  note?: string
-}
-
 type TrackRow = {
   rank: number
   code: string
@@ -36,78 +22,405 @@ type TrackRow = {
   concepts: string[]
   primaryTrack: string
   secondaryTrack: string
-  note: string
-  ruleLabel: string
   tradeDate: string
 }
 
-const STORAGE_KEY = 'institutional-track-overrides-v1'
-const rules = trackRulesConfig as TrackRule[]
-const bundledOverrides = trackOverridesConfig as Record<string, TrackOverride>
+type ValuationState = 'deep-value' | 'value' | 'fair' | 'expensive' | 'overvalued' | 'income-stagnant' | 'unavailable'
+type ValuationFilter = ValuationState | 'pending'
+
+type ValuationEvidenceLink = {
+  title: string
+  publishedAt: string
+  url: string
+}
+
+type CompanyValuation = {
+  state: ValuationState
+  modelLabel: string
+  rationale: string
+  confidence: '高' | '中' | '低'
+  latestPrice: number | null
+  forwardPe: number | null
+  peg: number | null
+  forecastYear: number | null
+  profitGrowth: number | null
+  financeDate: string
+  reportCount: number
+  latestReports: ValuationEvidenceLink[]
+  latestNews: ValuationEvidenceLink[]
+  threeMonthHigh: number | null
+  drawdownPct: number | null
+  annualizedVolatility: number | null
+  drawdownReviewThreshold: number | null
+  pullbackWorthReview: boolean
+  dividendYield: number | null
+}
+
+type ValuationModel = {
+  id: string
+  label: string
+  primaryTracks?: string[]
+  secondaryTracks?: string[]
+  thresholds: Partial<Record<'strongBuy' | 'buy' | 'watch' | 'noAdd', number>>
+  yieldThresholds?: {
+    strongBuyYieldPct: number
+    buyYieldPct: number
+    watchYieldPct: number
+    minimumProfitCagrPct: number
+  }
+}
+
+type ApiEnvelope<T> = {
+  code: number
+  msg?: string
+  data: T
+}
+
 const snapshot = trackSnapshotConfig as {
+  classificationVersion: number
   dataDate: string
-  rows: Array<{ rank: number, code: string, name: string, institutionCount: number, industry: string, concepts: string[] }>
+  rows: Array<{
+    rank: number
+    code: string
+    name: string
+    institutionCount: number
+    industry: string
+    concepts: string[]
+    primaryTrack: string
+    secondaryTrack: string
+    classificationLabel: string
+    classificationNote: string
+  }>
 }
 
-function includesAny(haystack: string, needles: string[] | undefined): boolean {
-  return Boolean(needles?.some((needle) => haystack.includes(needle)))
-}
-
-function deriveTrack(stock: StockSource): Pick<TrackRow, 'primaryTrack' | 'secondaryTrack' | 'note' | 'ruleLabel'> {
-  const industry = String(stock.INDUSTRY || stock.BOARD_NAME || '未分类')
-  const concepts = Array.isArray(stock.CONCEPT) ? stock.CONCEPT.map(String) : []
-  const searchable = [stock.SECURITY_NAME_ABBR, industry, ...concepts].join('|')
-  const rule = rules.find((item) => (
-    includesAny(industry, item.industries) || includesAny(searchable, item.keywords)
-  ))
-  if (!rule) {
-    return {
-      primaryTrack: '其他',
-      secondaryTrack: industry,
-      note: `以东财行业“${industry}”暂归其他，建议人工复核。`,
-      ruleLabel: '行业兜底',
-    }
+const valuationRules = valuationConfig as {
+  version: number
+  batchLimit: number
+  autoEvaluateLimit: number
+  evaluationConcurrency: number
+  evaluationCache: {
+    version: number
+    ttlMs: number
   }
-  const ruleLabel = rule.keywords?.find((keyword) => searchable.includes(keyword))
-    || rule.industries?.find((keyword) => industry.includes(keyword))
-    || industry
+  trackMinimumEvaluatedCompanies: number
+  growthPeg: {
+    baseForecastYear: number
+    targetForecastYear: number
+  }
+  pullbackReview: {
+    lookbackTradingDays: number
+    annualizationDays: number
+    volatilityMultiplier: number
+    minimumDrawdownPct: number
+    maximumDrawdownPct: number
+  }
+  models: ValuationModel[]
+  fallback: ValuationModel
+}
+
+type ValuationCache = {
+  savedAt: number
+  valuations: Record<string, CompanyValuation>
+}
+
+const valuationStateMeta: Record<ValuationState, { label: string, className: string, score: number | null }> = {
+  'deep-value': { label: '显著低估', className: 'is-deep-value', score: 2 },
+  value: { label: '估值偏低', className: 'is-value', score: 1 },
+  fair: { label: '价格合理', className: 'is-fair', score: 0 },
+  expensive: { label: '估值偏高', className: 'is-expensive', score: -1 },
+  overvalued: { label: '估值透支', className: 'is-overvalued', score: -2 },
+  'income-stagnant': { label: '利润停滞，不宜新增', className: 'is-income-stagnant', score: -2 },
+  unavailable: { label: '数据不足', className: 'is-unavailable', score: null },
+}
+
+const valuationStates = Object.keys(valuationStateMeta) as ValuationState[]
+
+function numberOrNull(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function formatNumber(value: number | null, digits = 1): string {
+  return value === null ? '—' : value.toFixed(digits)
+}
+
+function formatDate(value: string): string {
+  return value ? value.slice(0, 10) : '—'
+}
+
+function valuationModelFor(row: TrackRow): ValuationModel {
+  return valuationRules.models.find((model) => model.secondaryTracks?.includes(row.secondaryTrack))
+    || valuationRules.models.find((model) => model.primaryTracks?.includes(row.primaryTrack))
+    || valuationRules.fallback
+}
+
+function emptyValuation(row: TrackRow, rationale: string): CompanyValuation {
   return {
-    primaryTrack: rule.primaryTrack,
-    secondaryTrack: rule.secondaryTrack,
-    note: `东财行业“${industry}”，因“${ruleLabel}”归入该赛道。`,
-    ruleLabel,
+    state: 'unavailable',
+    modelLabel: valuationModelFor(row).label,
+    rationale,
+    confidence: '低',
+    latestPrice: null,
+    forwardPe: null,
+    peg: null,
+    forecastYear: null,
+    profitGrowth: null,
+    financeDate: '',
+    reportCount: 0,
+    latestReports: [],
+    latestNews: [],
+    threeMonthHigh: null,
+    drawdownPct: null,
+    annualizedVolatility: null,
+    drawdownReviewThreshold: null,
+    pullbackWorthReview: false,
+    dividendYield: null,
   }
 }
 
-function loadLocalOverrides(): Record<string, TrackOverride> {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
-  } catch {
-    return {}
+function valuationCacheKey(): string {
+  return [
+    'institutional-track-valuation',
+    valuationRules.evaluationCache.version,
+    valuationRules.version,
+    snapshot.classificationVersion,
+    snapshot.dataDate,
+  ].join(':')
+}
+
+async function fetchApi<T>(url: string): Promise<T> {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`请求失败：${response.status}`)
+  const body = await response.json() as ApiEnvelope<T>
+  if (body.code !== 200) throw new Error(body.msg || '接口未返回成功结果')
+  return body.data
+}
+
+function evidenceLinks(value: unknown): ValuationEvidenceLink[] {
+  if (!value || typeof value !== 'object') return []
+  const list = (value as { list?: unknown }).list
+  if (!Array.isArray(list)) return []
+  return list.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const row = item as Record<string, unknown>
+    const title = String(row.title || '').trim()
+    const url = String(row.url || '').trim()
+    return title && url ? [{ title, url, publishedAt: String(row.published_at || '') }] : []
+  })
+}
+
+function evidenceTotal(value: unknown): number {
+  if (!value || typeof value !== 'object') return 0
+  return Math.max(0, Number((value as { total?: unknown }).total) || 0)
+}
+
+function klineStartDate(): string {
+  const date = new Date()
+  date.setDate(date.getDate() - Math.ceil(valuationRules.pullbackReview.lookbackTradingDays * 2.5))
+  return date.toISOString().slice(0, 10)
+}
+
+function calculatePullbackSignal(latestPrice: number | null, rows: unknown[][]): Pick<CompanyValuation,
+  'threeMonthHigh' | 'drawdownPct' | 'annualizedVolatility' | 'drawdownReviewThreshold' | 'pullbackWorthReview'
+> {
+  const window = rows
+    .map((row) => ({ close: numberOrNull(row[1]), high: numberOrNull(row[3]) }))
+    .filter((row) => row.close !== null && row.close > 0 && row.high !== null && row.high > 0)
+    .slice(-valuationRules.pullbackReview.lookbackTradingDays)
+  if (latestPrice === null || latestPrice <= 0 || window.length < 21) {
+    return {
+      threeMonthHigh: null,
+      drawdownPct: null,
+      annualizedVolatility: null,
+      drawdownReviewThreshold: null,
+      pullbackWorthReview: false,
+    }
+  }
+  const logReturns = window.slice(1).map((row, index) => Math.log(row.close! / window[index].close!))
+  const mean = logReturns.reduce((sum, value) => sum + value, 0) / logReturns.length
+  const variance = logReturns.length > 1
+    ? logReturns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (logReturns.length - 1)
+    : 0
+  const annualizedVolatility = Math.sqrt(variance) * Math.sqrt(valuationRules.pullbackReview.annualizationDays) * 100
+  const threeMonthHigh = Math.max(...window.map((row) => row.high!))
+  const drawdownPct = Math.max(0, ((threeMonthHigh - latestPrice) / threeMonthHigh) * 100)
+  const drawdownReviewThreshold = Math.min(
+    valuationRules.pullbackReview.maximumDrawdownPct,
+    Math.max(
+      valuationRules.pullbackReview.minimumDrawdownPct,
+      annualizedVolatility * valuationRules.pullbackReview.volatilityMultiplier,
+    ),
+  )
+  return {
+    threeMonthHigh,
+    drawdownPct,
+    annualizedVolatility,
+    drawdownReviewThreshold,
+    pullbackWorthReview: drawdownPct >= drawdownReviewThreshold,
   }
 }
 
-function normalizeOverrides(value: unknown): Record<string, TrackOverride> {
-  const candidate = value && typeof value === 'object' && 'overrides' in value
-    ? (value as { overrides?: unknown }).overrides
-    : value
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
-    throw new Error('JSON 必须是以股票代码为键的对象，或包含 overrides 对象')
+function forecastProfitCagr(forecasts: Array<Record<string, unknown>>): number | null {
+  const baseYear = valuationRules.growthPeg.baseForecastYear
+  const targetYear = valuationRules.growthPeg.targetForecastYear
+  const values = new Map(forecasts.map((forecast) => [Number(forecast.year), numberOrNull(forecast.netProfit)]))
+  const baseProfit = values.get(baseYear)
+  const targetProfit = values.get(targetYear)
+  if (baseProfit === null || baseProfit === undefined || targetProfit === null || targetProfit === undefined || baseProfit <= 0 || targetProfit <= 0) {
+    return null
   }
-  const normalized: Record<string, TrackOverride> = {}
-  for (const [code, raw] of Object.entries(candidate)) {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      continue
-    }
-    const item = raw as TrackOverride
-    normalized[code] = {
-      primaryTrack: String(item.primaryTrack || '').trim(),
-      secondaryTrack: String(item.secondaryTrack || '').trim(),
-      note: String(item.note || '').trim(),
+  return ((targetProfit / baseProfit) ** (1 / (targetYear - baseYear)) - 1) * 100
+}
+
+function evaluateGrowthValuation(
+  row: TrackRow,
+  model: ValuationModel,
+  marketCapYi: number | null,
+  latestPrice: number | null,
+  forecasts: Array<Record<string, unknown>>,
+  financeDate: string,
+  reportCount: number,
+  latestReports: ValuationEvidenceLink[],
+  latestNews: ValuationEvidenceLink[],
+  pullbackSignal: ReturnType<typeof calculatePullbackSignal>,
+): CompanyValuation {
+  const orderedForecasts = forecasts
+    .map((forecast) => ({
+      year: Number(forecast.year),
+      netProfit: numberOrNull(forecast.netProfit),
+      profitGrowth: numberOrNull(forecast.profitGrowth),
+    }))
+    .filter((forecast) => Number.isInteger(forecast.year) && forecast.netProfit !== null && forecast.netProfit > 0)
+    .sort((left, right) => left.year - right.year)
+  const baseYear = valuationRules.growthPeg.baseForecastYear
+  const targetYear = valuationRules.growthPeg.targetForecastYear
+  const baseForecast = orderedForecasts.find((forecast) => forecast.year === baseYear)
+  const targetForecast = orderedForecasts.find((forecast) => forecast.year === targetYear)
+  const profitGrowth = baseForecast && targetForecast && baseForecast.netProfit !== null && targetForecast.netProfit !== null
+    ? ((targetForecast.netProfit / baseForecast.netProfit) ** (1 / (targetYear - baseYear)) - 1) * 100
+    : null
+  if (!targetForecast || marketCapYi === null || profitGrowth === null || profitGrowth <= 0) {
+    return {
+      ...emptyValuation(row, `缺少 ${baseYear}E 与 ${targetYear}E 正利润预测、增长预测或实时市值，无法计算远期 PEG。`),
+      modelLabel: model.label,
+      latestPrice,
+      financeDate,
+      reportCount,
+      latestReports,
+      latestNews,
+      confidence: reportCount >= 1 ? '中' : '低',
+      ...pullbackSignal,
     }
   }
-  return normalized
+  const forwardPe = marketCapYi / targetForecast.netProfit
+  const peg = forwardPe / profitGrowth
+  const thresholds = model.thresholds
+  let state: ValuationState = 'overvalued'
+  if (peg <= Number(thresholds.strongBuy)) state = 'deep-value'
+  else if (peg <= Number(thresholds.buy)) state = 'value'
+  else if (peg <= Number(thresholds.watch)) state = 'fair'
+  else if (peg <= Number(thresholds.noAdd)) state = 'expensive'
+  const confidence = reportCount >= 3 && financeDate ? '高' : reportCount >= 1 && financeDate ? '中' : '低'
+  return {
+    state,
+    modelLabel: model.label,
+    rationale: `${targetYear}E 前瞻 PE ${formatNumber(forwardPe)} 倍 ÷ ${baseYear}E-${targetYear}E 净利 CAGR ${formatNumber(profitGrowth)}% = 远期 PEG ${formatNumber(peg, 2)}。`,
+    confidence,
+    latestPrice,
+    forwardPe,
+    peg,
+    forecastYear: targetForecast.year,
+    profitGrowth,
+    financeDate,
+    reportCount,
+    latestReports,
+    latestNews,
+    ...pullbackSignal,
+  }
+}
+
+function evaluateYieldValuation(
+  row: TrackRow,
+  model: ValuationModel,
+  forecasts: Array<Record<string, unknown>>,
+  dividendYield: number | null,
+  latestPrice: number | null,
+  financeDate: string,
+  reportCount: number,
+  latestReports: ValuationEvidenceLink[],
+  latestNews: ValuationEvidenceLink[],
+  pullbackSignal: ReturnType<typeof calculatePullbackSignal>,
+): CompanyValuation {
+  const profitCagr = forecastProfitCagr(forecasts)
+  const baseYear = valuationRules.growthPeg.baseForecastYear
+  const targetYear = valuationRules.growthPeg.targetForecastYear
+  if (dividendYield === null || dividendYield <= 0 || profitCagr === null) {
+    return {
+      ...emptyValuation(row, `缺少近四季股息率或 ${baseYear}E-${targetYear}E 利润预测，无法验证红利的可持续性。`),
+      modelLabel: model.label,
+      latestPrice,
+      financeDate,
+      reportCount,
+      latestReports,
+      latestNews,
+      dividendYield,
+      ...pullbackSignal,
+    }
+  }
+  const thresholds = model.yieldThresholds
+  if (!thresholds) {
+    return {
+      ...emptyValuation(row, '红利模型缺少股息率阈值配置。'),
+      modelLabel: model.label,
+      latestPrice,
+      financeDate,
+      reportCount,
+      latestReports,
+      latestNews,
+      dividendYield,
+      ...pullbackSignal,
+    }
+  }
+  if (profitCagr <= thresholds.minimumProfitCagrPct) {
+    return {
+      state: 'income-stagnant',
+      modelLabel: model.label,
+      rationale: `${baseYear}E-${targetYear}E 净利 CAGR ${formatNumber(profitCagr)}%，未通过“利润增长”门槛；高股息不能单独构成投资理由。`,
+      confidence: reportCount >= 3 && financeDate ? '高' : reportCount >= 1 && financeDate ? '中' : '低',
+      latestPrice,
+      forwardPe: null,
+      peg: null,
+      forecastYear: targetYear,
+      profitGrowth: profitCagr,
+      financeDate,
+      reportCount,
+      latestReports,
+      latestNews,
+      dividendYield,
+      ...pullbackSignal,
+    }
+  }
+  let state: ValuationState = 'expensive'
+  if (dividendYield >= thresholds.strongBuyYieldPct) state = 'deep-value'
+  else if (dividendYield >= thresholds.buyYieldPct) state = 'value'
+  else if (dividendYield >= thresholds.watchYieldPct) state = 'fair'
+  return {
+    state,
+    modelLabel: model.label,
+    rationale: `近四季年化股息率 ${formatNumber(dividendYield)}%，${baseYear}E-${targetYear}E 净利 CAGR ${formatNumber(profitCagr)}%；两项共同决定红利估值状态。`,
+    confidence: reportCount >= 3 && financeDate ? '高' : reportCount >= 1 && financeDate ? '中' : '低',
+    latestPrice,
+    forwardPe: null,
+    peg: null,
+    forecastYear: targetYear,
+    profitGrowth: profitCagr,
+    financeDate,
+    reportCount,
+    latestReports,
+    latestNews,
+    dividendYield,
+    ...pullbackSignal,
+  }
 }
 
 const pageStyle = `
@@ -117,15 +430,29 @@ const pageStyle = `
 .institutional-tracks-summary { display: flex; flex-wrap: wrap; gap: .45rem; }
 .institutional-tracks-summary button { border: 1px solid #c9d7df; border-radius: 999px; background: #fff; color: #334155; padding: .3rem .7rem; }
 .institutional-tracks-summary button.active { background: #0f766e; border-color: #0f766e; color: #fff; }
-.institutional-tracks-table { font-size: .86rem; min-width: 1280px; }
+.institutional-tracks-table { font-size: .86rem; min-width: 1050px; }
 .institutional-tracks-table th { white-space: nowrap; }
-.institutional-tracks-table input { border: 1px solid transparent; border-radius: .3rem; min-width: 9rem; padding: .25rem .35rem; width: 100%; }
-.institutional-tracks-table input:focus { border-color: #0d9488; box-shadow: 0 0 0 .15rem rgba(13,148,136,.14); outline: none; }
-.institutional-tracks-concepts { color: #64748b; max-width: 25rem; }
 .institutional-tracks-sticky { position: sticky; left: 0; z-index: 1; background: #fff; }
+.institutional-tracks-company-with-topics { display: inline-flex; position: relative; }
+.institutional-tracks-topic-tooltip { background: #163b56; border-radius: .45rem; box-shadow: 0 .45rem 1rem rgba(15,23,42,.22); color: #fff; font-size: .75rem; font-weight: 400; left: 0; line-height: 1.4; max-width: min(22rem, calc(100vw - 2rem)); opacity: 0; padding: .45rem .6rem; pointer-events: none; position: absolute; top: calc(100% + .35rem); transform: translateY(.2rem); transition: opacity .14s ease, transform .14s ease; visibility: hidden; width: max-content; z-index: 10; }
+.institutional-tracks-company-with-topics:hover .institutional-tracks-topic-tooltip, .institutional-tracks-company-with-topics:focus-within .institutional-tracks-topic-tooltip { opacity: 1; transform: translateY(0); visibility: visible; }
 .institutional-tracks-follow-button { background: transparent; border: 0; font-size: 1.25rem; line-height: 1; padding: 0; }
 .institutional-tracks-follow-button.is-followed { color: #eab308; }
 .institutional-tracks-follow-button:not(.is-followed) { color: #94a3b8; }
+.institutional-tracks-valuation-guide { background: #f8fafc; border: 1px solid #dbe5ec; border-radius: .75rem; padding: .85rem 1rem; }
+.institutional-tracks-track-grid { display: grid; gap: .55rem; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+.institutional-tracks-track-card { border: 1px solid #dbe5ec; border-left-width: .4rem; border-radius: .55rem; padding: .6rem .7rem; background: #fff; }
+.institutional-tracks-valuation-badge { display: inline-flex; align-items: center; border-radius: 999px; font-size: .75rem; font-weight: 700; line-height: 1.3; padding: .18rem .48rem; white-space: nowrap; }
+.institutional-tracks-valuation-badge.is-deep-value, .institutional-tracks-track-card.is-deep-value { background: #dcfce7; border-color: #15803d; color: #14532d; }
+.institutional-tracks-valuation-badge.is-value, .institutional-tracks-track-card.is-value { background: #ecfdf5; border-color: #0f766e; color: #115e59; }
+.institutional-tracks-valuation-badge.is-fair, .institutional-tracks-track-card.is-fair { background: #fefce8; border-color: #ca8a04; color: #854d0e; }
+.institutional-tracks-valuation-badge.is-expensive, .institutional-tracks-track-card.is-expensive { background: #fff7ed; border-color: #ea580c; color: #9a3412; }
+.institutional-tracks-valuation-badge.is-overvalued, .institutional-tracks-track-card.is-overvalued { background: #fef2f2; border-color: #dc2626; color: #991b1b; }
+.institutional-tracks-valuation-badge.is-income-stagnant, .institutional-tracks-track-card.is-income-stagnant { background: #fff7ed; border-color: #c2410c; color: #9a3412; }
+.institutional-tracks-valuation-badge.is-unavailable, .institutional-tracks-track-card.is-unavailable { background: #f1f5f9; border-color: #94a3b8; color: #475569; }
+.institutional-tracks-evidence { color: #64748b; font-size: .75rem; line-height: 1.4; max-width: 25rem; }
+.institutional-tracks-evidence a { display: block; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.institutional-tracks-assess-button { font-size: .75rem; padding: .16rem .42rem; }
 `
 
 const InstitutionalTracksPage = defineComponent({
@@ -137,22 +464,39 @@ const InstitutionalTracksPage = defineComponent({
     const query = ref('')
     const primaryFilter = ref('')
     const secondaryFilter = ref('')
-    const overrides = ref<Record<string, TrackOverride>>({ ...bundledOverrides, ...loadLocalOverrides() })
+    const valuationFilter = ref<ValuationFilter | ''>('')
     const followedCodes = ref(new Set<string>())
-    const fileInput = ref<HTMLInputElement | null>(null)
+    const valuations = ref<Record<string, CompanyValuation>>({})
+    const evaluatingCodes = ref(new Set<string>())
+    const assessmentStatus = ref('')
+    const assessmentRunning = ref(false)
+    let evaluationRun: Promise<void> | null = null
 
-    const persistOverrides = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides.value))
-
-    const visibleRows = computed(() => {
+    const rowsMatchingTrackFilters = computed(() => {
       const keyword = query.value.trim().toLowerCase()
       return rows.value.filter((row) => {
         if (primaryFilter.value && row.primaryTrack !== primaryFilter.value) return false
         if (secondaryFilter.value && row.secondaryTrack !== secondaryFilter.value) return false
         if (!keyword) return true
-        return [row.code, row.name, row.industry, row.primaryTrack, row.secondaryTrack, row.note, ...row.concepts]
+        return [row.code, row.name, row.industry, row.primaryTrack, row.secondaryTrack, ...row.concepts]
           .join('|').toLowerCase().includes(keyword)
       })
     })
+
+    const valuationCounts = computed(() => {
+      const counts = new Map<ValuationFilter, number>()
+      rowsMatchingTrackFilters.value.forEach((row) => {
+        const state = valuations.value[row.code]?.state || 'pending'
+        counts.set(state, (counts.get(state) || 0) + 1)
+      })
+      return counts
+    })
+
+    const visibleRows = computed(() => rowsMatchingTrackFilters.value.filter((row) => {
+      if (!valuationFilter.value) return true
+      const state = valuations.value[row.code]?.state || 'pending'
+      return state === valuationFilter.value
+    }))
 
     const primaryCounts = computed(() => {
       const countMap = new Map<string, number>()
@@ -168,28 +512,37 @@ const InstitutionalTracksPage = defineComponent({
       return [...new Set(values)].sort((left, right) => left.localeCompare(right))
     })
 
+    const trackSummaries = computed(() => {
+      const useSecondaryTrack = Boolean(secondaryFilter.value)
+      const groups = new Map<string, TrackRow[]>()
+      visibleRows.value.forEach((row) => {
+        const key = useSecondaryTrack ? row.secondaryTrack : row.primaryTrack
+        groups.set(key, [...(groups.get(key) || []), row])
+      })
+      return [...groups.entries()].map(([track, trackRows]) => {
+        const scores = trackRows
+          .map((row) => valuations.value[row.code])
+          .map((valuation) => valuation ? valuationStateMeta[valuation.state].score : null)
+          .filter((score): score is number => score !== null)
+        const evaluated = scores.length
+        const averageScore = evaluated ? scores.reduce((sum, score) => sum + score, 0) / evaluated : null
+        let state: ValuationState = 'unavailable'
+        if (averageScore !== null && evaluated >= valuationRules.trackMinimumEvaluatedCompanies) {
+          if (averageScore >= 1.5) state = 'deep-value'
+          else if (averageScore >= 0.5) state = 'value'
+          else if (averageScore > -0.5) state = 'fair'
+          else if (averageScore > -1.5) state = 'expensive'
+          else state = 'overvalued'
+        }
+        return { track, total: trackRows.length, evaluated, state }
+      }).sort((left, right) => right.total - left.total || left.track.localeCompare(right.track))
+    })
+
     function selectPrimary(track: string) {
       primaryFilter.value = track
       if (secondaryFilter.value && !secondaryOptions.value.includes(secondaryFilter.value)) {
         secondaryFilter.value = ''
       }
-    }
-
-    function applyOverride(row: TrackRow, key: keyof TrackOverride, value: string) {
-      row[key] = value
-      overrides.value[row.code] = { ...(overrides.value[row.code] || {}), [key]: value }
-      overrides.value = { ...overrides.value }
-      persistOverrides()
-    }
-
-    function applyOverridesToRows() {
-      rows.value.forEach((row) => {
-        const item = overrides.value[row.code]
-        if (!item) return
-        if (item.primaryTrack) row.primaryTrack = item.primaryTrack
-        if (item.secondaryTrack) row.secondaryTrack = item.secondaryTrack
-        if (item.note) row.note = item.note
-      })
     }
 
     function loadRows() {
@@ -208,8 +561,12 @@ const InstitutionalTracksPage = defineComponent({
         if (list.some((item, index) => index > 0 && Number(item.ALLCORP_NUM) > Number(list[index - 1].ALLCORP_NUM))) {
           throw new Error('快照未按机构持股家数降序排列')
         }
+        if (snapshot.classificationVersion !== 2) throw new Error(`不支持的主营赛道分类版本：${snapshot.classificationVersion}`)
         rows.value = list.map((stock, index) => {
-          const derived = deriveTrack(stock)
+          const assignment = snapshot.rows[index]
+          if (!assignment.primaryTrack || !assignment.secondaryTrack || !assignment.classificationNote) {
+            throw new Error(`${stock.SECUCODE} ${stock.SECURITY_NAME_ABBR} 缺少主营赛道分类`)
+          }
           return {
             rank: index + 1,
             code: String(stock.SECUCODE),
@@ -218,10 +575,10 @@ const InstitutionalTracksPage = defineComponent({
             industry: String(stock.INDUSTRY || stock.BOARD_NAME || '未分类'),
             concepts: Array.isArray(stock.CONCEPT) ? stock.CONCEPT.map(String) : [],
             tradeDate: String(stock.MAX_TRADE_DATE || ''),
-            ...derived,
+            primaryTrack: assignment.primaryTrack,
+            secondaryTrack: assignment.secondaryTrack,
           }
         })
-        applyOverridesToRows()
         followedCodes.value = new Set(rows.value.map((row) => row.code).filter(isCompanyFollowed))
       } catch (caught) {
         error.value = caught instanceof Error ? caught.message : String(caught)
@@ -230,39 +587,29 @@ const InstitutionalTracksPage = defineComponent({
       }
     }
 
-    function exportOverrides() {
-      const content = JSON.stringify({
-        version: 1,
-        generatedAt: new Date().toISOString(),
-        dataDate: rows.value[0]?.tradeDate || '',
-        overrides: overrides.value,
-      }, null, 2)
-      const anchor = document.createElement('a')
-      anchor.href = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
-      anchor.download = `institutional-track-overrides-${rows.value[0]?.tradeDate || 'latest'}.json`
-      anchor.click()
-      URL.revokeObjectURL(anchor.href)
-    }
-
-    async function importOverrides(event: Event) {
-      const file = (event.target as HTMLInputElement).files?.[0]
-      if (!file) return
+    function restoreValuations(): number {
       try {
-        overrides.value = normalizeOverrides(JSON.parse(await file.text()))
-        persistOverrides()
-        loadRows()
-      } catch (caught) {
-        error.value = `导入失败：${caught instanceof Error ? caught.message : String(caught)}`
-      } finally {
-        if (fileInput.value) fileInput.value.value = ''
+        const cached = JSON.parse(localStorage.getItem(valuationCacheKey()) || 'null') as ValuationCache | null
+        if (!cached || !Number.isFinite(cached.savedAt) || Date.now() - cached.savedAt > valuationRules.evaluationCache.ttlMs || !cached.valuations || typeof cached.valuations !== 'object') {
+          return 0
+        }
+        const validCodes = new Set(rows.value.map((row) => row.code))
+        valuations.value = Object.fromEntries(Object.entries(cached.valuations).filter(([code]) => validCodes.has(code)))
+        return Object.keys(valuations.value).length
+      } catch {
+        return 0
       }
     }
 
-    function resetOverrides() {
-      if (!window.confirm('确认清除浏览器中的全部赛道修改并恢复规则分析？')) return
-      overrides.value = { ...bundledOverrides }
-      persistOverrides()
-      loadRows()
+    function persistValuations(): void {
+      try {
+        localStorage.setItem(valuationCacheKey(), JSON.stringify({
+          savedAt: Date.now(),
+          valuations: valuations.value,
+        } satisfies ValuationCache))
+      } catch {
+        // Cache capacity or browser privacy settings must not block evaluation.
+      }
     }
 
     function isFollowed(code: string): boolean {
@@ -276,27 +623,173 @@ const InstitutionalTracksPage = defineComponent({
         : [...followedCodes.value].filter((item) => item !== code))
     }
 
-    onMounted(loadRows)
+    function isEvaluating(code: string): boolean {
+      return evaluatingCodes.value.has(code)
+    }
+
+    async function evaluateCompany(row: TrackRow): Promise<boolean> {
+      if (isEvaluating(row.code)) return false
+      evaluatingCodes.value = new Set([...evaluatingCodes.value, row.code])
+      const model = valuationModelFor(row)
+      try {
+        const [company, forecasts, incomeRows, reportDocs, newsDocs, klineRows, dividend] = await Promise.all([
+          fetchApi<{ latestPrice?: unknown, marketCapYi?: unknown }>(`/api/company/info?code=${encodeURIComponent(row.code)}`),
+          fetchApi<Array<Record<string, unknown>>>(`/api/report/forecast?code=${encodeURIComponent(row.code)}`),
+          fetchApi<Array<Record<string, unknown>>>(`/api/finance/income?code=${encodeURIComponent(row.code)}`),
+          fetchApi<unknown>(`/api/knowledge/docs?code=${encodeURIComponent(row.code)}&sourceType=company_report&page=1&pageSize=3`),
+          fetchApi<unknown>(`/api/knowledge/docs?code=${encodeURIComponent(row.code)}&sourceType=web_news&page=1&pageSize=3`),
+          fetchApi<unknown[][]>(`/api/kline?code=${encodeURIComponent(row.code)}&period=day&fq=before&from=${encodeURIComponent(klineStartDate())}`)
+            .catch(() => []),
+          fetchApi<{ currentYield?: unknown }>(`/api/finance/dividendyield?code=${encodeURIComponent(row.code)}`)
+            .catch(() => null),
+        ])
+        const reportCount = evidenceTotal(reportDocs)
+        const latestReports = evidenceLinks(reportDocs)
+        const latestNews = evidenceLinks(newsDocs)
+        const financeDate = String(incomeRows[0]?.NOTICE_DATE || incomeRows[0]?.REPORT_DATE || '')
+        const latestPrice = numberOrNull(company.latestPrice)
+        const pullbackSignal = calculatePullbackSignal(latestPrice, klineRows)
+        const dividendYield = dividend ? numberOrNull(dividend.currentYield) : null
+        valuations.value = {
+          ...valuations.value,
+          [row.code]: model.id === 'growth'
+            ? evaluateGrowthValuation(
+              row,
+              model,
+              numberOrNull(company.marketCapYi),
+              latestPrice,
+              forecasts,
+              financeDate,
+              reportCount,
+              latestReports,
+              latestNews,
+              pullbackSignal,
+            )
+            : model.id === 'yield'
+              ? evaluateYieldValuation(
+                row,
+                model,
+                forecasts,
+                dividendYield,
+                latestPrice,
+                financeDate,
+                reportCount,
+                latestReports,
+                latestNews,
+                pullbackSignal,
+              )
+            : {
+              ...emptyValuation(row, `已加载最新财报、研报与新闻；${model.label}还需补齐专属估值字段，暂不自动给出颜色结论。`),
+              modelLabel: model.label,
+              latestPrice,
+              financeDate,
+              reportCount,
+              latestReports,
+              latestNews,
+              confidence: reportCount >= 1 && financeDate ? '中' : '低',
+              dividendYield,
+              ...pullbackSignal,
+            },
+        }
+        persistValuations()
+        return true
+      } catch (caught) {
+        valuations.value = {
+          ...valuations.value,
+          [row.code]: emptyValuation(row, caught instanceof Error ? caught.message : String(caught)),
+        }
+        return false
+      } finally {
+        evaluatingCodes.value = new Set([...evaluatingCodes.value].filter((code) => code !== row.code))
+      }
+    }
+
+    function evaluateRows(candidates: TrackRow[], label: string): Promise<void> {
+      if (evaluationRun) return evaluationRun
+      const pending = candidates.filter((row) => !valuations.value[row.code] && !isEvaluating(row.code))
+      if (!pending.length) {
+        assessmentStatus.value = '当前范围内没有待评估公司。'
+        return Promise.resolve()
+      }
+      const concurrency = Math.max(1, Math.min(valuationRules.evaluationConcurrency, pending.length))
+      assessmentRunning.value = true
+      evaluationRun = (async () => {
+        let completed = 0
+        let cached = 0
+        assessmentStatus.value = `${label} ${pending.length} 家公司（最多同时 ${concurrency} 家）…`
+        const queue = [...pending]
+        const worker = async () => {
+          while (queue.length) {
+            const row = queue.shift()
+            if (!row) continue
+            if (await evaluateCompany(row)) cached += 1
+            completed += 1
+            assessmentStatus.value = `${label} ${completed}/${pending.length} 家；已缓存 ${cached} 家结果。`
+          }
+        }
+        await Promise.all(Array.from({ length: concurrency }, worker))
+        assessmentStatus.value = `${label}完成：${cached}/${pending.length} 家结果已缓存。`
+      })()
+      return evaluationRun.finally(() => {
+        evaluationRun = null
+        assessmentRunning.value = false
+      })
+    }
+
+    function evaluateVisibleRows(): Promise<void> {
+      return evaluateRows(
+        visibleRows.value.slice(0, valuationRules.batchLimit),
+        '正在评估当前范围内',
+      )
+    }
+
+    function startAutomaticEvaluation(): void {
+      const restored = restoreValuations()
+      const candidates = rows.value.slice(0, valuationRules.autoEvaluateLimit)
+      const missing = candidates.filter((row) => !valuations.value[row.code]).length
+      if (!missing) {
+        assessmentStatus.value = `已从本地缓存恢复 ${restored} 家公司的评估结果。`
+        return
+      }
+      assessmentStatus.value = restored
+        ? `已恢复 ${restored} 家缓存结果；继续按机构持股排名自动评估其余 ${missing} 家…`
+        : '将按机构持股排名自动评估公司…'
+      void evaluateRows(candidates, '正在自动评估')
+    }
+
+    onMounted(() => {
+      loadRows()
+      if (!error.value && rows.value.length) startAutomaticEvaluation()
+    })
 
     return () => h('div', { class: 'container-fluid my-3 institutional-tracks-page' }, [
       h('style', pageStyle),
       h('section', { class: 'institutional-tracks-hero mb-3' }, [
         h('div', { class: 'd-flex flex-wrap justify-content-between gap-3 align-items-end' }, [
           h('div', [
-            h('h1', { class: 'h3 mb-2' }, '机构持股 Top300 赛道分析'),
-            h('p', { class: 'mb-0' }, `按 ALLCORP_NUM 降序；榜单日期 ${rows.value[0]?.tradeDate || '加载中'}。赛道由行业与概念规则初判，支持逐项人工修订。`),
-          ]),
-          h('div', { class: 'd-flex flex-wrap gap-2' }, [
-            h('button', { class: 'btn btn-light btn-sm', onClick: exportOverrides, disabled: !rows.value.length }, '导出修改 JSON'),
-            h('button', { class: 'btn btn-outline-light btn-sm', onClick: () => fileInput.value?.click() }, '导入 JSON'),
-            h('button', { class: 'btn btn-outline-light btn-sm', onClick: resetOverrides }, '恢复规则分析'),
-            h('input', { ref: fileInput, type: 'file', accept: 'application/json,.json', class: 'd-none', onChange: importOverrides }),
+            h('h1', { class: 'h3 mb-2' }, '机构持股 Top300 主营赛道'),
+            h('p', { class: 'mb-0' }, `按 ALLCORP_NUM 降序；榜单日期 ${rows.value[0]?.tradeDate || '加载中'}。一级、二级赛道按主营业务归类；东财概念仅作为主题标签展示。`),
           ]),
         ]),
       ]),
       error.value ? h('div', { class: 'alert alert-danger' }, error.value) : null,
+      h('section', { class: 'institutional-tracks-valuation-guide mb-3' }, [
+        h('div', { class: 'd-flex flex-wrap align-items-center justify-content-between gap-2' }, [
+          h('div', [
+            h('div', { class: 'fw-semibold' }, '估值颜色：赛道与公司分别判断'),
+            h('div', { class: 'small text-muted' }, `页面打开后会按机构持股排名自动评估 Top${valuationRules.autoEvaluateLimit}，最多同时核对 ${valuationRules.evaluationConcurrency} 家；结果在本浏览器缓存 ${Math.round(valuationRules.evaluationCache.ttlMs / 60_000)} 分钟。成长赛道按 2028E 前瞻 PE ÷ 2026E-2028E 净利 CAGR 计算远期 PEG；红利赛道要求近四季年化股息率与 2026E-2028E 利润 CAGR 同时成立，利润不增长直接标为“不宜新增”。距近 3 个月高点的回撤只在超过个股波动率对应阈值时标为“回撤关注”，不自动上调估值颜色。周期、金融赛道仍须补齐各自的中周期或 PB-ROE 证据。`),
+          ]),
+          h('button', {
+            type: 'button',
+            class: 'btn btn-sm btn-outline-primary',
+            disabled: assessmentRunning.value,
+            onClick: () => { void evaluateVisibleRows() },
+          }, `评估当前前 ${valuationRules.batchLimit} 家`),
+        ]),
+        assessmentStatus.value ? h('div', { class: 'small text-muted mt-2' }, assessmentStatus.value) : null,
+      ]),
       h('div', { class: 'row g-2 mb-3 align-items-center' }, [
-        h('div', { class: 'col-12 col-lg-4' }, [
+        h('div', { class: 'col-12 col-lg-3' }, [
           h('input', {
             class: 'form-control form-control-sm',
             value: query.value,
@@ -304,39 +797,74 @@ const InstitutionalTracksPage = defineComponent({
             onInput: (event: Event) => { query.value = (event.target as HTMLInputElement).value },
           }),
         ]),
-        h('div', { class: 'col-12 col-lg-4' }, [
+        h('div', { class: 'col-12 col-lg-3' }, [
           h('select', {
             class: 'form-select form-select-sm',
             value: primaryFilter.value,
             onChange: (event: Event) => selectPrimary((event.target as HTMLSelectElement).value),
           }, [
-            h('option', { value: '' }, `全部一级赛道（${rows.value.length}）`),
+            h('option', { value: '' }, `全部一级主营赛道（${rows.value.length}）`),
             ...primaryCounts.value.map(([track, count]) => h('option', { value: track }, `${track}（${count}）`)),
           ]),
         ]),
-        h('div', { class: 'col-12 col-lg-4' }, [
+        h('div', { class: 'col-12 col-lg-3' }, [
           h('select', {
             class: 'form-select form-select-sm',
             value: secondaryFilter.value,
             onChange: (event: Event) => { secondaryFilter.value = (event.target as HTMLSelectElement).value },
           }, [
-            h('option', { value: '' }, '全部二级赛道'),
+            h('option', { value: '' }, '全部二级主营赛道'),
             ...secondaryOptions.value.map((track) => h('option', { value: track }, track)),
           ]),
         ]),
+        h('div', { class: 'col-12 col-lg-3' }, [
+          h('select', {
+            class: 'form-select form-select-sm',
+            value: valuationFilter.value,
+            'aria-label': '按估值状态筛选',
+            onChange: (event: Event) => { valuationFilter.value = (event.target as HTMLSelectElement).value as ValuationFilter | '' },
+          }, [
+            h('option', { value: '' }, `全部估值状态（${rowsMatchingTrackFilters.value.length}）`),
+            h('option', { value: 'pending' }, `待评估（${valuationCounts.value.get('pending') || 0}）`),
+            ...valuationStates.map((state) => h(
+              'option',
+              { value: state },
+              `${valuationStateMeta[state].label}（${valuationCounts.value.get(state) || 0}）`,
+            )),
+          ]),
+        ]),
       ]),
+      !loading.value ? h('section', { class: 'institutional-tracks-track-grid mb-3', 'aria-label': '赛道估值状态' }, trackSummaries.value.map((summary) => {
+        const meta = valuationStateMeta[summary.state]
+        return h('div', { key: summary.track, class: `institutional-tracks-track-card ${meta.className}` }, [
+          h('div', { class: 'd-flex justify-content-between gap-2' }, [
+            h('span', { class: 'fw-semibold' }, summary.track),
+            h('span', { class: 'institutional-tracks-valuation-badge ' + meta.className }, meta.label),
+          ]),
+          h('div', { class: 'small mt-1' }, summary.evaluated >= valuationRules.trackMinimumEvaluatedCompanies
+            ? `已按 ${summary.evaluated}/${summary.total} 家有结论公司聚合`
+            : `已评估 ${summary.evaluated}/${summary.total} 家；至少 ${valuationRules.trackMinimumEvaluatedCompanies} 家才给赛道颜色`),
+        ])
+      })) : null,
       loading.value
         ? h('div', { class: 'text-center text-muted py-5' }, '正在加载 Top300 并匹配赛道…')
         : h('div', { class: 'table-responsive border rounded' }, [
           h('table', { class: 'table table-sm table-hover align-middle mb-0 institutional-tracks-table' }, [
             h('thead', { class: 'table-light' }, [h('tr', [
-              h('th', '排名'), h('th', '股票'), h('th', '机构家数'), h('th', '东财行业'), h('th', '概念证据'),
-              h('th', '一级赛道（可编辑）'), h('th', '二级赛道（可编辑）'), h('th', '逐股分析（可编辑）'),
+              h('th', '排名'), h('th', '股票'), h('th', '估值状态'), h('th', '机构家数'), h('th', '东财行业'),
+              h('th', '一级主营赛道'), h('th', '二级主营赛道'),
             ])]),
             h('tbody', visibleRows.value.map((row) => h('tr', { key: row.code }, [
               h('td', row.rank),
               h('td', { class: 'institutional-tracks-sticky' }, [
-                h('a', { href: `company.html?code=${encodeURIComponent(row.code)}`, target: '_blank' }, row.name),
+                h('span', { class: 'institutional-tracks-company-with-topics' }, [
+                  h('a', {
+                    href: `company.html?code=${encodeURIComponent(row.code)}`,
+                    target: '_blank',
+                    'aria-label': row.concepts.length ? `${row.name}，主题标签：${row.concepts.join('、')}` : row.name,
+                  }, row.name),
+                  row.concepts.length ? h('span', { class: 'institutional-tracks-topic-tooltip', role: 'tooltip' }, `主题标签：${row.concepts.join('、')}`) : null,
+                ]),
                 h('button', {
                   type: 'button',
                   class: `institutional-tracks-follow-button ms-1 ${isFollowed(row.code) ? 'is-followed' : ''}`,
@@ -346,27 +874,45 @@ const InstitutionalTracksPage = defineComponent({
                 }, h('span', { 'aria-hidden': 'true' }, isFollowed(row.code) ? '★' : '☆')),
                 h('div', { class: 'text-muted small' }, row.code),
               ]),
+              h('td', { style: 'min-width: 15rem;' }, (() => {
+                const valuation = valuations.value[row.code]
+                if (!valuation) {
+                  return h('button', {
+                    type: 'button',
+                    class: 'btn btn-sm btn-outline-secondary institutional-tracks-assess-button',
+                    disabled: isEvaluating(row.code),
+                    onClick: () => { void evaluateCompany(row) },
+                  }, isEvaluating(row.code) ? '正在核对证据…' : '评估估值')
+                }
+                const meta = valuationStateMeta[valuation.state]
+                const metric = valuation.peg !== null
+                  ? `${valuation.forecastYear}E PE ${formatNumber(valuation.forwardPe)}× / 远期 PEG ${formatNumber(valuation.peg, 2)}`
+                  : valuation.dividendYield !== null
+                    ? `近四季股息率 ${formatNumber(valuation.dividendYield)}% / ${valuation.forecastYear}E 前净利 CAGR ${formatNumber(valuation.profitGrowth)}%`
+                    : `财报 ${formatDate(valuation.financeDate)}｜研报 ${valuation.reportCount} 份`
+                const pullbackText = valuation.drawdownPct === null
+                  ? '近 3 个月回撤：数据不足'
+                  : `近 3 个月高点 ${formatNumber(valuation.threeMonthHigh)}，回撤 ${formatNumber(valuation.drawdownPct)}%｜年化波动 ${formatNumber(valuation.annualizedVolatility)}%，关注线 ${formatNumber(valuation.drawdownReviewThreshold)}%${valuation.pullbackWorthReview ? '（回撤关注）' : ''}`
+                return h('div', [
+                  h('span', { class: `institutional-tracks-valuation-badge ${meta.className}`, title: valuation.rationale }, meta.label),
+                  h('div', { class: 'small mt-1' }, metric),
+                  h('div', { class: 'institutional-tracks-evidence mt-1' }, [
+                    h('div', `${valuation.modelLabel}｜置信度 ${valuation.confidence}`),
+                    h('div', valuation.rationale),
+                    h('div', { class: valuation.pullbackWorthReview ? 'text-primary fw-semibold' : '' }, pullbackText),
+                    ...valuation.latestReports.slice(0, 2).map((item) => h('a', { href: item.url, target: '_blank', rel: 'noreferrer', title: item.title }, `研报 ${formatDate(item.publishedAt)}：${item.title}`)),
+                    ...valuation.latestNews.slice(0, 1).map((item) => h('a', { href: item.url, target: '_blank', rel: 'noreferrer', title: item.title }, `新闻 ${formatDate(item.publishedAt)}：${item.title}`)),
+                  ]),
+                ])
+              })()),
               h('td', { class: 'fw-semibold' }, row.institutionCount.toLocaleString()),
               h('td', row.industry),
-              h('td', { class: 'institutional-tracks-concepts' }, row.concepts.join('、') || '—'),
-              h('td', [h('input', {
-                value: row.primaryTrack,
-                title: `初始匹配：${row.ruleLabel}`,
-                onChange: (event: Event) => applyOverride(row, 'primaryTrack', (event.target as HTMLInputElement).value.trim()),
-              })]),
-              h('td', [h('input', {
-                value: row.secondaryTrack,
-                onChange: (event: Event) => applyOverride(row, 'secondaryTrack', (event.target as HTMLInputElement).value.trim()),
-              })]),
-              h('td', [h('input', {
-                value: row.note,
-                style: 'min-width: 22rem;',
-                onChange: (event: Event) => applyOverride(row, 'note', (event.target as HTMLInputElement).value.trim()),
-              })]),
+              h('td', row.primaryTrack),
+              h('td', row.secondaryTrack),
             ]))),
           ]),
         ]),
-      h('p', { class: 'small text-muted mt-2' }, `当前显示 ${visibleRows.value.length} / ${rows.value.length}。同机构家数的边界股票按东财原始返回顺序截取；赛道归类是研究标签，不构成投资建议。`),
+      h('p', { class: 'small text-muted mt-2' }, `当前显示 ${visibleRows.value.length} / ${rows.value.length}。颜色表示基于当前证据的估值状态，不构成个性化投资建议；同机构家数的边界股票按东财原始返回顺序截取，Top300 的行业占比只代表本榜单样本，不代表全市场。`),
     ])
   },
 })

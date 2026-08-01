@@ -62,10 +62,8 @@ type SinaCompanyReport = {
 };
 
 const REPORT_SOURCE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-const REPORT_SOURCE_CACHE_VERSION = "v6";
 const REPORT_PAGE_SIZE = 10;
 const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const REPORT_FORECAST_CACHE_VERSION = "v7";
 const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
@@ -358,7 +356,7 @@ async function getCompanyReportsSource(
   if (!isCnCode(normalized)) {
     return [];
   }
-  const cacheKey = `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${normalized}:${page}`;
+  const cacheKey = `company-reports-source:${normalized}:${page}`;
   const cached = await readAppJson<Array<Record<string, unknown>>>(c.env.DB, cacheKey);
   if (Array.isArray(cached)) {
     return cached;
@@ -458,32 +456,24 @@ async function ensureSingleReportForecast(
     return;
   }
 
-  if (!shared && sharedCacheKey) {
-    shared = await readLegacyKnowledgeReportAnalysis(c.env.DB, item);
-    if (shared) {
-      await writeAppJson(c.env.DB, sharedCacheKey, shared, REPORT_FORECAST_CACHE_TTL_MS);
-    }
-  }
-  if (shared?.analysisCalled) {
-    return;
-  }
-
   await runSharedReportAnalysisTask(sharedCacheKey, async () => {
     const completedByAnotherRequest = await readSharedReportAnalysis(c.env.DB, sharedCacheKey);
     if (completedByAnotherRequest?.analysisCalled) {
       return;
     }
-    const content = await loadReportContentForForecast(c, item);
-    if (!content) {
+    const reportContent = await loadReportContentForForecast(c, item);
+    if (!reportContent) {
       return;
     }
-    const forecasts = await extractCompanyReportByLlm(c, text(item.title), content);
+    const forecasts = await extractCompanyReportByLlm(c, text(item.title), reportContent.content, {
+      forceLlm: reportContent.source === "eastmoney_pdf",
+    });
     const updatedAt = Date.now();
     const extraction: ReportForecastExtraction = {
       reportId,
       code,
       title: text(item.title),
-      source: reportNeedsLlmExtraction(item) ? "sina_html" : "unknown",
+      source: reportContent.source,
       updatedAt,
       forecasts,
     };
@@ -509,11 +499,13 @@ async function annotateReportItemsWithForecasts(
     const cached = shared?.forecasts?.length
       ? shared
       : await readAppJson<ReportForecastExtraction>(c.env.DB, reportForecastCacheKey(reportId));
-    if (cached?.forecasts?.length && canOverrideItemForecasts(item)) {
+    if (cached?.forecasts?.length) {
       results.push({
         ...item,
-        forecastSource: "llm_sina_html",
-        forecasts: cached.forecasts,
+        forecastSource: "llm_report_source",
+        forecasts: mergeForecastRows(cached.forecasts, Array.isArray(item.forecasts)
+          ? item.forecasts as CompanyReportForecast[]
+          : []),
       });
       continue;
     }
@@ -529,13 +521,56 @@ async function annotateReportItemsWithForecasts(
 async function loadReportContentForForecast(
   c: Context<AppEnv>,
   item: Record<string, unknown>
-): Promise<string> {
+): Promise<{ content: string; source: string } | null> {
+  const infoCode = eastmoneyReportInfoCode(item.infoCode, item.url, item.detailUrl);
+  if (infoCode) {
+    const content = await loadEastmoneyReportPdfText(c, infoCode);
+    return content ? { content, source: "eastmoney_pdf" } : null;
+  }
   const url = text(item.detailUrl) || text(item.url);
   if (!url) {
-    return "";
+    return null;
   }
   const html = await fetchDecodedPageCached(c, `sina-report-detail:${url}`, url, REPORT_FORECAST_CACHE_TTL_MS);
-  return extractSinaReportContent(html);
+  const content = extractSinaReportContent(html);
+  return content ? { content, source: "sina_html" } : null;
+}
+
+async function loadEastmoneyReportPdfText(c: Context<AppEnv>, infoCode: string): Promise<string> {
+  const cacheKey = `eastmoney-report-pdf-text:${infoCode}`;
+  const cached = await readAppJson<{ text: string }>(c.env.DB, cacheKey);
+  if (cached?.text) {
+    return cached.text;
+  }
+  const response = await fetch(reportPdfUrl({ infoCode }), {
+    headers: {
+      Referer: "https://data.eastmoney.com/report/",
+      "User-Agent": "Mozilla/5.0 (compatible; stock-info-worker/0.1; +https://workers.cloudflare.com/)",
+    },
+  });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!response.ok || !new TextDecoder().decode(bytes.slice(0, 5)).startsWith("%PDF")) {
+    throw new Error(`Eastmoney report PDF request failed: infoCode=${infoCode} status=${response.status}`);
+  }
+  const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  GlobalWorkerOptions.workerSrc = "pdfjs-dist/legacy/build/pdf.worker.mjs";
+  const pdf = await getDocument({ data: bytes }).promise;
+  const pages = await Promise.all(
+    Array.from({ length: Math.min(pdf.numPages, 30) }, async (_, index) => {
+      const page = await pdf.getPage(index + 1);
+      const textContent = await page.getTextContent();
+      return textContent.items
+        .map((part) => ("str" in part ? part.str : ""))
+        .join(" ");
+    }),
+  );
+  const textValue = pages.join("\n").trim();
+  if (!textValue) {
+    throw new Error(`Eastmoney report PDF has no extractable text: infoCode=${infoCode}`);
+  }
+  await writeAppJson(c.env.DB, cacheKey, { text: textValue }, REPORT_FORECAST_CACHE_TTL_MS);
+  return textValue;
 }
 
 export async function extractCompanyReportByLlm(
@@ -742,7 +777,7 @@ function enrichReportForecastsWithNetProfit(
 }
 
 function reportForecastCacheKey(reportId: string): string {
-  return `report-forecast:${REPORT_FORECAST_CACHE_VERSION}:${reportId}`;
+  return `report-forecast:${reportId}`;
 }
 
 function sharedReportCacheKeyForItem(item: Record<string, unknown>): string {
@@ -776,35 +811,6 @@ async function writeSharedReportAnalysis(
     forecasts,
     updatedAt,
   } satisfies SharedReportAnalysis, REPORT_FORECAST_CACHE_TTL_MS);
-}
-
-async function readLegacyKnowledgeReportAnalysis(
-  db: D1Database,
-  item: Record<string, unknown>,
-): Promise<SharedReportAnalysis | null> {
-  const infoCode = eastmoneyReportInfoCode(item.infoCode, item.url, item.detailUrl);
-  if (!infoCode) {
-    return null;
-  }
-  const row = await db.prepare(
-    `select doc_id
-     from knowledge_docs
-     where source_type = 'research_report'
-       and report_type = 'company_report'
-       and url like ?
-     order by sort_time desc
-     limit 1`
-  )
-    .bind(`%${infoCode}%`)
-    .first<{ doc_id: string }>();
-  if (!row?.doc_id) {
-    return null;
-  }
-  const cached = await readAppJson<SharedReportAnalysis>(
-    db,
-    `knowledge-report-analysis:v3:${row.doc_id}`,
-  );
-  return cached?.analysisCalled && Array.isArray(cached.forecasts) ? cached : null;
 }
 
 function mergeCompanyReportsPreferPrimary(
@@ -858,17 +864,16 @@ function companyReportSortTime(item: Record<string, unknown>): number {
 }
 
 function companyReportDedupKey(item: Record<string, unknown>): string {
-  return `${normalizeDedupText(text(item.title))}|${normalizeReportOrgName(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org)]))}`;
+  return `${normalizeReportTitleCore(text(item.title))}|${normalizeReportOrgName(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org)]))}`;
 }
 
 function companyReportMergeKey(item: Record<string, unknown>): string {
   const org = normalizeReportOrgName(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org)]));
-  const date = text(item.publishDate).slice(0, 10);
   const title = normalizeReportTitleCore(text(item.title));
-  if (!org || !date || !title) {
+  if (!org || !title) {
     return "";
   }
-  return `${date}|${org}|${title}`;
+  return `${org}|${title}`;
 }
 
 function companyReportId(item: Record<string, unknown>): string {
@@ -892,7 +897,7 @@ function reportNeedsLlmExtraction(item: Record<string, unknown>): boolean {
 }
 
 function reportForecastNeedsLlmRefresh(item: Record<string, unknown>): boolean {
-  if (!reportNeedsLlmExtraction(item)) {
+  if (!reportNeedsLlmExtraction(item) && !eastmoneyReportInfoCode(item.infoCode, item.url, item.detailUrl)) {
     return false;
   }
   if (!Array.isArray(item.forecasts) || item.forecasts.length === 0) {
@@ -1058,14 +1063,16 @@ function normalizeDedupText(value: string): string {
     .replace(/[－—–]/g, "-");
 }
 
-function normalizeReportTitleCore(value: string): string {
+export function normalizeReportTitleCore(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
     return "";
   }
   const colonIndex = Math.max(trimmed.indexOf("："), trimmed.indexOf(":"));
-  let afterColon = colonIndex >= 0 ? trimmed.slice(colonIndex + 1) : trimmed;
-  if (colonIndex < 0) {
+  const prefix = colonIndex >= 0 ? trimmed.slice(0, colonIndex) : "";
+  const hasCompanyPrefix = /^[\u4e00-\u9fa5A-Za-z0-9]+(?:\(\d{6}(?:\.[A-Z]{2})?\))\s*$/.test(prefix);
+  let afterColon = hasCompanyPrefix ? trimmed.slice(colonIndex + 1) : trimmed;
+  if (!hasCompanyPrefix) {
     afterColon = afterColon.replace(/^[\u4e00-\u9fa5A-Za-z0-9]+(?:\(\d{6}(?:\.[A-Z]{2})?\))\s*[：:]?/, "");
   }
   return normalizeDedupText(
@@ -1076,7 +1083,9 @@ function normalizeReportTitleCore(value: string): string {
 
 function normalizeReportOrgName(value: string): string {
   return normalizeDedupText(
-    value.replace(/(股份)?有限责任公司|股份有限公司|有限公司/g, "")
+    value
+      .replace(/[（(]香港[）)]/g, "")
+      .replace(/(股份)?有限责任公司|股份有限公司|有限公司/g, "")
   );
 }
 
@@ -1085,7 +1094,10 @@ function reportForecastsHaveNetProfit(forecasts: Array<Record<string, unknown>>)
 }
 
 export function extractForecastsByPattern(content: string): CompanyReportForecast[] {
-  const tableForecasts = extractForecastsFromMarkdownTable(content);
+  const tableForecasts = mergeForecastRows(
+    extractForecastsFromPdfFinancialTable(content),
+    extractForecastsFromMarkdownTable(content),
+  );
   const sentence = content.match(
     /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*\/\s*(\d{4})\s*\/\s*(\d{4})\s*年[^。；\n]{0,220}?归母\s*净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*亿元/i
   );
@@ -1109,13 +1121,75 @@ export function extractForecastsByPattern(content: string): CompanyReportForecas
   }
   return mergeForecastRows(
     mergeForecastRows(tableForecasts, sentenceForecasts),
-    extractForecastsFromAnnualSentence(content),
+    mergeForecastRows(
+      extractForecastsFromTwoYearAnnualSentence(content),
+      extractForecastsFromAnnualSentence(content),
+    ),
   );
+}
+
+function extractForecastsFromPdfFinancialTable(content: string): CompanyReportForecast[] {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  const table = normalized.match(
+    /(?:百万元|千万元|万元|亿元|元)\s+((?:20\d{2}\s*(?:[AFE]|预测|预计)?\s+){3,8})营业(?:总)?收入\s+((?:-?[\d,]+(?:\.\d+)?\s+){3,8})/i,
+  );
+  if (!table) {
+    return [];
+  }
+  const unit = table[0].match(/百万元|千万元|万元|亿元|元/)?.[0] ?? "";
+  const columns = [...table[1].matchAll(/(20\d{2})\s*(?:([AFE])|预测|预计)?/gi)].map((match) => ({
+    year: Number(match[1]),
+    isForecast: Boolean(match[2]) || /预测|预计/i.test(match[0]),
+  }));
+  const values = [...table[2].matchAll(/-?[\d,]+(?:\.\d+)?/g)].map((match) => Number(match[0].replaceAll(",", "")));
+  if (columns.length !== values.length || columns.length < 2) {
+    return [];
+  }
+  const divisor = tableValueDivisor(unit);
+  return columns.flatMap((column, index) => (
+    column.isForecast && Number.isFinite(values[index])
+      ? [{ year: column.year, revenue: round2(values[index] / divisor) }]
+      : []
+  ));
+}
+
+function extractForecastsFromTwoYearAnnualSentence(content: string): CompanyReportForecast[] {
+  const normalized = content.replace(/[`*]/g, "").replace(/\s+/g, " ");
+  const range = normalized.match(/(?:预计|预期|我们预计|预测)[^。；]{0,120}?(20\d{2})\s*[/／、]\s*((?:20)?\d{2})\s*年/);
+  if (!range || range.index === undefined) {
+    return [];
+  }
+  const startYear = Number(range[1]);
+  const endYear = range[2].length === 2
+    ? Math.floor(startYear / 100) * 100 + Number(range[2])
+    : Number(range[2]);
+  if (!Number.isInteger(startYear) || endYear !== startYear + 1) {
+    return [];
+  }
+  const endIndex = normalized.indexOf("。", range.index);
+  const sentence = normalized.slice(range.index, endIndex > range.index ? endIndex : range.index + 500);
+  const revenue = annualMetricPair(sentence, /(?:总)?营收|营业(?:总)?收入|营业额|主营业务收入|销售收入/i);
+  const profitEps = sentence.match(/(?:归母\s*)?净利润\s*和\s*(?:基本\s*)?(?:EPS|每股收益)\s*分别?为?\s*([-+]?\d+(?:\.\d+)?)\s*[/／、]\s*([-+]?\d+(?:\.\d+)?)\s*亿元[^。；]{0,80}?([-+]?\d+(?:\.\d+)?)\s*[/／、]\s*([-+]?\d+(?:\.\d+)?)\s*元/i);
+  const netProfit = profitEps
+    ? [Number(profitEps[1]), Number(profitEps[2])]
+    : annualMetricPair(sentence, /(?:归母\s*)?净利润/i);
+  const eps = profitEps
+    ? [Number(profitEps[3]), Number(profitEps[4])]
+    : annualMetricPair(sentence, /EPS|每股收益/i);
+  if (!revenue && !netProfit && !eps) {
+    return [];
+  }
+  return [0, 1].map((index) => ({
+    year: startYear + index,
+    ...(revenue?.[index] !== undefined ? { revenue: revenue[index] } : {}),
+    ...(netProfit?.[index] !== undefined ? { netProfit: netProfit[index] } : {}),
+    ...(eps?.[index] !== undefined ? { eps: eps[index] } : {}),
+  })).filter(hasForecastMetric);
 }
 
 function extractForecastsFromAnnualSentence(content: string): CompanyReportForecast[] {
   const normalized = content.replace(/[`*]/g, "").replace(/\s+/g, " ");
-  const range = normalized.match(/(?:预计|预期|我们预计)[^。；]{0,120}?(20\d{2})\s*[-—–至]\s*(20\d{2})\s*年/);
+  const range = normalized.match(/(?:预计|预期|我们预计)[^。；]{0,120}?(20\d{2})\s*(?:年\s*)?[-—–至]\s*(20\d{2})\s*年/);
   if (!range) {
     return [];
   }
@@ -1127,15 +1201,25 @@ function extractForecastsFromAnnualSentence(content: string): CompanyReportForec
   const sentence = normalized.slice(range.index, normalized.indexOf("。", range.index) > 0
     ? normalized.indexOf("。", range.index)
     : range.index + 500);
+  const revenues = annualMetricTriplet(sentence, /(?:总)?营收|营业(?:总)?收入|营业额|主营业务收入|销售收入/i);
+  const revenueGrowths = revenues
+    ? annualMetricTriplet(sentence, /(?:同比(?:增长)?|增长率|增速)/i)
+    : null;
   const netProfits = annualMetricTriplet(sentence, /(?:归母\s*)?净利润/i);
+  const profitGrowths = netProfits
+    ? annualMetricTriplet(sentence, /(?:同比(?:增长)?|增长率|增速)/i)
+    : null;
   const epsValues = annualMetricTriplet(sentence, /EPS|每股收益/i);
   const peValues = annualMetricTriplet(sentence, /P\s*\/?\s*E|市盈率/i);
-  if (!netProfits && !epsValues && !peValues) {
+  if (!revenues && !netProfits && !epsValues && !peValues) {
     return [];
   }
   return [0, 1, 2].map((index) => ({
     year: startYear + index,
+    ...(revenues?.[index] !== undefined ? { revenue: revenues[index] } : {}),
+    ...(revenueGrowths?.[index] !== undefined ? { revenueGrowth: revenueGrowths[index] } : {}),
     ...(netProfits?.[index] !== undefined ? { netProfit: netProfits[index] } : {}),
+    ...(profitGrowths?.[index] !== undefined ? { profitGrowth: profitGrowths[index] } : {}),
     ...(epsValues?.[index] !== undefined ? { eps: epsValues[index] } : {}),
     ...(peValues?.[index] !== undefined ? { pe: peValues[index] } : {}),
   })).filter(hasForecastMetric);
@@ -1151,6 +1235,18 @@ function annualMetricTriplet(sentence: string, label: RegExp): number[] | null {
     .slice(0, 3)
     .map((item) => Number(item[0]));
   return values.length === 3 && values.every(Number.isFinite) ? values : null;
+}
+
+function annualMetricPair(sentence: string, label: RegExp): number[] | null {
+  const match = label.exec(sentence);
+  if (!match || match.index === undefined) {
+    return null;
+  }
+  const valueText = sentence.slice(match.index + match[0].length, match.index + match[0].length + 160);
+  const values = [...valueText.matchAll(/[-+]?\d+(?:\.\d+)?/g)]
+    .slice(0, 2)
+    .map((item) => Number(item[0]));
+  return values.length === 2 && values.every(Number.isFinite) ? values : null;
 }
 
 function extractForecastsFromMarkdownTable(content: string): CompanyReportForecast[] {

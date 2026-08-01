@@ -9,8 +9,13 @@
   "reviewDir": "/Users/terry/git/data/stock-info/knowledge/reviews",
   "stateDir": "/Users/terry/git/data/stock-info/knowledge/state",
   "filteredReviewImport": {
-    "enabled": false,
-    "purgeExisting": true
+    "enabled": true,
+    "purgeExisting": false
+  },
+  "automation": {
+    "enabled": true,
+    "cron": "*/15 * * * *",
+    "runOnStart": false
   },
   "storageRetention": {
     "enabled": true,
@@ -38,6 +43,20 @@
       {"value": "0", "reportType": "company_report"},
       {"value": "1", "reportType": "industry_report"}
     ]
+  },
+  "clsNews": {
+    "enabled": true,
+    "apiBaseUrl": "https://www.cls.cn",
+    "app": "CailianpressWeb",
+    "os": "web",
+    "serviceVersion": "8.7.9",
+    "outputDir": "/Users/terry/git/data/news",
+    "stateFile": "cls-news-fetch-state.json",
+    "pageSize": 50,
+    "maxPages": 50,
+    "lookbackDays": 2,
+    "overlapSeconds": 300,
+    "timeoutMs": 10000
   },
   "defaultSourceName": "本地导入",
   "defaultSourceType": "local_news",

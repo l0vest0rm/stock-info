@@ -4,6 +4,26 @@ import { build, defineConfig } from 'vite'
 
 const pageEntries = [
   {
+    entry: 'src/modules/situation/pages/situation-today-page.ts',
+    globalName: 'LicaiSituationTodayPage',
+    fileName: 'js/situation-today-page.js',
+  },
+  {
+    entry: 'src/modules/situation/pages/situation-holdings-page.ts',
+    globalName: 'LicaiSituationHoldingsPage',
+    fileName: 'js/situation-holdings-page.js',
+  },
+  {
+    entry: 'src/modules/situation/pages/situation-opportunities-page.ts',
+    globalName: 'LicaiSituationOpportunitiesPage',
+    fileName: 'js/situation-opportunities-page.js',
+  },
+  {
+    entry: 'src/modules/situation/pages/situation-evidence-page.ts',
+    globalName: 'LicaiSituationEvidencePage',
+    fileName: 'js/situation-evidence-page.js',
+  },
+  {
     entry: 'src/modules/macro/pages/macro-page.ts',
     globalName: 'LicaiMacroPage',
     fileName: 'js/macro-page.js',

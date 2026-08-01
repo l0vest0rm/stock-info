@@ -27,3 +27,21 @@ A periodic rule that reallocates between the `growth` and `dividend` sleeves. A 
 ## Tradable valuation series
 
 A date-indexed valuation measure explicitly mapped to the growth and dividend sleeves. Missing values result in no valuation-based rotation for that date.
+
+## Institutional Holdings Classification
+
+**Primary business track**:
+A broad economic activity determined by a company's principal business. Each company has exactly one primary business track.
+_Avoid_: Concept track, hot-theme track
+
+**Secondary business track**:
+A narrower principal-business category within one primary business track. It is mutually exclusive for concentration measurement even when a company participates in several themes.
+_Avoid_: Concept tag, Eastmoney concept
+
+**Theme tag**:
+A non-exclusive market or technology exposure associated with a company. Theme tags describe participation but never determine the primary or secondary business track.
+_Avoid_: Primary industry, principal business
+
+**Classification basis**:
+The auditable evidence used for a business-track assignment: an exact source-industry mapping or a documented company-level principal-business correction.
+_Avoid_: First keyword match

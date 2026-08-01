@@ -58,7 +58,6 @@ type KnowledgeReportAnalysis = {
   updatedAt: number;
 };
 
-const KNOWLEDGE_REPORT_ANALYSIS_CACHE_VERSION = "v7";
 const KNOWLEDGE_REPORT_ANALYSIS_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY = 2;
 let knowledgeReportAnalysisActive = 0;
@@ -193,7 +192,7 @@ knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
   }
 
   const metadata = parseJsonObject(row.metadata_json);
-  const cacheKey = `knowledge-report-analysis:${KNOWLEDGE_REPORT_ANALYSIS_CACHE_VERSION}:${id}`;
+  const cacheKey = `knowledge-report-analysis:${id}`;
   const rawMetadata = metadata.raw && typeof metadata.raw === "object" && !Array.isArray(metadata.raw)
     ? metadata.raw as Record<string, unknown>
     : {};
@@ -293,7 +292,7 @@ knowledgeRoutes.get("/knowledge/filtered", async (c) => {
   const page = clampInteger(c.req.query("page"), 1, 1, 10000);
   const pageSize = clampInteger(c.req.query("pageSize"), 50, 1, 100);
   const offset = (page - 1) * pageSize;
-  const reviewRows = await loadLocalFilteredReviewRowsFromAsset(c.env.ASSETS, c.req.url);
+  const reviewRows = await loadLocalFilteredReviewRows();
   const keptDocIds = await loadExistingKnowledgeDocIds(c.env.DB, reviewRows.map((row) => row.docId));
   const filteredRows = reviewRows
     .filter((row) => !row.keep && !keptDocIds.has(row.docId))
@@ -313,7 +312,7 @@ knowledgeRoutes.get("/knowledge/filtered/doc", async (c) => {
   if (!isLocalDevelopmentRuntime()) return fail(c, 404, "filtered review is only available in local development");
   const id = c.req.query("id")?.trim() ?? "";
   if (!id) return fail(c, 400, "missing doc id");
-  const reviewRows = await loadLocalFilteredReviewRowsFromAsset(c.env.ASSETS, c.req.url);
+  const reviewRows = await loadLocalFilteredReviewRows();
   const keptDocIds = await loadExistingKnowledgeDocIds(c.env.DB, reviewRows.map((item) => item.docId));
   const row = reviewRows.find((item) => item.docId === id && !item.keep && !keptDocIds.has(item.docId));
   if (!row) return fail(c, 404, `filtered document not found: ${id}`);
@@ -325,7 +324,7 @@ knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
   const body = await c.req.json().catch(() => ({})) as { id?: string };
   const id = String(body.id || c.req.query("id") || "").trim();
   if (!id) return fail(c, 400, "missing doc id");
-  const reviewRows = await loadLocalFilteredReviewRowsFromAsset(c.env.ASSETS, c.req.url);
+  const reviewRows = await loadLocalFilteredReviewRows();
   const keptDocIds = await loadExistingKnowledgeDocIds(c.env.DB, reviewRows.map((item) => item.docId));
   const reviewRow = reviewRows.find((item) => item.docId === id && !item.keep && !keptDocIds.has(item.docId));
   if (!reviewRow) return fail(c, 404, `filtered document not found: ${id}`);

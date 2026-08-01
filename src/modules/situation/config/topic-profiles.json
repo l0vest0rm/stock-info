@@ -1,0 +1,34 @@
+[
+  {
+    "id": "rates-liquidity",
+    "eventType": "macro",
+    "terms": ["实际利率", "国债收益率", "美联储", "降息", "加息", "流动性", "hibor", "sofr"],
+    "importance": "high",
+    "transmission": "discount",
+    "targets": [{"type":"market","id":"us","direction":"pressure"}, {"type":"market","id":"hk","direction":"pressure"}]
+  },
+  {
+    "id": "credit-growth",
+    "eventType": "macro",
+    "terms": ["社融", "信贷", "pmi", "工业增加值", "出口", "房地产", "信用"],
+    "importance": "high",
+    "transmission": "earnings",
+    "targets": [{"type":"market","id":"cn","direction":"support"}, {"type":"market","id":"hk","direction":"support"}]
+  },
+  {
+    "id": "semiconductor-cycle",
+    "eventType": "industry",
+    "terms": ["半导体", "芯片", "存储", "晶圆", "先进封装", "算力", "服务器"],
+    "importance": "medium",
+    "transmission": "earnings",
+    "targets": [{"type":"industry","id":"semiconductor","direction":"support"}]
+  },
+  {
+    "id": "company-governance-risk",
+    "eventType": "company",
+    "terms": ["立案", "审计", "财务造假", "债务违约", "退市", "暂停上市", "重大诉讼"],
+    "importance": "high",
+    "transmission": "risk",
+    "targets": []
+  }
+]

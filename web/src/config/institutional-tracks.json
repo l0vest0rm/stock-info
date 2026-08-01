@@ -1,7 +1,7 @@
 {
-  "title": "机构持股 Top300 赛道分析 | 投研社",
-  "description": "按机构持股家数排序的 Top300 股票一级、二级赛道分析，可在线编辑并导入导出赛道配置。",
-  "keywords": "机构持股,机构持股家数,赛道分析,股票行业,Top300",
+  "title": "机构持股 Top300 主营赛道 | 投研社",
+  "description": "按机构持股家数排序的 Top300 股票一级、二级主营赛道分类，主题标签与主营分类分离。",
+  "keywords": "机构持股,机构持股家数,主营赛道,股票行业,Top300",
   "canonicalPath": "/institutional-tracks.html",
   "includeInSitemap": false,
   "noindex": true,

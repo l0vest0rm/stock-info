@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { classifyInstitutionalTrackSnapshot } from "./lib/institutional-track-classification.mjs";
 const baseUrl = process.argv[2] || "https://tinfo.cc";
 const output = new URL("../web/src/config/institutional-track-snapshot.json", import.meta.url);
+const taxonomyPath = new URL("../web/src/config/institutional-track-taxonomy.json", import.meta.url);
+const taxonomy = JSON.parse(await readFile(taxonomyPath, "utf8"));
 const rankingUrl = new URL("/api/companies/filter", baseUrl);
 rankingUrl.search = new URLSearchParams({
   st: "ALLCORP_NUM",
@@ -25,7 +28,7 @@ if (ranking.some((row, index) => index > 0 && Number(row.ALLCORP_NUM) > Number(r
 const [industryRows, conceptRows] = await Promise.all([fetchIndustries(), fetchConcepts()]);
 const industryMap = new Map(industryRows.map((row) => [String(row.f12 || ""), String(row.f100 || "")]));
 const conceptMap = new Map(conceptRows.map((row) => [String(row.SECUCODE || ""), row]));
-const snapshot = {
+const snapshot = classifyInstitutionalTrackSnapshot({
   generatedAt: new Date().toISOString(),
   dataDate: String(ranking[0]?.MAX_TRADE_DATE || ""),
   rankingField: "ALLCORP_NUM",
@@ -38,7 +41,7 @@ const snapshot = {
     industry: industryMap.get(String(row.SECUCODE).slice(0, 6)) || String(conceptMap.get(String(row.SECUCODE))?.INDUSTRY || "未分类"),
     concepts: Array.isArray(conceptMap.get(String(row.SECUCODE))?.CONCEPT) ? conceptMap.get(String(row.SECUCODE)).CONCEPT.map(String) : [],
   })),
-};
+}, taxonomy);
 await writeFile(output, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
 console.log(JSON.stringify({ output: output.pathname, rows: snapshot.rows.length, dataDate: snapshot.dataDate }, null, 2));
 

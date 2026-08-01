@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "batchLimit": 20,
+  "autoEvaluateLimit": 300,
+  "evaluationConcurrency": 2,
+  "evaluationCache": {
+    "version": 1,
+    "ttlMs": 600000
+  },
+  "trackMinimumEvaluatedCompanies": 2,
+  "growthPeg": {
+    "baseForecastYear": 2026,
+    "targetForecastYear": 2028
+  },
+  "pullbackReview": {
+    "lookbackTradingDays": 63,
+    "annualizationDays": 252,
+    "volatilityMultiplier": 0.5,
+    "minimumDrawdownPct": 10,
+    "maximumDrawdownPct": 30
+  },
+  "models": [
+    {
+      "id": "growth",
+      "label": "成长估值：前瞻 PE / PEG",
+      "primaryTracks": ["信息技术", "医药健康", "汽车与出行", "传媒与互联网"],
+      "thresholds": {"strongBuy": 0.6, "buy": 1, "watch": 1.5, "noAdd": 2}
+    },
+    {
+      "id": "growth",
+      "label": "成长估值：前瞻 PE / PEG",
+      "secondaryTracks": ["锂电池", "电池材料与部件", "电源与储能设备", "工业自动化与机器人", "激光与精密设备", "航空航天与军工"],
+      "thresholds": {"strongBuy": 0.6, "buy": 1, "watch": 1.5, "noAdd": 2}
+    },
+    {
+      "id": "financial",
+      "label": "金融估值：PB-ROE 与股东回报",
+      "primaryTracks": ["金融"],
+      "thresholds": {}
+    },
+    {
+      "id": "yield",
+      "label": "红利估值：股息率、覆盖与现金流",
+      "secondaryTracks": ["白酒", "软饮料", "煤炭", "油气开采与炼化", "核电运营", "水电运营", "通信运营", "铁路公路", "航运港口"],
+      "thresholds": {},
+      "yieldThresholds": {
+        "strongBuyYieldPct": 5,
+        "buyYieldPct": 4,
+        "watchYieldPct": 3,
+        "minimumProfitCagrPct": 0
+      }
+    },
+    {
+      "id": "cycle",
+      "label": "周期估值：中周期盈利与资产价值",
+      "primaryTracks": ["原材料", "能源", "地产与基建", "交通运输与物流"],
+      "thresholds": {}
+    }
+  ],
+  "fallback": {
+    "id": "review",
+    "label": "待选模型：需核对商业模式与估值锚",
+    "thresholds": {}
+  }
+}
