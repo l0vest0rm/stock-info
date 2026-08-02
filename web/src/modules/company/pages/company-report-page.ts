@@ -6,6 +6,7 @@ type CompanyReportRow = {
   title: string
   reportHref: string
   reportInfoCode: string
+  docId: string
   revenue2025: string
   revenueGrowth2025: string
   profit2025: string
@@ -30,6 +31,7 @@ type CompanyReportRow = {
   profitMargin2028: string
   growth2028: string
   pe2028: string
+  valuation: string
   orgName: string
   pages: string
 }
@@ -45,6 +47,12 @@ type CompanyReportStateEvent = CustomEvent<{
 function emitCompanyReportPageChange(page: number) {
   window.dispatchEvent(new CustomEvent('licai:company-report-page-change', {
     detail: { page },
+  }))
+}
+
+function emitCompanyReportOpenDoc(docId: string) {
+  window.dispatchEvent(new CustomEvent('licai:company-report-open-doc', {
+    detail: { docId },
   }))
 }
 
@@ -192,6 +200,7 @@ const CompanyReportPage = defineComponent({
               h('th', { scope: 'col' }, '2028营收'),
               h('th', { scope: 'col' }, '2028净利润'),
               h('th', { scope: 'col' }, '2028PE'),
+              h('th', { scope: 'col' }, '估值信息'),
               h('th', { scope: 'col' }, '机构'),
               h('th', { scope: 'col' }, '页数'),
             ]),
@@ -212,6 +221,14 @@ const CompanyReportPage = defineComponent({
                     target: '_blank',
                     rel: 'noreferrer noopener',
                   }, row.title)
+                  : row.docId
+                    ? h('a', {
+                      href: `#knowledge:${row.docId}`,
+                      onClick: (event: Event) => {
+                        event.preventDefault()
+                        emitCompanyReportOpenDoc(row.docId)
+                      },
+                    }, row.title)
                   : h('span', row.title)),
               h('td', { title: growthTitle('营收', row.revenueGrowth2025) }, row.revenue2025),
               h('td', { title: profitTitle(row.growth2025, row.profitMargin2025) }, row.profit2025),
@@ -225,13 +242,14 @@ const CompanyReportPage = defineComponent({
               h('td', { title: growthTitle('营收', row.revenueGrowth2028) }, row.revenue2028),
               h('td', { title: profitTitle(row.growth2028, row.profitMargin2028) }, row.profit2028),
               h('td', row.pe2028),
+              h('td', row.valuation),
               h('td', row.orgName),
               h('td', row.pages),
             ]))
             : [
               h('tr', { key: 'company-report-empty' }, [
                 h('td', {
-                  colSpan: 17,
+                  colSpan: 18,
                   class: `text-center ${statusDanger.value ? 'text-danger' : 'text-muted'}`,
                 }, statusText.value || '暂无公司研报'),
               ]),

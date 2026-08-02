@@ -21,7 +21,7 @@ export type Bindings = {
   HTTP_PROXY_DOMAINS?: string;
   HTTP_DOMAIN_CONCURRENCY?: string;
   HTTP_REQUEST_TIMEOUT_MS?: string;
-  EASTMONEY_COOKIE?: string;
+  XUEQIU_COOKIE?: string;
   FRED_API_KEY?: string;
   BLS_API_KEY?: string;
   BOK_ECOS_API_KEY?: string;
@@ -71,6 +71,12 @@ export type KlineBar = {
   pctChange: number | null;
   changeAmount: number | null;
   turnover: number | null;
+  peTtm: number | null;
+  pb: number | null;
+  ps: number | null;
+  pcf: number | null;
+  marketCapital: number | null;
+  balance: number | null;
   source: string;
   updatedAt: number;
 };

@@ -17,6 +17,14 @@ const promptEntries = [
     source: "prompts/company/report-analyze-user.md",
   },
   {
+    exportName: "NEWS_REPORT_ANALYZE_SYSTEM_PROMPT",
+    source: "prompts/company/news-report-analyze-system.md",
+  },
+  {
+    exportName: "NEWS_REPORT_ANALYZE_USER_PROMPT",
+    source: "prompts/company/news-report-analyze-user.md",
+  },
+  {
     exportName: "KNOWLEDGE_ENRICH_SYSTEM_PROMPT",
     source: "prompts/knowledge/enrich-structured-system.md",
   },

@@ -3,6 +3,7 @@ import type { Bindings, FinancialStatement, FundNavRow, KlineBar, StatementType 
 const KLINE_HISTORY_START = "1990-01-01";
 
 type KlineSnapshot = {
+  schemaVersion?: number;
   code: string;
   fq: string;
   source: string;
@@ -10,6 +11,7 @@ type KlineSnapshot = {
   startDate: string | null;
   endDate: string | null;
   rows: KlineBar[];
+  rawResponseText?: string;
 };
 
 type FundNavSnapshot = {
@@ -70,16 +72,19 @@ export async function putKlineSnapshot(
   env: Pick<Bindings, "MARKET_DATA_BUCKET">,
   code: string,
   fq: string,
-  rows: KlineBar[]
+  rows: KlineBar[],
+  options?: { rawResponseText?: string }
 ): Promise<void> {
   const snapshot: KlineSnapshot = {
+    schemaVersion: 2,
     code,
     fq,
-    source: rows[0]?.source ?? "eastmoney",
+    source: rows[0]?.source ?? "xueqiu",
     updatedAt: rows[0]?.updatedAt ?? Date.now(),
     startDate: rows[0]?.date ?? null,
     endDate: rows.at(-1)?.date ?? null,
     rows,
+    ...(options?.rawResponseText !== undefined ? { rawResponseText: options.rawResponseText } : {}),
   };
   await env.MARKET_DATA_BUCKET.put(klineSnapshotKey(code, fq), JSON.stringify(snapshot), {
     httpMetadata: {

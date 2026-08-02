@@ -19,10 +19,11 @@ CRON_PID_FILE="${LOG_DIR}/stock-info-local-cron.pid"
 KNOWLEDGE_INGEST_LOG_FILE="${LOG_DIR}/stock-info-knowledge-ingest.log"
 KNOWLEDGE_INGEST_PID_FILE="${LOG_DIR}/stock-info-knowledge-ingest.pid"
 MACRO_FETCH_RELAY_LOG_FILE="${LOG_DIR}/stock-info-macro-fetch-relay.log"
-COOKIE_REFRESH_LOG_FILE="${LOG_DIR}/stock-info-eastmoney-cookie-refresh.log"
-COOKIE_REFRESH_PID_FILE="${LOG_DIR}/stock-info-eastmoney-cookie-refresh.pid"
+COOKIE_REFRESH_LOG_FILE="${LOG_DIR}/stock-info-xueqiu-cookie-refresh.log"
+COOKIE_REFRESH_PID_FILE="${LOG_DIR}/stock-info-xueqiu-cookie-refresh.pid"
+COOKIE_REFRESH_STATE_FILE="${LOG_DIR}/stock-info-xueqiu-cookie-refresh.last-success"
 WORKER_PID_FILE="${LOG_DIR}/stock-info-wrangler.pid"
-EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS="${EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
+XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS="${XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
 
 export HTTP_PROXY_URL="${HTTP_PROXY_URL:-http://127.0.0.1:7890}"
 export HTTP_PROXY_RELAY_URL="${HTTP_PROXY_RELAY_URL:-${HTTP_PROXY_URL%/}/fetch}"
@@ -60,8 +61,8 @@ mkdir -p "$LOG_DIR"
 
 cd "$PROJECT_ROOT"
 
-if [[ "$EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS" != <-> || "$EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS" -lt 300 ]]; then
-  echo "EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS must be an integer of at least 300 seconds."
+if [[ "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" != <-> || "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" -lt 300 ]]; then
+  echo "XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS must be an integer of at least 300 seconds."
   exit 1
 fi
 
@@ -72,7 +73,7 @@ if [[ -f "$COOKIE_REFRESH_PID_FILE" ]]; then
     EXISTING_COOKIE_REFRESH_COMMAND=$(ps -p "$EXISTING_COOKIE_REFRESH_PID" -o command= 2>/dev/null || true)
   fi
   if [[ "$EXISTING_COOKIE_REFRESH_COMMAND" == *"start-local.sh"* ]]; then
-    echo "Stopping existing Eastmoney cookie refresher: ${EXISTING_COOKIE_REFRESH_PID}"
+    echo "Stopping existing Xueqiu cookie refresher: ${EXISTING_COOKIE_REFRESH_PID}"
     kill "$EXISTING_COOKIE_REFRESH_PID" || true
     sleep 1
   fi
@@ -107,13 +108,34 @@ if [[ -f "$KNOWLEDGE_INGEST_PID_FILE" ]]; then
   rm -f "$KNOWLEDGE_INGEST_PID_FILE"
 fi
 
-refresh_eastmoney_cookie() {
-  if npm run refresh:eastmoney-cookie >>"$COOKIE_REFRESH_LOG_FILE" 2>&1; then
-    echo "Eastmoney cookie refreshed in .dev.vars and wrangler.jsonc."
+refresh_xueqiu_cookie() {
+  if npm run refresh:xueqiu-cookie >>"$COOKIE_REFRESH_LOG_FILE" 2>&1; then
+    date +%s >"$COOKIE_REFRESH_STATE_FILE"
+    echo "Xueqiu cookie refreshed from CDP in .dev.vars and wrangler.jsonc."
     return 0
   fi
-  echo "Eastmoney cookie refresh failed; keeping the existing local variables. Check ${COOKIE_REFRESH_LOG_FILE}." >&2
+  echo "Xueqiu CDP cookie refresh failed; keeping the existing variables. Check ${COOKIE_REFRESH_LOG_FILE}." >&2
   return 1
+}
+
+seconds_until_xueqiu_cookie_refresh() {
+  local last_success now elapsed
+  if [[ ! -f "$COOKIE_REFRESH_STATE_FILE" ]]; then
+    echo 0
+    return
+  fi
+  last_success=$(<"$COOKIE_REFRESH_STATE_FILE")
+  if [[ "$last_success" != <-> ]]; then
+    echo 0
+    return
+  fi
+  now=$(date +%s)
+  elapsed=$((now - last_success))
+  if [[ "$elapsed" -lt 0 || "$elapsed" -ge "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" ]]; then
+    echo 0
+    return
+  fi
+  echo $((XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS - elapsed))
 }
 
 start_worker() {
@@ -150,7 +172,7 @@ restart_worker_with_refreshed_cookie() {
   if [[ -f "$WORKER_PID_FILE" ]]; then
     ACTIVE_WORKER_PID=$(<"$WORKER_PID_FILE")
     if [[ "$ACTIVE_WORKER_PID" == <-> ]] && kill -0 "$ACTIVE_WORKER_PID" >/dev/null 2>&1; then
-      echo "Restarting local Worker to load the refreshed Eastmoney cookie."
+      echo "Restarting local Worker to load the refreshed Xueqiu cookie."
       kill "$ACTIVE_WORKER_PID" || true
       sleep 1
     fi
@@ -165,8 +187,13 @@ restart_worker_with_refreshed_cookie() {
 }
 
 : >"$COOKIE_REFRESH_LOG_FILE"
-echo "Refreshing Eastmoney cookie before starting local services..."
-refresh_eastmoney_cookie || true
+COOKIE_REFRESH_WAIT_SECONDS=$(seconds_until_xueqiu_cookie_refresh)
+if [[ "$COOKIE_REFRESH_WAIT_SECONDS" -eq 0 ]]; then
+  echo "Refreshing Xueqiu cookie through CDP before starting local services..."
+  refresh_xueqiu_cookie || true
+else
+  echo "Skipping Xueqiu cookie refresh; next refresh is due in ${COOKIE_REFRESH_WAIT_SECONDS}s."
+fi
 
 EXISTING_WRANGLER_PIDS=$(pgrep -f "node .*wrangler dev --local --port ${PORT}" || true)
 if [[ -n "$EXISTING_WRANGLER_PIDS" ]]; then
@@ -306,9 +333,14 @@ fi
 (
   trap '' HUP
   while true; do
-    sleep "$EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS"
-    if refresh_eastmoney_cookie; then
-      restart_worker_with_refreshed_cookie || echo "Local Worker restart after Eastmoney cookie refresh failed. Check ${LOG_FILE}." >&2
+    COOKIE_REFRESH_WAIT_SECONDS=$(seconds_until_xueqiu_cookie_refresh)
+    if [[ "$COOKIE_REFRESH_WAIT_SECONDS" -gt 0 ]]; then
+      sleep "$COOKIE_REFRESH_WAIT_SECONDS"
+    fi
+    if refresh_xueqiu_cookie; then
+      restart_worker_with_refreshed_cookie || echo "Local Worker restart after Xueqiu cookie refresh failed. Check ${LOG_FILE}." >&2
+    else
+      sleep "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS"
     fi
   done
 ) >>"$COOKIE_REFRESH_LOG_FILE" 2>&1 &
@@ -339,6 +371,6 @@ echo "Macro fetch relay PID: ${MACRO_FETCH_RELAY_PID}"
 echo "Worker PID: ${WORKER_PID}"
 echo "Cron PID: ${CRON_PID}"
 echo "Knowledge ingest scheduler PID: ${KNOWLEDGE_INGEST_PID}"
-echo "Eastmoney cookie refresh interval: ${EASTMONEY_COOKIE_REFRESH_INTERVAL_SECONDS}s"
-echo "Eastmoney cookie refresh log: ${COOKIE_REFRESH_LOG_FILE}"
-echo "Eastmoney cookie refresher PID: ${COOKIE_REFRESH_PID}"
+echo "Xueqiu cookie refresh interval: ${XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS}s"
+echo "Xueqiu cookie refresh log: ${COOKIE_REFRESH_LOG_FILE}"
+echo "Xueqiu cookie refresher PID: ${COOKIE_REFRESH_PID}"

@@ -1,16 +1,22 @@
 import { Context, Hono } from "hono";
 import { getAppKv, putAppKv } from "../../../db/queries";
-import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
+import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { fetchCninfoCompanyNotices, supportsCninfoCompanyNotices } from "../../../adapters/cninfo";
 import { loadKline } from "../../market/application/load-kline";
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
 import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
 import { requestLlmText, type SupportedLlmModel } from "../../../shared/llm-client";
-import { REPORT_ANALYZE_SYSTEM_PROMPT, REPORT_ANALYZE_USER_PROMPT } from "../../../generated/prompt-text";
+import {
+  NEWS_REPORT_ANALYZE_SYSTEM_PROMPT,
+  NEWS_REPORT_ANALYZE_USER_PROMPT,
+  REPORT_ANALYZE_SYSTEM_PROMPT,
+  REPORT_ANALYZE_USER_PROMPT,
+} from "../../../generated/prompt-text";
 import type { AppEnv, CompanyOverview, KlineBar } from "../../../types";
 import {
   eastmoneyReportInfoCode,
+  isReusableReportAnalysisCache,
   runSharedReportAnalysisTask,
   sharedReportAnalysisCacheKey,
 } from "../application/report-analysis-cache";
@@ -27,6 +33,14 @@ export type CompanyReportForecast = {
   pe?: number;
 };
 
+export type CompanyReportValuation = {
+  rating?: string;
+  targetPrice?: number;
+  targetPriceCurrency?: string;
+  targetPe?: number;
+  valuationMethod?: string;
+};
+
 type ReportForecastExtraction = {
   reportId: string;
   code: string;
@@ -34,11 +48,22 @@ type ReportForecastExtraction = {
   source: string;
   updatedAt: number;
   forecasts: CompanyReportForecast[];
+  analysisSucceeded?: boolean;
 };
 
 type SharedReportAnalysis = {
   analysisCalled: boolean;
   forecasts: CompanyReportForecast[];
+  updatedAt: number;
+  analysisSucceeded?: boolean;
+};
+
+type CompanyNewsReportAnalysis = {
+  analysisCalled: true;
+  analysisSucceeded: true;
+  isCompanyReport: boolean;
+  forecasts: CompanyReportForecast[];
+  valuation: CompanyReportValuation;
   updatedAt: number;
 };
 
@@ -62,10 +87,15 @@ type SinaCompanyReport = {
 };
 
 const REPORT_SOURCE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+const REPORT_SOURCE_CACHE_VERSION = "v3";
 const REPORT_PAGE_SIZE = 10;
+const REPORT_SOURCE_POOL_SIZE = 100;
 const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
+const NEWS_REPORT_CANDIDATE_LIMIT = 40;
+const NEWS_REPORT_ANALYSIS_MAX_CALLS = 5;
+const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v1";
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
 
 companyRoutes.get("/company/overview", async (c) => {
@@ -210,7 +240,12 @@ function noticeCode(c: Context<AppEnv>): string {
 
 async function fetchCompanyOverview(c: Context<AppEnv>, code: string): Promise<CompanyOverview> {
   try {
-    return await fetchEastmoneyCompanyOverview(c.env.DB, code);
+    const normalized = normalizeSecurityCode(code);
+    const [eastmoneyOverview, kline] = await Promise.all([
+      fetchEastmoneyCompanyOverview(c.env.DB, normalized),
+      loadKline(c.env, normalized, "day", "normal", "1990-01-01", today()),
+    ]);
+    return applyXueqiuKlineOverview(eastmoneyOverview, kline.rows);
   } catch (err) {
     if (!isUnsupportedEastmoneyCompanyError(err)) {
       throw err;
@@ -244,19 +279,44 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
         ? (changeAmount * 100) / previousPrice
         : null,
     changeAmount,
-    turnover: null,
-    marketCapYi: null,
-    peTtm: null,
-    pb: null,
-    source: latest ? "eastmoney" : "local",
+    turnover: latest?.turnover ?? null,
+    marketCapYi: latest?.marketCapital !== null && latest?.marketCapital !== undefined
+      ? latest.marketCapital / 100_000_000
+      : null,
+    peTtm: latest?.peTtm ?? null,
+    pb: latest?.pb ?? null,
+    source: latest?.source ?? "local",
     updatedAt: Date.now(),
+  };
+}
+
+function applyXueqiuKlineOverview(
+  eastmoneyOverview: CompanyOverview,
+  rows: Array<KlineBar | { date: string }>
+): CompanyOverview {
+  const latest = rows.filter((row): row is KlineBar => "close" in row).at(-1);
+  if (!latest) {
+    throw new Error(`Xueqiu K-line is empty for company overview: ${eastmoneyOverview.code}`);
+  }
+  return {
+    ...eastmoneyOverview,
+    latestPrice: latest.close,
+    pctChange: latest.pctChange,
+    changeAmount: latest.changeAmount,
+    turnover: latest.turnover,
+    marketCapYi: latest.marketCapital !== null ? latest.marketCapital / 100_000_000 : null,
+    peTtm: latest.peTtm,
+    pb: latest.pb,
+    source: "xueqiu",
+    updatedAt: latest.updatedAt,
   };
 }
 
 async function fetchEastmoneyCompanyReports(
   c: Context<AppEnv>,
   code: string,
-  page: number
+  page: number,
+  pageSize = REPORT_PAGE_SIZE,
 ): Promise<Array<Record<string, unknown>>> {
   const normalized = normalizeSecurityCode(code);
   const stockCode = bareCode(normalized);
@@ -267,7 +327,7 @@ async function fetchEastmoneyCompanyReports(
   const params: Record<string, string> = {
     cb: "jQuery",
     industryCode: "*",
-    pageSize: String(REPORT_PAGE_SIZE),
+    pageSize: String(pageSize),
     industry: "*",
     rating: "*",
     ratingChange: "*",
@@ -305,7 +365,6 @@ function mapEastmoneyCompanyReportItem(
   item: Record<string, unknown>,
   normalizedCode: string
 ): Record<string, unknown> {
-  const forecasts = buildEastmoneyForecasts(item);
   return {
     ...item,
     code: normalizedCode,
@@ -325,7 +384,6 @@ function mapEastmoneyCompanyReportItem(
     predictNextYearProfit: text(item.predictNextYearProfit),
     predictNextTwoYearProfit: text(item.predictNextTwoYearProfit),
     sRatingName: text(item.sRatingName),
-    ...(forecasts.length > 0 ? { forecasts } : {}),
   };
 }
 
@@ -335,7 +393,6 @@ async function getCompanyReportsWithProgress(
   page: number,
   onProgress: (event: ReportForecastStreamEvent) => void
 ): Promise<Array<Record<string, unknown>>> {
-  const totalSharesPromise = fetchLatestTotalShares(c, code).catch(() => null);
   let items = await getCompanyReportsSource(c, code, page);
   if (page === 1) {
     await ensureReportForecastsForItemsWithProgress(c, code, items, onProgress);
@@ -343,8 +400,7 @@ async function getCompanyReportsWithProgress(
     onProgress({ progress: { completed: 0, total: 0, title: "" } });
   }
   items = await annotateReportItemsWithForecasts(c, items);
-  const totalShares = await totalSharesPromise;
-  return items.map((item) => enrichReportForecastsWithNetProfit(item, totalShares));
+  return items;
 }
 
 async function getCompanyReportsSource(
@@ -356,19 +412,29 @@ async function getCompanyReportsSource(
   if (!isCnCode(normalized)) {
     return [];
   }
-  const cacheKey = `company-reports-source:${normalized}:${page}`;
+  const cacheKey = `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${normalized}`;
   const cached = await readAppJson<Array<Record<string, unknown>>>(c.env.DB, cacheKey);
   if (Array.isArray(cached)) {
-    return cached;
+    return paginateCompanyReports(cached, page);
   }
-  const [eastmoneyItems, sinaItems] = await Promise.all([
-    fetchEastmoneyCompanyReports(c, normalized, page),
-    fetchSinaCompanyReportsLite(c, normalized, page).catch(() => []),
+  const [eastmoneyItems, sinaItems, newsReportCandidates] = await Promise.all([
+    fetchEastmoneyCompanyReports(c, normalized, 1, REPORT_SOURCE_POOL_SIZE),
+    fetchSinaCompanyReportsLite(c, normalized, 1).catch(() => []),
+    fetchKnowledgeNewsReportCandidates(c, normalized),
   ]);
-  const merged = filterRecentCompanyReports(mergeCompanyReportsPreferPrimary(eastmoneyItems, sinaItems))
-    .slice(0, REPORT_PAGE_SIZE);
+  const merged = filterRecentCompanyReports(
+    mergeCompanyReportsPreferPrimary(
+      mergeCompanyReportsPreferPrimary(eastmoneyItems, sinaItems),
+      newsReportCandidates,
+    ),
+  );
   await writeAppJson(c.env.DB, cacheKey, merged, REPORT_SOURCE_CACHE_TTL_MS);
-  return merged;
+  return paginateCompanyReports(merged, page);
+}
+
+function paginateCompanyReports(items: Array<Record<string, unknown>>, page: number): Array<Record<string, unknown>> {
+  const offset = (page - 1) * REPORT_PAGE_SIZE;
+  return items.slice(offset, offset + REPORT_PAGE_SIZE);
 }
 
 async function fetchSinaCompanyReportsLite(
@@ -397,6 +463,66 @@ async function fetchSinaCompanyReportsLite(
   }));
 }
 
+type KnowledgeNewsReportCandidateRow = {
+  doc_id: string;
+  source_name: string | null;
+  title: string;
+  url: string | null;
+  published_at: string | null;
+  fetched_at: string | null;
+  event_time: string | null;
+  summary: string | null;
+  content_preview: string | null;
+  content_key: string | null;
+  content_url: string | null;
+};
+
+async function fetchKnowledgeNewsReportCandidates(
+  c: Context<AppEnv>,
+  code: string,
+): Promise<Array<Record<string, unknown>>> {
+  const rows = await c.env.DB.prepare(
+    `select d.doc_id, d.source_name, d.title, d.url, d.published_at, d.fetched_at, d.event_time,
+      d.summary, d.content_preview, r.content_key, r.content_url
+     from knowledge_docs d
+     join knowledge_doc_security_links l on l.doc_id = d.doc_id
+     left join knowledge_doc_content_refs r on r.doc_id = d.doc_id
+     where l.code = ?
+       and d.report_type = 'news'
+       and d.source_type in ('local_news', 'web_news')
+       and (
+         d.title like '%研报%'
+         or d.title like '%首次覆盖%'
+         or d.title like '%买入评级%'
+         or d.title like '%维持%评级%'
+         or d.title like '%上调%评级%'
+         or d.title like '%下调%评级%'
+         or d.title like '%目标价%'
+         or d.title like '%目标价格%'
+         or d.content_preview like '%首次覆盖%'
+         or d.content_preview like '%目标价%'
+       )
+     order by d.sort_time desc, d.doc_id desc
+     limit ?`
+  )
+    .bind(code, NEWS_REPORT_CANDIDATE_LIMIT)
+    .all<KnowledgeNewsReportCandidateRow>();
+  return (rows.results ?? []).map((row) => ({
+    code,
+    title: row.title,
+    url: row.url || "",
+    publishDate: row.event_time || row.published_at || row.fetched_at || "",
+    orgName: row.source_name || "资讯",
+    orgSName: row.source_name || "资讯",
+    knowledgeNewsReport: true,
+    knowledgeDocId: row.doc_id,
+    contentPreview: row.content_preview || "",
+    summary: row.summary || "",
+    contentKey: row.content_key || "",
+    contentUrl: row.content_url || "",
+  }));
+}
+
 async function ensureReportForecastsForItemsWithProgress(
   c: Context<AppEnv>,
   code: string,
@@ -404,10 +530,15 @@ async function ensureReportForecastsForItemsWithProgress(
   onProgress: (event: ReportForecastStreamEvent) => void
 ): Promise<void> {
   const normalized = normalizeSecurityCode(code);
-  const candidates = items
+  const newsCandidates = items
+    .filter(isKnowledgeNewsReportCandidate)
+    .slice(0, NEWS_REPORT_ANALYSIS_MAX_CALLS);
+  const standardCandidates = items
     .filter((item) => normalizeSecurityCode(text(item.code)) === normalized)
+    .filter((item) => !isKnowledgeNewsReportCandidate(item))
     .filter((item) => reportForecastNeedsLlmRefresh(item))
-    .slice(0, REPORT_FORECAST_MAX_CALLS);
+    .slice(0, REPORT_FORECAST_MAX_CALLS - newsCandidates.length);
+  const candidates = [...newsCandidates, ...standardCandidates];
   onProgress({
     progress: { completed: 0, total: candidates.length, title: "" },
     items,
@@ -440,6 +571,10 @@ async function ensureSingleReportForecast(
   code: string,
   item: Record<string, unknown>
 ): Promise<void> {
+  if (isKnowledgeNewsReportCandidate(item)) {
+    await ensureKnowledgeNewsReportAnalysis(c, item);
+    return;
+  }
   const reportId = companyReportId(item);
   if (!reportId) {
     return;
@@ -451,7 +586,7 @@ async function ensureSingleReportForecast(
     return;
   }
   const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, cacheKey);
-  if (cached?.forecasts?.length) {
+  if (cached?.forecasts?.length || cached?.analysisSucceeded === true) {
     await writeSharedReportAnalysis(c.env.DB, item, cached.forecasts, cached.updatedAt);
     return;
   }
@@ -465,9 +600,7 @@ async function ensureSingleReportForecast(
     if (!reportContent) {
       return;
     }
-    const forecasts = await extractCompanyReportByLlm(c, text(item.title), reportContent.content, {
-      forceLlm: reportContent.source === "eastmoney_pdf",
-    });
+    const forecasts = await extractCompanyReportByLlm(c, text(item.title), reportContent.content);
     const updatedAt = Date.now();
     const extraction: ReportForecastExtraction = {
       reportId,
@@ -476,6 +609,7 @@ async function ensureSingleReportForecast(
       source: reportContent.source,
       updatedAt,
       forecasts,
+      analysisSucceeded: true,
     };
     await Promise.all([
       writeAppJson(c.env.DB, cacheKey, extraction, REPORT_FORECAST_CACHE_TTL_MS),
@@ -484,12 +618,98 @@ async function ensureSingleReportForecast(
   });
 }
 
+function isKnowledgeNewsReportCandidate(item: Record<string, unknown>): boolean {
+  return item.knowledgeNewsReport === true && Boolean(text(item.knowledgeDocId));
+}
+
+function knowledgeNewsReportAnalysisCacheKey(item: Record<string, unknown>): string {
+  const docId = text(item.knowledgeDocId);
+  return docId ? `company-news-report-analysis:${NEWS_REPORT_ANALYSIS_CACHE_VERSION}:${docId}` : "";
+}
+
+async function ensureKnowledgeNewsReportAnalysis(
+  c: Context<AppEnv>,
+  item: Record<string, unknown>,
+): Promise<void> {
+  const cacheKey = knowledgeNewsReportAnalysisCacheKey(item);
+  if (!cacheKey || await readKnowledgeNewsReportAnalysis(c.env.DB, cacheKey)) {
+    return;
+  }
+  await runSharedReportAnalysisTask(cacheKey, async () => {
+    if (await readKnowledgeNewsReportAnalysis(c.env.DB, cacheKey)) {
+      return;
+    }
+    const content = await loadKnowledgeNewsReportContent(c, item);
+    if (!content) {
+      return;
+    }
+    const analysis = await extractCompanyNewsReportByLlm(c, text(item.title), content);
+    await writeAppJson(c.env.DB, cacheKey, {
+      ...analysis,
+      analysisCalled: true,
+      analysisSucceeded: true,
+      updatedAt: Date.now(),
+    } satisfies CompanyNewsReportAnalysis, REPORT_FORECAST_CACHE_TTL_MS);
+  });
+}
+
+async function loadKnowledgeNewsReportContent(
+  c: Context<AppEnv>,
+  item: Record<string, unknown>,
+): Promise<string> {
+  const key = text(item.contentKey);
+  const publicBaseUrl = text(c.env.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL).replace(/\/+$/, "");
+  const contentUrl = key && publicBaseUrl
+    ? `${publicBaseUrl}/${key.split("/").map(encodeURIComponent).join("/")}`
+    : text(item.contentUrl);
+  if (contentUrl) {
+    const response = await fetch(contentUrl);
+    if (!response.ok) {
+      throw new Error(`knowledge news content request failed: ${response.status}`);
+    }
+    const content = (await response.text()).trim();
+    if (content) {
+      return content.slice(0, 12000);
+    }
+  }
+  return firstNonEmpty([text(item.contentPreview), text(item.summary)]).slice(0, 12000);
+}
+
+async function readKnowledgeNewsReportAnalysis(
+  db: D1Database,
+  cacheKey: string,
+): Promise<CompanyNewsReportAnalysis | null> {
+  if (!cacheKey) {
+    return null;
+  }
+  const cached = await readAppJson<CompanyNewsReportAnalysis>(db, cacheKey);
+  return cached?.analysisCalled === true
+    && cached.analysisSucceeded === true
+    && typeof cached.isCompanyReport === "boolean"
+    && Array.isArray(cached.forecasts)
+    && cached.valuation && typeof cached.valuation === "object"
+    ? cached
+    : null;
+}
+
 async function annotateReportItemsWithForecasts(
   c: Context<AppEnv>,
   items: Array<Record<string, unknown>>
 ): Promise<Array<Record<string, unknown>>> {
   const results: Array<Record<string, unknown>> = [];
   for (const item of items) {
+    if (isKnowledgeNewsReportCandidate(item)) {
+      const analysis = await readKnowledgeNewsReportAnalysis(c.env.DB, knowledgeNewsReportAnalysisCacheKey(item));
+      if (analysis?.isCompanyReport) {
+        results.push({
+          ...item,
+          forecastSource: "llm_news_report",
+          forecasts: analysis.forecasts,
+          valuation: analysis.valuation,
+        });
+      }
+      continue;
+    }
     const reportId = companyReportId(item);
     if (!reportId) {
       results.push(item);
@@ -577,47 +797,102 @@ export async function extractCompanyReportByLlm(
   c: Context<AppEnv>,
   title: string,
   content: string,
-  options: { forceLlm?: boolean } = {},
 ): Promise<CompanyReportForecast[]> {
-  const trimmed = trimText(content, 12000);
+  const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
   if (!trimmed) {
     return [];
-  }
-  const patternForecasts = extractForecastsByPattern(trimmed);
-  if (patternForecasts.length > 0 && (!options.forceLlm || hasCompleteForecastMetrics(patternForecasts))) {
-    return patternForecasts;
   }
   const prompt = REPORT_ANALYZE_USER_PROMPT
     .replace("{{TITLE}}", title)
     .replace("{{CONTENT}}", trimmed);
-  try {
-    const response = await requestLlmText(c.env, {
-      model: REPORT_LLM_MODEL,
-      messages: [
-        { role: "system", content: REPORT_ANALYZE_SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      maxTokens: 4096,
-      cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
-    });
-    return mergeForecastRows(
-      patternForecasts,
-      parseCompanyReportForecasts(response.text)
-    );
-  } catch (error) {
-    console.error("llm forecast extraction failed", {
-      title,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return patternForecasts;
-  }
+  const response = await requestLlmText(c.env, {
+    model: REPORT_LLM_MODEL,
+    messages: [
+      { role: "system", content: REPORT_ANALYZE_SYSTEM_PROMPT },
+      { role: "user", content: prompt },
+    ],
+    maxTokens: 4096,
+    cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
+  });
+  return parseCompanyReportForecasts(response.text);
 }
 
-function parseCompanyReportForecasts(textBody: string): CompanyReportForecast[] {
-  const parsed = parseJsonObjectFromText(textBody) as {
-    forecasts?: Array<Record<string, unknown>>;
-  } | null;
-  const rows = Array.isArray(parsed?.forecasts) ? parsed.forecasts : [];
+export async function extractCompanyNewsReportByLlm(
+  c: Context<AppEnv>,
+  title: string,
+  content: string,
+): Promise<Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt">> {
+  const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
+  if (!trimmed) {
+    return {
+      isCompanyReport: false,
+      forecasts: [],
+      valuation: {},
+    };
+  }
+  const prompt = NEWS_REPORT_ANALYZE_USER_PROMPT
+    .replace("{{TITLE}}", title)
+    .replace("{{CONTENT}}", trimmed);
+  const response = await requestLlmText(c.env, {
+    model: REPORT_LLM_MODEL,
+    messages: [
+      { role: "system", content: NEWS_REPORT_ANALYZE_SYSTEM_PROMPT },
+      { role: "user", content: prompt },
+    ],
+    maxTokens: 4096,
+    cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
+  });
+  return parseCompanyNewsReportAnalysis(response.text);
+}
+
+export function formatCompanyReportTextForLlm(content: string): string {
+  let formatted = content
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u00a0\u200b\ufeff]/g, " ");
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = formatted.replace(/([\u3400-\u9fff])[\t ]+([\u3400-\u9fff])/g, "$1$2");
+    if (next === formatted) {
+      break;
+    }
+    formatted = next;
+  }
+  return formatted.replace(/\b(20\d?)\s(\d)/g, "$1$2");
+}
+
+export function parseCompanyReportForecasts(textBody: string): CompanyReportForecast[] {
+  const parsed = parseJsonObjectFromText(textBody);
+  if (!parsed || !Array.isArray(parsed.forecasts)) {
+    throw new Error("LLM forecast response did not contain a forecasts array");
+  }
+  return parseCompanyReportForecastRows(parsed.forecasts);
+}
+
+export function parseCompanyNewsReportAnalysis(textBody: string): Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt"> {
+  const parsed = parseJsonObjectFromText(textBody);
+  if (!parsed || typeof parsed.isCompanyReport !== "boolean" || !Array.isArray(parsed.forecasts)) {
+    throw new Error("LLM news report response did not contain the required fields");
+  }
+  if (!parsed.isCompanyReport) {
+    return { isCompanyReport: false, forecasts: [], valuation: {} };
+  }
+  const valuation = parsed.valuation && typeof parsed.valuation === "object" && !Array.isArray(parsed.valuation)
+    ? parsed.valuation as Record<string, unknown>
+    : {};
+  return {
+    isCompanyReport: true,
+    forecasts: parseCompanyReportForecastRows(parsed.forecasts),
+    valuation: {
+      ...(nonEmptyTextOrUndefined(valuation.rating) ? { rating: nonEmptyTextOrUndefined(valuation.rating) } : {}),
+      ...(positiveNumberOrUndefined(valuation.targetPrice) !== undefined ? { targetPrice: positiveNumberOrUndefined(valuation.targetPrice) } : {}),
+      ...(nonEmptyTextOrUndefined(valuation.targetPriceCurrency) ? { targetPriceCurrency: nonEmptyTextOrUndefined(valuation.targetPriceCurrency) } : {}),
+      ...(positiveNumberOrUndefined(valuation.targetPe) !== undefined ? { targetPe: positiveNumberOrUndefined(valuation.targetPe) } : {}),
+      ...(nonEmptyTextOrUndefined(valuation.valuationMethod) ? { valuationMethod: nonEmptyTextOrUndefined(valuation.valuationMethod) } : {}),
+    },
+  };
+}
+
+function parseCompanyReportForecastRows(value: unknown[]): CompanyReportForecast[] {
+  const rows = value as Array<Record<string, unknown>>;
   const forecasts = rows
     .map((row) => {
       const year = Number(row.year);
@@ -698,86 +973,10 @@ function aggregateForecastsForCode(
     .sort((left, right) => Number(left.year) - Number(right.year));
 }
 
-function buildEastmoneyForecasts(
-  item: Record<string, unknown>
-): CompanyReportForecast[] {
-  const publishYear = Number(text(item.publishDate).slice(0, 4)) || new Date().getFullYear();
-  const pairs = [
-    { year: publishYear, eps: item.predictThisYearEps, pe: item.predictThisYearPe, profit: item.predictThisYearProfit },
-    { year: publishYear + 1, eps: item.predictNextYearEps, pe: item.predictNextYearPe, profit: item.predictNextYearProfit },
-    { year: publishYear + 2, eps: item.predictNextTwoYearEps, pe: item.predictNextTwoYearPe, profit: item.predictNextTwoYearProfit },
-  ];
-  return pairs
-    .map(({ year, eps, pe, profit }) => {
-      const epsValue = numberOrUndefined(eps);
-      const peValue = numberOrUndefined(pe);
-      const netProfit = numberOrUndefined(profit);
-      if (epsValue === undefined && peValue === undefined && netProfit === undefined) {
-        return null;
-      }
-      return {
-        year,
-        ...(netProfit !== undefined ? { netProfit } : {}),
-        ...(epsValue !== undefined ? { eps: epsValue } : {}),
-        ...(peValue !== undefined ? { pe: peValue } : {}),
-      };
-    })
-    .filter((row): row is CompanyReportForecast => Boolean(row));
-}
 
-async function fetchLatestTotalShares(c: Context<AppEnv>, code: string): Promise<number | null> {
-  const normalized = normalizeSecurityCode(code);
-  if (!isCnCode(normalized)) {
-    return null;
-  }
-  const rows = await fetchEastmoneyDataRows(c.env.DB, "https://datacenter-web.eastmoney.com/securities/api/data/v1/get", {
-    reportName: "RPT_F10_EH_EQUITY",
-    columns: "SECUCODE,END_DATE,TOTAL_SHARES",
-    quoteColumns: "",
-    filter: `(SECUCODE="${normalized}")`,
-    pageNumber: "1",
-    pageSize: "1",
-    sortTypes: "-1",
-    sortColumns: "END_DATE",
-    source: "HSF10",
-    client: "PC",
-  });
-  const totalShares = numberOrUndefined(rows[0]?.TOTAL_SHARES);
-  return totalShares && totalShares > 0 ? totalShares : null;
-}
-
-function enrichReportForecastsWithNetProfit(
-  item: Record<string, unknown>,
-  totalShares: number | null
-): Record<string, unknown> {
-  if (!Array.isArray(item.forecasts) || !totalShares || totalShares <= 0) {
-    return item;
-  }
-  let changed = false;
-  const forecasts = item.forecasts.map((forecast) => {
-    if (!forecast || typeof forecast !== "object") {
-      return forecast;
-    }
-    const record = forecast as Record<string, unknown>;
-    const netProfit = numberOrUndefined(record.netProfit);
-    if (netProfit !== undefined) {
-      return record;
-    }
-    const eps = numberOrUndefined(record.eps);
-    if (eps === undefined) {
-      return record;
-    }
-    changed = true;
-    return {
-      ...record,
-      netProfit: round2((eps * totalShares) / 100_000_000),
-    };
-  });
-  return changed ? { ...item, forecasts } : item;
-}
 
 function reportForecastCacheKey(reportId: string): string {
-  return `report-forecast:${reportId}`;
+  return `report-forecast:v4:${reportId}`;
 }
 
 function sharedReportCacheKeyForItem(item: Record<string, unknown>): string {
@@ -793,7 +992,7 @@ async function readSharedReportAnalysis(
     return null;
   }
   const cached = await readAppJson<SharedReportAnalysis>(db, cacheKey);
-  return cached?.analysisCalled && Array.isArray(cached.forecasts) ? cached : null;
+  return isReusableReportAnalysisCache(cached) ? cached : null;
 }
 
 async function writeSharedReportAnalysis(
@@ -808,6 +1007,7 @@ async function writeSharedReportAnalysis(
   }
   await writeAppJson(db, cacheKey, {
     analysisCalled: true,
+    analysisSucceeded: true,
     forecasts,
     updatedAt,
   } satisfies SharedReportAnalysis, REPORT_FORECAST_CACHE_TTL_MS);
@@ -900,17 +1100,7 @@ function reportForecastNeedsLlmRefresh(item: Record<string, unknown>): boolean {
   if (!reportNeedsLlmExtraction(item) && !eastmoneyReportInfoCode(item.infoCode, item.url, item.detailUrl)) {
     return false;
   }
-  if (!Array.isArray(item.forecasts) || item.forecasts.length === 0) {
-    return true;
-  }
-  return !reportForecastsHaveNetProfit(item.forecasts as Array<Record<string, unknown>>);
-}
-
-function canOverrideItemForecasts(item: Record<string, unknown>): boolean {
-  if (!Array.isArray(item.forecasts) || item.forecasts.length === 0) {
-    return true;
-  }
-  return !reportForecastsHaveNetProfit(item.forecasts as Array<Record<string, unknown>>);
+  return true;
 }
 
 function isCnCode(code: string): boolean {
@@ -1089,318 +1279,6 @@ function normalizeReportOrgName(value: string): string {
   );
 }
 
-function reportForecastsHaveNetProfit(forecasts: Array<Record<string, unknown>>): boolean {
-  return forecasts.some((forecast) => numberOrUndefined(forecast.netProfit) !== undefined);
-}
-
-export function extractForecastsByPattern(content: string): CompanyReportForecast[] {
-  const tableForecasts = mergeForecastRows(
-    extractForecastsFromPdfFinancialTable(content),
-    extractForecastsFromMarkdownTable(content),
-  );
-  const sentence = content.match(
-    /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*\/\s*(\d{4})\s*\/\s*(\d{4})\s*年[^。；\n]{0,220}?归母\s*净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*亿元/i
-  );
-  const rangeSentence = content.match(
-    /(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*[-—–至]\s*(\d{4})\s*年[^。；\n]{0,220}?归母\s*净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*(?:亿元|亿)/i
-  );
-  let sentenceForecasts: CompanyReportForecast[] = [];
-  if (sentence) {
-    const years = [Number(sentence[1]), Number(sentence[2]), Number(sentence[3])];
-    const profits = [Number(sentence[4]), Number(sentence[5]), Number(sentence[6])];
-    if (years.every(Number.isInteger) && profits.every(Number.isFinite)) {
-      sentenceForecasts = years.map((year, index) => ({ year, netProfit: round2(profits[index]) }));
-    }
-  } else if (rangeSentence) {
-    const startYear = Number(rangeSentence[1]);
-    const endYear = Number(rangeSentence[2]);
-    const profits = [Number(rangeSentence[3]), Number(rangeSentence[4]), Number(rangeSentence[5])];
-    if (Number.isInteger(startYear) && endYear === startYear + 2 && profits.every(Number.isFinite)) {
-      sentenceForecasts = profits.map((profit, index) => ({ year: startYear + index, netProfit: round2(profit) }));
-    }
-  }
-  return mergeForecastRows(
-    mergeForecastRows(tableForecasts, sentenceForecasts),
-    mergeForecastRows(
-      extractForecastsFromTwoYearAnnualSentence(content),
-      extractForecastsFromAnnualSentence(content),
-    ),
-  );
-}
-
-function extractForecastsFromPdfFinancialTable(content: string): CompanyReportForecast[] {
-  const normalized = content.replace(/\s+/g, " ").trim();
-  const table = normalized.match(
-    /(?:百万元|千万元|万元|亿元|元)\s+((?:20\d{2}\s*(?:[AFE]|预测|预计)?\s+){3,8})营业(?:总)?收入\s+((?:-?[\d,]+(?:\.\d+)?\s+){3,8})/i,
-  );
-  if (!table) {
-    return [];
-  }
-  const unit = table[0].match(/百万元|千万元|万元|亿元|元/)?.[0] ?? "";
-  const columns = [...table[1].matchAll(/(20\d{2})\s*(?:([AFE])|预测|预计)?/gi)].map((match) => ({
-    year: Number(match[1]),
-    isForecast: Boolean(match[2]) || /预测|预计/i.test(match[0]),
-  }));
-  const values = [...table[2].matchAll(/-?[\d,]+(?:\.\d+)?/g)].map((match) => Number(match[0].replaceAll(",", "")));
-  if (columns.length !== values.length || columns.length < 2) {
-    return [];
-  }
-  const divisor = tableValueDivisor(unit);
-  return columns.flatMap((column, index) => (
-    column.isForecast && Number.isFinite(values[index])
-      ? [{ year: column.year, revenue: round2(values[index] / divisor) }]
-      : []
-  ));
-}
-
-function extractForecastsFromTwoYearAnnualSentence(content: string): CompanyReportForecast[] {
-  const normalized = content.replace(/[`*]/g, "").replace(/\s+/g, " ");
-  const range = normalized.match(/(?:预计|预期|我们预计|预测)[^。；]{0,120}?(20\d{2})\s*[/／、]\s*((?:20)?\d{2})\s*年/);
-  if (!range || range.index === undefined) {
-    return [];
-  }
-  const startYear = Number(range[1]);
-  const endYear = range[2].length === 2
-    ? Math.floor(startYear / 100) * 100 + Number(range[2])
-    : Number(range[2]);
-  if (!Number.isInteger(startYear) || endYear !== startYear + 1) {
-    return [];
-  }
-  const endIndex = normalized.indexOf("。", range.index);
-  const sentence = normalized.slice(range.index, endIndex > range.index ? endIndex : range.index + 500);
-  const revenue = annualMetricPair(sentence, /(?:总)?营收|营业(?:总)?收入|营业额|主营业务收入|销售收入/i);
-  const profitEps = sentence.match(/(?:归母\s*)?净利润\s*和\s*(?:基本\s*)?(?:EPS|每股收益)\s*分别?为?\s*([-+]?\d+(?:\.\d+)?)\s*[/／、]\s*([-+]?\d+(?:\.\d+)?)\s*亿元[^。；]{0,80}?([-+]?\d+(?:\.\d+)?)\s*[/／、]\s*([-+]?\d+(?:\.\d+)?)\s*元/i);
-  const netProfit = profitEps
-    ? [Number(profitEps[1]), Number(profitEps[2])]
-    : annualMetricPair(sentence, /(?:归母\s*)?净利润/i);
-  const eps = profitEps
-    ? [Number(profitEps[3]), Number(profitEps[4])]
-    : annualMetricPair(sentence, /EPS|每股收益/i);
-  if (!revenue && !netProfit && !eps) {
-    return [];
-  }
-  return [0, 1].map((index) => ({
-    year: startYear + index,
-    ...(revenue?.[index] !== undefined ? { revenue: revenue[index] } : {}),
-    ...(netProfit?.[index] !== undefined ? { netProfit: netProfit[index] } : {}),
-    ...(eps?.[index] !== undefined ? { eps: eps[index] } : {}),
-  })).filter(hasForecastMetric);
-}
-
-function extractForecastsFromAnnualSentence(content: string): CompanyReportForecast[] {
-  const normalized = content.replace(/[`*]/g, "").replace(/\s+/g, " ");
-  const range = normalized.match(/(?:预计|预期|我们预计)[^。；]{0,120}?(20\d{2})\s*(?:年\s*)?[-—–至]\s*(20\d{2})\s*年/);
-  if (!range) {
-    return [];
-  }
-  const startYear = Number(range[1]);
-  const endYear = Number(range[2]);
-  if (!Number.isInteger(startYear) || endYear !== startYear + 2 || range.index === undefined) {
-    return [];
-  }
-  const sentence = normalized.slice(range.index, normalized.indexOf("。", range.index) > 0
-    ? normalized.indexOf("。", range.index)
-    : range.index + 500);
-  const revenues = annualMetricTriplet(sentence, /(?:总)?营收|营业(?:总)?收入|营业额|主营业务收入|销售收入/i);
-  const revenueGrowths = revenues
-    ? annualMetricTriplet(sentence, /(?:同比(?:增长)?|增长率|增速)/i)
-    : null;
-  const netProfits = annualMetricTriplet(sentence, /(?:归母\s*)?净利润/i);
-  const profitGrowths = netProfits
-    ? annualMetricTriplet(sentence, /(?:同比(?:增长)?|增长率|增速)/i)
-    : null;
-  const epsValues = annualMetricTriplet(sentence, /EPS|每股收益/i);
-  const peValues = annualMetricTriplet(sentence, /P\s*\/?\s*E|市盈率/i);
-  if (!revenues && !netProfits && !epsValues && !peValues) {
-    return [];
-  }
-  return [0, 1, 2].map((index) => ({
-    year: startYear + index,
-    ...(revenues?.[index] !== undefined ? { revenue: revenues[index] } : {}),
-    ...(revenueGrowths?.[index] !== undefined ? { revenueGrowth: revenueGrowths[index] } : {}),
-    ...(netProfits?.[index] !== undefined ? { netProfit: netProfits[index] } : {}),
-    ...(profitGrowths?.[index] !== undefined ? { profitGrowth: profitGrowths[index] } : {}),
-    ...(epsValues?.[index] !== undefined ? { eps: epsValues[index] } : {}),
-    ...(peValues?.[index] !== undefined ? { pe: peValues[index] } : {}),
-  })).filter(hasForecastMetric);
-}
-
-function annualMetricTriplet(sentence: string, label: RegExp): number[] | null {
-  const match = label.exec(sentence);
-  if (!match || match.index === undefined) {
-    return null;
-  }
-  const valueText = sentence.slice(match.index + match[0].length, match.index + match[0].length + 160);
-  const values = [...valueText.matchAll(/[-+]?\d+(?:\.\d+)?/g)]
-    .slice(0, 3)
-    .map((item) => Number(item[0]));
-  return values.length === 3 && values.every(Number.isFinite) ? values : null;
-}
-
-function annualMetricPair(sentence: string, label: RegExp): number[] | null {
-  const match = label.exec(sentence);
-  if (!match || match.index === undefined) {
-    return null;
-  }
-  const valueText = sentence.slice(match.index + match[0].length, match.index + match[0].length + 160);
-  const values = [...valueText.matchAll(/[-+]?\d+(?:\.\d+)?/g)]
-    .slice(0, 2)
-    .map((item) => Number(item[0]));
-  return values.length === 2 && values.every(Number.isFinite) ? values : null;
-}
-
-function extractForecastsFromMarkdownTable(content: string): CompanyReportForecast[] {
-  let bestForecasts: CompanyReportForecast[] = [];
-  for (const table of markdownTables(content)) {
-    for (let headerIndex = 0; headerIndex < table.length; headerIndex += 1) {
-      const header = table[headerIndex];
-      const yearColumns = forecastYearColumns(header);
-      if (yearColumns.length < 2) {
-        continue;
-      }
-      const rows = table.slice(headerIndex, headerIndex + 20);
-      const firstYearColumn = yearColumns[0].columnIndex;
-      const revenueRowIndex = findForecastMetricRow(rows, firstYearColumn, /营业(?:总)?收入|营业额|营收|主营业务收入|销售收入/i);
-      const profitRowIndex = findForecastMetricRow(rows, firstYearColumn, /归母\s*净利润|归属于母公司.*净利润|母公司股东.*净利润/i);
-      const epsRowIndex = findForecastMetricRow(rows, firstYearColumn, /EPS|每股收益/i);
-      const peRowIndex = findForecastMetricRow(rows, firstYearColumn, /P\s*\/?\s*E|市盈率/i);
-      if (revenueRowIndex === -1 && profitRowIndex === -1 && epsRowIndex === -1 && peRowIndex === -1) {
-        continue;
-      }
-      const revenueRow = revenueRowIndex >= 0 ? rows[revenueRowIndex] : undefined;
-      const profitRow = profitRowIndex >= 0 ? rows[profitRowIndex] : undefined;
-      const epsRow = epsRowIndex >= 0 ? rows[epsRowIndex] : undefined;
-      const peRow = peRowIndex >= 0 ? rows[peRowIndex] : undefined;
-      const revenueGrowthRow = findFollowingGrowthRow(rows, revenueRowIndex, firstYearColumn);
-      const profitGrowthRow = findFollowingGrowthRow(rows, profitRowIndex, firstYearColumn);
-      const revenueDivisor = tableValueDivisor(tableRowLabel(revenueRow ?? [], firstYearColumn));
-      const profitDivisor = tableValueDivisor(tableRowLabel(profitRow ?? [], firstYearColumn));
-      const forecasts = yearColumns.flatMap(({ year, columnIndex }) => {
-        const revenue = tableNumberForForecastColumn(revenueRow?.[columnIndex], year);
-        const netProfit = tableNumberForForecastColumn(profitRow?.[columnIndex], year);
-        const revenueGrowth = tableNumberForForecastColumn(revenueGrowthRow?.[columnIndex], year);
-        const profitGrowth = tableNumberForForecastColumn(profitGrowthRow?.[columnIndex], year);
-        const eps = tableNumberForForecastColumn(epsRow?.[columnIndex], year);
-        const pe = tableNumberForForecastColumn(peRow?.[columnIndex], year);
-      const forecast: CompanyReportForecast = {
-        year,
-        ...(revenue !== undefined ? { revenue: round2(revenue / revenueDivisor) } : {}),
-        ...(revenueGrowth !== undefined ? { revenueGrowth } : {}),
-        ...(netProfit !== undefined ? { netProfit: round2(netProfit / profitDivisor) } : {}),
-        ...(profitGrowth !== undefined ? { profitGrowth } : {}),
-        ...(eps !== undefined ? { eps } : {}),
-        ...(pe !== undefined ? { pe } : {}),
-      };
-      return hasForecastMetric(forecast) ? [forecast] : [];
-      });
-      if (forecastCompletenessScore(forecasts) > forecastCompletenessScore(bestForecasts)) {
-        bestForecasts = forecasts;
-      }
-    }
-  }
-  return bestForecasts;
-}
-
-function markdownTables(content: string): string[][][] {
-  const tables: string[][][] = [];
-  let current: string[][] = [];
-  for (const line of content.split(/\r?\n/)) {
-    if (line.trim().startsWith("|")) {
-      current.push(markdownTableCells(line));
-    } else if (current.length > 0) {
-      tables.push(current);
-      current = [];
-    }
-  }
-  if (current.length > 0) {
-    tables.push(current);
-  }
-  return tables;
-}
-
-function forecastYearColumns(cells: string[]): Array<{ year: number; columnIndex: number }> {
-  return cells.flatMap((cell, columnIndex) => {
-    const match = cell.match(/(20\d{2})\s*(?:E|预测|预计)/i);
-    const year = Number(match?.[1] || 0);
-    return Number.isInteger(year) && year > 0 ? [{ year, columnIndex }] : [];
-  });
-}
-
-function findForecastMetricRow(cellsRows: string[][], firstYearColumn: number, pattern: RegExp): number {
-  return cellsRows.findIndex((cells) => {
-    const label = tableRowLabel(cells, firstYearColumn);
-    return pattern.test(label) && cells.slice(firstYearColumn).some((value) => tableNumberForForecastColumn(value) !== undefined);
-  });
-}
-
-function findFollowingGrowthRow(cellsRows: string[][], metricRowIndex: number, firstYearColumn: number): string[] | undefined {
-  if (metricRowIndex < 0) {
-    return undefined;
-  }
-  return cellsRows.slice(metricRowIndex + 1, metricRowIndex + 4).find((cells) => (
-    /同比|YOY|增长率|增速/i.test(tableRowLabel(cells, firstYearColumn))
-    && cells.slice(firstYearColumn).some((value) => tableNumberForForecastColumn(value) !== undefined)
-  ));
-}
-
-function tableRowLabel(cells: string[], firstYearColumn: number): string {
-  return cells.slice(0, Math.max(firstYearColumn, 1)).join(" ").replace(/\s+/g, " ").trim();
-}
-
-function tableNumberForForecastColumn(value: string | undefined, year?: number): number | undefined {
-  const normalized = String(value || "").replace(/(20\d{2})\s*(?:E|预测|预计)/gi, "");
-  if (year !== undefined && normalized === String(value || "")) {
-    return tableNumber(value);
-  }
-  return tableNumber(normalized);
-}
-
-function markdownTableCells(line: string): string[] {
-  return line.split("|").slice(1, -1).map((cell) => cell
-    .replace(/<br\s*\/?>/gi, "")
-    .replace(/\*\*/g, "")
-    .trim());
-}
-
-function tableNumber(value: string | undefined): number | undefined {
-  const match = String(value || "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
-  const parsed = match ? Number(match[0]) : NaN;
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function tableValueDivisor(label: string): number {
-  if (/百万元|百万(?:元)?/.test(label)) return 100;
-  if (/千万元/.test(label)) return 10;
-  if (/万元/.test(label)) return 10000;
-  if (/千元/.test(label)) return 100000;
-  if (/(?:^|\W)元(?:$|\W)/.test(label)) return 100000000;
-  return 1;
-}
-
-function hasForecastMetric(forecast: CompanyReportForecast): boolean {
-  return forecast.revenue !== undefined
-    || forecast.netProfit !== undefined
-    || forecast.eps !== undefined
-    || forecast.pe !== undefined;
-}
-
-function forecastCompletenessScore(forecasts: CompanyReportForecast[]): number {
-  return forecasts.reduce((score, forecast) => score + [
-    forecast.revenue,
-    forecast.revenueGrowth,
-    forecast.netProfit,
-    forecast.profitGrowth,
-    forecast.eps,
-    forecast.pe,
-  ].filter((value) => value !== undefined).length, 0);
-}
-
-function hasCompleteForecastMetrics(forecasts: CompanyReportForecast[]): boolean {
-  return forecasts.length >= 2 && forecasts.every((forecast) => (
-    forecast.netProfit !== undefined
-    && (forecast.revenue !== undefined || forecast.eps !== undefined)
-  ));
-}
 
 function mergeForecastRows(
   preferred: CompanyReportForecast[],
@@ -1508,6 +1386,16 @@ function numberOrUndefined(value: unknown): number | undefined {
   }
   const parsed = typeof value === "number" ? value : Number(String(value).replaceAll(",", "").replace(/%$/g, ""));
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function positiveNumberOrUndefined(value: unknown): number | undefined {
+  const parsed = numberOrUndefined(value);
+  return parsed !== undefined && parsed > 0 ? parsed : undefined;
+}
+
+function nonEmptyTextOrUndefined(value: unknown): string | undefined {
+  const normalized = text(value);
+  return normalized ? normalized : undefined;
 }
 
 function round2(value: number): number {

@@ -8,6 +8,7 @@ import { isLocalDevelopmentRuntime } from "../../../shared/request";
 import { extractCompanyReportByLlm, type CompanyReportForecast } from "../../company/api/company.routes";
 import {
   eastmoneyReportInfoCode,
+  isReusableReportAnalysisCache,
   runSharedReportAnalysisTask,
   sharedReportAnalysisCacheKey,
 } from "../../company/application/report-analysis-cache";
@@ -54,6 +55,7 @@ type KnowledgeReportAnalysisRow = KnowledgeDocRow;
 
 type KnowledgeReportAnalysis = {
   analysisCalled: boolean;
+  analysisSucceeded?: boolean;
   forecasts: CompanyReportForecast[];
   updatedAt: number;
 };
@@ -224,9 +226,10 @@ knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
             if (!content) {
               throw new Error("knowledge report has no converted content and the converter is unavailable");
             }
-            const forecasts = await extractCompanyReportByLlm(c, row.title, content, { forceLlm: true });
+            const forecasts = await extractCompanyReportByLlm(c, row.title, content);
             const completed = {
               analysisCalled: true,
+              analysisSucceeded: true,
               forecasts,
               updatedAt: Date.now(),
             };
@@ -599,7 +602,7 @@ async function readKnowledgeReportAnalysis(
   }
   try {
     const parsed = JSON.parse(row.valueJson) as KnowledgeReportAnalysis;
-    return parsed && Array.isArray(parsed.forecasts) ? parsed : null;
+    return isReusableReportAnalysisCache(parsed) ? parsed : null;
   } catch {
     return null;
   }

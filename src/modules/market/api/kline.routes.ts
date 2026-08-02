@@ -14,11 +14,15 @@ klineRoutes.get("/kline", async (c) => {
   const fq = normalizeFq(c.req.query("fq") ?? "normal");
   const to = normalizeDate(c.req.query("to")) ?? today();
   const from = normalizeDate(c.req.query("from")) ?? "1990-01-01";
+  const format = c.req.query("format") ?? "legacy";
   if (!period || !fq) {
     return fail(c, 400, "invalid period or fq parameter");
   }
+  if (format !== "legacy" && format !== "structured") {
+    return fail(c, 400, "invalid format parameter");
+  }
   const data = await loadKline(c.env, code, period, fq, from, to);
-  return ok(c, toLegacyKlineRows(data.rows));
+  return ok(c, format === "structured" ? data.rows : toLegacyKlineRows(data.rows));
 });
 
 function normalizePeriod(value: string): string | null {

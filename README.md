@@ -318,10 +318,10 @@ npm run preflight:cloudflare:release
 
 ### 本地手动部署
 
-部署前先生成新的东财 K 线 Cookie。该命令会同时更新本地使用的 `.dev.vars` 和生产部署使用的 `wrangler.jsonc`：
+部署前先通过 Chrome DevTools Protocol 生成新的雪球 K 线 Cookie。该命令同时更新本地 `.dev.vars` 和下次部署使用的 `wrangler.jsonc` 生产变量：
 
 ```bash
-npm run refresh:eastmoney-cookie
+npm run refresh:xueqiu-cookie
 ```
 
 ```bash
@@ -339,7 +339,7 @@ npm run deploy
 - `wrangler deploy`
 - `curl https://tinfo.cc/api/health`
 
-`wrangler.jsonc` 中的 `vars.EASTMONEY_COOKIE` 会随标准 Worker 部署一起发布，不使用 Cloudflare Secret，也不需要部署脚本读取 `.dev.vars`。
+`XUEQIU_COOKIE` 作为 Worker 变量随标准 `wrangler deploy` 发布。`start-local.sh` 在上次成功刷新已超过 6 小时时才刷新本地与待发布变量；因此本地服务频繁重启不会重复刷新。刷新本身不会部署线上，需在确认后执行 `npm run deploy`。
 
 只做打包检查但不真正上线：
 

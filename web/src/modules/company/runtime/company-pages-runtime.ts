@@ -509,6 +509,11 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     fetchRequest,
   } = context
 
+  const knowledgeDocModal = createKnowledgeDocModalController({
+    server,
+    fetchRequest,
+  })
+
   let companyReportCurrentPage = 1
   let companyReportEventsBound = false
   let companyReportActualFinancialMap: Map<number, AnnualFinancial> | null = null
@@ -597,6 +602,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       const profit2026 = formatForecastProfitGrowthPeCells(item, 2026, actualFinancialMap)
       const profit2027 = formatForecastProfitGrowthPeCells(item, 2027, actualFinancialMap)
       const profit2028 = formatForecastProfitGrowthPeCells(item, 2028, actualFinancialMap)
+      const valuation = formatCompanyReportValuation(item)
 
       return {
         rank: index + 1,
@@ -604,6 +610,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         title: String(item.title || ''),
         reportHref,
         reportInfoCode,
+        docId: item.knowledgeNewsReport ? String(item.knowledgeDocId || '') : '',
         revenue2025: revenue2025[0],
         revenueGrowth2025: revenue2025[1],
         profit2025: profit2025[0],
@@ -628,10 +635,32 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         profitMargin2028: formatForecastProfitMargin(item, 2028, actualFinancialMap),
         growth2028: profit2028[1],
         pe2028: profit2028[2],
-        orgName: String(item.orgSName || item.org || ''),
+        valuation,
+        orgName: item.knowledgeNewsReport
+          ? `资讯研报 · ${String(item.orgSName || item.org || '资讯')}`
+          : String(item.orgSName || item.org || ''),
         pages: String(item.attachPages || item.pages || ''),
       }
     })
+  }
+
+  function formatCompanyReportValuation(item: any): string {
+    const valuation = item?.valuation
+    if (!valuation || typeof valuation !== 'object') {
+      return '-'
+    }
+    const targetPrice = parseReportForecastNumber(valuation.targetPrice)
+    const targetPe = parseReportForecastNumber(valuation.targetPe)
+    const currency = String(valuation.targetPriceCurrency || '').trim()
+    const rating = String(valuation.rating || '').trim()
+    const method = String(valuation.valuationMethod || '').trim()
+    const values = [
+      rating ? `评级：${rating}` : '',
+      targetPrice !== undefined ? `目标价：${targetPrice}${currency}` : '',
+      targetPe !== undefined ? `目标PE：${targetPe}` : '',
+      method ? `方法：${method}` : '',
+    ].filter(Boolean)
+    return values.join('；') || '-'
   }
 
   function bindCompanyReportActionLinks(): void {
@@ -915,7 +944,14 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         companyReportCurrentPage = page
         genCompanyReportTable(code, companyReportActualFinancialMap)
       }) as EventListener)
+      window.addEventListener('licai:company-report-open-doc', ((event: CustomEvent<{ docId?: string }>) => {
+        const docId = String(event.detail?.docId || '').trim()
+        if (docId) {
+          void knowledgeDocModal.openByDocId(docId)
+        }
+      }) as EventListener)
     }
+    knowledgeDocModal.bindLifecycle()
     genCompanyReportTable(code, actualFinancialMap)
   }
 }

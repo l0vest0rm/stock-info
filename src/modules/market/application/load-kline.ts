@@ -1,7 +1,7 @@
 import {
   fetchEastmoneyFundNav,
-  fetchEastmoneyStockKline,
 } from "../../../adapters/eastmoney";
+import { fetchXueqiuStockKline } from "../../../adapters/xueqiu";
 import { upsertSecurity } from "../../../db/queries";
 import {
   fullKlineHistoryStartDate,
@@ -27,7 +27,7 @@ export async function loadKline(
     | "HTTP_PROXY_DOMAINS"
     | "HTTP_DOMAIN_CONCURRENCY"
     | "HTTP_REQUEST_TIMEOUT_MS"
-    | "EASTMONEY_COOKIE"
+    | "XUEQIU_COOKIE"
   >,
   rawCode: string,
   period: string,
@@ -36,7 +36,7 @@ export async function loadKline(
   to: string
 ): Promise<{
   code: string;
-  source: "r2" | "eastmoney";
+  source: "r2" | "eastmoney" | "xueqiu";
   rows: KlineBar[] | FundNavRow[];
 }> {
   if (period !== "day") {
@@ -56,29 +56,30 @@ export async function loadKline(
   const snapshot = await getKlineSnapshot(env, code, fq);
   if (
     snapshot
-    && snapshot.source === "eastmoney"
+    && snapshot.schemaVersion === 2
+    && snapshot.source === "xueqiu"
+    && typeof snapshot.rawResponseText === "string"
     && isFreshEnough(code, snapshot.updatedAt)
     && snapshotCoversRequestedRange(snapshot, from, to)
   ) {
     return { code, source: "r2", rows: sliceKlineRows(snapshot.rows, from, to) };
   }
-  const fetched = await fetchEastmoneyStockKline(
+  const fetched = await fetchXueqiuStockKline(
     env.DB,
     code,
     period,
     fq,
-    fullKlineHistoryStartDate(),
     to,
     externalHttpOptions(env),
-    env.EASTMONEY_COOKIE
+    env.XUEQIU_COOKIE
   );
   if (fetched.security) {
     await upsertSecurity(env.DB, fetched.security);
   }
   if (fetched.rows.length > 0) {
-    await putKlineSnapshot(env, code, fq, fetched.rows);
+    await putKlineSnapshot(env, code, fq, fetched.rows, { rawResponseText: fetched.rawResponseText });
   }
-  return { code, source: "eastmoney", rows: sliceKlineRows(fetched.rows, from, to) };
+  return { code, source: "xueqiu", rows: sliceKlineRows(fetched.rows, from, to) };
 }
 
 function isFreshEnough(code: string, updatedAt: number | undefined): boolean {

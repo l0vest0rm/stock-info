@@ -12,6 +12,7 @@ const stocks = [
 
 const klineRegressions = [
   { code: "600487.SH", name: "亨通光电", minKlineRows: 100 },
+  { code: "002156.SZ", name: "通富微电", minKlineRows: 100 },
 ];
 
 const stockPages = [
@@ -59,6 +60,14 @@ await check("situation pages and API schemas", async () => {
     const body = await fetchApi(`/api/situations/${endpoint}`);
     assert(body.data && typeof body.data === "object", `situation ${endpoint} payload is missing`);
   }
+});
+
+await check("institutional tracks page", async () => {
+  const page = await fetchWithTimeout(`${baseUrl}/institutional-tracks.html`);
+  const html = await page.text();
+  assert(page.status < 400, `institutional tracks page status=${page.status}`);
+  assert(html.includes("institutional-tracks-vue-root"), "institutional tracks root is missing");
+  assert(html.includes("js/institutional-tracks-page.js"), "institutional tracks bundle is missing");
 });
 
 await check("macro page and dashboard schema", async () => {
@@ -231,7 +240,7 @@ for (const stock of stocks) {
 }
 
 for (const stock of klineRegressions) {
-  await check(`eastmoney cookie regression ${stock.code} api kline`, async () => {
+  await check(`xueqiu cookie regression ${stock.code} api kline`, async () => {
     const body = await fetchApi(`/api/kline?code=${encodeURIComponent(stock.code)}&fq=normal`);
     assert(Array.isArray(body.data), "kline data is not an array");
     assert(

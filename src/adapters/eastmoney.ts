@@ -63,9 +63,13 @@ type EastmoneyFinanceResponse = {
 
 type FinanceMappings = {
   bankCodes?: string[];
+  securityCodes?: string[];
+  insuranceCodes?: string[];
 };
 
 const bankCodeSet = new Set(((financeMappings as FinanceMappings).bankCodes ?? []).map((code) => normalizeSecurityCode(code)));
+const securityCodeSet = new Set(((financeMappings as FinanceMappings).securityCodes ?? []).map((code) => normalizeSecurityCode(code)));
+const insuranceCodeSet = new Set(((financeMappings as FinanceMappings).insuranceCodes ?? []).map((code) => normalizeSecurityCode(code)));
 const PROVISIONAL_FINANCE_SOURCE_TTL_MS = 10 * 60 * 1000;
 
 export type EastmoneyDataPage = {
@@ -379,9 +383,15 @@ export async function fetchEastmoneyStockKline(
   }
   let body: EastmoneyStockKlineResponse | undefined;
   let lastError: unknown;
-  for (let requestRound = 1; requestRound <= 3; requestRound += 1) {
+  const klineHosts = [
+    "push2his.eastmoney.com",
+    "push2test.eastmoney.com",
+    "push2his.eastmoney.com",
+  ];
+  for (const [hostIndex, host] of klineHosts.entries()) {
+    const requestRound = hostIndex + 1;
     const requestNonce = Date.now() + requestRound;
-    const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
+    const url = new URL(`https://${host}/api/qt/stock/kline/get`);
     url.searchParams.set("cb", `jQuery3510123456789_${requestNonce}`);
     url.searchParams.set("secid", secid);
     url.searchParams.set("fields1", isHongKong
@@ -420,8 +430,11 @@ export async function fetchEastmoneyStockKline(
       break;
     } catch (err) {
       lastError = err;
-      if (requestRound < 3) {
-        console.warn(`Eastmoney kline request failed for ${normalized}; retrying with a fresh JSONP request:`, err);
+      if (hostIndex < klineHosts.length - 1) {
+        console.warn(
+          `Eastmoney kline request failed for ${normalized} via ${host}; retrying with another Eastmoney host:`,
+          err
+        );
       }
     }
   }
@@ -456,6 +469,12 @@ export async function fetchEastmoneyStockKline(
       pctChange: numberOrNull(parts[8]),
       changeAmount: numberOrNull(parts[9]),
       turnover: numberOrNull(parts[10]),
+      peTtm: null,
+      pb: null,
+      ps: null,
+      pcf: null,
+      marketCapital: null,
+      balance: null,
       source: "eastmoney",
       updatedAt: now,
     } satisfies KlineBar;
@@ -535,7 +554,7 @@ export async function fetchEastmoneyFinance(
   if (!/\.(SH|SZ|BJ)$/.test(normalized)) {
     throw new Error(`finance statement only supports CN A-share codes in the MVP: ${code}`);
   }
-  const reportType = financeReportType(statementType, normalized);
+  const reportType = eastmoneyFinanceReportType(statementType, normalized);
   const url = new URL("https://datacenter-web.eastmoney.com/securities/api/data/get");
   url.searchParams.set("type", `RPT_F10_FINANCE_${reportType}`);
   url.searchParams.set("sty", financeStyle(statementType, reportType));
@@ -1512,7 +1531,7 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
     turnover: numberOrNull(data.f168) !== null ? numberOrNull(data.f168)! / 100 : null,
     marketCapYi: numberOrNull(data.f116) !== null ? numberOrNull(data.f116)! / 100_000_000 : null,
     peTtm: numberOrNull(data.f162) !== null ? numberOrNull(data.f162)! / 100 : null,
-    pb: numberOrNull(data.f167) !== null ? numberOrNull(data.f167)! / 1000 : null,
+    pb: numberOrNull(data.f167) !== null ? numberOrNull(data.f167)! / 100 : null,
     source: "eastmoney",
     updatedAt: Date.now(),
   };
@@ -1571,15 +1590,22 @@ function eastmoneyFqt(fq: string): string {
   }
 }
 
-function financeReportType(statementType: StatementType, code: string): string {
-  const isBank = bankCodeSet.has(normalizeSecurityCode(code));
+export function eastmoneyFinanceReportType(statementType: StatementType, code: string): string {
+  const normalized = normalizeSecurityCode(code);
+  const family = bankCodeSet.has(normalized)
+    ? "B"
+    : securityCodeSet.has(normalized)
+      ? "S"
+      : insuranceCodeSet.has(normalized)
+        ? "I"
+        : "G";
   switch (statementType) {
     case "income":
-      return isBank ? "BINCOMEQC" : "GINCOMEQC";
+      return `${family}INCOMEQC`;
     case "balance":
-      return isBank ? "BBALANCE" : "GBALANCE";
+      return `${family}BALANCE`;
     case "cashflow":
-      return isBank ? "BCASHFLOWQC" : "GCASHFLOWQC";
+      return `${family}CASHFLOWQC`;
   }
 }
 

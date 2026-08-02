@@ -1,30 +1,26 @@
 #!/usr/bin/env node
 
-import { createHash, randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { applyEdits, modify } from "jsonc-parser";
+import { applyEdits, modify, parse } from "jsonc-parser";
+import { cookiePairFromSetCookie, mergeEastmoneyCookies } from "./lib/eastmoney-cookie.mjs";
 
-const WEBREPORT_URL = "https://anonflow2.eastmoney.com/backend/api/webreport";
+const QUOTE_URL = "https://quote.eastmoney.com/sz300308.html";
 const QUOTE_REFERER = "https://quote.eastmoney.com/";
 const USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
-const ST_NVI_ALPHABET =
-  "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict";
 const args = new Set(process.argv.slice(2));
 const writeDevVars = args.has("--write-dev-vars");
 const writeWranglerVars = args.has("--write-wrangler-vars");
 const jsonOutput = args.has("--json");
 
-const stNvi = generateStNvi();
-const report = await requestEastmoneyIdentity(stNvi);
-if (report.returnCode !== "0" || !report.data?.nid) {
-  throw new Error(
-    `Eastmoney webreport rejected the generated identity: returnCode=${report.returnCode ?? "unknown"}`,
-  );
+const existingCookie = await readExistingEastmoneyCookie();
+if (!existingCookie) {
+  throw new Error("EASTMONEY_COOKIE is required before refreshing the Eastmoney browser session");
 }
-
-const cookie = `nid18=${report.data.nid}; nid18_create_time=${Date.now()}`;
+const setCookies = await requestEastmoneyCookieRefresh(existingCookie);
+const refreshedPairs = setCookies.map(cookiePairFromSetCookie).filter(Boolean);
+const cookie = mergeEastmoneyCookies(existingCookie, refreshedPairs.join("; "));
 if (writeDevVars) {
   await updateDevVars(cookie);
 }
@@ -33,7 +29,7 @@ if (writeWranglerVars) {
 }
 if (jsonOutput) {
   process.stdout.write(
-    `${JSON.stringify({ cookie, names: ["nid18", "nid18_create_time"], issuedBy: WEBREPORT_URL, writtenToDevVars: writeDevVars, writtenToWranglerVars: writeWranglerVars })}\n`,
+    `${JSON.stringify({ cookie, names: refreshedPairs.map((value) => value.split("=", 1)[0]), issuedBy: QUOTE_URL, writtenToDevVars: writeDevVars, writtenToWranglerVars: writeWranglerVars })}\n`,
   );
 } else if (!writeDevVars && !writeWranglerVars) {
   process.stdout.write(`EASTMONEY_COOKIE=${JSON.stringify(cookie)}\n`);
@@ -45,62 +41,49 @@ if (jsonOutput) {
   process.stderr.write(`Updated ${targets.join(" and ")}\n`);
 }
 
-async function requestEastmoneyIdentity(stNvi) {
-  const profile = {
-    userAgent: USER_AGENT,
-    osPlatform: "MacOS",
-    osversion: "Mac OS X 10.15.7",
-    language: "zh-CN",
-    timezone: "Asia/Shanghai",
-    screenResolution: "1470X956",
-  };
-  const response = await fetch(WEBREPORT_URL, {
-    method: "POST",
+async function requestEastmoneyCookieRefresh(existingCookie) {
+  const response = await fetch(QUOTE_URL, {
     headers: {
-      Accept: "*/*",
-      "Content-Type": "application/json;charset=UTF-8",
-      Cookie: `st_nvi=${stNvi}`,
-      Origin: "https://quote.eastmoney.com",
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      Cookie: existingCookie,
       Referer: QUOTE_REFERER,
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "same-origin",
+      "Upgrade-Insecure-Requests": "1",
       "User-Agent": USER_AGENT,
     },
-    body: JSON.stringify({
-      osPlatform: profile.osPlatform,
-      sourceType: "WEB",
-      osversion: profile.osversion,
-      language: profile.language,
-      timezone: profile.timezone,
-      webDeviceInfo: {
-        screenResolution: profile.screenResolution,
-        userAgent: profile.userAgent,
-        canvasKey: fingerprintKey(profile, "canvas"),
-        webglKey: fingerprintKey(profile, "webgl"),
-        fontKey: fingerprintKey(profile, "font"),
-        audioKey: fingerprintKey(profile, "audio"),
-      },
-    }),
   });
   if (!response.ok) {
-    throw new Error(`Eastmoney webreport failed: status=${response.status}`);
+    throw new Error(`Eastmoney quote page failed: status=${response.status}`);
   }
-  return response.json();
-}
-
-function generateStNvi() {
-  const bytes = randomBytes(21);
-  let value = "";
-  for (let index = bytes.length - 1; index >= 0; index -= 1) {
-    value += ST_NVI_ALPHABET[bytes[index] & 63];
+  const setCookies = response.headers.getSetCookie();
+  if (setCookies.length === 0) {
+    throw new Error("Eastmoney quote page returned no Set-Cookie; keeping the existing browser session");
   }
-  return `${value}${sha256(value).slice(0, 4)}`;
+  return setCookies;
 }
 
-function fingerprintKey(profile, kind) {
-  return sha256(JSON.stringify({ kind, ...profile })).slice(0, 32);
+async function readExistingEastmoneyCookie() {
+  const devVarsCookie = await readDevVarsCookie();
+  if (devVarsCookie) return devVarsCookie;
+
+  const wranglerText = await readFile(join(process.cwd(), "wrangler.jsonc"), "utf8");
+  const wrangler = parse(wranglerText);
+  return typeof wrangler.vars?.EASTMONEY_COOKIE === "string" ? wrangler.vars.EASTMONEY_COOKIE : "";
 }
 
-function sha256(value) {
-  return createHash("sha256").update(value).digest("hex");
+async function readDevVarsCookie() {
+  try {
+    const text = await readFile(join(process.cwd(), ".dev.vars"), "utf8");
+    const value = text.match(/^EASTMONEY_COOKIE=(.*)$/m)?.[1]?.trim();
+    if (!value) return "";
+    return value.startsWith('"') ? JSON.parse(value) : value;
+  } catch (error) {
+    if (error?.code === "ENOENT") return "";
+    throw error;
+  }
 }
 
 async function updateDevVars(cookie) {

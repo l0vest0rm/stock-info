@@ -45,3 +45,23 @@ _Avoid_: Primary industry, principal business
 **Classification basis**:
 The auditable evidence used for a business-track assignment: an exact source-industry mapping or a documented company-level principal-business correction.
 _Avoid_: First keyword match
+
+## Institutional Buy Recommendation
+
+**Institutional candidate universe**:
+The dated Top300 set ranked by institutional holder count. It is a discovery universe, not a buy signal or a portfolio instruction.
+
+**Valuation status**:
+A sector-specific, evidence-dated assessment of relative valuation. A green status is necessary but never sufficient for a new position.
+
+**Valuation observation**:
+A dated market valuation measure, such as PB, PE, or market capitalisation, paired with the closing-price record from the same source and trading day. It is distinct from a point-in-time quote and is unavailable when that dated source observation is missing.
+
+**K-line source response**:
+The unmodified provider response captured with a K-line snapshot. It preserves the provider's column definitions and every returned row so that structured observations can be audited or remapped if the provider adds fields.
+
+**Buy plan**:
+A user-owned record containing a conservative value range, target weight, invalidation conditions, tranche conditions, and evidence-review confirmation. It does not place an order.
+
+**Plan-ready candidate**:
+A candidate whose valuation, evidence, buy plan, cash, and company/theme/industry concentration checks all pass. The user still makes the trade decision.

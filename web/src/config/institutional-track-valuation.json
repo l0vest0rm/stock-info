@@ -1,10 +1,10 @@
 {
-  "version": 1,
+  "version": 3,
   "batchLimit": 20,
   "autoEvaluateLimit": 300,
   "evaluationConcurrency": 2,
   "evaluationCache": {
-    "version": 1,
+    "version": 3,
     "ttlMs": 600000
   },
   "trackMinimumEvaluatedCompanies": 2,
@@ -19,24 +19,56 @@
     "minimumDrawdownPct": 10,
     "maximumDrawdownPct": 30
   },
+  "buyRecommendation": {
+    "version": 1,
+    "companyCapPct": 15,
+    "themeCapPct": 20,
+    "industryCapPct": 25,
+    "minimumReportCount": 3,
+    "minimumInvalidationCount": 2
+  },
   "models": [
     {
       "id": "growth",
-      "label": "成长估值：前瞻 PE / PEG",
+      "label": "成长估值：近年 PE / 路径调整 PEG",
       "primaryTracks": ["信息技术", "医药健康", "汽车与出行", "传媒与互联网"],
-      "thresholds": {"strongBuy": 0.6, "buy": 1, "watch": 1.5, "noAdd": 2}
+      "thresholds": {"strongBuy": 0.6, "buy": 1, "watch": 1.5, "noAdd": 2},
+      "peThresholds": {"strongBuy": 15, "buy": 25, "watch": 40, "noAdd": 60}
     },
     {
       "id": "growth",
-      "label": "成长估值：前瞻 PE / PEG",
+      "label": "成长估值：近年 PE / 路径调整 PEG",
       "secondaryTracks": ["锂电池", "电池材料与部件", "电源与储能设备", "工业自动化与机器人", "激光与精密设备", "航空航天与军工"],
-      "thresholds": {"strongBuy": 0.6, "buy": 1, "watch": 1.5, "noAdd": 2}
+      "thresholds": {"strongBuy": 0.6, "buy": 1, "watch": 1.5, "noAdd": 2},
+      "peThresholds": {"strongBuy": 15, "buy": 25, "watch": 40, "noAdd": 60}
     },
     {
       "id": "financial",
-      "label": "金融估值：PB-ROE 与股东回报",
-      "primaryTracks": ["金融"],
-      "thresholds": {}
+      "label": "银行估值：PB 与滚动 ROE",
+      "secondaryTracks": ["银行"],
+      "pbThresholds": {"strongBuy": 0.8, "buy": 1, "watch": 1.3, "noAdd": 1.6},
+      "roeThresholds": {"strongBuy": 12, "buy": 10, "watch": 8, "noAdd": 6}
+    },
+    {
+      "id": "financial",
+      "label": "证券估值：PB 与滚动 ROE",
+      "secondaryTracks": ["证券"],
+      "pbThresholds": {"strongBuy": 1, "buy": 1.3, "watch": 1.7, "noAdd": 2.1},
+      "roeThresholds": {"strongBuy": 12, "buy": 9, "watch": 7, "noAdd": 5}
+    },
+    {
+      "id": "financial",
+      "label": "保险估值：PB 与滚动 ROE",
+      "secondaryTracks": ["保险"],
+      "pbThresholds": {"strongBuy": 0.9, "buy": 1.2, "watch": 1.6, "noAdd": 2},
+      "roeThresholds": {"strongBuy": 14, "buy": 11, "watch": 8, "noAdd": 6}
+    },
+    {
+      "id": "growth",
+      "label": "金融科技估值：近年 PE / 路径调整 PEG",
+      "secondaryTracks": ["金融科技"],
+      "thresholds": {"strongBuy": 0.6, "buy": 1, "watch": 1.5, "noAdd": 2},
+      "peThresholds": {"strongBuy": 15, "buy": 25, "watch": 40, "noAdd": 60}
     },
     {
       "id": "yield",
@@ -52,9 +84,9 @@
     },
     {
       "id": "cycle",
-      "label": "周期估值：中周期盈利与资产价值",
+      "label": "周期估值：三年中周期盈利 PE",
       "primaryTracks": ["原材料", "能源", "地产与基建", "交通运输与物流"],
-      "thresholds": {}
+      "peThresholds": {"strongBuy": 8, "buy": 12, "watch": 18, "noAdd": 25}
     }
   ],
   "fallback": {
