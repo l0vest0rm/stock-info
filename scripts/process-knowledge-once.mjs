@@ -78,7 +78,7 @@ const importTarget = {
   database: config.database || "stock_info",
 };
 
-for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmReviewDir, localReviewCacheDir, localReviewStaticDir]) {
+for (const dir of [processedDir, failedDir, workDir, reviewDir, stateDir, remotePdfCacheDir, markdownCacheDir, llmReviewDir, localReviewCacheDir]) {
   mkdirSync(dir, { recursive: true });
 }
 

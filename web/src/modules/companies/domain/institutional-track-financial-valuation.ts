@@ -20,6 +20,23 @@ export type FinancialValuationResult = {
   reason: string
 }
 
+export type BankShareholderReturnThresholds = {
+  strongBuyYieldPct: number
+  buyYieldPct: number
+  watchYieldPct: number
+  minimumProfitCagrPct: number
+}
+
+export type BankShareholderReturnResult = {
+  status: 'rated' | 'unavailable'
+  state: InstitutionalValuationState | null
+  dividendYield: number | null
+  profitCagr: number | null
+  pb: number | null
+  roe: number | null
+  reason: string
+}
+
 function finiteNumber(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(numeric) ? numeric : null
@@ -79,6 +96,67 @@ function riskier(left: Exclude<InstitutionalValuationState, 'unavailable'>, righ
 
 function unavailable(reason: string): FinancialValuationResult {
   return { status: 'unavailable', state: null, pb: null, ttmProfit: null, averageEquity: null, roe: null, normalizedPe: null, reason }
+}
+
+function unavailableBankReturn(reason: string, financial: FinancialValuationResult): BankShareholderReturnResult {
+  return {
+    status: 'unavailable',
+    state: null,
+    dividendYield: null,
+    profitCagr: null,
+    pb: financial.pb,
+    roe: financial.roe,
+    reason,
+  }
+}
+
+function downgradeOne(state: Exclude<InstitutionalValuationState, 'unavailable'>): Exclude<InstitutionalValuationState, 'unavailable'> {
+  if (state === 'deep-value') return 'value'
+  if (state === 'value') return 'fair'
+  if (state === 'fair') return 'expensive'
+  return state
+}
+
+export function assessInstitutionalTrackBankShareholderReturn(input: {
+  dividendYield: unknown
+  profitCagr: unknown
+  financial: FinancialValuationResult
+  thresholds: BankShareholderReturnThresholds
+}): BankShareholderReturnResult {
+  const dividendYield = positiveNumber(input.dividendYield)
+  const profitCagr = finiteNumber(input.profitCagr)
+  if (dividendYield === null || profitCagr === null) {
+    return unavailableBankReturn('缺少近四季股息率或完整利润预测，无法评估银行股东回报。', input.financial)
+  }
+  if (input.financial.status === 'unavailable' || input.financial.state === null) {
+    return unavailableBankReturn(`PB/滚动 ROE 约束未就绪：${input.financial.reason}`, input.financial)
+  }
+  if (profitCagr < input.thresholds.minimumProfitCagrPct) {
+    return {
+      status: 'rated',
+      state: 'income-stagnant',
+      dividendYield,
+      profitCagr,
+      pb: input.financial.pb,
+      roe: input.financial.roe,
+      reason: `近四季股息率 ${dividendYield.toFixed(1)}%，但预测净利 CAGR ${profitCagr.toFixed(1)}% 低于 ${input.thresholds.minimumProfitCagrPct.toFixed(1)}% 的持续性门槛；高股息不能单独构成新增理由。${input.financial.reason}`,
+    }
+  }
+  let state: Exclude<InstitutionalValuationState, 'unavailable'> = 'expensive'
+  if (dividendYield >= input.thresholds.strongBuyYieldPct) state = 'deep-value'
+  else if (dividendYield >= input.thresholds.buyYieldPct) state = 'value'
+  else if (dividendYield >= input.thresholds.watchYieldPct) state = 'fair'
+  if (profitCagr < 0) state = downgradeOne(state)
+  state = riskier(state, input.financial.state)
+  return {
+    status: 'rated',
+    state,
+    dividendYield,
+    profitCagr,
+    pb: input.financial.pb,
+    roe: input.financial.roe,
+    reason: `近四季股息率 ${dividendYield.toFixed(1)}% 为主锚；预测净利 CAGR ${profitCagr.toFixed(1)}% 用于检验持续性${profitCagr < 0 ? '，因此股息率结论下调一档' : ''}。PB/滚动 ROE 仅作约束并取更谨慎结论。${input.financial.reason}`,
+  }
 }
 
 export function assessInstitutionalTrackFinancialValuation(input: {

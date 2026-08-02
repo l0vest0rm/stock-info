@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  assessInstitutionalTrackBankShareholderReturn,
   assessInstitutionalTrackCycleValuation,
   assessInstitutionalTrackFinancialValuation,
 } from './institutional-track-financial-valuation.ts'
@@ -47,6 +48,20 @@ test('financial model refuses PB-only conclusion without a four-quarter profit a
   const result = assessInstitutionalTrackFinancialValuation({ pb: 0.7, incomeRows: incomeRows.slice(0, 3), balanceRows, pbThresholds, roeThresholds })
   assert.equal(result.status, 'unavailable')
   assert.match(result.reason, /四个单季/)
+})
+
+test('bank shareholder-return model uses dividend yield as the anchor and PB-ROE as a guardrail', () => {
+  const financial = assessInstitutionalTrackFinancialValuation({ pb: 0.7, incomeRows, balanceRows, pbThresholds, roeThresholds })
+  const thresholds = { strongBuyYieldPct: 5, buyYieldPct: 4, watchYieldPct: 3, minimumProfitCagrPct: -5 }
+  const result = assessInstitutionalTrackBankShareholderReturn({ dividendYield: 5.5, profitCagr: 2, financial, thresholds })
+  assert.equal(result.status, 'rated')
+  assert.equal(result.state, 'deep-value')
+
+  const declining = assessInstitutionalTrackBankShareholderReturn({ dividendYield: 5.5, profitCagr: -1, financial, thresholds })
+  assert.equal(declining.state, 'value')
+
+  const unsustainable = assessInstitutionalTrackBankShareholderReturn({ dividendYield: 5.5, profitCagr: -6, financial, thresholds })
+  assert.equal(unsustainable.state, 'income-stagnant')
 })
 
 test('cycle model uses the median of three trailing-year profit windows', () => {

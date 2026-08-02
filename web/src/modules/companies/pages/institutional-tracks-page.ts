@@ -9,7 +9,9 @@ import {
 } from '../domain/institutional-track-growth-valuation'
 import {
   assessInstitutionalTrackCycleValuation,
+  assessInstitutionalTrackBankShareholderReturn,
   assessInstitutionalTrackFinancialValuation,
+  type BankShareholderReturnThresholds,
   type ValuationThresholds,
 } from '../domain/institutional-track-financial-valuation'
 import {
@@ -190,7 +192,7 @@ const valuationStateMeta: Record<ValuationState, { label: string, className: str
 }
 
 const valuationStates = Object.keys(valuationStateMeta) as ValuationState[]
-const valuationCalculationVersion = 4
+const valuationCalculationVersion = 5
 
 function numberOrNull(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value)
@@ -653,6 +655,84 @@ function evaluateFinancialValuation(
   }
 }
 
+function evaluateBankValuation(
+  row: TrackRow,
+  model: ValuationModel,
+  pb: number | null,
+  dividendYield: number | null,
+  latestPrice: number | null,
+  forecasts: Array<Record<string, unknown>>,
+  incomeRows: Array<Record<string, unknown>>,
+  balanceRows: Array<Record<string, unknown>>,
+  financeDate: string,
+  reportCount: number,
+  latestReports: ValuationEvidenceLink[],
+  latestNews: ValuationEvidenceLink[],
+  pullbackSignal: ReturnType<typeof calculatePullbackSignal>,
+): CompanyValuation {
+  const pbThresholds = completeThresholds(model.pbThresholds)
+  const roeThresholds = completeThresholds(model.roeThresholds)
+  const thresholds = model.yieldThresholds as BankShareholderReturnThresholds | undefined
+  if (!pbThresholds || !roeThresholds || !thresholds) {
+    return {
+      ...emptyValuation(row, '银行模型缺少完整的股息率、PB 或 ROE 阈值配置。'),
+      modelLabel: model.label,
+      latestPrice,
+      pb,
+      financeDate,
+      reportCount,
+      latestReports,
+      latestNews,
+      dividendYield,
+      ...pullbackSignal,
+    }
+  }
+  const financial = assessInstitutionalTrackFinancialValuation({ pb, incomeRows, balanceRows, pbThresholds, roeThresholds })
+  const result = assessInstitutionalTrackBankShareholderReturn({
+    dividendYield,
+    profitCagr: forecastProfitCagr(forecasts),
+    financial,
+    thresholds,
+  })
+  if (result.status === 'unavailable') {
+    return {
+      ...emptyValuation(row, result.reason),
+      modelLabel: model.label,
+      latestPrice,
+      pb: result.pb,
+      roe: result.roe,
+      financeDate,
+      reportCount,
+      latestReports,
+      latestNews,
+      dividendYield,
+      ...pullbackSignal,
+    }
+  }
+  return {
+    state: result.state!,
+    modelLabel: model.label,
+    rationale: result.reason,
+    confidence: financeDate && reportCount >= 1 ? '高' : financeDate ? '中' : '低',
+    latestPrice,
+    pb: result.pb,
+    roe: result.roe,
+    normalizedPe: null,
+    forwardPe: null,
+    peg: null,
+    forecastYear: valuationRules.growthPeg.targetForecastYear,
+    profitGrowth: result.profitCagr,
+    profitCagr: result.profitCagr,
+    forecastPath: [],
+    financeDate,
+    reportCount,
+    latestReports,
+    latestNews,
+    dividendYield: result.dividendYield,
+    ...pullbackSignal,
+  }
+}
+
 function evaluateCycleValuation(
   row: TrackRow,
   model: ValuationModel,
@@ -1020,6 +1100,22 @@ const InstitutionalTracksPage = defineComponent({
                 latestNews,
                 pullbackSignal,
               )
+            : model.id === 'bank'
+              ? evaluateBankValuation(
+                row,
+                model,
+                latestPb,
+                dividendYield,
+                latestPrice,
+                forecasts,
+                incomeRows,
+                balanceRows,
+                financeDate,
+                reportCount,
+                latestReports,
+                latestNews,
+                pullbackSignal,
+              )
             : model.id === 'financial'
               ? evaluateFinancialValuation(
                 row,
@@ -1146,7 +1242,7 @@ const InstitutionalTracksPage = defineComponent({
         h('div', { class: 'd-flex flex-wrap align-items-center justify-content-between gap-2' }, [
           h('div', [
             h('div', { class: 'fw-semibold' }, '估值颜色：赛道与公司分别判断'),
-            h('div', { class: 'small text-muted' }, `页面打开后会按机构持股排名自动评估 Top${valuationRules.autoEvaluateLimit}，最多同时核对 ${valuationRules.evaluationConcurrency} 家；结果在本浏览器缓存 ${Math.round(valuationRules.evaluationCache.ttlMs / 60_000)} 分钟。成长赛道同时检查 ${valuationRules.growthPeg.baseForecastYear}E 绝对 PE 和逐年利润路径；红利赛道要求股息率与 ${valuationRules.growthPeg.baseForecastYear}E-${valuationRules.growthPeg.targetForecastYear}E 利润 CAGR 同时成立；银行、证券和保险使用 PB 与滚动 ROE 的更谨慎结论；周期赛道用连续三年滚动利润中位数计算中周期 PE。机构式评级仅由当前估值结论和证据置信度生成，不创建个人买入计划，也不构成个性化投资建议。`),
+            h('div', { class: 'small text-muted' }, `页面打开后会按机构持股排名自动评估 Top${valuationRules.autoEvaluateLimit}，最多同时核对 ${valuationRules.evaluationConcurrency} 家；结果在本浏览器缓存 ${Math.round(valuationRules.evaluationCache.ttlMs / 60_000)} 分钟。成长赛道同时检查 ${valuationRules.growthPeg.baseForecastYear}E 绝对 PE 和逐年利润路径；红利赛道要求股息率与 ${valuationRules.growthPeg.baseForecastYear}E-${valuationRules.growthPeg.targetForecastYear}E 利润 CAGR 同时成立；银行以近四季股息率为主锚，预测利润增长检验持续性，PB 与滚动 ROE 只作更谨慎的约束；证券和保险使用 PB 与滚动 ROE；周期赛道用连续三年滚动利润中位数计算中周期 PE。机构式评级仅由当前估值结论和证据置信度生成，不创建个人买入计划，也不构成个性化投资建议。`),
           ]),
           h('button', {
             type: 'button',
@@ -1276,7 +1372,7 @@ const InstitutionalTracksPage = defineComponent({
                 const metric = valuation.forecastPath.length
                   ? `${formatPePath(valuation.forecastPath)}｜净利增速 ${formatGrowthPath(valuation.forecastPath)}${valuation.peg === null ? '' : `｜路径调整 PEG ${formatNumber(valuation.peg, 2)}`}`
                   : valuation.dividendYield !== null
-                    ? `近四季股息率 ${formatNumber(valuation.dividendYield)}% / ${valuation.forecastYear}E 前净利 CAGR ${formatNumber(valuation.profitGrowth)}%`
+                    ? `近四季股息率 ${formatNumber(valuation.dividendYield)}% / ${valuationRules.growthPeg.baseForecastYear}E-${valuation.forecastYear}E 净利 CAGR ${formatNumber(valuation.profitGrowth)}%${valuation.pb === null && valuation.roe === null ? '' : ` / PB ${formatNumber(valuation.pb, 2)}× / 滚动 ROE ${formatNumber(valuation.roe)}%`}`
                     : valuation.pb !== null || valuation.roe !== null
                       ? `PB ${formatNumber(valuation.pb, 2)}× / 滚动 ROE ${formatNumber(valuation.roe)}%`
                       : valuation.normalizedPe !== null
