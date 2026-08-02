@@ -1,5 +1,6 @@
 import { computed, createApp, defineComponent, h, onMounted, ref } from 'vue'
 import trackSnapshotConfig from '../../../config/institutional-track-snapshot.json'
+import sortingConfig from '../../../config/institutional-track-sorting.json'
 import valuationConfig from '../../../config/institutional-track-valuation.json'
 import {
   assessInstitutionalTrackGrowthValuation,
@@ -12,10 +13,12 @@ import {
   type ValuationThresholds,
 } from '../domain/institutional-track-financial-valuation'
 import {
-  assessInstitutionalTrackBuyRecommendation,
-  type BuyRecommendationPlan,
-  type BuyRecommendationState,
-} from '../domain/institutional-track-buy-recommendation'
+  assessInstitutionalTrackRating,
+  institutionalTrackRatingMeta,
+  institutionalTrackRatingStates,
+  type InstitutionalTrackRatingState,
+} from '../domain/institutional-track-rating'
+import { calculateLookbackRangePosition } from '../domain/institutional-track-performance'
 import { isCompanyFollowed, toggleFollowedCompany } from '../domain/follow-storage'
 
 type StockSource = {
@@ -42,7 +45,7 @@ type TrackRow = {
 
 type ValuationState = 'deep-value' | 'value' | 'fair' | 'expensive' | 'overvalued' | 'growth-unstable' | 'income-stagnant' | 'unavailable'
 type ValuationFilter = ValuationState | 'pending'
-type BuyRecommendationFilter = BuyRecommendationState | ''
+type RatingFilter = InstitutionalTrackRatingState | ''
 
 type ValuationEvidenceLink = {
   title: string
@@ -54,6 +57,7 @@ type KlineValuationObservation = {
   date?: unknown
   close?: unknown
   high?: unknown
+  low?: unknown
   peTtm?: unknown
   pb?: unknown
   marketCapital?: unknown
@@ -80,6 +84,8 @@ type CompanyValuation = {
   latestNews: ValuationEvidenceLink[]
   threeMonthHigh: number | null
   drawdownPct: number | null
+  ninetyDayDrawdownPct: number | null
+  ninetyDayGainPct: number | null
   annualizedVolatility: number | null
   drawdownReviewThreshold: number | null
   pullbackWorthReview: boolean
@@ -147,14 +153,6 @@ const valuationRules = valuationConfig as {
     minimumDrawdownPct: number
     maximumDrawdownPct: number
   }
-  buyRecommendation: {
-    version: number
-    companyCapPct: number
-    themeCapPct: number
-    industryCapPct: number
-    minimumReportCount: number
-    minimumInvalidationCount: number
-  }
   models: ValuationModel[]
   fallback: ValuationModel
 }
@@ -164,11 +162,20 @@ type ValuationCache = {
   valuations: Record<string, CompanyValuation>
 }
 
-type BuyPlanCache = {
-  version: 1
-  cashWeightPct: number | null
-  positionsText: string
-  plans: Record<string, BuyRecommendationPlan>
+type SortMetric = 'institutionCount' | 'ninetyDayDrawdownPct' | 'ninetyDayGainPct'
+type SortDirection = 'asc' | 'desc'
+type SortStrategy = {
+  id: string
+  label: string
+  metric: SortMetric
+  direction: SortDirection
+}
+
+const sortingRules = sortingConfig as {
+  version: number
+  lookbackTradingDays: number
+  defaultStrategyId: string
+  strategies: SortStrategy[]
 }
 
 const valuationStateMeta: Record<ValuationState, { label: string, className: string, score: number | null }> = {
@@ -183,6 +190,7 @@ const valuationStateMeta: Record<ValuationState, { label: string, className: str
 }
 
 const valuationStates = Object.keys(valuationStateMeta) as ValuationState[]
+const valuationCalculationVersion = 4
 
 function numberOrNull(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value)
@@ -191,6 +199,11 @@ function numberOrNull(value: unknown): number | null {
 
 function formatNumber(value: number | null, digits = 1): string {
   return value === null ? '—' : value.toFixed(digits)
+}
+
+function formatPercent(value: number | null, showPositiveSign = false): string {
+  if (value === null) return '—'
+  return `${showPositiveSign && value > 0 ? '+' : ''}${formatNumber(value)}%`
 }
 
 function formatDate(value: string): string {
@@ -245,6 +258,8 @@ function emptyValuation(row: TrackRow, rationale: string): CompanyValuation {
     latestNews: [],
     threeMonthHigh: null,
     drawdownPct: null,
+    ninetyDayDrawdownPct: null,
+    ninetyDayGainPct: null,
     annualizedVolatility: null,
     drawdownReviewThreshold: null,
     pullbackWorthReview: false,
@@ -255,24 +270,12 @@ function emptyValuation(row: TrackRow, rationale: string): CompanyValuation {
 function valuationCacheKey(): string {
   return [
     'institutional-track-valuation',
+    valuationCalculationVersion,
     valuationRules.evaluationCache.version,
     valuationRules.version,
     snapshot.classificationVersion,
     snapshot.dataDate,
   ].join(':')
-}
-
-function buyPlanCacheKey(): string {
-  return `institutional-track-buy-plans:${valuationRules.buyRecommendation.version}:${snapshot.classificationVersion}:${snapshot.dataDate}`
-}
-
-function emptyBuyPlan(): BuyRecommendationPlan {
-  return { fairValueLow: null, fairValueHigh: null, targetWeightPct: null, invalidations: [], tranchePlan: '', evidenceReviewed: false, financialRiskReviewed: false }
-}
-
-function parsePercent(value: string): number | null {
-  const numeric = Number(value)
-  return Number.isFinite(numeric) && numeric >= 0 && numeric <= 100 ? numeric : null
 }
 
 async function fetchApi<T>(url: string): Promise<T> {
@@ -303,12 +306,16 @@ function evidenceTotal(value: unknown): number {
 
 function klineStartDate(): string {
   const date = new Date()
-  date.setDate(date.getDate() - Math.ceil(valuationRules.pullbackReview.lookbackTradingDays * 2.5))
+  const requiredTradingDays = Math.max(
+    valuationRules.pullbackReview.lookbackTradingDays,
+    sortingRules.lookbackTradingDays,
+  )
+  date.setDate(date.getDate() - Math.ceil(requiredTradingDays * 2.5))
   return date.toISOString().slice(0, 10)
 }
 
 function calculatePullbackSignal(latestPrice: number | null, rows: KlineValuationObservation[]): Pick<CompanyValuation,
-  'threeMonthHigh' | 'drawdownPct' | 'annualizedVolatility' | 'drawdownReviewThreshold' | 'pullbackWorthReview'
+  'threeMonthHigh' | 'drawdownPct' | 'ninetyDayDrawdownPct' | 'ninetyDayGainPct' | 'annualizedVolatility' | 'drawdownReviewThreshold' | 'pullbackWorthReview'
 > {
   const window = rows
     .map((row) => ({ close: numberOrNull(row.close), high: numberOrNull(row.high) }))
@@ -318,6 +325,8 @@ function calculatePullbackSignal(latestPrice: number | null, rows: KlineValuatio
     return {
       threeMonthHigh: null,
       drawdownPct: null,
+      ninetyDayDrawdownPct: null,
+      ninetyDayGainPct: null,
       annualizedVolatility: null,
       drawdownReviewThreshold: null,
       pullbackWorthReview: false,
@@ -338,9 +347,12 @@ function calculatePullbackSignal(latestPrice: number | null, rows: KlineValuatio
       annualizedVolatility * valuationRules.pullbackReview.volatilityMultiplier,
     ),
   )
+  const ninetyDayRange = calculateLookbackRangePosition(rows, sortingRules.lookbackTradingDays)
   return {
     threeMonthHigh,
     drawdownPct,
+    ninetyDayDrawdownPct: ninetyDayRange?.drawdownPct ?? null,
+    ninetyDayGainPct: ninetyDayRange?.gainPct ?? null,
     annualizedVolatility,
     drawdownReviewThreshold,
     pullbackWorthReview: drawdownPct >= drawdownReviewThreshold,
@@ -377,6 +389,7 @@ function evaluateGrowthValuation(
   marketCapYi: number | null,
   latestPrice: number | null,
   forecasts: Array<Record<string, unknown>>,
+  incomeRows: Array<Record<string, unknown>>,
   financeDate: string,
   reportCount: number,
   latestReports: ValuationEvidenceLink[],
@@ -403,6 +416,7 @@ function evaluateGrowthValuation(
   const result = assessInstitutionalTrackGrowthValuation({
     marketCapYi,
     forecasts,
+    incomeRows,
     baseForecastYear: baseYear,
     targetForecastYear: targetYear,
     pegThresholds,
@@ -734,13 +748,13 @@ const pageStyle = `
 .institutional-tracks-evidence { color: #64748b; font-size: .75rem; line-height: 1.4; max-width: 25rem; }
 .institutional-tracks-evidence a { display: block; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .institutional-tracks-assess-button { font-size: .75rem; padding: .16rem .42rem; }
-.institutional-tracks-buy-panel { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: .75rem; padding: 1rem; }
-.institutional-tracks-buy-status { border: 0; border-radius: .4rem; font-size: .75rem; padding: .22rem .45rem; text-align: left; }
-.institutional-tracks-buy-status.is-plan-ready { background: #dcfce7; color: #14532d; }
-.institutional-tracks-buy-status.is-portfolio-blocked, .institutional-tracks-buy-status.is-not-eligible { background: #fff7ed; color: #9a3412; }
-.institutional-tracks-buy-status.is-needs-evidence, .institutional-tracks-buy-status.is-needs-plan, .institutional-tracks-buy-status.is-needs-portfolio { background: #eff6ff; color: #1d4ed8; }
-.institutional-tracks-buy-detail { font-size: .8rem; line-height: 1.45; }
-.institutional-tracks-buy-detail textarea { min-height: 4.5rem; }
+.institutional-tracks-rating { border: 0; border-radius: .4rem; font-size: .75rem; padding: .22rem .45rem; text-align: left; }
+.institutional-tracks-rating.is-buy { background: #dcfce7; color: #14532d; }
+.institutional-tracks-rating.is-overweight { background: #ecfdf5; color: #115e59; }
+.institutional-tracks-rating.is-hold { background: #fefce8; color: #854d0e; }
+.institutional-tracks-rating.is-underweight { background: #fff7ed; color: #9a3412; }
+.institutional-tracks-rating.is-sell { background: #fef2f2; color: #991b1b; }
+.institutional-tracks-rating.is-insufficient { background: #f1f5f9; color: #475569; }
 `
 
 const InstitutionalTracksPage = defineComponent({
@@ -753,16 +767,13 @@ const InstitutionalTracksPage = defineComponent({
     const primaryFilter = ref('')
     const secondaryFilter = ref('')
     const valuationFilter = ref<ValuationFilter | ''>('')
-    const buyRecommendationFilter = ref<BuyRecommendationFilter>('')
+    const ratingFilter = ref<RatingFilter>('')
+    const sortStrategyId = ref(sortingRules.defaultStrategyId)
     const followedCodes = ref(new Set<string>())
     const valuations = ref<Record<string, CompanyValuation>>({})
     const evaluatingCodes = ref(new Set<string>())
     const assessmentStatus = ref('')
     const assessmentRunning = ref(false)
-    const buyPlans = ref<Record<string, BuyRecommendationPlan>>({})
-    const cashWeightPct = ref<number | null>(null)
-    const positionsText = ref('')
-    const selectedPlanCode = ref('')
     let evaluationRun: Promise<void> | null = null
 
     const rowsMatchingTrackFilters = computed(() => {
@@ -785,13 +796,35 @@ const InstitutionalTracksPage = defineComponent({
       return counts
     })
 
-    const visibleRows = computed(() => rowsMatchingTrackFilters.value.filter((row) => {
-      if (!valuationFilter.value) return true
-      const state = valuations.value[row.code]?.state || 'pending'
-      return state === valuationFilter.value
-    }).filter((row) => !buyRecommendationFilter.value || buyRecommendationFor(row).state === buyRecommendationFilter.value))
+    const selectedSortStrategy = computed<SortStrategy>(() => {
+      const strategy = sortingRules.strategies.find((item) => item.id === sortStrategyId.value)
+      if (!strategy) throw new Error(`未配置排序策略：${sortStrategyId.value}`)
+      return strategy
+    })
 
-    const selectedPlanRow = computed(() => rows.value.find((row) => row.code === selectedPlanCode.value) || null)
+    function sortValue(row: TrackRow, strategy: SortStrategy): number | null {
+      if (strategy.metric === 'institutionCount') return row.institutionCount
+      return valuations.value[row.code]?.[strategy.metric] ?? null
+    }
+
+    function compareRows(left: TrackRow, right: TrackRow, strategy: SortStrategy): number {
+      const leftValue = sortValue(left, strategy)
+      const rightValue = sortValue(right, strategy)
+      if (leftValue === null && rightValue === null) return left.rank - right.rank
+      if (leftValue === null) return 1
+      if (rightValue === null) return -1
+      if (leftValue === rightValue) return left.rank - right.rank
+      return strategy.direction === 'asc' ? leftValue - rightValue : rightValue - leftValue
+    }
+
+    const visibleRows = computed(() => {
+      const filtered = rowsMatchingTrackFilters.value.filter((row) => {
+        if (!valuationFilter.value) return true
+        const state = valuations.value[row.code]?.state || 'pending'
+        return state === valuationFilter.value
+      }).filter((row) => !ratingFilter.value || ratingFor(row).state === ratingFilter.value)
+      return [...filtered].sort((left, right) => compareRows(left, right, selectedSortStrategy.value))
+    })
 
     const primaryCounts = computed(() => {
       const countMap = new Map<string, number>()
@@ -882,86 +915,15 @@ const InstitutionalTracksPage = defineComponent({
       }
     }
 
-    function restoreBuyPlans() {
-      try {
-        const cached = JSON.parse(localStorage.getItem(buyPlanCacheKey()) || 'null') as BuyPlanCache | null
-        if (!cached || cached.version !== 1 || !cached.plans || typeof cached.plans !== 'object') return
-        buyPlans.value = cached.plans
-        cashWeightPct.value = typeof cached.cashWeightPct === 'number' && cached.cashWeightPct >= 0 && cached.cashWeightPct <= 100
-          ? cached.cashWeightPct
-          : null
-        positionsText.value = typeof cached.positionsText === 'string' ? cached.positionsText : ''
-      } catch {
-        // Personal plans remain optional local browser data and must not block research results.
-      }
-    }
-
-    function persistBuyPlans() {
-      try {
-        localStorage.setItem(buyPlanCacheKey(), JSON.stringify({
-          version: 1,
-          cashWeightPct: cashWeightPct.value,
-          positionsText: positionsText.value,
-          plans: buyPlans.value,
-        } satisfies BuyPlanCache))
-      } catch {
-        // Browser privacy settings must not block the read-only candidate assessment.
-      }
-    }
-
-    function parsedPortfolio() {
-      const rowByCode = new Map(rows.value.map((row) => [row.code, row]))
-      const merged = new Map<string, number>()
-      let hasUnmappedPositions = false
-      for (const source of positionsText.value.split(/\r?\n/)) {
-        const line = source.trim()
-        if (!line) continue
-        const [rawCode = '', rawWeight = ''] = line.split(/[,:，\s]+/)
-        const code = rawCode.toUpperCase()
-        const weightPct = parsePercent(rawWeight)
-        if (weightPct === null || !rowByCode.has(code)) {
-          hasUnmappedPositions = true
-          continue
-        }
-        merged.set(code, (merged.get(code) || 0) + weightPct)
-      }
-      return {
-        cashWeightPct: cashWeightPct.value,
-        hasUnmappedPositions,
-        positions: [...merged.entries()].map(([code, weightPct]) => {
-          const row = rowByCode.get(code)!
-          return { code, weightPct, secondaryTrack: row.secondaryTrack, concepts: row.concepts }
-        }),
-      }
-    }
-
-    function buyRecommendationFor(row: TrackRow) {
+    function ratingFor(row: TrackRow) {
       const valuation = valuations.value[row.code]
       if (!valuation) {
-        return { state: 'needs-evidence' as const, label: '先评估估值', reasons: ['尚未加载该公司的估值、财报和证据。'], additionalWeightPct: null, companyHeadroomPct: null, industryHeadroomPct: null, themeHeadroomPct: null }
+        return { state: 'insufficient' as const, label: '待评估', rationale: '尚未加载该公司的估值和证据。' }
       }
-      return assessInstitutionalTrackBuyRecommendation({
+      return assessInstitutionalTrackRating({
         valuationState: valuation.state,
         confidence: valuation.confidence,
-        financeDate: valuation.financeDate,
-        reportCount: valuation.reportCount,
-        plan: buyPlans.value[row.code] || null,
-        portfolio: parsedPortfolio(),
-        candidate: { code: row.code, secondaryTrack: row.secondaryTrack, concepts: row.concepts },
-        requiresFinancialRiskReview: ['银行', '证券', '保险'].includes(row.secondaryTrack),
-        policy: valuationRules.buyRecommendation,
       })
-    }
-
-    function selectPlan(row: TrackRow) {
-      if (!buyPlans.value[row.code]) buyPlans.value = { ...buyPlans.value, [row.code]: emptyBuyPlan() }
-      selectedPlanCode.value = row.code
-      persistBuyPlans()
-    }
-
-    function updatePlan(code: string, patch: Partial<BuyRecommendationPlan>) {
-      buyPlans.value = { ...buyPlans.value, [code]: { ...(buyPlans.value[code] || emptyBuyPlan()), ...patch } }
-      persistBuyPlans()
     }
 
     function restoreValuations(): number {
@@ -1038,6 +1000,7 @@ const InstitutionalTracksPage = defineComponent({
               numberOrNull(company.marketCapYi),
               latestPrice,
               forecasts,
+              incomeRows,
               financeDate,
               reportCount,
               latestReports,
@@ -1165,7 +1128,6 @@ const InstitutionalTracksPage = defineComponent({
 
     onMounted(() => {
       loadRows()
-      restoreBuyPlans()
       if (!error.value && rows.value.length) startAutomaticEvaluation()
     })
 
@@ -1184,7 +1146,7 @@ const InstitutionalTracksPage = defineComponent({
         h('div', { class: 'd-flex flex-wrap align-items-center justify-content-between gap-2' }, [
           h('div', [
             h('div', { class: 'fw-semibold' }, '估值颜色：赛道与公司分别判断'),
-            h('div', { class: 'small text-muted' }, `页面打开后会按机构持股排名自动评估 Top${valuationRules.autoEvaluateLimit}，最多同时核对 ${valuationRules.evaluationConcurrency} 家；结果在本浏览器缓存 ${Math.round(valuationRules.evaluationCache.ttlMs / 60_000)} 分钟。成长赛道同时检查 ${valuationRules.growthPeg.baseForecastYear}E 绝对 PE 和逐年利润路径；红利赛道要求股息率与 ${valuationRules.growthPeg.baseForecastYear}E-${valuationRules.growthPeg.targetForecastYear}E 利润 CAGR 同时成立；银行、证券和保险使用 PB 与滚动 ROE 的更谨慎结论；周期赛道用连续三年滚动利润中位数计算中周期 PE。回撤只触发复核，不会自动上调估值或买入建议。建仓建议还必须通过证据、买入计划和组合集中度复核，绝不自动下单。`),
+            h('div', { class: 'small text-muted' }, `页面打开后会按机构持股排名自动评估 Top${valuationRules.autoEvaluateLimit}，最多同时核对 ${valuationRules.evaluationConcurrency} 家；结果在本浏览器缓存 ${Math.round(valuationRules.evaluationCache.ttlMs / 60_000)} 分钟。成长赛道同时检查 ${valuationRules.growthPeg.baseForecastYear}E 绝对 PE 和逐年利润路径；红利赛道要求股息率与 ${valuationRules.growthPeg.baseForecastYear}E-${valuationRules.growthPeg.targetForecastYear}E 利润 CAGR 同时成立；银行、证券和保险使用 PB 与滚动 ROE 的更谨慎结论；周期赛道用连续三年滚动利润中位数计算中周期 PE。机构式评级仅由当前估值结论和证据置信度生成，不创建个人买入计划，也不构成个性化投资建议。`),
           ]),
           h('button', {
             type: 'button',
@@ -1203,6 +1165,14 @@ const InstitutionalTracksPage = defineComponent({
             placeholder: '搜索股票、行业、概念或赛道',
             onInput: (event: Event) => { query.value = (event.target as HTMLInputElement).value },
           }),
+        ]),
+        h('div', { class: 'col-12 col-lg-3' }, [
+          h('select', {
+            class: 'form-select form-select-sm',
+            value: sortStrategyId.value,
+            'aria-label': '股票排序方式',
+            onChange: (event: Event) => { sortStrategyId.value = (event.target as HTMLSelectElement).value },
+          }, sortingRules.strategies.map((strategy) => h('option', { value: strategy.id }, strategy.label))),
         ]),
         h('div', { class: 'col-12 col-lg-3' }, [
           h('select', {
@@ -1243,61 +1213,15 @@ const InstitutionalTracksPage = defineComponent({
         h('div', { class: 'col-12 col-lg-3' }, [
           h('select', {
             class: 'form-select form-select-sm',
-            value: buyRecommendationFilter.value,
-            'aria-label': '按建仓建议筛选',
-            onChange: (event: Event) => { buyRecommendationFilter.value = (event.target as HTMLSelectElement).value as BuyRecommendationFilter },
+            value: ratingFilter.value,
+            'aria-label': '按机构评级筛选',
+            onChange: (event: Event) => { ratingFilter.value = (event.target as HTMLSelectElement).value as RatingFilter },
           }, [
-            h('option', { value: '' }, '全部建仓建议'),
-            h('option', { value: 'plan-ready' }, '计划已就绪'),
-            h('option', { value: 'needs-plan' }, '创建买入计划'),
-            h('option', { value: 'needs-evidence' }, '需补证据 / 先评估'),
-            h('option', { value: 'needs-portfolio' }, '待组合复核'),
-            h('option', { value: 'portfolio-blocked' }, '组合受限'),
-            h('option', { value: 'not-eligible' }, '暂不新增 / 数据不足'),
+            h('option', { value: '' }, '全部机构评级'),
+            ...institutionalTrackRatingStates.map((state) => h('option', { value: state }, institutionalTrackRatingMeta[state].label)),
           ]),
         ]),
       ]),
-      !loading.value ? h('section', { class: 'institutional-tracks-buy-panel mb-3', 'aria-label': '建仓候选与买入计划' }, (() => {
-        const selected = selectedPlanRow.value
-        const plan = selected ? buyPlans.value[selected.code] || emptyBuyPlan() : null
-        const recommendation = selected ? buyRecommendationFor(selected) : null
-        return [
-          h('div', { class: 'd-flex flex-wrap justify-content-between gap-2 align-items-center mb-2' }, [
-            h('div', [
-              h('div', { class: 'fw-semibold' }, '建仓候选与买入计划'),
-              h('div', { class: 'small text-muted' }, `只保存本浏览器的个人计划；仓位按可投资资产比例填写。代码必须在当前 Top300 快照内，未识别持仓会阻止“计划已就绪”。单股≤${valuationRules.buyRecommendation.companyCapPct}%、主题≤${valuationRules.buyRecommendation.themeCapPct}%、二级主营赛道≤${valuationRules.buyRecommendation.industryCapPct}%。`),
-            ]),
-            selected ? h('button', { type: 'button', class: 'btn btn-sm btn-outline-secondary', onClick: () => { selectedPlanCode.value = '' } }, '关闭计划') : null,
-          ]),
-          h('div', { class: 'row g-2 mb-3' }, [
-            h('label', { class: 'col-12 col-lg-3 small' }, [
-              '可投资现金（%）',
-              h('input', { class: 'form-control form-control-sm mt-1', type: 'number', min: 0, max: 100, value: cashWeightPct.value ?? '', onInput: (event: Event) => { cashWeightPct.value = parsePercent((event.target as HTMLInputElement).value); persistBuyPlans() } }),
-            ]),
-            h('label', { class: 'col-12 col-lg-9 small' }, [
-              '现有股票持仓（每行：代码, 权重%；仅录入股票仓）',
-              h('textarea', { class: 'form-control form-control-sm mt-1', placeholder: '600036.SH, 5\n601398.SH, 8', value: positionsText.value, onInput: (event: Event) => { positionsText.value = (event.target as HTMLTextAreaElement).value; persistBuyPlans() } }),
-            ]),
-          ]),
-          selected && plan && recommendation ? h('div', { class: 'institutional-tracks-buy-detail border-top pt-3' }, [
-            h('div', { class: 'd-flex flex-wrap align-items-center gap-2 mb-2' }, [
-              h('span', { class: 'fw-semibold' }, `${selected.name} ${selected.code}`),
-              h('span', { class: `institutional-tracks-buy-status is-${recommendation.state}` }, recommendation.label),
-              recommendation.additionalWeightPct !== null ? h('span', { class: 'text-muted' }, `计划新增 ${formatNumber(recommendation.additionalWeightPct)}%`) : null,
-            ]),
-            h('div', { class: 'row g-2' }, [
-              h('label', { class: 'col-6 col-lg-3' }, ['保守价值下限', h('input', { class: 'form-control form-control-sm mt-1', type: 'number', min: 0, value: plan.fairValueLow ?? '', onInput: (event: Event) => updatePlan(selected.code, { fairValueLow: numberOrNull((event.target as HTMLInputElement).value) }) })]),
-              h('label', { class: 'col-6 col-lg-3' }, ['保守价值上限', h('input', { class: 'form-control form-control-sm mt-1', type: 'number', min: 0, value: plan.fairValueHigh ?? '', onInput: (event: Event) => updatePlan(selected.code, { fairValueHigh: numberOrNull((event.target as HTMLInputElement).value) }) })]),
-              h('label', { class: 'col-12 col-lg-3' }, [`目标仓位（≤${valuationRules.buyRecommendation.companyCapPct}%）`, h('input', { class: 'form-control form-control-sm mt-1', type: 'number', min: 0, max: valuationRules.buyRecommendation.companyCapPct, value: plan.targetWeightPct ?? '', onInput: (event: Event) => updatePlan(selected.code, { targetWeightPct: parsePercent((event.target as HTMLInputElement).value) }) } )]),
-              h('label', { class: 'col-12 col-lg-3 d-flex align-items-end gap-2 pb-1' }, [h('input', { type: 'checkbox', checked: plan.evidenceReviewed, onChange: (event: Event) => updatePlan(selected.code, { evidenceReviewed: (event.target as HTMLInputElement).checked }) }), '已复核近期公告与新闻']),
-              ['银行', '证券', '保险'].includes(selected.secondaryTrack) ? h('label', { class: 'col-12 col-lg-3 d-flex align-items-end gap-2 pb-1' }, [h('input', { type: 'checkbox', checked: plan.financialRiskReviewed, onChange: (event: Event) => updatePlan(selected.code, { financialRiskReviewed: (event.target as HTMLInputElement).checked }) }), selected.secondaryTrack === '银行' ? '已复核资产质量与资本充足' : '已复核偿付/流动性及杠杆风险']) : null,
-              h('label', { class: 'col-12 col-lg-6' }, [`证伪条件（每行一项，至少 ${valuationRules.buyRecommendation.minimumInvalidationCount} 项）`, h('textarea', { class: 'form-control form-control-sm mt-1', value: plan.invalidations.join('\n'), onInput: (event: Event) => updatePlan(selected.code, { invalidations: (event.target as HTMLTextAreaElement).value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean) }) })]),
-              h('label', { class: 'col-12 col-lg-6' }, ['分批计划与限价条件', h('textarea', { class: 'form-control form-control-sm mt-1', value: plan.tranchePlan, onInput: (event: Event) => updatePlan(selected.code, { tranchePlan: (event.target as HTMLTextAreaElement).value }) })]),
-            ]),
-            h('ul', { class: 'mb-0 mt-2 ps-3' }, recommendation.reasons.map((reason) => h('li', reason))),
-          ]) : h('div', { class: 'small text-muted' }, '点击表格中“建仓建议”列的状态，可为已评估公司建立并复核个人买入计划。'),
-        ]
-      })()) : null,
       !loading.value ? h('section', { class: 'institutional-tracks-track-grid mb-3', 'aria-label': '赛道估值状态' }, trackSummaries.value.map((summary) => {
         const meta = valuationStateMeta[summary.state]
         return h('div', { key: summary.track, class: `institutional-tracks-track-card ${meta.className}` }, [
@@ -1315,8 +1239,8 @@ const InstitutionalTracksPage = defineComponent({
         : h('div', { class: 'table-responsive border rounded' }, [
           h('table', { class: 'table table-sm table-hover align-middle mb-0 institutional-tracks-table' }, [
             h('thead', { class: 'table-light' }, [h('tr', [
-              h('th', '排名'), h('th', '股票'), h('th', '估值状态'), h('th', '建仓建议'), h('th', '机构家数'), h('th', '东财行业'),
-              h('th', '一级主营赛道'), h('th', '二级主营赛道'),
+              h('th', '排名'), h('th', '股票'), h('th', '估值状态'), h('th', '机构评级'), h('th', '机构家数'), h('th', '东财行业'),
+              h('th', '近90日回撤'), h('th', '近90日涨幅'), h('th', '一级主营赛道'), h('th', '二级主营赛道'),
             ])]),
             h('tbody', visibleRows.value.map((row) => h('tr', { key: row.code }, [
               h('td', row.rank),
@@ -1374,22 +1298,26 @@ const InstitutionalTracksPage = defineComponent({
                 ])
               })()),
               h('td', { style: 'min-width: 9rem;' }, (() => {
-                const recommendation = buyRecommendationFor(row)
-                return h('button', {
-                  type: 'button',
-                  class: `institutional-tracks-buy-status is-${recommendation.state}`,
-                  title: recommendation.reasons.join('\n'),
-                  onClick: () => selectPlan(row),
-                }, recommendation.label)
+                const rating = ratingFor(row)
+                return h('span', {
+                  class: `institutional-tracks-rating is-${rating.state}`,
+                  title: rating.rationale,
+                }, rating.label)
               })()),
               h('td', { class: 'fw-semibold' }, row.institutionCount.toLocaleString()),
               h('td', row.industry),
+              h('td', { class: valuations.value[row.code]?.ninetyDayDrawdownPct === null || valuations.value[row.code]?.ninetyDayDrawdownPct === undefined
+                ? 'text-muted'
+                : 'text-success' }, formatPercent(valuations.value[row.code]?.ninetyDayDrawdownPct ?? null)),
+              h('td', { class: valuations.value[row.code]?.ninetyDayGainPct === null || valuations.value[row.code]?.ninetyDayGainPct === undefined
+                ? 'text-muted'
+                : 'text-danger' }, formatPercent(valuations.value[row.code]?.ninetyDayGainPct ?? null, true)),
               h('td', row.primaryTrack),
               h('td', row.secondaryTrack),
             ]))),
           ]),
         ]),
-      h('p', { class: 'small text-muted mt-2' }, `当前显示 ${visibleRows.value.length} / ${rows.value.length}。颜色表示基于当前证据的估值状态，不构成个性化投资建议；同机构家数的边界股票按东财原始返回顺序截取，Top300 的行业占比只代表本榜单样本，不代表全市场。`),
+      h('p', { class: 'small text-muted mt-2' }, `当前显示 ${visibleRows.value.length} / ${rows.value.length}，排序：${selectedSortStrategy.value.label}。近90日回撤＝当前价相对90个交易日最高价的跌幅；近90日涨幅＝当前价相对90个交易日最低价的涨幅；均按前复权日线计算，数据不足时固定排在末尾。颜色表示基于当前证据的估值状态，不构成个性化投资建议；同机构家数的边界股票按东财原始返回顺序截取，Top300 的行业占比只代表本榜单样本，不代表全市场。`),
     ])
   },
 })

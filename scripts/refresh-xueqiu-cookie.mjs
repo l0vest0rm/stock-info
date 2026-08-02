@@ -8,6 +8,9 @@ import { applyEdits, modify } from "jsonc-parser";
 import { cookieHeaderFromCdp } from "./lib/xueqiu-cookie.mjs";
 
 const XUEQIU_URL = "https://xueqiu.com/S/SH600519";
+const XUEQIU_ACCEPT_LANGUAGE = "zh-CN,zh;q=0.9,en;q=0.8";
+const XUEQIU_PAGE_TIMEOUT_MS = 60_000;
+const XUEQIU_SETTLE_DELAY_MS = 3_000;
 const args = new Set(process.argv.slice(2));
 const writeDevVars = args.has("--write-dev-vars");
 const writeWranglerVars = args.has("--write-wrangler-vars");
@@ -26,9 +29,16 @@ async function openCdpSession(endpoint) {
     `--remote-debugging-port=${port}`,
     "--remote-allow-origins=*",
     `--user-data-dir=${profileDir}`,
+    "--headless=new",
+    "--disable-blink-features=AutomationControlled",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    `--lang=${XUEQIU_ACCEPT_LANGUAGE}`,
+    "--ignore-certificate-errors",
+    "--window-size=1440,900",
     "--no-first-run",
     "--no-default-browser-check",
-    XUEQIU_URL,
   ], { stdio: "ignore" });
   try {
     await waitForCdp(endpoint, child);
@@ -68,7 +78,7 @@ async function waitForCdp(endpoint, child) {
 }
 
 async function fetchXueqiuCookie(endpoint) {
-  const targetResponse = await fetch(new URL(`/json/new?${encodeURIComponent(XUEQIU_URL)}`, endpoint), { method: "PUT" });
+  const targetResponse = await fetch(new URL("/json/new?about:blank", endpoint), { method: "PUT" });
   if (!targetResponse.ok) {
     throw new Error(`CDP could not create Xueqiu target: status=${targetResponse.status}`);
   }
@@ -81,9 +91,15 @@ async function fetchXueqiuCookie(endpoint) {
   try {
     await cdp.command("Network.enable", {});
     await cdp.command("Page.enable", {});
+    await cdp.command("Emulation.setTimezoneOverride", { timezoneId: "Asia/Shanghai" });
+    await cdp.command("Network.setExtraHTTPHeaders", {
+      headers: { "Accept-Language": XUEQIU_ACCEPT_LANGUAGE },
+    });
     await cdp.command("Page.navigate", { url: XUEQIU_URL });
-    await sleep(2_000);
-    const result = await cdp.command("Network.getCookies", { urls: [XUEQIU_URL] });
+    await waitForDocumentBody(cdp);
+    await sleep(XUEQIU_SETTLE_DELAY_MS);
+    const pageUrl = await cdp.evaluateString("location.href");
+    const result = await cdp.command("Network.getCookies", { urls: [XUEQIU_URL, pageUrl] });
     return cookieHeaderFromCdp(Array.isArray(result.cookies) ? result.cookies : []);
   } finally {
     cdp.close();
@@ -128,6 +144,28 @@ class CdpConnection {
   close() {
     this.socket.close();
   }
+
+  async evaluateString(expression) {
+    const result = await this.command("Runtime.evaluate", {
+      expression,
+      returnByValue: true,
+    });
+    const value = result.result?.value;
+    return typeof value === "string" ? value : "";
+  }
+}
+
+async function waitForDocumentBody(cdp) {
+  const deadline = Date.now() + XUEQIU_PAGE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const result = await cdp.command("Runtime.evaluate", {
+      expression: "Boolean(document.body)",
+      returnByValue: true,
+    });
+    if (result.result?.value === true) return;
+    await sleep(200);
+  }
+  throw new Error("timed out waiting for Xueqiu document body");
 }
 
 async function updateDevVars(cookie) {
@@ -138,11 +176,15 @@ async function updateDevVars(cookie) {
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
   }
-  const line = `XUEQIU_COOKIE=${JSON.stringify(cookie)}`;
-  const next = /^XUEQIU_COOKIE=.*$/m.test(text)
-    ? text.replace(/^XUEQIU_COOKIE=.*$/m, line)
-    : `${text}${text && !text.endsWith("\n") ? "\n" : ""}${line}\n`;
+  const next = putDevVar(text, "XUEQIU_COOKIE", cookie);
   await writeFile(path, next);
+}
+
+function putDevVar(text, key, value) {
+  const line = `${key}=${JSON.stringify(value)}`;
+  return new RegExp(`^${key}=.*$`, "m").test(text)
+    ? text.replace(new RegExp(`^${key}=.*$`, "m"), line)
+    : `${text}${text && !text.endsWith("\n") ? "\n" : ""}${line}\n`;
 }
 
 async function updateWranglerVars(cookie) {

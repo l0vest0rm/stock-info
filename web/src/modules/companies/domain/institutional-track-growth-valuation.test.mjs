@@ -10,6 +10,7 @@ function assess(marketCapYi, forecasts) {
   return assessInstitutionalTrackGrowthValuation({
     marketCapYi,
     forecasts,
+    incomeRows: [],
     baseForecastYear: 2026,
     targetForecastYear: 2028,
     pegThresholds,
@@ -34,6 +35,32 @@ test('same PEG does not give PE 10 and PE 100 the same risk state', () => {
   assert.equal(lowPe.state, 'value')
   assert.equal(highPe.state, 'overvalued')
   assert.equal(highPe.peState, 'overvalued')
+})
+
+test('uses a complete published annual result to calculate the first forecast-year growth', () => {
+  const result = assessInstitutionalTrackGrowthValuation({
+    marketCapYi: 1_000,
+    forecasts: [
+      { year: 2026, netProfit: 110 },
+      { year: 2027, netProfit: 121 },
+      { year: 2028, netProfit: 133.1 },
+    ],
+    incomeRows: [
+      { reportDate: '2025-03-31', parentNetprofit: 2_500_000_000, dataSource: 'financial_report' },
+      { reportDate: '2025-06-30', parentNetprofit: 2_500_000_000, dataSource: 'financial_report' },
+      { reportDate: '2025-09-30', parentNetprofit: 2_500_000_000, dataSource: 'financial_report' },
+      { reportDate: '2025-12-31', parentNetprofit: 2_500_000_000, dataSource: 'financial_report' },
+    ],
+    baseForecastYear: 2026,
+    targetForecastYear: 2028,
+    pegThresholds,
+    peThresholds,
+  })
+
+  assert.equal(result.status, 'rated')
+  assert.equal(result.pathComplete, true)
+  assert.ok(Math.abs(result.path[0].profitGrowth - 10) < 1e-10)
+  assert.match(result.reason, /2025A 实际净利/)
 })
 
 test('an intervening decline is not hidden by a later rebound', () => {

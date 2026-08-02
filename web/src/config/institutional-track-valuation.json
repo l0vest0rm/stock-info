@@ -19,14 +19,6 @@
     "minimumDrawdownPct": 10,
     "maximumDrawdownPct": 30
   },
-  "buyRecommendation": {
-    "version": 1,
-    "companyCapPct": 15,
-    "themeCapPct": 20,
-    "industryCapPct": 25,
-    "minimumReportCount": 3,
-    "minimumInvalidationCount": 2
-  },
   "models": [
     {
       "id": "growth",

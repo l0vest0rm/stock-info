@@ -17,6 +17,7 @@ export type GrowthForecastPathPoint = {
 type GrowthValuationInput = {
   marketCapYi: number | null
   forecasts: Array<Record<string, unknown>>
+  incomeRows: Array<Record<string, unknown>>
   baseForecastYear: number
   targetForecastYear: number
   pegThresholds: GrowthValuationThresholds
@@ -49,6 +50,22 @@ function finiteNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
   const numeric = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(numeric) ? numeric : null
+}
+
+function actualAnnualNetProfitYi(incomeRows: Array<Record<string, unknown>>, year: number): number | null {
+  const quarters = new Map<string, number>()
+  for (const row of incomeRows) {
+    const reportDate = String(row.reportDate ?? row.REPORT_DATE ?? '').slice(0, 10)
+    if (!reportDate.startsWith(`${year}-`)) continue
+    const month = reportDate.slice(5, 7)
+    if (!['03', '06', '09', '12'].includes(month) || quarters.has(month)) continue
+    if (row.dataSource && row.dataSource !== 'financial_report') continue
+    const profit = finiteNumber(row.parentNetprofit ?? row.netProfit ?? row.PARENT_NETPROFIT ?? row.NETPROFIT)
+    if (profit !== null) quarters.set(month, profit)
+  }
+  if (quarters.size !== 4) return null
+  const annualProfit = [...quarters.values()].reduce((sum, profit) => sum + profit, 0) / 100_000_000
+  return annualProfit > 0 && Number.isFinite(annualProfit) ? annualProfit : null
 }
 
 function rateLowerIsBetter(value: number, thresholds: GrowthValuationThresholds): GrowthRatingState {
@@ -111,9 +128,10 @@ export function assessInstitutionalTrackGrowthValuation(input: GrowthValuationIn
     return unavailable(`缺少 ${missingYear.year}E 正利润预测，不能用远期年份跨过中间空档。`)
   }
 
+  const baseActualProfit = actualAnnualNetProfitYi(input.incomeRows, baseForecastYear - 1)
   const path = rawPath.map((point, index): GrowthForecastPathPoint => {
     const netProfit = point.netProfit!
-    const previousProfit = index > 0 ? rawPath[index - 1].netProfit! : null
+    const previousProfit = index > 0 ? rawPath[index - 1].netProfit! : baseActualProfit
     return {
       year: point.year,
       netProfit,
@@ -165,7 +183,9 @@ export function assessInstitutionalTrackGrowthValuation(input: GrowthValuationIn
     pathComplete,
     path,
     reason: pathComplete
-      ? '采用完整逐年净利增速路径。'
+      ? baseActualProfit === null
+        ? '采用完整逐年净利增速路径。'
+        : `采用 ${baseForecastYear - 1}A 实际净利及完整逐年预测增速路径。`
       : `缺少 ${baseForecastYear}E 同比增速，已用预测期内相邻年度增速保守计算。`,
   }
 }

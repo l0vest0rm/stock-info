@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "lookbackTradingDays": 90,
+  "defaultStrategyId": "institution-count-desc",
+  "strategies": [
+    {
+      "id": "institution-count-desc",
+      "label": "机构持股家数（默认）",
+      "metric": "institutionCount",
+      "direction": "desc"
+    },
+    {
+      "id": "ninety-day-loss-first",
+      "label": "近90个交易日回撤（距高点）优先",
+      "metric": "ninetyDayDrawdownPct",
+      "direction": "desc"
+    },
+    {
+      "id": "ninety-day-gain-first",
+      "label": "近90个交易日涨幅（距低点）优先",
+      "metric": "ninetyDayGainPct",
+      "direction": "desc"
+    }
+  ]
+}

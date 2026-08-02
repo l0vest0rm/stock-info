@@ -63,7 +63,7 @@
     "test:xueqiu-cookie": "node --test scripts/lib/xueqiu-cookie.test.mjs",
     "test:earnings-research": "node --test scripts/lib/earnings-research.test.mjs",
     "test:fund-quarterly-research": "node --test scripts/lib/fund-quarterly-research.test.mjs",
-    "test:institutional-valuation": "node --test web/src/modules/companies/domain/institutional-track-growth-valuation.test.mjs web/src/modules/companies/domain/institutional-track-financial-valuation.test.mjs && esbuild src/adapters/xueqiu.test.mjs --bundle --platform=node --format=esm --outfile=/tmp/stock-info-xueqiu-kline-test.mjs >/dev/null && node --test /tmp/stock-info-xueqiu-kline-test.mjs",
+    "test:institutional-valuation": "node --test web/src/modules/companies/domain/institutional-track-growth-valuation.test.mjs web/src/modules/companies/domain/institutional-track-financial-valuation.test.mjs web/src/modules/companies/domain/institutional-track-rating.test.mjs && esbuild src/adapters/xueqiu.test.mjs --bundle --platform=node --format=esm --outfile=/tmp/stock-info-xueqiu-kline-test.mjs >/dev/null && node --test /tmp/stock-info-xueqiu-kline-test.mjs",
     "test:buy-point": "node --test scripts/lib/buy-point-analysis.test.mjs",
     "test:local-cron": "node --test scripts/lib/local-cron-runner.test.mjs",
     "test:macro": "node --test src/modules/macro/domain/macro-research.test.mjs src/modules/macro/application/macro-storage.test.mjs && esbuild src/modules/macro/adapters/adapters.test.ts --bundle --platform=node --format=esm --outfile=/tmp/stock-info-macro-adapters-test.mjs >/dev/null && node /tmp/stock-info-macro-adapters-test.mjs",

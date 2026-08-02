@@ -1,7 +1,31 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { mapXueqiuKlineRows } from './xueqiu.ts'
+import { createXueqiuKlineRequest, mapXueqiuKlineRows } from './xueqiu.ts'
+
+test('uses the licai Xueqiu K-line request profile', () => {
+  const request = createXueqiuKlineRequest('SZ300308', 'day', 'qfq', '2026-08-02', 'session=cookie')
+  const url = new URL(request.url)
+
+  assert.equal(url.origin + url.pathname, 'https://stock.xueqiu.com/v5/stock/chart/kline.json')
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    symbol: 'SZ300308',
+    begin: '1785715200000',
+    period: 'day',
+    type: 'before',
+    count: '-7500',
+    indicator: 'kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance',
+  })
+  assert.deepEqual(request.headers, {
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+    Cookie: 'session=cookie',
+    Referer: 'https://xueqiu.com/',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+  })
+})
 
 test('Xueqiu K-line maps PB, PE, and market capital by response column name', () => {
   const rows = mapXueqiuKlineRows({

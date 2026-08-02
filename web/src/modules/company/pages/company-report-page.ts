@@ -12,24 +12,28 @@ type CompanyReportRow = {
   profit2025: string
   profitMargin2025: string
   growth2025: string
+  profitEstimated2025: boolean
   pe2025: string
   revenue2026: string
   revenueGrowth2026: string
   profit2026: string
   profitMargin2026: string
   growth2026: string
+  profitEstimated2026: boolean
   pe2026: string
   revenue2027: string
   revenueGrowth2027: string
   profit2027: string
   profitMargin2027: string
   growth2027: string
+  profitEstimated2027: boolean
   pe2027: string
   revenue2028: string
   revenueGrowth2028: string
   profit2028: string
   profitMargin2028: string
   growth2028: string
+  profitEstimated2028: boolean
   pe2028: string
   valuation: string
   orgName: string
@@ -60,8 +64,19 @@ function growthTitle(label: string, growth: string): string {
   return `${label}同比增速：${growth === '-' ? '暂无' : `${growth}%`}`
 }
 
-function profitTitle(growth: string, margin: string): string {
-  return [growthTitle('净利润', growth), margin].filter(Boolean).join('；')
+function profitTitle(growth: string, margin: string, computed: boolean): string {
+  return [
+    computed ? '净利润按研报 EPS × 当前总股本推算' : '',
+    growthTitle('净利润', growth),
+    margin,
+  ].filter(Boolean).join('；')
+}
+
+function growthCell(value: string, growth: string) {
+  return [
+    h('div', value),
+    h('div', { class: 'small text-muted' }, growth === '-' ? '同比暂无' : `同比 ${growth}%`),
+  ]
 }
 
 function companyReportPagination(currentPage: number, hasNext: boolean) {
@@ -230,17 +245,17 @@ const CompanyReportPage = defineComponent({
                       },
                     }, row.title)
                   : h('span', row.title)),
-              h('td', { title: growthTitle('营收', row.revenueGrowth2025) }, row.revenue2025),
-              h('td', { title: profitTitle(row.growth2025, row.profitMargin2025) }, row.profit2025),
+              h('td', { title: growthTitle('营收', row.revenueGrowth2025) }, growthCell(row.revenue2025, row.revenueGrowth2025)),
+              h('td', { title: profitTitle(row.growth2025, row.profitMargin2025, row.profitEstimated2025) }, growthCell(row.profit2025, row.growth2025)),
               h('td', row.pe2025),
-              h('td', { title: growthTitle('营收', row.revenueGrowth2026) }, row.revenue2026),
-              h('td', { title: profitTitle(row.growth2026, row.profitMargin2026) }, row.profit2026),
+              h('td', { title: growthTitle('营收', row.revenueGrowth2026) }, growthCell(row.revenue2026, row.revenueGrowth2026)),
+              h('td', { title: profitTitle(row.growth2026, row.profitMargin2026, row.profitEstimated2026) }, growthCell(row.profit2026, row.growth2026)),
               h('td', row.pe2026),
-              h('td', { title: growthTitle('营收', row.revenueGrowth2027) }, row.revenue2027),
-              h('td', { title: profitTitle(row.growth2027, row.profitMargin2027) }, row.profit2027),
+              h('td', { title: growthTitle('营收', row.revenueGrowth2027) }, growthCell(row.revenue2027, row.revenueGrowth2027)),
+              h('td', { title: profitTitle(row.growth2027, row.profitMargin2027, row.profitEstimated2027) }, growthCell(row.profit2027, row.growth2027)),
               h('td', row.pe2027),
-              h('td', { title: growthTitle('营收', row.revenueGrowth2028) }, row.revenue2028),
-              h('td', { title: profitTitle(row.growth2028, row.profitMargin2028) }, row.profit2028),
+              h('td', { title: growthTitle('营收', row.revenueGrowth2028) }, growthCell(row.revenue2028, row.revenueGrowth2028)),
+              h('td', { title: profitTitle(row.growth2028, row.profitMargin2028, row.profitEstimated2028) }, growthCell(row.profit2028, row.growth2028)),
               h('td', row.pe2028),
               h('td', row.valuation),
               h('td', row.orgName),

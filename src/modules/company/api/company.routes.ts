@@ -3,6 +3,7 @@ import { getAppKv, putAppKv } from "../../../db/queries";
 import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { fetchCninfoCompanyNotices, supportsCninfoCompanyNotices } from "../../../adapters/cninfo";
 import { loadKline } from "../../market/application/load-kline";
+import { loadFinancialStatements } from "../../finance/application/load-financial-statements";
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
 import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
@@ -31,6 +32,10 @@ export type CompanyReportForecast = {
   profitGrowth?: number;
   eps?: number;
   pe?: number;
+  computedNetProfit?: number;
+  computedNetProfitAsOf?: number;
+  computedPe?: number;
+  computedPeAsOf?: number;
 };
 
 export type CompanyReportValuation = {
@@ -87,7 +92,7 @@ type SinaCompanyReport = {
 };
 
 const REPORT_SOURCE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-const REPORT_SOURCE_CACHE_VERSION = "v3";
+const REPORT_SOURCE_CACHE_VERSION = "v4";
 const REPORT_PAGE_SIZE = 10;
 const REPORT_SOURCE_POOL_SIZE = 100;
 const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -393,14 +398,141 @@ async function getCompanyReportsWithProgress(
   page: number,
   onProgress: (event: ReportForecastStreamEvent) => void
 ): Promise<Array<Record<string, unknown>>> {
-  let items = await getCompanyReportsSource(c, code, page);
+  const [sourceItems, overview, actualAnnualProfitByYear] = await Promise.all([
+    getCompanyReportsSource(c, code, page),
+    fetchCompanyReportPeOverview(c, code),
+    loadActualAnnualProfitByYear(c, code),
+  ]);
+  let items = sourceItems;
   if (page === 1) {
-    await ensureReportForecastsForItemsWithProgress(c, code, items, onProgress);
+    await ensureReportForecastsForItemsWithProgress(c, code, items, overview, actualAnnualProfitByYear, onProgress);
   } else {
     onProgress({ progress: { completed: 0, total: 0, title: "" } });
   }
   items = await annotateReportItemsWithForecasts(c, items);
-  return items;
+  return applyCurrentPeToReportItems(items, overview, actualAnnualProfitByYear);
+}
+
+export function calculateCurrentForecastPe(
+  forecast: CompanyReportForecast,
+  overview: Pick<CompanyOverview, "marketCapYi" | "latestPrice">,
+): number | undefined {
+  const netProfit = positiveNumberOrUndefined(forecast.netProfit);
+  const marketCapYi = positiveNumberOrUndefined(overview.marketCapYi);
+  if (netProfit !== undefined && marketCapYi !== undefined) {
+    return round2(marketCapYi / netProfit);
+  }
+  const eps = positiveNumberOrUndefined(forecast.eps);
+  const latestPrice = positiveNumberOrUndefined(overview.latestPrice);
+  return eps !== undefined && latestPrice !== undefined ? round2(latestPrice / eps) : undefined;
+}
+
+export function calculateCurrentForecastNetProfit(
+  forecast: CompanyReportForecast,
+  overview: Pick<CompanyOverview, "marketCapYi" | "latestPrice">,
+): number | undefined {
+  const eps = positiveNumberOrUndefined(forecast.eps);
+  const marketCapYi = positiveNumberOrUndefined(overview.marketCapYi);
+  const latestPrice = positiveNumberOrUndefined(overview.latestPrice);
+  if (eps === undefined || marketCapYi === undefined || latestPrice === undefined) {
+    return undefined;
+  }
+  return round2((marketCapYi / latestPrice) * eps);
+}
+
+function applyCurrentPeToReportItems(
+  items: Array<Record<string, unknown>>,
+  overview: CompanyOverview | null,
+  actualAnnualProfitByYear = new Map<number, number>(),
+): Array<Record<string, unknown>> {
+  if (!overview) {
+    return items;
+  }
+  return items.map((item) => {
+    const computedPeByYear = Object.fromEntries(
+      [...actualAnnualProfitByYear].flatMap(([year, netProfit]) => {
+        const computedPe = calculateCurrentForecastPe({ year, netProfit }, overview);
+        return computedPe === undefined ? [] : [[year, computedPe]];
+      }),
+    );
+    if (!Array.isArray(item.forecasts)) {
+      return Object.keys(computedPeByYear).length > 0
+        ? { ...item, computedPeByYear, computedPeAsOf: overview.updatedAt }
+        : item;
+    }
+    const forecasts = item.forecasts as CompanyReportForecast[];
+    const withCurrentPe = forecasts.map((forecast) => {
+      const computedPe = calculateCurrentForecastPe(forecast, overview);
+      const computedNetProfit = forecast.netProfit === undefined
+        ? calculateCurrentForecastNetProfit(forecast, overview)
+        : undefined;
+      if (computedPe === undefined && computedNetProfit === undefined) {
+        return forecast;
+      }
+      return {
+        ...forecast,
+        ...(computedPe !== undefined ? { computedPe, computedPeAsOf: overview.updatedAt } : {}),
+        ...(computedNetProfit !== undefined ? { computedNetProfit, computedNetProfitAsOf: overview.updatedAt } : {}),
+      };
+    });
+    return {
+      ...item,
+      forecasts: withCurrentPe,
+      ...(Object.keys(computedPeByYear).length > 0 ? { computedPeByYear, computedPeAsOf: overview.updatedAt } : {}),
+    };
+  });
+}
+
+async function fetchCompanyReportPeOverview(c: Context<AppEnv>, code: string): Promise<CompanyOverview | null> {
+  const normalized = normalizeSecurityCode(code);
+  if (!isCnCode(normalized)) {
+    return null;
+  }
+  try {
+    return await fetchEastmoneyCompanyOverview(c.env.DB, normalized);
+  } catch (error) {
+    console.warn("company report PE overview unavailable", {
+      code: normalized,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function loadActualAnnualProfitByYear(c: Context<AppEnv>, code: string): Promise<Map<number, number>> {
+  try {
+    const { rows } = await loadFinancialStatements(c.env, code, "income", {
+      httpOptions: externalHttpOptions(c.env),
+    });
+    const annual = new Map<number, { profit: number; months: Set<string> }>();
+    for (const row of rows) {
+      const payload = row.payload && typeof row.payload === "object" ? row.payload as Record<string, unknown> : {};
+      const reportDate = text(row.reportDate || payload.REPORT_DATE);
+      const month = reportDate.slice(5, 7);
+      const year = Number(reportDate.slice(0, 4));
+      const profit = numberOrUndefined(payload.PARENT_NETPROFIT ?? payload.parentNetprofit ?? payload.NETPROFIT ?? payload.netProfit);
+      if (!Number.isInteger(year) || !["03", "06", "09", "12"].includes(month) || profit === undefined) {
+        continue;
+      }
+      const current = annual.get(year) ?? { profit: 0, months: new Set<string>() };
+      if (!current.months.has(month)) {
+        current.profit += profit;
+        current.months.add(month);
+      }
+      annual.set(year, current);
+    }
+    return new Map(
+      [...annual]
+        .filter(([, value]) => value.months.size === 4)
+        .map(([year, value]) => [year, round2(value.profit / 100_000_000)]),
+    );
+  } catch (error) {
+    console.warn("company report PE financials unavailable", {
+      code: normalizeSecurityCode(code),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return new Map();
+  }
 }
 
 async function getCompanyReportsSource(
@@ -485,9 +617,8 @@ async function fetchKnowledgeNewsReportCandidates(
     `select d.doc_id, d.source_name, d.title, d.url, d.published_at, d.fetched_at, d.event_time,
       d.summary, d.content_preview, r.content_key, r.content_url
      from knowledge_docs d
-     join knowledge_doc_security_links l on l.doc_id = d.doc_id
      left join knowledge_doc_content_refs r on r.doc_id = d.doc_id
-     where l.code = ?
+     where d.target_code_normalized = ?
        and d.report_type = 'news'
        and d.source_type in ('local_news', 'web_news')
        and (
@@ -527,6 +658,8 @@ async function ensureReportForecastsForItemsWithProgress(
   c: Context<AppEnv>,
   code: string,
   items: Array<Record<string, unknown>>,
+  overview: CompanyOverview | null,
+  actualAnnualProfitByYear: Map<number, number>,
   onProgress: (event: ReportForecastStreamEvent) => void
 ): Promise<void> {
   const normalized = normalizeSecurityCode(code);
@@ -541,7 +674,7 @@ async function ensureReportForecastsForItemsWithProgress(
   const candidates = [...newsCandidates, ...standardCandidates];
   onProgress({
     progress: { completed: 0, total: candidates.length, title: "" },
-    items,
+    items: applyCurrentPeToReportItems(items, overview, actualAnnualProfitByYear),
   });
   for (let index = 0; index < candidates.length; index += 1) {
     const item = candidates[index];
@@ -560,7 +693,7 @@ async function ensureReportForecastsForItemsWithProgress(
           total: candidates.length,
           title: text(item.title),
         },
-        items: await annotateReportItemsWithForecasts(c, items),
+        items: applyCurrentPeToReportItems(await annotateReportItemsWithForecasts(c, items), overview, actualAnnualProfitByYear),
       });
     }
   }

@@ -19,8 +19,12 @@ type XueqiuKlineResponse = {
 
 const XUEQIU_KLINE_URL = "https://stock.xueqiu.com/v5/stock/chart/kline.json";
 const XUEQIU_REFERER = "https://xueqiu.com/";
+// Explicitly supplied current default-browser User-Agent.
 const XUEQIU_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
+const XUEQIU_ACCEPT =
+  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8";
+const XUEQIU_ACCEPT_LANGUAGE = "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7";
 
 export async function fetchXueqiuStockKline(
   db: D1Database,
@@ -40,22 +44,10 @@ export async function fetchXueqiuStockKline(
   if (!cookie) {
     throw new Error("XUEQIU_COOKIE is required for Xueqiu stock K-line requests");
   }
-  const url = new URL(XUEQIU_KLINE_URL);
-  url.searchParams.set("symbol", symbol);
-  url.searchParams.set("begin", String(Date.parse(`${to}T00:00:00.000Z`) + 86_400_000));
-  url.searchParams.set("period", period);
-  url.searchParams.set("type", xueqiuFq(fq));
-  url.searchParams.set("count", "-7500");
-  url.searchParams.set("indicator", "kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance");
+  const request = createXueqiuKlineRequest(symbol, period, fq, to, cookie);
 
-  const rawResponseText = await cachedFetchText(db, url.toString(), {
-    headers: {
-      Accept: "application/json, text/plain, */*",
-      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-      Cookie: cookie,
-      Referer: XUEQIU_REFERER,
-      "User-Agent": XUEQIU_USER_AGENT,
-    },
+  const rawResponseText = await cachedFetchText(db, request.url, {
+    headers: request.headers,
   }, 10 * 60 * 1000, {
     ...httpOptions,
     cacheKey: `xueqiu:kline:v1:${normalized}:${period}:${fq}:${to}`,
@@ -78,6 +70,34 @@ export async function fetchXueqiuStockKline(
     : undefined;
   const rows = mapXueqiuKlineRows(body, { code: normalized, period, fq, updatedAt: now });
   return { security, rows, rawResponseText };
+}
+
+export function createXueqiuKlineRequest(
+  symbol: string,
+  period: string,
+  fq: string,
+  to: string,
+  cookie: string
+): { url: string; headers: Record<string, string> } {
+  const url = new URL(XUEQIU_KLINE_URL);
+  url.searchParams.set("symbol", symbol);
+  url.searchParams.set("begin", String(Date.parse(`${to}T00:00:00.000Z`) + 86_400_000));
+  url.searchParams.set("period", period);
+  url.searchParams.set("type", xueqiuFq(fq));
+  url.searchParams.set("count", "-7500");
+  url.searchParams.set("indicator", "kline,pe,pb,ps,pcf,market_capital,agt,ggt,balance");
+  return {
+    url: url.toString(),
+    headers: {
+      Accept: XUEQIU_ACCEPT,
+      "Accept-Language": XUEQIU_ACCEPT_LANGUAGE,
+      Cookie: cookie,
+      Referer: XUEQIU_REFERER,
+      "User-Agent": XUEQIU_USER_AGENT,
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+    },
+  };
 }
 
 export function mapXueqiuKlineRows(

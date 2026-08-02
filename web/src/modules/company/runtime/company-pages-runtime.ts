@@ -128,6 +128,18 @@ function getForecastProfitMap(report: any): Map<number, number> {
       result.set(startYear + index, parsed)
     }
   })
+  if (result.size > 0) {
+    return result
+  }
+  if (Array.isArray(report?.forecasts)) {
+    for (const item of report.forecasts) {
+      const year = Number(item?.year)
+      const computedNetProfit = parseReportForecastNumber(item?.computedNetProfit)
+      if (Number.isFinite(year) && computedNetProfit !== undefined) {
+        result.set(year, computedNetProfit)
+      }
+    }
+  }
   return result
 }
 
@@ -188,30 +200,6 @@ function getForecastEPSMap(report: any): Map<number, number> {
     }
   })
   return result
-}
-
-function getCurrentMarketCapYi(): number | undefined {
-  const text = document.getElementById('marketCap')?.textContent?.trim()
-  if (!text || text === '暂无数据') {
-    return undefined
-  }
-  const marketCap = Number(text)
-  if (!Number.isFinite(marketCap) || marketCap <= 0) {
-    return undefined
-  }
-  return marketCap
-}
-
-function getCurrentPriceNumber(): number | undefined {
-  const text = document.getElementById('currentPrice')?.textContent?.trim()
-  if (!text || text === '暂无数据') {
-    return undefined
-  }
-  const price = Number(text)
-  if (!Number.isFinite(price) || price <= 0) {
-    return undefined
-  }
-  return price
 }
 
 function getActualAnnualFinancialMap(cache: Record<string, unknown>, code: string): Map<number, AnnualFinancial> {
@@ -429,24 +417,24 @@ function formatForecastProfitGrowthPeCells(report: any, year: number, actualFina
   const profitMap = getResolvedProfitMap(report, actualFinancialMap)
   const profit = profitMap.get(year)
   const growth = resolveGrowth(report, year, profitMap, actualFinancialMap.get(year)?.profitGrowth, 'profitGrowth')
-  let pe: number | undefined
-  if (profit !== undefined && profit > 0) {
-    const marketCap = getCurrentMarketCapYi()
-    if (marketCap !== undefined) {
-      pe = marketCap / profit
-    }
-  } else {
-    const eps = getForecastEPSMap(report).get(year)
-    const price = getCurrentPriceNumber()
-    if (eps !== undefined && eps > 0 && price !== undefined) {
-      pe = price / eps
-    }
-  }
+  const forecast = Array.isArray(report?.forecasts)
+    ? report.forecasts.find((item: any) => Number(item?.year) === year)
+    : undefined
+  const pe = parseReportForecastNumber(forecast?.computedPe ?? report?.computedPeByYear?.[year])
   return [
     profit !== undefined ? profit.toFixed(2) : '-',
     growth !== undefined ? growth.toFixed(2) : '-',
     pe !== undefined ? pe.toFixed(2) : '-',
   ]
+}
+
+function isComputedForecastProfit(report: any, year: number, actualFinancialMap: Map<number, AnnualFinancial>): boolean {
+  if (actualFinancialMap.get(year)?.profit !== undefined || !Array.isArray(report?.forecasts)) {
+    return false
+  }
+  const forecast = report.forecasts.find((item: any) => Number(item?.year) === year)
+  return parseReportForecastNumber(forecast?.netProfit) === undefined
+    && parseReportForecastNumber(forecast?.computedNetProfit) !== undefined
 }
 
 function formatForecastProfitMargin(report: any, year: number, actualFinancialMap: Map<number, AnnualFinancial>): string {
@@ -602,6 +590,10 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       const profit2026 = formatForecastProfitGrowthPeCells(item, 2026, actualFinancialMap)
       const profit2027 = formatForecastProfitGrowthPeCells(item, 2027, actualFinancialMap)
       const profit2028 = formatForecastProfitGrowthPeCells(item, 2028, actualFinancialMap)
+      const profitEstimated2025 = isComputedForecastProfit(item, 2025, actualFinancialMap)
+      const profitEstimated2026 = isComputedForecastProfit(item, 2026, actualFinancialMap)
+      const profitEstimated2027 = isComputedForecastProfit(item, 2027, actualFinancialMap)
+      const profitEstimated2028 = isComputedForecastProfit(item, 2028, actualFinancialMap)
       const valuation = formatCompanyReportValuation(item)
 
       return {
@@ -613,27 +605,31 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         docId: item.knowledgeNewsReport ? String(item.knowledgeDocId || '') : '',
         revenue2025: revenue2025[0],
         revenueGrowth2025: revenue2025[1],
-        profit2025: profit2025[0],
+        profit2025: `${profit2025[0]}${profitEstimated2025 ? '（推）' : ''}`,
         profitMargin2025: formatForecastProfitMargin(item, 2025, actualFinancialMap),
         growth2025: profit2025[1],
+        profitEstimated2025,
         pe2025: profit2025[2],
         revenue2026: revenue2026[0],
         revenueGrowth2026: revenue2026[1],
-        profit2026: profit2026[0],
+        profit2026: `${profit2026[0]}${profitEstimated2026 ? '（推）' : ''}`,
         profitMargin2026: formatForecastProfitMargin(item, 2026, actualFinancialMap),
         growth2026: profit2026[1],
+        profitEstimated2026,
         pe2026: profit2026[2],
         revenue2027: revenue2027[0],
         revenueGrowth2027: revenue2027[1],
-        profit2027: profit2027[0],
+        profit2027: `${profit2027[0]}${profitEstimated2027 ? '（推）' : ''}`,
         profitMargin2027: formatForecastProfitMargin(item, 2027, actualFinancialMap),
         growth2027: profit2027[1],
+        profitEstimated2027,
         pe2027: profit2027[2],
         revenue2028: revenue2028[0],
         revenueGrowth2028: revenue2028[1],
-        profit2028: profit2028[0],
+        profit2028: `${profit2028[0]}${profitEstimated2028 ? '（推）' : ''}`,
         profitMargin2028: formatForecastProfitMargin(item, 2028, actualFinancialMap),
         growth2028: profit2028[1],
+        profitEstimated2028,
         pe2028: profit2028[2],
         valuation,
         orgName: item.knowledgeNewsReport

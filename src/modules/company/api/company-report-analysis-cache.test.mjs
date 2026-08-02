@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseCompanyNewsReportAnalysis, parseCompanyReportForecasts } from "./company.routes.ts";
+import {
+  calculateCurrentForecastNetProfit,
+  calculateCurrentForecastPe,
+  parseCompanyNewsReportAnalysis,
+  parseCompanyReportForecasts,
+} from "./company.routes.ts";
 import { isReusableReportAnalysisCache } from "../application/report-analysis-cache.ts";
 
 test("retries legacy empty analysis caches while preserving successful caches", () => {
@@ -25,6 +30,32 @@ test("retries legacy empty analysis caches while preserving successful caches", 
 
 test("accepts an explicit successful response with no annual forecasts", () => {
   assert.deepEqual(parseCompanyReportForecasts('{"forecasts":[]}'), []);
+});
+
+test("calculates current forecast PE from market cap before falling back to price and EPS", () => {
+  assert.equal(
+    calculateCurrentForecastPe({ year: 2026, netProfit: 32.75, eps: 3 }, { marketCapYi: 1865.42, latestPrice: 171.01 }),
+    56.96,
+  );
+  assert.equal(
+    calculateCurrentForecastPe({ year: 2026, eps: 3.56 }, { marketCapYi: null, latestPrice: 171.01 }),
+    48.04,
+  );
+  assert.equal(
+    calculateCurrentForecastPe({ year: 2026, pe: 18 }, { marketCapYi: 1865.42, latestPrice: 171.01 }),
+    undefined,
+  );
+});
+
+test("calculates a clearly separate current-share-capital profit estimate from EPS", () => {
+  assert.equal(
+    calculateCurrentForecastNetProfit({ year: 2026, eps: 0.97 }, { marketCapYi: 1942.058350868, latestPrice: 4.7 }),
+    400.81,
+  );
+  assert.equal(
+    calculateCurrentForecastNetProfit({ year: 2026, eps: 0.97 }, { marketCapYi: null, latestPrice: 4.7 }),
+    undefined,
+  );
 });
 
 test("rejects malformed model output instead of turning it into a successful empty result", () => {
