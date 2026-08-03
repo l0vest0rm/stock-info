@@ -28,6 +28,9 @@ type KnowledgeNewsTableRow = {
   isReport: boolean
   stockLinks: Array<{ name: string; code: string }>
   tags: string[]
+  informationTags: string[]
+  informationCategories: string[]
+  modelTargets: Array<{ name: string; code: string }>
   favorited: boolean
   isFiltered: boolean
   isCompanyReport: boolean
@@ -65,6 +68,12 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
   let knowledgeNewsSelectedSourceName = 'all'
   let knowledgeNewsSelectedIndustry = ''
   let knowledgeNewsSelectedTags: string[] = []
+  let knowledgeNewsInformationTagOptions: Array<{value: string; label: string}> = []
+  let knowledgeNewsEntityOptions: Array<{value: string; label: string}> = []
+  let knowledgeNewsSelectedInformationTags: string[] = []
+  let knowledgeNewsSelectedEntity = ''
+  let knowledgeNewsPredicateOptions: Array<{value: string; label: string}> = []
+  let knowledgeNewsSelectedPredicate = ''
   let knowledgeNewsCurrentDocId = ''
   let knowledgeNewsCurrentDocFiltered = false
   let knowledgeNewsRenderRequestId = 0
@@ -146,7 +155,15 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     if (name && code) {
       return `${name} (${code})`
     }
-    return name || code || ''
+    if (name || code) {
+      return name || code
+    }
+    const modelTargets = Array.isArray(item?.model_targets) ? item.model_targets : []
+    return modelTargets.map((target: any) => {
+      const targetName = String(target?.name || '').trim()
+      const targetCode = String(target?.code || '').trim()
+      return targetName && targetCode ? `${targetName} (${targetCode})` : (targetName || targetCode)
+    }).filter(Boolean).join(' / ')
   }
 
   function emitKnowledgeNewsTableState() {
@@ -169,6 +186,12 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
         selectedSourceName: knowledgeNewsSelectedSourceName,
         selectedIndustry: knowledgeNewsSelectedIndustry,
         selectedTags: knowledgeNewsSelectedTags,
+        informationTagOptions: knowledgeNewsInformationTagOptions,
+        entityOptions: knowledgeNewsEntityOptions,
+        selectedInformationTags: knowledgeNewsSelectedInformationTags,
+        selectedEntity: knowledgeNewsSelectedEntity,
+        predicateOptions: knowledgeNewsPredicateOptions,
+        selectedPredicate: knowledgeNewsSelectedPredicate,
       }
     }))
   }
@@ -219,6 +242,14 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
         }))
         .filter((link: { name: string; code: string }) => link.name || link.code)
       : []
+    const modelTargets = Array.isArray(item.model_targets)
+      ? item.model_targets
+        .map((target: any) => ({
+          name: String(target?.name || '').trim(),
+          code: String(target?.code || '').trim(),
+        }))
+        .filter((target: { name: string; code: string }) => target.name && target.code)
+      : []
     return {
       displayTime: knowledgeDisplayTime(item),
       sourceType: knowledgeReportTypeText(item),
@@ -234,6 +265,9 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
         || ['company_report', 'industry_report', 'research_report'].includes(String(item.report_type || '')),
       stockLinks,
       tags,
+      informationTags: normalizeKnowledgeNewsTags(item.information_tags),
+      informationCategories: normalizeKnowledgeNewsTags(item.information_categories),
+      modelTargets,
       favorited: Boolean(item.favorited),
       isFiltered: item.source_type === 'filtered_review' || Boolean(item.filter),
       isCompanyReport: item.source_type === 'research_report' && item.report_type === 'company_report',
@@ -313,6 +347,11 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     const selectedTags = Array.from(document.querySelectorAll<HTMLInputElement>('#knowledgeTagFilters input[name="knowledgeTagFilter"]:checked'))
       .map((input) => input.value)
       .filter(Boolean)
+    const selectedInformationTags = Array.from(document.querySelectorAll<HTMLInputElement>('#knowledgeInformationTagFilters input[name="knowledgeInformationTagFilter"]:checked'))
+      .map((input) => input.value)
+      .filter(Boolean)
+    const informationEntity = ((document.getElementById('knowledgeEntity') as HTMLInputElement | null)?.value || '').trim()
+    const informationCategory = ((document.getElementById('knowledgePredicate') as HTMLInputElement | null)?.value || '').trim()
     const queryInput = document.getElementById('knowledgeQuery') as HTMLInputElement | null
     const query = isLocalKnowledgeNewsHost() ? (queryInput?.value || '') : ''
     const pageSize = 50
@@ -320,6 +359,9 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     knowledgeNewsSelectedSourceType = sourceType
     knowledgeNewsSelectedSourceName = source
     knowledgeNewsSelectedIndustry = industry
+    knowledgeNewsSelectedInformationTags = selectedInformationTags
+    knowledgeNewsSelectedEntity = informationEntity
+    knowledgeNewsSelectedPredicate = informationCategory
 
     const data = sourceType === 'filtered_review'
       ? await fetchRequest({
@@ -331,6 +373,9 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
         source,
         industry,
         tags: selectedTags.join(','),
+        informationTags: selectedInformationTags.join(','),
+        informationEntity,
+        informationCategory,
         q: query,
         page: knowledgeNewsCurrentPage,
         pageSize
@@ -463,6 +508,36 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     emitKnowledgeNewsFiltersState()
   }
 
+  async function loadKnowledgeInformationFilterOptions() {
+    const data = await fetchRequest({
+      url: `${server}/api/knowledge/information-filters`,
+    }) as any
+    const informationTypeLabels: Record<string, string> = {
+      fact: '事实', guidance: '指引', forecast: '预测', opinion: '观点', event: '事件', relationship: '关系',
+    }
+    const informationTypes = Array.isArray(data?.information_types) ? data.information_types : []
+    const entities = Array.isArray(data?.entities) ? data.entities : []
+    const categories = Array.isArray(data?.categories) ? data.categories : []
+    knowledgeNewsInformationTagOptions = [
+      { value: 'processed', label: '已模型整理' },
+      ...informationTypes.map((item: any) => ({
+        value: `information_type:${String(item?.value || '').trim()}`,
+        label: informationTypeLabels[String(item?.value || '').trim()] || String(item?.value || '').trim(),
+      })),
+    ].filter((option) => option.value && option.label)
+    knowledgeNewsEntityOptions = entities.map((item: any) => {
+      const name = String(item?.name || '').trim()
+      const count = Number(item?.count || 0)
+      return { value: name, label: count > 0 ? `${name} (${count})` : name }
+    }).filter((option: {value: string}) => option.value)
+    knowledgeNewsPredicateOptions = categories.map((item: any) => {
+      const value = String(item?.value || '').trim()
+      const count = Number(item?.count || 0)
+      return { value, label: count > 0 ? `${value} (${count})` : value }
+    }).filter((option: {value: string}) => option.value)
+    emitKnowledgeNewsFiltersState()
+  }
+
   function initKnowledgeNews() {
     document.getElementById('knowledgeSearchBtn')?.addEventListener('click', renderKnowledgeNewsFirstPage)
     document.getElementById('knowledgeSourceType')?.addEventListener('change', (event) => {
@@ -473,6 +548,9 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     })
     document.getElementById('knowledgeSourceName')?.addEventListener('change', renderKnowledgeNewsFirstPage)
     document.getElementById('knowledgeTagFilters')?.addEventListener('change', renderKnowledgeNewsFirstPage)
+    document.getElementById('knowledgeInformationTagFilters')?.addEventListener('change', renderKnowledgeNewsFirstPage)
+    document.getElementById('knowledgeEntity')?.addEventListener('change', renderKnowledgeNewsFirstPage)
+    document.getElementById('knowledgePredicate')?.addEventListener('change', renderKnowledgeNewsFirstPage)
     const queryInput = document.getElementById('knowledgeQuery') as HTMLInputElement | null
     if (queryInput && !isLocalKnowledgeNewsHost()) {
       queryInput.closest('[data-knowledge-query-control]')?.classList.add('d-none')
@@ -513,6 +591,7 @@ export function createKnowledgeNewsInitializer(context: KnowledgeNewsRuntimeCont
     renderKnowledgeNewsFirstPage()
     void loadKnowledgeSourceOptions()
     void loadKnowledgeIndustryOptions()
+    void loadKnowledgeInformationFilterOptions()
   }
 
   return initKnowledgeNews

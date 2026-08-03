@@ -39,6 +39,7 @@
     "research:fund-quarterly": "node scripts/fund-quarterly-research.mjs",
     "analyze:buy-point": "node scripts/analyze-buy-point.mjs",
     "generate:institutional-tracks": "node scripts/generate-institutional-track-snapshot.mjs",
+    "generate:information:institutional-keywords": "node scripts/generate-information-processing-keywords.mjs",
     "backtest:institutional-top100": "node scripts/backtest-current-institutional-top100-reduce-add.mjs",
     "backtest:institutional-top100:refresh": "npm run generate:institutional-tracks && npm run backtest:institutional-top100",
     "backtest:institutional-top100:triggered-grid:5y": "node scripts/backtest-current-institutional-top100-reduce-add.mjs --stock-limit 100 --from 2021-07-31 --concurrency 18 --analysis-cohort triggered --first-loss-pcts 10,15,20,25,30 --second-loss-pcts 20,25,30,35,40 --sell-fractions 35,50,70 --output docs/research/当前机构持股Top100-近5年实际触发减仓样本回测.md",
@@ -54,12 +55,16 @@
     "sync:institutional-track-keywords": "node scripts/sync-institutional-track-keywords.mjs",
     "preflight:cloudflare:release": "./scripts/preflight-cloudflare-release.sh",
     "process:knowledge": "npm run build:prompts && node scripts/process-knowledge-once.mjs",
+    "filter:knowledge:existing": "node scripts/filter-existing-knowledge-docs.mjs",
+    "process:information": "node scripts/process-information-processing.mjs",
+    "process:information:institutional": "node scripts/process-information-processing-keywords.mjs --input config/information-processing-institutional-top300.json",
     "process:knowledge:local:full": "npm run build:prompts && node scripts/process-knowledge-local-full.mjs",
     "stats:knowledge:storage": "node scripts/report-knowledge-storage.mjs",
     "check:cloudflare:token": "node scripts/verify-cloudflare-token.mjs",
     "test:smoke:pages": "node scripts/smoke-pages.mjs",
     "test:xueqiu": "npx esbuild src/adapters/xueqiu.test.mjs --bundle --platform=node --format=esm --outfile=/tmp/stock-info-xueqiu-test.mjs >/dev/null && node --test /tmp/stock-info-xueqiu-test.mjs scripts/lib/xueqiu-cookie.test.mjs",
     "test:knowledge-import": "node --test scripts/lib/cls-news.test.mjs scripts/lib/knowledge-import-sync.test.mjs scripts/lib/local-d1-sqlite.test.mjs",
+    "test:information-processing": "esbuild src/modules/knowledge/application/information-processing.test.mjs --bundle --platform=node --format=esm --outfile=/tmp/stock-info-information-processing-test.mjs >/dev/null && node --test /tmp/stock-info-information-processing-test.mjs",
     "test:xueqiu-cookie": "node --test scripts/lib/xueqiu-cookie.test.mjs",
     "test:earnings-research": "node --test scripts/lib/earnings-research.test.mjs",
     "test:fund-quarterly-research": "node --test scripts/lib/fund-quarterly-research.test.mjs",
@@ -82,11 +87,11 @@
     "vue": "^3.5.35"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260620.0",
+    "@cloudflare/workers-types": "^5.20260801.1",
     "croner": "^10.0.1",
     "jsonc-parser": "^3.3.1",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.1.8",
-    "wrangler": "^4.23.0"
+    "wrangler": "^4.118.0"
   }
 }

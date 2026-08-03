@@ -89,6 +89,11 @@ const pageEntries = [
     fileName: 'js/knowledge-config-page.js',
   },
   {
+    entry: 'src/modules/knowledge/pages/information-processing-page.ts',
+    globalName: 'LicaiInformationProcessingPage',
+    fileName: 'js/information-processing-page.js',
+  },
+  {
     entry: 'src/modules/portfolio/pages/portfolio-page.ts',
     globalName: 'LicaiPortfolioPage',
     fileName: 'js/portfolio-page.js',

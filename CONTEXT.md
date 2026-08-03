@@ -65,3 +65,29 @@ A user-owned record containing a conservative value range, target weight, invali
 
 **Plan-ready candidate**:
 A candidate whose valuation, evidence, buy plan, cash, and company/theme/industry concentration checks all pass. The user still makes the trade decision.
+
+## Information Processing
+
+**Document**:
+An immutable captured version of an original news item, announcement, research report, or other source material. It is the source record, not a verified conclusion.
+_Avoid_: Fact, research conclusion
+
+**Source assertion**:
+One independently processable statement that a source makes about a subject. It is typed as an actual, management guidance, third-party forecast, opinion, event, or relationship and is not a verified conclusion.
+_Avoid_: Whole-document summary, system conclusion
+
+**Extraction result**:
+The source assertions, primary subjects, retention decision, and uncertainty extracted from one document. It is a structured source record rather than reader-facing prose.
+_Avoid_: Article rewrite, investment conclusion
+
+**Source evidence**:
+The exact quotation attached to one source assertion that lets a reader check that assertion against the original document.
+_Avoid_: Whole article, untraceable model summary
+
+**Primary subject**:
+The company, industry, product, or other entity that a document is chiefly about. A document may have zero, one, or several primary subjects, each supported by attribution evidence.
+_Avoid_: First company mentioned, every linked security
+
+**Filter classification**:
+Lightweight model-provided metadata used only to find and group extraction results: primary subject, industry or topic, content type, information nature, source time, and retention decision. Engineering persists and filters this metadata but does not infer it.
+_Avoid_: Engineering keyword classification, investment recommendation

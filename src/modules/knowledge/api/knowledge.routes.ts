@@ -13,6 +13,8 @@ import {
   sharedReportAnalysisCacheKey,
 } from "../../company/application/report-analysis-cache";
 import { loadFinancialStatements } from "../../finance/application/load-financial-statements";
+import { INFORMATION_PROCESSING_PROMPT_VERSION, processInformationDocument } from "../application/information-processing";
+import { listKnowledgeCompanyCodeMappings, refreshKnowledgeCompanyCodeMappings } from "../application/company-code-mappings";
 import type { AppEnv } from '../../../types';
 
 export const knowledgeRoutes = new Hono<AppEnv>();
@@ -40,6 +42,10 @@ type KnowledgeDocRow = {
   content_encoding: string | null;
   content_bytes: number | null;
   content_sha256: string | null;
+  information_outcome: string | null;
+  information_entities: string | null;
+  information_types: string | null;
+  information_categories: string | null;
 };
 
 type KnowledgeContentRefRow = {
@@ -72,6 +78,9 @@ type KnowledgeDocsQuery = {
   industry: string;
   code: string;
   tags: string[];
+  informationTags: string[];
+  informationEntity: string;
+  informationCategory: string;
   q: string;
   page: number;
   pageSize: number;
@@ -118,9 +127,19 @@ type KnowledgeFilteredDocRow = {
 const KNOWLEDGE_DOC_BASE_SELECT = `select d.doc_id, d.source_type, d.report_type, d.source_name, d.title, d.url,
   d.published_at, d.fetched_at, d.event_time, d.target_name, d.target_code,
   d.access_method, d.summary, c.content_key, c.content_url, d.content_preview, d.metadata_json,
-  d.recommendation_tags_json, c.content_type, c.content_encoding, c.content_bytes, c.content_sha256
+  d.recommendation_tags_json, c.content_type, c.content_encoding, c.content_bytes, c.content_sha256,
+  information.outcome as information_outcome,
+  (select group_concat(distinct record.entity) from knowledge_information_records record where record.result_id = information.result_id) as information_entities,
+  (select group_concat(distinct record.information_type) from knowledge_information_records record where record.result_id = information.result_id) as information_types,
+  (select group_concat(distinct record.category) from knowledge_information_records record where record.result_id = information.result_id) as information_categories
  from knowledge_docs d
- left join knowledge_doc_content_refs c on c.doc_id = d.doc_id`;
+ left join knowledge_doc_content_refs c on c.doc_id = d.doc_id
+ left join knowledge_document_versions information_version on information_version.version_id = (
+   select v.version_id from knowledge_document_versions v where v.doc_id = d.doc_id order by v.created_at desc, v.version_id desc limit 1
+ )
+ left join knowledge_document_results information on information.result_id = (
+   select r.result_id from knowledge_document_results r where r.version_id = information_version.version_id order by r.created_at desc, r.result_id desc limit 1
+ )`;
 
 const KNOWLEDGE_DOC_LIST_SELECT = KNOWLEDGE_DOC_BASE_SELECT;
 
@@ -171,7 +190,150 @@ knowledgeRoutes.get("/knowledge/doc", async (c) => {
   if (!row) {
     return fail(c, 404, `knowledge document not found: ${id}`);
   }
-  return ok(c, mapKnowledgeDocListItem(row, knowledgeContentUrlContext(c)));
+  const item = mapKnowledgeDocListItem(row, knowledgeContentUrlContext(c));
+  await enrichKnowledgeDocCompanyMappings(c.env.DB, [item]);
+  return ok(c, item);
+});
+
+knowledgeRoutes.get("/knowledge/documents/:id/structured", async (c) => {
+  const document = await c.env.DB.prepare("select source_name from knowledge_docs where doc_id = ?")
+    .bind(c.req.param("id")).first<{ source_name: string | null }>();
+  const versions = await c.env.DB.prepare(
+    `select v.*, p.action as preprocessing_action, p.reason_code, p.rule_version, p.details_json
+       from knowledge_document_versions v
+       left join knowledge_preprocessing_decisions p on p.decision_id = (
+         select p2.decision_id from knowledge_preprocessing_decisions p2 where p2.version_id = v.version_id order by p2.decided_at desc limit 1
+       ) where v.doc_id = ? order by v.created_at desc`,
+  ).bind(c.req.param("id")).all<Record<string, unknown>>();
+  if (versions.results.length === 0) return fail(c, 404, "structured knowledge document not found");
+  const result = await c.env.DB.prepare(
+    `select d.* from knowledge_document_results d join knowledge_processing_runs r on r.run_id = d.run_id
+      where d.version_id = ? order by d.created_at desc limit 1`,
+  ).bind(String(versions.results[0].version_id)).first<Record<string, unknown>>();
+  const records = result ? await c.env.DB.prepare(
+    `select information_id, entity, information_type, category, period, statement, sort_order, created_at
+       from knowledge_information_records where result_id = ? order by sort_order, information_id`,
+  ).bind(String(result.result_id)).all<Record<string, unknown>>() : { results: [] as Record<string, unknown>[] };
+  const runs = await c.env.DB.prepare("select * from knowledge_processing_runs where version_id = ? order by started_at desc")
+    .bind(String(versions.results[0].version_id)).all<Record<string, unknown>>();
+  return ok(c, {
+    source_name: document?.source_name || null,
+    versions: versions.results.map(mapInformationRow), result: result ? mapInformationRow(result) : null,
+    records: records.results.map(mapInformationRow),
+    runs: runs.results.map(mapInformationRow),
+  });
+});
+
+knowledgeRoutes.get("/knowledge/processed-documents", async (c) => {
+  const q = (c.req.query("q") || "").trim().toLowerCase();
+  const outcome = (c.req.query("outcome") || "").trim();
+  const page = Math.max(1, Number(c.req.query("page") || 1));
+  const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize") || 20)));
+  const conditions = [outcome ? "r.outcome = ?" : "r.outcome in ('extracted', 'needs_review')"];
+  const binds: Array<string | number> = [];
+  if (outcome) binds.push(outcome);
+  if (q) {
+    conditions.push("(lower(d.title) like ? or exists (select 1 from knowledge_information_records record where record.result_id = r.result_id and (lower(record.entity) like ? or lower(record.statement) like ? or lower(record.category) like ?)))");
+    const pattern = `%${q}%`; binds.push(pattern, pattern, pattern, pattern);
+  }
+  const where = conditions.join(" and ");
+  const base = `from knowledge_docs d
+    join knowledge_document_versions v on v.version_id = (
+      select v2.version_id from knowledge_document_versions v2 where v2.doc_id = d.doc_id order by v2.created_at desc limit 1
+    )
+    join knowledge_document_results r on r.result_id = (
+      select r2.result_id from knowledge_document_results r2 where r2.version_id = v.version_id order by r2.created_at desc limit 1
+    )`;
+  const total = await c.env.DB.prepare(`select count(*) as count ${base} where ${where}`).bind(...binds).first<{ count: number }>();
+  const rows = await c.env.DB.prepare(
+    `select d.doc_id, d.title, d.source_type, d.report_type, d.source_name, d.published_at, d.event_time,
+            r.outcome, r.created_at as processed_at,
+            (select count(*) from knowledge_information_records record where record.result_id = r.result_id) as record_count
+       ${base} where ${where} order by r.created_at desc limit ? offset ?`,
+  ).bind(...binds, pageSize, (page - 1) * pageSize).all<Record<string, unknown>>();
+  return ok(c, {
+    page, page_size: pageSize, total: total?.count || 0,
+    has_next: (page * pageSize) < (total?.count || 0), list: rows.results.map(mapInformationRow),
+  });
+});
+
+knowledgeRoutes.get("/knowledge/processing-runs/:id", async (c) => {
+  const run = await c.env.DB.prepare("select * from knowledge_processing_runs where run_id = ?").bind(c.req.param("id")).first<Record<string, unknown>>();
+  if (!run) return fail(c, 404, "knowledge processing run not found");
+  return ok(c, mapInformationRow(run));
+});
+
+knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
+  if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
+  const body = await c.req.json().catch(() => ({})) as {
+    documentId?: string;
+    documentIds?: string[];
+    auto?: boolean;
+    concurrency?: number;
+    maxDocuments?: number;
+    maxAgeDays?: number;
+    triggerSource?: string;
+    titleKeywords?: string[];
+  };
+  const requestedIds = [body.documentId, ...(Array.isArray(body.documentIds) ? body.documentIds : [])]
+    .map((id) => String(id || "").trim()).filter(Boolean);
+  const triggerSource = normalizeInformationTriggerSource(body.triggerSource);
+  const titleKeywords = (Array.isArray(body.titleKeywords) ? body.titleKeywords : [])
+    .map((keyword) => String(keyword || "").trim()).filter(Boolean).slice(0, 100);
+  if (requestedIds.length > 0) await enqueueInformationDocuments(c.env.DB, [...new Set(requestedIds)], triggerSource);
+  if (requestedIds.length === 0 && !body.auto) return fail(c, 400, "missing documentId");
+  const maxDocuments = Math.min(200, Math.max(1, Number(body.maxDocuments) || Number(body.concurrency) || 1));
+  const concurrency = Math.min(maxDocuments, 20, Math.max(1, Number(body.concurrency) || 1));
+  const maxAgeDays = Math.min(365, Math.max(1, Number(body.maxAgeDays) || 30));
+  const automaticallyEnqueuedIds = body.auto
+    ? await enqueueUnprocessedInformationDocuments(c.env.DB, maxAgeDays, maxDocuments, titleKeywords, triggerSource)
+    : [];
+  const jobs = await claimInformationJobs(c.env.DB, maxDocuments, requestedIds.length > 0 ? requestedIds : undefined);
+  const results = await mapWithConcurrency(jobs, concurrency, async (job) => {
+    try {
+      const result = await processInformationDocument(c.env, job.doc_id);
+      const status = result.needsReview ? "needs_review" : "completed";
+      await c.env.DB.prepare("update information_processing_jobs set status = ?, last_run_id = ?, last_error = null, updated_at = ? where job_id = ?")
+        .bind(status, result.runId, Date.now(), job.job_id).run();
+      return { jobId: job.job_id, documentId: job.doc_id, status, ...result };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await c.env.DB.prepare("update information_processing_jobs set status = 'failed', last_error = ?, updated_at = ? where job_id = ?")
+        .bind(message.slice(0, 2000), Date.now(), job.job_id).run();
+      return { jobId: job.job_id, documentId: job.doc_id, status: "failed", error: message };
+    }
+  });
+  return ok(c, {
+    automatic: Boolean(body.auto),
+    enqueued: requestedIds.length,
+    auto_enqueued: automaticallyEnqueuedIds.length,
+    concurrency,
+    max_documents: maxDocuments,
+    max_age_days: body.auto ? maxAgeDays : null,
+    results,
+  });
+});
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index]);
+    }
+  }));
+  return results;
+}
+
+knowledgeRoutes.post("/knowledge/processing-jobs/:id/retry", async (c) => {
+  if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
+  const row = await c.env.DB.prepare("select v.doc_id from knowledge_processing_runs r join knowledge_document_versions v on v.version_id = r.version_id where r.run_id = ?")
+    .bind(c.req.param("id")).first<{ doc_id: string }>();
+  if (!row) return fail(c, 404, "knowledge processing run not found");
+  return ok(c, await processInformationDocument(c.env, row.doc_id));
 });
 
 knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
@@ -451,6 +613,58 @@ knowledgeRoutes.get("/knowledge/industries", async (c) => {
   });
 });
 
+knowledgeRoutes.get("/knowledge/information-filters", async (c) => {
+  const currentResults = `
+    select v.doc_id, r.result_id, r.outcome
+      from knowledge_document_versions v
+      join knowledge_document_results r on r.result_id = (
+        select r2.result_id from knowledge_document_results r2
+         where r2.version_id = v.version_id
+         order by r2.created_at desc, r2.result_id desc limit 1
+      )
+     where v.version_id = (
+       select v2.version_id from knowledge_document_versions v2
+        where v2.doc_id = v.doc_id
+        order by v2.created_at desc, v2.version_id desc limit 1
+     )`;
+  const [entities, informationTypes, categories] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `with current_results as (${currentResults})
+       select record.entity as name, count(*) as count
+         from current_results join knowledge_information_records record on record.result_id = current_results.result_id
+        where trim(coalesce(record.entity, '')) != ''
+        group by record.entity
+        order by count(*) desc, name asc limit 500`,
+    ),
+    c.env.DB.prepare(
+      `with current_results as (${currentResults})
+       select record.information_type as value, count(*) as count
+         from current_results join knowledge_information_records record on record.result_id = current_results.result_id
+        group by record.information_type order by count(*) desc, value asc`,
+    ),
+    c.env.DB.prepare(
+      `with current_results as (${currentResults})
+       select record.category as value, count(*) as count
+         from current_results join knowledge_information_records record on record.result_id = current_results.result_id
+        group by record.category order by count(*) desc, value asc limit 500`,
+    ),
+  ]);
+  return ok(c, {
+    entities: entities.results ?? [],
+    information_types: informationTypes.results ?? [],
+    categories: categories.results ?? [],
+  });
+});
+
+knowledgeRoutes.post("/knowledge/company-code-mappings/refresh", async (c) => {
+  if (!isLocalDevelopmentRuntime()) {
+    return fail(c, 404, "company-code mapping refresh is only available in local development");
+  }
+  const body = await c.req.json().catch(() => ({})) as { maxCompanies?: number };
+  const maxCompanies = Math.min(500, Math.max(1, Number(body.maxCompanies) || 100));
+  return ok(c, await refreshKnowledgeCompanyCodeMappings(c.env, maxCompanies));
+});
+
 knowledgeRoutes.get("/knowledge/file", async (c) => {
   const id = c.req.query("id")?.trim() ?? "";
   if (!id) {
@@ -490,6 +704,12 @@ function parseDocsQuery(raw: Record<string, string>): KnowledgeDocsQuery {
       .split(",")
       .map((item) => normalizeFilter(item))
       .filter(Boolean),
+    informationTags: String(raw.informationTags ?? raw.informationTag ?? "")
+      .split(",")
+      .map((item) => normalizeInformationTag(item))
+      .filter(Boolean),
+    informationEntity: String(raw.informationEntity ?? "").trim(),
+    informationCategory: normalizeInformationCategory(raw.informationCategory ?? ""),
     q: String(raw.q ?? "").trim(),
     page: clampInteger(raw.page, 1, 1, 10000),
     pageSize: clampInteger(raw.pageSize, 50, 1, 100),
@@ -789,6 +1009,21 @@ function buildKnowledgeWhere(query: KnowledgeDocsQuery): { whereSql: string; bin
     filters.push("d.doc_id in (select l.doc_id from knowledge_doc_security_links l where l.code = ?)");
     binds.push(query.code);
   }
+  if (query.informationEntity) {
+    filters.push(`exists (
+      select 1 from knowledge_information_records record
+       where record.result_id = information.result_id
+         and lower(record.entity) = lower(?)
+    )`);
+    binds.push(query.informationEntity);
+  }
+  if (query.informationCategory) {
+    filters.push(`exists (
+      select 1 from knowledge_information_records record
+       where record.result_id = information.result_id and record.category = ?
+    )`);
+    binds.push(query.informationCategory);
+  }
   if (query.q) {
     const like = `%${query.q.toLowerCase()}%`;
     filters.push(`(
@@ -810,6 +1045,20 @@ function buildKnowledgeWhere(query: KnowledgeDocsQuery): { whereSql: string; bin
     filters.push("exists (select 1 from knowledge_doc_tags t where t.doc_id = d.doc_id and lower(t.tag) = ?)");
     binds.push(tag);
   }
+  for (const tag of query.informationTags) {
+    if (tag === "processed") {
+      filters.push("information.result_id is not null");
+      continue;
+    }
+    const [kind, value] = tag.split(":", 2);
+    if (kind === "information_type" || kind === "category") {
+      filters.push(`exists (
+        select 1 from knowledge_information_records record
+         where record.result_id = information.result_id and record.${kind === "information_type" ? "information_type" : "category"} = ?
+      )`);
+      binds.push(value);
+    }
+  }
   return {
     whereSql: filters.length > 0 ? `where ${filters.join(" and ")}` : "",
     binds,
@@ -826,6 +1075,7 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
     ...recommendationTags,
     ...(isPdf(row) ? ["pdf"] : []),
   ];
+  const informationTags = informationTagsForKnowledgeDoc(row);
   return {
     doc_id: row.doc_id,
     source_type: row.source_type,
@@ -844,8 +1094,30 @@ function mapKnowledgeDocListItem(row: KnowledgeDocRow, contentContext: Knowledge
     content_url: contentUrl,
     stock_links: stockLinks,
     tags: unique(tags),
+    information_tags: informationTags,
+    information_entities: splitInformationValues(row.information_entities),
+    information_types: splitInformationValues(row.information_types),
+    information_categories: splitInformationValues(row.information_categories),
     report_pages: knowledgeReportPageCount(metadata),
   };
+}
+
+function informationTagsForKnowledgeDoc(row: Pick<KnowledgeDocRow, "information_outcome" | "information_types" | "information_categories">): string[] {
+  if (!row.information_outcome) return [];
+  const tags = ["processed"];
+  for (const type of splitInformationValues(row.information_types)) {
+    const normalized = normalizeInformationTag(`information_type:${type}`);
+    if (normalized) tags.push(normalized);
+  }
+  for (const category of splitInformationValues(row.information_categories)) {
+    const normalized = normalizeInformationTag(`category:${category}`);
+    if (normalized) tags.push(normalized);
+  }
+  return unique(tags);
+}
+
+function splitInformationValues(value: string | null): string[] {
+  return unique(String(value || "").split(",").map((item) => item.trim()).filter(Boolean));
 }
 
 function mapFilteredDocListItem(row: KnowledgeFilteredDocRow, contentContext: KnowledgeContentUrlContext): Record<string, unknown> {
@@ -986,6 +1258,19 @@ function normalizeSourceType(value: string): string {
 
 function normalizeFilter(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function normalizeInformationTag(value: string): string {
+  const normalized = normalizeFilter(value);
+  if (normalized === "processed") return normalized;
+  if (/^information_type:(fact|guidance|forecast|opinion|event|relationship)$/.test(normalized)) return normalized;
+  if (/^category:[a-z][a-z0-9_]{0,80}$/.test(normalized)) return normalized;
+  return "";
+}
+
+function normalizeInformationCategory(value: string): string {
+  const normalized = normalizeFilter(value);
+  return /^[a-z][a-z0-9_]{0,80}$/.test(normalized) ? normalized : "";
 }
 
 function normalizeSecurityCode(value: string): string {
@@ -1260,11 +1545,34 @@ async function listKnowledgeDocsDeduped(
   }
 
   const hasNext = uniqueRows.length > startIndex + query.pageSize || !exhausted;
+  const list = uniqueRows.slice(startIndex, startIndex + query.pageSize);
+  await enrichKnowledgeDocCompanyMappings(db, list);
   return {
-    list: uniqueRows.slice(startIndex, startIndex + query.pageSize),
+    list,
     total: exhausted ? Math.max(uniqueRows.length, startIndex) : startIndex + uniqueRows.length,
     hasNext,
   };
+}
+
+async function enrichKnowledgeDocCompanyMappings(
+  db: AppEnv["Bindings"]["DB"],
+  items: Record<string, unknown>[],
+): Promise<void> {
+  const companyNames = items.flatMap((item) => Array.isArray(item.information_entities)
+    ? item.information_entities.map((name) => String(name || "").trim()).filter(Boolean)
+    : []);
+  const mappings = await listKnowledgeCompanyCodeMappings(db, companyNames);
+  const byCompany = new Map<string, Array<{ name: string; code: string }>>();
+  for (const mapping of mappings) {
+    const targets = byCompany.get(mapping.companyName) ?? [];
+    targets.push({ name: mapping.securityName, code: mapping.code });
+    byCompany.set(mapping.companyName, targets);
+  }
+  for (const item of items) {
+    const entities = Array.isArray(item.information_entities) ? item.information_entities : [];
+    const modelTargets = entities.flatMap((entity) => byCompany.get(String(entity)) ?? []);
+    item.model_targets = modelTargets;
+  }
 }
 
 function knowledgeDocRowDedupeKey(row: Pick<KnowledgeDocRow, "doc_id" | "source_name" | "title" | "content_preview" | "metadata_json">): string {
@@ -1905,4 +2213,124 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(bytes[index]);
   }
   return btoa(binary);
+}
+
+function isLocalInformationProcessingRuntime(env: AppEnv["Bindings"]): boolean {
+  return env.LLM_RUNTIME === "local" && isLocalDevelopmentRuntime();
+}
+
+function mapInformationRow(row: Record<string, unknown>): Record<string, unknown> {
+  const mapped: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (key.endsWith("_json") && typeof value === "string") {
+      try {
+        mapped[key.slice(0, -5)] = JSON.parse(value);
+        continue;
+      } catch {
+        // Preserve malformed historical payloads for audit rather than hiding them.
+      }
+    }
+    mapped[key] = value;
+  }
+  return mapped;
+}
+
+async function enqueueInformationDocuments(
+  db: AppEnv["Bindings"]["DB"],
+  documentIds: string[],
+  triggerSource: "automatic" | "cli" | "manual",
+): Promise<void> {
+  const now = Date.now();
+  await db.batch(documentIds.map((docId) => db.prepare(
+    `insert into information_processing_jobs (job_id, doc_id, status, attempt_count, trigger_source, created_at, updated_at)
+     values (?, ?, 'queued', 0, ?, ?, ?)
+     on conflict(doc_id) do update set status = 'queued', attempt_count = 0, trigger_source = excluded.trigger_source, last_run_id = null, last_error = null, updated_at = excluded.updated_at`,
+  ).bind(`information-job:${crypto.randomUUID()}`, docId, triggerSource, now, now)));
+}
+
+async function enqueueUnprocessedInformationDocuments(
+  db: AppEnv["Bindings"]["DB"],
+  maxAgeDays: number,
+  limit: number,
+  titleKeywords: string[],
+  triggerSource: "automatic" | "cli" | "manual",
+): Promise<string[]> {
+  const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+  const activeProcessingCutoff = Date.now() - 2 * 60 * 1000;
+  const titleClause = titleKeywords.length > 0
+    ? ` and (${titleKeywords.map(() => "d.title like ? escape '\\'").join(" or ")})`
+    : "";
+  const candidates = await db.prepare(
+    `select d.doc_id
+       from knowledge_docs d
+      where d.sort_time >= ?
+        ${titleClause}
+        and not exists (
+          select 1 from information_processing_jobs j
+           where j.doc_id = d.doc_id
+             and (j.status = 'queued' or (j.status = 'processing' and j.updated_at >= ?))
+        )
+        and not exists (
+          select 1 from information_processing_jobs j
+           where j.doc_id = d.doc_id
+             and j.status = 'failed'
+             and j.last_error like 'knowledge document content unavailable in local cache or source: 404%'
+        )
+        and coalesce((
+          select p.action
+            from knowledge_preprocessing_decisions p
+           where p.version_id = (
+             select v3.version_id from knowledge_document_versions v3
+              where v3.doc_id = d.doc_id order by v3.created_at desc limit 1
+           )
+           order by p.decided_at desc limit 1
+        ), '') not in ('exact_duplicate', 'template_duplicate', 'pure_market_snapshot', 'empty_content')
+        and not exists (
+          select 1 from knowledge_document_versions v
+          join knowledge_processing_runs r on r.version_id = v.version_id
+          join knowledge_document_results result on result.run_id = r.run_id
+          where v.version_id = (
+            select v2.version_id from knowledge_document_versions v2 where v2.doc_id = d.doc_id order by v2.created_at desc limit 1
+          )
+            and r.stage = 'document_analysis' and r.prompt_version = ? and r.status in ('succeeded', 'needs_review')
+        )
+      order by d.sort_time desc, d.doc_id desc
+      limit ?`,
+  ).bind(cutoff, ...titleKeywords.map((keyword) => `%${escapeLike(keyword)}%`), activeProcessingCutoff, INFORMATION_PROCESSING_PROMPT_VERSION, limit).all<{ doc_id: string }>();
+  const documentIds = candidates.results.map((row) => row.doc_id);
+  if (documentIds.length > 0) await enqueueInformationDocuments(db, documentIds, triggerSource);
+  return documentIds;
+}
+
+function normalizeInformationTriggerSource(value: unknown): "automatic" | "cli" | "manual" {
+  return value === "automatic" || value === "cli" ? value : "manual";
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+async function claimInformationJobs(
+  db: AppEnv["Bindings"]["DB"],
+  limit: number,
+  documentIds?: string[],
+): Promise<Array<{ job_id: string; doc_id: string }>> {
+  const requestedIds = [...new Set(documentIds || [])];
+  const requestedClause = requestedIds.length > 0
+    ? ` and j.doc_id in (${requestedIds.map(() => "?").join(", ")})`
+    : "";
+  const queued = await db.prepare(
+    `select j.job_id, j.doc_id
+       from information_processing_jobs j
+       join knowledge_docs d on d.doc_id = j.doc_id
+      where j.status = 'queued'${requestedClause}
+      order by d.sort_time desc, d.doc_id desc
+      limit ?`,
+  ).bind(...requestedIds, limit).all<{ job_id: string; doc_id: string }>();
+  if (queued.results.length === 0) return [];
+  const now = Date.now();
+  await db.batch(queued.results.map((job) => db.prepare(
+    "update information_processing_jobs set status = 'processing', attempt_count = attempt_count + 1, updated_at = ? where job_id = ? and status = 'queued'",
+  ).bind(now, job.job_id)));
+  return queued.results;
 }

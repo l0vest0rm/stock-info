@@ -40,6 +40,8 @@ const workerVars = [
   `HTTP_REQUEST_TIMEOUT_MS:${httpRequestTimeoutMs}`,
   '--var',
   `LLM_DAILY_LIMIT:${llmDailyLimit}`,
+  '--var',
+  'LLM_RUNTIME:local',
 ]
 
 for (const key of passthroughVarNames) {

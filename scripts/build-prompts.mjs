@@ -40,6 +40,14 @@ const promptEntries = [
     exportName: "TOPIC_BATCH_USER_PROMPT",
     source: "prompts/knowledge/topic-batch-user.md",
   },
+  {
+    exportName: "INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT",
+    source: "prompts/information-processing/document-analysis-system.md",
+  },
+  {
+    exportName: "INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT",
+    source: "prompts/information-processing/document-analysis-user.md",
+  },
 ];
 
 const generatedTsPath = resolve(PROJECT_ROOT, "src/generated/prompt-text.ts");

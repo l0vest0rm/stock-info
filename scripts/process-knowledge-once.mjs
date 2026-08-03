@@ -284,6 +284,7 @@ if (uniqueDocs.length > 0) {
   mergeImportSyncState(importSyncState, importedEntries, importTarget);
   imported = importedEntries.length;
 }
+const informationProcessing = await runAutomaticInformationProcessing(config, dbTarget);
 const storageCleanup = pruneKnowledgeStorage(config);
 const storageReport = runKnowledgeStorageReport(config);
 
@@ -317,6 +318,7 @@ console.log(JSON.stringify({
   nextScanWatermark: new Date(scanStartedAtMs).toISOString(),
   elapsedSeconds: Math.round((Date.now() - runStartedAt) / 1000),
   imported,
+  informationProcessing,
   filteredImported,
   filteredImportEnabled: filteredReviewImportEnabled,
   storageCleanup,
@@ -333,6 +335,72 @@ console.log(JSON.stringify({
     error: item.error || undefined,
   })),
 }, null, 2));
+
+async function runAutomaticInformationProcessing(cfg, remote) {
+  const processing = object(cfg.informationProcessing);
+  if (!processing.enabled || remote) {
+    return { enabled: Boolean(processing.enabled), skipped: remote ? "remote_import" : "disabled", processed: 0 };
+  }
+  const server = text(process.env.INFORMATION_PROCESSING_SERVER || processing.server || "http://127.0.0.1:8000");
+  const concurrency = Math.max(1, Math.min(20, integer(
+    process.env.INFORMATION_PROCESSING_CONCURRENCY ?? processing.concurrency,
+    3,
+  )));
+  const maxDocuments = Math.max(0, Math.min(200, integer(
+    process.env.INFORMATION_PROCESSING_MAX_DOCUMENTS ?? processing.maxDocumentsPerRun,
+    concurrency,
+  )));
+  const maxAgeDays = Math.max(1, Math.min(365, integer(
+    process.env.INFORMATION_PROCESSING_MAX_AGE_DAYS ?? processing.maxAgeDays,
+    30,
+  )));
+  const autoTitleKeywords = array(processing.autoTitleKeywords).map(text).filter(Boolean).slice(0, 100);
+  if (maxDocuments === 0) {
+    return {
+      enabled: true,
+      concurrency,
+      maxDocuments,
+      maxAgeDays,
+      triggerSource: "automatic",
+      titleKeywords: autoTitleKeywords,
+      skipped: "max_documents_zero",
+      requested: 0,
+      processed: 0,
+      needsReview: 0,
+    };
+  }
+  const response = await fetch(`${server.replace(/\/$/, "")}/api/knowledge/processing-jobs`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      auto: true,
+      concurrency,
+      maxDocuments,
+      maxAgeDays,
+      triggerSource: "automatic",
+      titleKeywords: autoTitleKeywords,
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || payload.code !== 200) {
+    throw new Error(`automatic information processing failed: ${payload?.msg || response.status}`);
+  }
+  const results = array(payload.data?.results);
+  return {
+    enabled: true,
+    enqueued: Number(payload.data?.enqueued || 0),
+    autoEnqueued: Number(payload.data?.auto_enqueued || 0),
+    concurrency,
+    maxDocuments,
+    maxAgeDays,
+    triggerSource: "automatic",
+    titleKeywords: autoTitleKeywords,
+    skipped: "",
+    requested: maxDocuments,
+    processed: results.length,
+    needsReview: results.filter((item) => Boolean(item?.needsReview)).length,
+  };
+}
 
 function runKnowledgeStorageReport(cfg) {
   try {
@@ -810,56 +878,9 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
   if (!enabled) {
     return doc;
   }
-  const apiKey = process.env[llm.apiKeyEnv || "OPENAI_API_KEY"] || process.env.LLM_API_KEY;
-  if (!apiKey) {
-    throw new Error(`LLM is enabled but ${llm.apiKeyEnv || "OPENAI_API_KEY"} or LLM_API_KEY is missing`);
-  }
-  const baseUrl = (process.env.LLM_BASE_URL || llm.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
-  const model = process.env.KNOWLEDGE_PROCESS_LLM_MODEL || llm.model || "gpt-5.6-luna";
-  const content = truncate(doc.markdown || doc.summary || "", integer(llm.maxInputChars, 12000));
-  const cacheKey = [
-    "knowledge_enrich",
-    model,
-    doc.docId || "",
-    sha256(JSON.stringify({
-      title: doc.title,
-      sourceType: doc.sourceType,
-      reportType: doc.reportType,
-      content,
-    })),
-  ].join("|");
-  const llmResult = await requestLlmJsonCached(cacheKey, {
-    baseUrl,
-    apiKey,
-    model,
-    maxTokens: integer(llm.maxTokens, 1200),
-    system: KNOWLEDGE_ENRICH_SYSTEM_PROMPT,
-    user: KNOWLEDGE_ENRICH_USER_PROMPT
-      .replace("{{TITLE}}", doc.title)
-      .replace("{{SOURCE_TYPE}}", doc.sourceType)
-      .replace("{{REPORT_TYPE}}", doc.reportType)
-      .replace("{{CONTENT}}", content),
-  });
-  const parsed = llmResult.response;
-  const nextScore = integer(parsed.recommendationScore, doc.recommendationScore);
-  return {
-    ...doc,
-    summary: text(parsed.summary) || doc.summary,
-    tags: unique([...doc.tags, ...array(parsed.tags).map(text)]),
-    targetName: text(parsed.targetName) || doc.targetName,
-    targetCode: text(parsed.targetCode) || doc.targetCode,
-    recommendationScore: nextScore,
-    recommendationLevel: "",
-    recommendationReasons: array(parsed.recommendationReasons).map(text).filter(Boolean).length > 0
-      ? array(parsed.recommendationReasons).map(text).filter(Boolean)
-      : doc.recommendationReasons,
-    rankScore: nextScore,
-    metadata: {
-      ...doc.metadata,
-      llmModel: model,
-      llmProcessedAt: now.toISOString(),
-    },
-  };
+  throw new Error(
+    "direct CLI knowledge LLM enrichment has been retired; import documents first and use the local Worker knowledge processing job"
+  );
 }
 
 async function evaluateTopics(docsToFilter, cfg) {
@@ -880,6 +901,10 @@ async function evaluateTopics(docsToFilter, cfg) {
       continue;
     }
     const local = topicFilterKeywordDecision(doc, filter);
+    if (filter.mode === "blacklist") {
+      decisions.set(doc.docId, { keep: !local.blocked, method: "blacklist", ...local });
+      continue;
+    }
     if (local.score >= integer(filter.minScore, 2)) {
       decisions.set(doc.docId, { keep: true, method: "local", ...local });
       continue;

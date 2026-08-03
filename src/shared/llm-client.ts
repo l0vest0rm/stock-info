@@ -14,7 +14,9 @@ export type LlmTextRequest = {
   messages: LlmMessage[];
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: "low" | "medium" | "high" | "xhigh";
   cacheTtlMs?: number;
+  cacheEnabled?: boolean;
 };
 
 export type LlmTextResponse = {
@@ -25,15 +27,14 @@ export type LlmTextResponse = {
 };
 
 const DEFAULT_REMOTE_DAILY_LIMIT = 300;
-let cachedKey = "";
-let cachedClient: SharedLlmClient | null = null;
 
 export async function requestLlmText(
   env: Bindings,
   request: LlmTextRequest,
 ): Promise<LlmTextResponse> {
+  assertLocalLlmRuntime(env);
   const provider = providerForModel(request.model);
-  const client = getSharedClient(env);
+  const client = createClient(env);
   const { instructions, input } = normalizeMessages(request.messages);
   const result = await client.generateText({
     provider,
@@ -42,7 +43,9 @@ export async function requestLlmText(
     input,
     temperature: request.temperature ?? 0,
     maxOutputTokens: request.maxTokens ?? 2048,
+    reasoningEffort: request.reasoningEffort,
     cacheTtlMs: request.cacheTtlMs,
+    cacheEnabled: request.cacheEnabled,
   });
   return {
     model: request.model,
@@ -52,22 +55,26 @@ export async function requestLlmText(
   };
 }
 
-function getSharedClient(env: Bindings): SharedLlmClient {
-  const key = stableClientKey(env);
-  if (cachedClient && cachedKey === key) {
-    return cachedClient;
+export function isLocalLlmRuntime(env: Pick<Bindings, "LLM_RUNTIME">): boolean {
+  return env.LLM_RUNTIME === "local";
+}
+
+function assertLocalLlmRuntime(env: Pick<Bindings, "LLM_RUNTIME">): void {
+  if (!isLocalLlmRuntime(env)) {
+    throw new Error("LLM calls are disabled outside local Wrangler development");
   }
-  cachedKey = key;
+}
+
+function createClient(env: Bindings): SharedLlmClient {
   const providers: Record<string, ReturnType<typeof createResponsesProvider>> = {};
   const openaiApiKey = requireOptionalEnv(env, ["OPENAI_API_KEY", "LLM_API_KEY"]);
-  if (openaiApiKey) {
-    providers.openai = createResponsesProvider({
-      name: "openai",
-      baseUrl: env.OPENAI_BASE_URL ?? env.LLM_BASE_URL ?? "https://api.m2ai.cc/api/v1/openai",
-      apiKey: openaiApiKey,
-    });
-  }
-  cachedClient = new SharedLlmClient({
+  if (!openaiApiKey) throw new Error("local LLM credential is not configured");
+  providers.openai = createResponsesProvider({
+    name: "openai",
+    baseUrl: env.OPENAI_BASE_URL ?? env.LLM_BASE_URL ?? "https://api.m2ai.cc/api/v1/openai",
+    apiKey: openaiApiKey,
+  });
+  return new SharedLlmClient({
     cacheStore: new D1LlmCacheStore(env.DB),
     providers,
     providerConcurrency: {
@@ -91,7 +98,6 @@ function getSharedClient(env: Bindings): SharedLlmClient {
       }
     },
   });
-  return cachedClient;
 }
 
 function providerForModel(model: SupportedLlmModel): "openai" {
@@ -149,11 +155,4 @@ function nextShanghaiDayTs(now = Date.now()): number {
   const shifted = now + 8 * 60 * 60 * 1000;
   const dayStartUtc = Date.parse(new Date(shifted).toISOString().slice(0, 10) + "T00:00:00.000Z");
   return dayStartUtc - 8 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000;
-}
-
-function stableClientKey(env: Bindings): string {
-  return [
-    env.OPENAI_BASE_URL ?? env.LLM_BASE_URL ?? "https://api.m2ai.cc/api/v1/openai",
-    requireOptionalEnv(env, ["OPENAI_API_KEY", "LLM_API_KEY"]) ?? "",
-  ].join("::");
 }

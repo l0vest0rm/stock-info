@@ -1,4 +1,9 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { knowledgeDocModalStyles } from '../../knowledge/runtime/knowledge-doc-modal'
+
+const companyReportStyles = `
+${knowledgeDocModalStyles}
+`
 
 type CompanyReportRow = {
   rank: number
@@ -192,6 +197,7 @@ const CompanyReportPage = defineComponent({
     }
 
     return () => h('div', [
+      h('style', companyReportStyles),
       h('div', {
         id: 'companyReportStatus',
         class: `small mb-2 ${statusDanger.value ? 'text-danger' : 'text-muted'}`,
@@ -269,9 +275,28 @@ const CompanyReportPage = defineComponent({
                 }, statusText.value || '暂无公司研报'),
               ]),
             ]),
+        ]),
+      ]),
+      pagination(),
+      h('div', { class: 'modal fade', id: 'knowledgeDocModal', tabindex: '-1', 'aria-labelledby': 'knowledgeDocModalTitle', 'aria-hidden': 'true' }, [
+        h('div', { class: 'modal-dialog modal-xl modal-dialog-scrollable' }, [
+          h('div', { class: 'modal-content' }, [
+            h('div', { class: 'modal-header' }, [
+              h('button', {
+                type: 'button',
+                class: 'btn btn-sm btn-outline-warning d-none',
+                id: 'knowledgeDocFavoriteBtn',
+              }, '收藏'),
+              h('h1', { class: 'modal-title fs-5', id: 'knowledgeDocModalTitle' }),
+              h('button', { type: 'button', class: 'btn-close', 'data-bs-dismiss': 'modal', 'aria-label': 'Close' }),
+            ]),
+            h('div', { class: 'modal-body' }, [
+              h('div', { id: 'knowledgeDocContent', class: 'lh-lg' }),
+              h('div', { id: 'knowledgeDocMeta', class: 'small text-muted mt-4 pt-3 border-top' }),
+            ]),
           ]),
         ]),
-      pagination(),
+      ]),
     ])
   },
 })

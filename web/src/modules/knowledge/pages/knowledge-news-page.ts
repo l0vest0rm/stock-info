@@ -15,6 +15,9 @@ type KnowledgeNewsTableRow = {
   isReport: boolean
   stockLinks: Array<{ name: string; code: string }>
   tags: string[]
+  informationTags: string[]
+  informationCategories: string[]
+  modelTargets: Array<{ name: string; code: string }>
   favorited: boolean
   isFiltered: boolean
   isCompanyReport: boolean
@@ -56,6 +59,12 @@ type KnowledgeNewsFiltersStateEvent = CustomEvent<{
   selectedSourceName?: string
   selectedIndustry?: string
   selectedTags?: string[]
+  informationTagOptions?: KnowledgeNewsFilterOption[]
+  entityOptions?: KnowledgeNewsFilterOption[]
+  selectedInformationTags?: string[]
+  selectedEntity?: string
+  predicateOptions?: KnowledgeNewsFilterOption[]
+  selectedPredicate?: string
 }>
 
 const knowledgeNewsTargetStyle = `
@@ -141,7 +150,8 @@ const knowledgeNewsTargetStyle = `
   display: block;
 }
 
-#knowledgeTagFilters .knowledge-news-tag-menu {
+#knowledgeTagFilters .knowledge-news-tag-menu,
+#knowledgeInformationTagFilters .knowledge-news-tag-menu {
   max-height: min(360px, 60vh);
   min-width: 180px;
   overflow-y: auto;
@@ -158,6 +168,16 @@ const knowledgeNewsTagClassMap: Record<string, string> = {
 const knowledgeNewsTagLabelMap: Record<string, string> = {
   unread: '未读',
   pdf: 'PDF',
+}
+
+const knowledgeNewsInformationTagLabelMap: Record<string, string> = {
+  processed: '已模型整理',
+  'information_type:fact': '事实',
+  'information_type:guidance': '指引',
+  'information_type:forecast': '预测',
+  'information_type:opinion': '观点',
+  'information_type:event': '事件',
+  'information_type:relationship': '关系',
 }
 
 function emitKnowledgeNewsOpenDoc(row: KnowledgeNewsTableRow) {
@@ -295,22 +315,44 @@ function knowledgeNewsTitleContent(row: KnowledgeNewsTableRow) {
       },
     }, row.title)
     : row.title
+  const sourceUrl = String(row.sourceUrl || '').trim()
+  const sourceLink = /^https?:\/\//i.test(sourceUrl)
+    ? h('a', {
+      href: sourceUrl,
+      class: 'ms-2 small',
+      target: '_blank',
+      rel: 'noreferrer noopener',
+    }, '原文')
+    : null
   const tags = row.tags.slice()
+  const informationTags = row.informationTags.filter((tag) => tag !== 'processed')
+  const categories = row.informationCategories
   return [
     title,
+    sourceLink,
     ...tags.map((tag) => h('span', {
       key: tag,
       class: `ms-2 badge ${knowledgeNewsTagClassMap[tag] || 'text-bg-secondary'}`,
     }, knowledgeNewsTagLabelMap[tag] || tag)),
+    ...informationTags.map((tag) => h('span', {
+      key: tag,
+      class: 'ms-2 badge text-bg-info',
+    }, knowledgeNewsInformationTagLabelMap[tag] || tag)),
+    ...categories.map((category) => h('span', {
+      key: category,
+      class: 'ms-2 badge text-bg-light border text-dark',
+      title: '模型提取谓词',
+    }, category)),
   ]
 }
 
 function knowledgeNewsTargetCell(row: KnowledgeNewsTableRow) {
   const links = row.stockLinks.filter((item) => item.code)
+  const modelLinks = !row.targetCode ? row.modelTargets : []
   const fallbackLink = row.targetCode
     ? [{ code: row.targetCode, name: row.target || row.targetCode }]
     : []
-  const resolvedLinks = (links.length > 0 ? links : fallbackLink)
+  const resolvedLinks = (modelLinks.length > 0 ? modelLinks : (links.length > 0 ? links : fallbackLink))
     .map((item) => ({
       code: item.code,
       label: item.name && item.code ? `${item.name} (${item.code})` : (item.name || item.code),
@@ -407,9 +449,9 @@ function knowledgeNewsHasForecastMetrics(forecasts: KnowledgeNewsTableRow['forec
   ].some((value) => value !== null && Number.isFinite(value)))
 }
 
-function knowledgeNewsSelectedTagText(options: KnowledgeNewsFilterOption[], selectedTags: string[]) {
+function knowledgeNewsSelectedTagText(options: KnowledgeNewsFilterOption[], selectedTags: string[], emptyLabel = '标签') {
   if (selectedTags.length === 0) {
-    return '标签'
+    return emptyLabel
   }
   const labels = selectedTags
     .map((tag) => options.find((option) => option.value === tag)?.label || knowledgeNewsTagLabelMap[tag] || tag)
@@ -532,6 +574,12 @@ const KnowledgeNewsPage = defineComponent({
     const selectedSourceName = ref('all')
     const selectedIndustry = ref('')
     const selectedTags = ref<string[]>([])
+    const informationTagOptions = ref<KnowledgeNewsFilterOption[]>([])
+    const entityOptions = ref<KnowledgeNewsFilterOption[]>([])
+    const selectedInformationTags = ref<string[]>([])
+    const selectedEntity = ref('')
+    const predicateOptions = ref<KnowledgeNewsFilterOption[]>([])
+    const selectedPredicate = ref('')
     const tagFilterOptions: KnowledgeNewsFilterOption[] = [
       { value: 'pdf', label: 'PDF' },
     ]
@@ -555,6 +603,24 @@ const KnowledgeNewsPage = defineComponent({
       }
       if (Array.isArray(detail?.selectedTags)) {
         selectedTags.value = detail.selectedTags
+      }
+      if (Array.isArray(detail?.informationTagOptions)) {
+        informationTagOptions.value = detail.informationTagOptions
+      }
+      if (Array.isArray(detail?.entityOptions)) {
+        entityOptions.value = detail.entityOptions
+      }
+      if (Array.isArray(detail?.selectedInformationTags)) {
+        selectedInformationTags.value = detail.selectedInformationTags
+      }
+      if (typeof detail?.selectedEntity === 'string') {
+        selectedEntity.value = detail.selectedEntity
+      }
+      if (Array.isArray(detail?.predicateOptions)) {
+        predicateOptions.value = detail.predicateOptions
+      }
+      if (typeof detail?.selectedPredicate === 'string') {
+        selectedPredicate.value = detail.selectedPredicate
       }
     }
 
@@ -637,6 +703,67 @@ const KnowledgeNewsPage = defineComponent({
                 h('span', option.label),
               ])),
             ]),
+          ]),
+          h('div', { id: 'knowledgeInformationTagFilters', class: 'dropdown' }, [
+            h('button', {
+              type: 'button',
+              class: [
+                'btn',
+                'btn-sm',
+                'dropdown-toggle',
+                selectedInformationTags.value.length > 0 ? 'btn-primary' : 'btn-outline-info',
+              ].join(' '),
+              'data-bs-toggle': 'dropdown',
+              'data-bs-auto-close': 'outside',
+              'aria-expanded': 'false',
+            }, knowledgeNewsSelectedTagText(informationTagOptions.value, selectedInformationTags.value, '模型标签')),
+            h('div', { class: 'dropdown-menu p-2 knowledge-news-tag-menu' }, [
+              ...informationTagOptions.value.map((option) => h('label', {
+                key: option.value,
+                class: 'dropdown-item d-flex align-items-center gap-2 mb-0',
+              }, [
+                h('input', {
+                  type: 'checkbox',
+                  class: 'form-check-input mt-0',
+                  name: 'knowledgeInformationTagFilter',
+                  value: option.value,
+                  checked: selectedInformationTags.value.includes(option.value),
+                }),
+                h('span', option.label),
+              ])),
+            ]),
+          ]),
+          h('div', { class: 'd-flex align-items-center' }, [
+            h('input', {
+              id: 'knowledgeEntity',
+              type: 'search',
+              list: 'knowledgeEntityOptions',
+              class: 'form-control form-control-sm',
+              style: 'width: 190px;',
+              value: selectedEntity.value,
+              placeholder: '信息对象',
+              'aria-label': '按信息对象过滤',
+            }),
+            h('datalist', { id: 'knowledgeEntityOptions' }, entityOptions.value.map((option) => h('option', {
+              key: option.value,
+              value: option.value,
+            }, option.label))),
+          ]),
+          h('div', { class: 'd-flex align-items-center' }, [
+            h('input', {
+              id: 'knowledgePredicate',
+              type: 'search',
+              list: 'knowledgePredicateOptions',
+              class: 'form-control form-control-sm',
+              style: 'width: 220px;',
+              value: selectedPredicate.value,
+              placeholder: '信息主题，如 target_price',
+              'aria-label': '按信息主题过滤',
+            }),
+            h('datalist', { id: 'knowledgePredicateOptions' }, predicateOptions.value.map((option) => h('option', {
+              key: option.value,
+              value: option.value,
+            }, option.label))),
           ]),
           h('div', { 'data-knowledge-query-control': 'true', class: 'd-flex gap-2' }, [
             h('input', { id: 'knowledgeQuery', class: 'form-control form-control-sm', style: 'max-width: 360px;', placeholder: '标题、来源、目标、链接搜索' }),

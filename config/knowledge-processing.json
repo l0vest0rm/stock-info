@@ -9,16 +9,16 @@
   "reviewDir": "/Users/terry/git/data/stock-info/knowledge/reviews",
   "stateDir": "/Users/terry/git/data/stock-info/knowledge/state",
   "filteredReviewImport": {
-    "enabled": true,
+    "enabled": false,
     "purgeExisting": false
   },
   "automation": {
     "enabled": true,
     "cron": "*/15 * * * *",
-    "runOnStart": false
+    "runOnStart": true
   },
   "storageRetention": {
-    "enabled": true,
+    "enabled": false,
     "knowledgeDocsMaxAgeDays": 90
   },
   "remoteImportRetention": {
@@ -28,6 +28,18 @@
   "importBatchSize": 200,
   "filterReviewPreviewLimit": 50,
   "docProcessingConcurrency": 4,
+  "informationProcessing": {
+    "enabled": true,
+    "server": "http://127.0.0.1:8000",
+    "concurrency": 3,
+    "maxDocumentsPerRun": 5000,
+    "maxAgeDays": 30,
+    "autoTitleKeywords": [
+      "公告", "业绩", "财报", "营收", "利润", "订单", "中标", "产能", "投产", "回购", "增持", "减持", "分红",
+      "评级", "目标价", "IPO", "上市", "招股", "发售", "配售", "股东", "持仓", "机构", "基金", "ETF",
+      "光模块", "AI", "算力", "芯片", "银行", "保险", "券商", "政策", "利率"
+    ]
+  },
   "maxNewsAgeDays": 14,
   "maxReportAgeDays": 60,
   "reportPdfMode": "original_link",
@@ -72,22 +84,38 @@
   },
   "topicFilter": {
     "enabled": true,
-    "name": "AI产业链",
+    "mode": "blacklist",
+    "ruleVersion": "knowledge-blacklist-v1",
+    "name": "明确无关快讯",
     "bypassSourceTypes": ["research_report"],
     "bypassReportTypes": ["company_report", "industry_report", "research_report"],
-    "minScore": 2,
-    "uncertainMinScore": 1,
-    "uncertainMaxScore": 1,
     "llmReview": false,
-    "llmBatchSize": 10,
-    "llmMinConfidence": 0.65,
-    "keywordGroupsFile": "/Users/terry/git/mitmproxy/config/capture-title-keyword-filters/shared-groups.json",
-    "allowKeywordGroups": ["allowKeywords", "institutionalTop300"],
-    "denyKeywordGroups": ["denyKeywords"],
-    "denyBypassKeywordGroups": ["institutionalTop300"],
-    "coreKeywords": [],
-    "supportKeywords": [],
-    "denyKeywords": []
+    "marketOverrideKeywords": [
+      "A股", "港股", "美股", "股票", "股价", "股东", "股息", "分红", "回购", "增持", "减持", "停牌", "复牌", "退市", "IPO", "定增", "可转债",
+      "上市公司", "交易所", "沪深", "上证", "深证", "北交所", "科创板", "创业板", "恒生", "纳斯达克", "标普", "道琼斯",
+      "财报", "业绩", "营收", "收入", "利润", "净利", "订单", "中标", "产能", "投产", "评级", "目标价", "估值", "机构调研", "产业链",
+      "利率", "降息", "加息", "货币政策", "汇率", "人民币", "美元", "通胀", "CPI", "PPI", "GDP", "社融", "信贷", "国债", "债券", "期货", "原油", "黄金",
+      "银行", "保险", "券商", "基金", "ETF", "理财", "信托", "证券", "资本市场"
+    ],
+    "blacklistRules": [
+      {
+        "id": "public_agency_discipline_investigation",
+        "labelAny": ["纪委动态"],
+        "titleAny": ["税务局", "市委", "市政府", "人大", "政协", "公安局", "法院", "检察院"]
+      },
+      {
+        "id": "humanitarian_official_meeting",
+        "titleAll": ["会见", "红十字国际委员会"]
+      },
+      {
+        "id": "military_joint_training",
+        "titleAll": ["联合训练", "空军"]
+      },
+      {
+        "id": "military_vessel_visit",
+        "titleAll": ["海军舰艇编队", "访问"]
+      }
+    ]
   },
   "sourceTypeScores": {
     "research_report": 10,

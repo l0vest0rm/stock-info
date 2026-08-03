@@ -7,6 +7,11 @@
 - The default local URL is `http://127.0.0.1:8000`.
 - Production deployment and verification must be treated separately from local `wrangler dev --local`.
 
+## LLM Runtime Boundary
+
+- Remote LLM calls are allowed only from a local Wrangler development runtime, explicitly marked with `LLM_RUNTIME=local` by the supported local launch scripts.
+- Production must keep `LLM_RUNTIME=production`; never add an LLM fallback, exception, or production override, even when model credentials are present.
+
 ## Local Workflow
 
 - Use `./start-local.sh` for the standard local loop because it already builds `web/dist`, typechecks, applies local D1 migrations, starts Wrangler, and waits for `/api/health`.

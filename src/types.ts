@@ -15,6 +15,7 @@ export type Bindings = {
   OPENAI_BASE_URL?: string;
   LLM_API_KEY?: string;
   LLM_BASE_URL?: string;
+  LLM_RUNTIME?: string;
   LLM_DAILY_LIMIT?: string;
   HTTP_PROXY_URL?: string;
   HTTP_PROXY_RELAY_URL?: string;
