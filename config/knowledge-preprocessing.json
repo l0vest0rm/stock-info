@@ -1,0 +1,22 @@
+{
+  "ruleVersion": "knowledge-preprocess-v2",
+  "sourceTypeExclusions": ["market_snapshot", "quote_board"],
+  "minimumContentRequirements": { "minimumNonWhitespaceChars": 80 },
+  "exactTemplateRules": [
+    {
+      "id": "pure_market_snapshot_v1",
+      "titlePattern": "^(?:A股|港股|美股)?.{0,24}(?:涨跌|异动|资金流|龙虎榜|成交额|换手率).*$",
+      "bodyPattern": "^(?:[\\s\\S]{0,220})(?:涨跌幅|成交额|换手率|资金净流入|龙虎榜)(?:[\\s\\S]{0,220})$",
+      "requiresNoOperatingNarrative": true
+    }
+  ],
+  "lowValueTitleRules": [
+    { "id": "financing_net_flow", "titlePattern": ".*(?:被融资净(?:买入|卖出)|融资余额|融资偿还).*" },
+    { "id": "main_fund_flow", "titlePattern": ".*(?:(?:主力资金|资金净流)(?:净流入|净流出)|(?:主力|资金|大单|北向|游资|融资|机构).{0,12}净(?:买入|卖出)|净(?:买入|卖出).*(?:万元|亿元|万|亿)).*" },
+    { "id": "trading_ledger", "titlePattern": ".*(?:大宗交易|龙虎榜(?:解读)?|净申购|净赎回).*" },
+    { "id": "intraday_market_snapshot", "titlePattern": ".*(?:早盘回顾|午盘回顾|收盘回顾|成交额(?:达|超|突破)|涨跌幅).*" }
+  ],
+  "duplicatePolicies": { "sameContentHash": "exact_duplicate", "sameSourceAndNormalizedUrl": "exact_duplicate" },
+  "reportAndAnnouncementBypasses": ["research_report", "company_announcement", "announcement"],
+  "sourceLifecycle": { "default": { "rawContentRetentionDays": null, "allowPublicUrl": true } }
+}

@@ -1,0 +1,47 @@
+{
+  "version": "information-organization-v2",
+  "entityTypes": ["company", "industry", "product", "model", "technology", "customer", "region", "topic"],
+  "filterClassification": {
+    "documentTypes": ["news", "announcement", "research_report", "industry_report", "other"],
+    "informationNatures": ["fact", "guidance", "forecast", "opinion", "event", "relationship", "other"],
+    "scopes": ["company", "industry", "multi_subject", "other"]
+  },
+  "informationExtraction": {
+    "modelContractVersion": "information-records-v1",
+    "informationTypes": ["fact", "guidance", "forecast", "opinion", "event", "relationship"],
+    "categories": {
+      "revenue": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "revenue_growth": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "net_profit": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "net_profit_growth": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "gross_margin": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "eps": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "operating_cash_flow": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "shipment_volume": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "production_capacity": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "capacity_utilization": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "required" },
+      "market_share": { "informationTypes": ["fact", "forecast", "opinion"], "periodPolicy": "optional" },
+      "order_backlog": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "optional" },
+      "contract_award": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "price_change": { "informationTypes": ["fact", "guidance", "forecast"], "periodPolicy": "optional" },
+      "target_price": { "informationTypes": ["forecast", "opinion"], "periodPolicy": "optional" },
+      "analyst_rating": { "informationTypes": ["opinion", "forecast"], "periodPolicy": "forbidden" },
+      "share_repurchase": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "dividend": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "financing": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "listing": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "shareholding_change": { "informationTypes": ["fact", "event", "relationship"], "periodPolicy": "optional" },
+      "product_launch": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "product_development": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "strategic_cooperation": { "informationTypes": ["fact", "event", "relationship"], "periodPolicy": "optional" },
+      "customer_relationship": { "informationTypes": ["fact", "relationship"], "periodPolicy": "forbidden" },
+      "project_signing": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "capacity_expansion": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "investment": { "informationTypes": ["fact", "guidance", "event", "relationship"], "periodPolicy": "optional" },
+      "regulatory_approval": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "regulatory_investigation": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "executive_change": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "policy_change": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" }
+    }
+  }
+}
