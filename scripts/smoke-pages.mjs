@@ -157,6 +157,9 @@ await check("macro research, vintage, watch and source-health APIs", async () =>
   assert(Array.isArray(series.data) && Array.isArray(series.data[0]?.points), "macro transformed series is invalid");
   assert(series.data[0]?.transform === "zscore", "macro transform was not applied");
 
+  const provenance = await fetchApi("/api/macro/provenance?ids=SOFR");
+  assert(provenance.data?.series?.[0]?.configuredSource?.sourceId === "ny-fed", "macro provenance does not expose its configured source");
+
   const revisions = await fetchApi("/api/macro/revisions?id=SOFR&from=2024-01-01");
   assert(Array.isArray(revisions.data?.observations), "macro revisions are not an array");
 
@@ -189,8 +192,12 @@ await check("macro research, vintage, watch and source-health APIs", async () =>
   });
   const watches = await fetchApi("/api/macro/watch?owner=smoke-macro");
   assert(watches.data?.some((item) => item.seriesId === "SOFR" && item.enabled), "macro watch was not persisted");
-  const alerts = await fetchApi("/api/macro/alerts/evaluate?owner=smoke-macro");
+  const alerts = await fetchApi("/api/macro/alerts/evaluate?owner=smoke-macro", { method: "POST" });
   assert(Array.isArray(alerts.data?.triggered), "macro alerts result is invalid");
+  assert(alerts.data?.persisted === true, "macro alerts were not persisted");
+  const history = await fetchApi("/api/macro/alerts/history?owner=smoke-macro");
+  assert(Array.isArray(history.data?.entries), "macro alert history is invalid");
+  assert(history.data.entries.some((entry) => entry.seriesId === "SOFR"), "macro alert history did not retain the data vintage");
 
   const status = await fetchApi("/api/macro/status");
   assert(Array.isArray(status.data?.sources), "macro source health is not an array");

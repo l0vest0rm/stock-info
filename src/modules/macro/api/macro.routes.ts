@@ -1,11 +1,11 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import seriesConfig from "../config/series.json";
 import exposureConfig from "../config/market-exposures.json";
 import industryExposureConfig from "../config/industry-exposures.json";
 import { buildResearchSeries } from "../application/build-research-series";
 import { D1MacroRepository } from "../application/macro-repository";
 import { syncMacroData } from "../application/sync-macro-data";
-import type { MacroObservationVintage, MacroSeries, MacroUserWatchConfig, DatedValue } from "../domain/model";
+import type { MacroAlertHistoryEntry, MacroObservationVintage, MacroSeries, MacroUserWatchConfig, DatedValue } from "../domain/model";
 import { transformSeries, type SeriesTransform } from "../domain/transforms";
 import { backtestSignal, calculateMarketFactorContributions, initialReleasePoints, replayScenario, rollingCorrelation } from "../domain/research";
 import { loadKline } from "../../market/application/load-kline";
@@ -17,10 +17,20 @@ type ConfiguredSeries = {
   id: string; name: string; category: string; region: string; regions: string[]; frequency: MacroSeries["frequency"];
   unit: string; staleDays: number; sourceId: string; transmissions: MacroSeries["transmissions"];
   interpretation: string; enabled: boolean;
+  fredSeriesId?: string;
 };
 type ExposureConfig = { seriesId: string; factor: string; markets: Record<string, number> };
 type IndustryExposureConfig = { id: string; market: string; name: string; series: Record<string, number> };
 type Quality = "fresh" | "stale" | "missing";
+type AlertTrigger = {
+  seriesId: string;
+  observationDate: string;
+  observationVintageAt: number;
+  observedAt: number;
+  value: number;
+  sourceUrl: string | null;
+  rule: { operator: "gte" | "lte"; threshold: number };
+};
 
 const configured = seriesConfig as ConfiguredSeries[];
 const configuredById = new Map(configured.map((item) => [item.id, item]));
@@ -57,6 +67,40 @@ macroRoutes.get("/macro/dashboard", async (c) => {
 });
 
 macroRoutes.get("/macro/catalog", async (c) => ok(c, await loadCatalog(new D1MacroRepository(c.env.DB))));
+
+macroRoutes.get("/macro/provenance", async (c) => {
+  const ids = csvValues(c.req.query("ids"));
+  if (ids.length === 0) return fail(c, 400, "Missing ids parameter");
+  if (ids.length > MAX_SERIES_PER_REQUEST) return fail(c, 400, `Too many series; maximum is ${MAX_SERIES_PER_REQUEST}`);
+  const unknown = ids.filter((id) => !configuredById.has(id));
+  if (unknown.length) return fail(c, 400, `Unknown macro series: ${unknown.join(", ")}`);
+  const repository = new D1MacroRepository(c.env.DB);
+  const healthBySource = new Map((await repository.listSourceHealth()).map((item) => [item.sourceId, item]));
+  const series = await Promise.all(ids.map(async (id) => {
+    const configuredSeries = configuredById.get(id)!;
+    const latest = (await repository.getObservationSeries(id, { from: dateDaysAgo(3650) })).at(-1) ?? null;
+    const actualSource = describeActualSource(configuredSeries.sourceId, latest?.sourceUrl ?? null);
+    return {
+      id,
+      name: configuredSeries.name,
+      configuredSource: {
+        sourceId: configuredSeries.sourceId,
+        sourceSeriesId: configuredSeries.fredSeriesId ?? id,
+        contract: configuredContract(configuredSeries.sourceId),
+        health: healthBySource.get(configuredSeries.sourceId)?.state ?? "not_synced",
+      },
+      latest: latest ? {
+        observationDate: latest.observationDate,
+        releasedAt: latest.releasedAt,
+        vintageAt: latest.vintageAt,
+        observedAt: latest.observedAt,
+        sourceUrl: latest.sourceUrl,
+        actualSource,
+      } : null,
+    };
+  }));
+  return ok(c, { generatedAt: new Date().toISOString(), series });
+});
 
 macroRoutes.get("/macro/series", async (c) => {
   const ids = csvValues(c.req.query("ids"));
@@ -246,27 +290,76 @@ macroRoutes.put("/macro/watch", async (c) => {
   const now = Date.now();
   const rules = Array.isArray(body?.alertRules) ? body.alertRules.filter(validAlertRule) : [];
   const config: MacroUserWatchConfig = { ownerKey, seriesId, enabled: body?.enabled !== false, position: boundedNumber(body?.position, 100, 0, 10000), alertRules: rules, displayOptions: isRecord(body?.displayOptions) ? body.displayOptions : {}, createdAt: now, updatedAt: now };
-  await new D1MacroRepository(c.env.DB).putUserWatch(config);
+  const repository = new D1MacroRepository(c.env.DB);
+  // A user may configure a watch before the first scheduled sync. Make the
+  // configured series available to the FK without fabricating an observation.
+  await repository.upsertSeries(configToDomain(configuredById.get(seriesId)!, now));
+  await repository.putUserWatch(config);
   return ok(c, config);
 });
 
-macroRoutes.get("/macro/alerts/evaluate", async (c) => {
+macroRoutes.get("/macro/alerts/history", async (c) => {
+  const owner = validOwner(c.req.query("owner") ?? "local");
+  if (!owner) return fail(c, 400, "invalid owner");
+  const limit = boundedInteger(c.req.query("limit"), 20, 1, 100);
+  return ok(c, { owner, entries: await new D1MacroRepository(c.env.DB).listAlertHistory(owner, limit) });
+});
+
+macroRoutes.get("/macro/alerts/evaluate", async (c) => evaluateAlerts(c, false));
+macroRoutes.post("/macro/alerts/evaluate", async (c) => evaluateAlerts(c, true));
+
+async function evaluateAlerts(c: Context<AppEnv>, persist: boolean) {
   const owner = validOwner(c.req.query("owner") ?? "local");
   if (!owner) return fail(c, 400, "invalid owner");
   const repository = new D1MacroRepository(c.env.DB);
   const watches = await repository.listUserWatches(owner);
-  const triggered: unknown[] = [];
+  const triggered: AlertTrigger[] = [];
+  let recorded = 0;
+  const evaluatedAt = Date.now();
   for (const watch of watches.filter((item) => item.enabled)) {
     const points = await repository.getObservationSeries(watch.seriesId, { from: dateDaysAgo(800) });
     const latest = points.at(-1);
     if (!latest) continue;
     for (const rule of watch.alertRules.filter(validAlertRule)) {
       const typed = rule as { operator: "gte" | "lte"; threshold: number };
-      if ((typed.operator === "gte" && latest.value >= typed.threshold) || (typed.operator === "lte" && latest.value <= typed.threshold)) triggered.push({ seriesId: watch.seriesId, observationDate: latest.observationDate, value: latest.value, rule: typed });
+      if ((typed.operator === "gte" && latest.value >= typed.threshold) || (typed.operator === "lte" && latest.value <= typed.threshold)) {
+        const trigger = {
+          seriesId: watch.seriesId,
+          observationDate: latest.observationDate,
+          observationVintageAt: latest.vintageAt,
+          observedAt: latest.observedAt,
+          value: latest.value,
+          sourceUrl: latest.sourceUrl,
+          rule: typed,
+        };
+        triggered.push(trigger);
+        if (persist && await repository.recordAlertHistory({
+          ownerKey: owner,
+          seriesId: trigger.seriesId,
+          observationDate: trigger.observationDate,
+          observationVintageAt: trigger.observationVintageAt,
+          observedAt: trigger.observedAt,
+          value: trigger.value,
+          ruleOperator: typed.operator,
+          ruleThreshold: typed.threshold,
+          sourceUrl: trigger.sourceUrl,
+          notificationState: "not_configured",
+          notificationDetail: "No notification channel is configured.",
+          evaluatedAt,
+          metadata: { evaluationMode: "manual", dataVersion: "latest-stored-vintage" },
+        })) recorded += 1;
+      }
     }
   }
-  return ok(c, { owner, evaluatedAt: new Date().toISOString(), triggered, notification: "not_configured" });
-});
+  return ok(c, {
+    owner,
+    evaluatedAt: new Date(evaluatedAt).toISOString(),
+    triggered,
+    recorded,
+    persisted: persist,
+    notification: "not_configured",
+  });
+}
 
 macroRoutes.post("/macro/sync", async (c) => {
   if (!isLocalDevelopmentRuntime()) return fail(c, 404, "macro sync endpoint is only available in local development");
@@ -336,6 +429,29 @@ function summarizeRevisions(observations: MacroObservationVintage[]) {
       latestSeenAt: latest.vintageAt,
     }];
   }).sort((left, right) => right.observationDate.localeCompare(left.observationDate));
+}
+
+function configuredContract(sourceId: string): string {
+  return ({
+    fred: "fred-observations-v1",
+    bls: "bls-public-api-v2",
+    "ny-fed": "ny-fed-secured-rates-v1",
+    hkma: "hkma-open-api-v1",
+  } as Record<string, string>)[sourceId] ?? "pending-verification";
+}
+
+function describeActualSource(configuredSourceId: string, sourceUrl: string | null) {
+  let host = "";
+  try { host = sourceUrl ? new URL(sourceUrl).hostname : ""; } catch { /* Stored URL is retained but not classified. */ }
+  const sourceId = host.endsWith("stlouisfed.org") ? "fred"
+    : host.endsWith("bls.gov") ? "bls"
+      : host.endsWith("newyorkfed.org") ? "ny-fed"
+        : host.endsWith("hkma.gov.hk") ? "hkma"
+          : configuredSourceId;
+  const contract = sourceId === "fred" && sourceUrl?.includes("/graph/fredgraph.csv")
+    ? "fred-public-csv-v1"
+    : configuredContract(sourceId);
+  return { sourceId, contract, differsFromConfigured: sourceId !== configuredSourceId };
 }
 
 function freshnessTimestamp(date: string, frequency: MacroSeries["frequency"]): number {

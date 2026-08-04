@@ -80,4 +80,22 @@ export type MacroUserWatchConfig = {
   updatedAt: number;
 };
 
+/** A persisted threshold match. It records the exact data vintage evaluated. */
+export type MacroAlertHistoryEntry = {
+  alertId: number;
+  ownerKey: string;
+  seriesId: string;
+  observationDate: string;
+  observationVintageAt: number;
+  observedAt: number;
+  value: number;
+  ruleOperator: "gte" | "lte";
+  ruleThreshold: number;
+  sourceUrl: string | null;
+  notificationState: "not_configured";
+  notificationDetail: string | null;
+  evaluatedAt: number;
+  metadata: Record<string, unknown>;
+};
+
 export type DatedValue = { date: string; value: number };

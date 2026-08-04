@@ -134,16 +134,17 @@ macro_series
   series_id, name, category, frequency, unit, source,
   regions_json, transmission_json, license_class, updated_at
 
-macro_observation_vintages
-  series_id, observation_date, value, released_at, observed_at,
-  vintage, revision_number, is_preliminary, quality_status, source_url
+macro_series_history
+  series_id, vintages_json, updated_at
+  -- one compact JSON snapshot per series; positional vintage tuples plus
+  -- source URL/R2-key dictionaries, retaining all initial and revised values
 
 macro_events
   event_id, scheduled_at, region, importance, title,
   actual, consensus, previous, source, source_url, updated_at
 ```
 
-同一 `series_id + observation_date` 必须允许保存不同 vintage，不能让修订值覆盖首次发布值。大体积原始响应放 R2；上游短期请求缓存复用 D1 `http_cache`；同步游标可使用 `app_kv`。
+同一 `series_id + observation_date` 必须允许保留不同 vintage，不能让修订值覆盖首次发布值。D1 只保存每个指标的一条紧凑历史快照，读取时按 `asOf` 还原点时可见版本；大体积原始响应放 R2；上游短期请求缓存复用 D1 `http_cache`；同步游标可使用 `app_kv`。
 
 ## 9. API
 
@@ -157,7 +158,7 @@ macro_events
 - `GET /api/macro/research/correlation`：宏观指标与四市场基准的滚动相关性；
 - `GET /api/macro/research/industries`：配置驱动的行业敏感度；
 - `GET /api/macro/research/backtest`：支持立即可用的回顾性模式，以及按首次入库可用时间执行的严格点时无前视模式；
-- `GET/PUT /api/macro/watch`、`GET /api/macro/alerts/evaluate`：关注与阈值规则；
+- `GET/PUT /api/macro/watch`、`GET|POST /api/macro/alerts/evaluate`、`GET /api/macro/alerts/history`：关注、阈值规则、去重触发记录。`GET` 只预览，`POST` 才会留档；
 - `POST /api/macro/sync`：仅本地开发环境可用的手工同步入口。
 
 指数和代理资产对照线继续使用现有 `/api/kline`，宏观观测值不写入 K 线契约。项目规定所有 K 线只能使用东方财富，不增加 Yahoo、腾讯等备用来源；韩国指数需要先验证并补齐 Eastmoney `secid` 映射。
