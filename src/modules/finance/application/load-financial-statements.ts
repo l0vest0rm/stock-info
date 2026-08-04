@@ -1,4 +1,4 @@
-import { fetchEastmoneyFinance } from "../../../adapters/eastmoney";
+import { fetchEastmoneyFinance, fetchYahooFinance } from "../../../adapters/eastmoney";
 import { areFinancialStatementsFresh } from "../../../shared/cache-policy";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import {
@@ -12,6 +12,15 @@ import {
   isProvisionalFinancialStatement,
   mergeProvisionalFinancialStatements,
 } from "./select-quarterly-income-statements";
+import {
+  normalizeFinancialStatements,
+  type NormalizedFinancialStatement,
+} from "../domain/normalize-financial-statements";
+import {
+  resolveFinancialStatementSource,
+  type FinancialStatementProvider,
+  type FinancialStatementSourceAvailability,
+} from "../domain/financial-statement-source";
 
 const PROVISIONAL_FINANCE_TTL_MS = 30 * 60 * 1000;
 
@@ -20,8 +29,17 @@ export async function loadFinancialStatements(
   rawCode: string,
   statementType: StatementType,
   options?: { httpOptions?: ExternalHttpOptions }
-): Promise<{ code: string; source: "r2" | "eastmoney"; rows: FinancialStatement[] }> {
+): Promise<{
+  code: string;
+  source: "r2" | FinancialStatementProvider | "unavailable";
+  provider: FinancialStatementProvider | null;
+  availability: FinancialStatementSourceAvailability;
+  sourceReason: string | null;
+  rows: FinancialStatement[];
+  normalizedRows: NormalizedFinancialStatement[];
+}> {
   const code = normalizeSecurityCode(rawCode);
+  const sourcePolicy = resolveFinancialStatementSource(code);
   const snapshot = await getFinancialStatementsSnapshot(env, code, statementType);
   const snapshotRows = snapshot ? ensureFinancialSourceMetadata(snapshot.rows) : [];
   const pendingProvisional = statementType === "income" ? snapshot?.provisionalData : undefined;
@@ -29,21 +47,31 @@ export async function loadFinancialStatements(
     const now = Date.now();
     const latest = snapshotRows[0];
     if (isProvisionalFinancialStatement(latest) && now - latest.updatedAt < PROVISIONAL_FINANCE_TTL_MS) {
-      return { code, source: "r2", rows: snapshotRows };
+      return loadedSnapshot(code, sourcePolicy.provider, snapshotRows);
     }
     const unresolvedPending = pendingProvisional
       ? !snapshotRows.some((row) => row.reportDate === pendingProvisional.reportDate)
       : false;
     if (!unresolvedPending && !isProvisionalFinancialStatement(latest) && areFinancialStatementsFresh(snapshotRows, now)) {
-      return { code, source: "r2", rows: snapshotRows };
+      return loadedSnapshot(code, sourcePolicy.provider, snapshotRows);
     }
   }
-  if (!isCnExchangeCode(code)) {
-    return { code, source: "eastmoney", rows: [] };
+  if (sourcePolicy.availability !== "available" || !sourcePolicy.provider) {
+    return {
+      code,
+      source: "unavailable",
+      provider: sourcePolicy.provider,
+      availability: sourcePolicy.availability,
+      sourceReason: sourcePolicy.reason,
+      rows: [],
+      normalizedRows: [],
+    };
   }
-  const formalRows = await fetchEastmoneyFinance(env.DB, code, statementType, options?.httpOptions);
+  const formalRows = sourcePolicy.provider === "eastmoney"
+    ? await fetchEastmoneyFinance(env.DB, code, statementType, options?.httpOptions)
+    : await fetchYahooFinance(env.DB, code, statementType, options?.httpOptions);
   let rows = ensureFinancialSourceMetadata(formalRows);
-  if (statementType === "income") {
+  if (sourcePolicy.provider === "eastmoney" && statementType === "income") {
     rows = mergeProvisionalFinancialStatements(
       [...formalRows, ...snapshotRows],
       pendingProvisional?.performanceRows ?? [],
@@ -58,7 +86,15 @@ export async function loadFinancialStatements(
       provisionalData: latestFormalized ? undefined : pendingProvisional,
     });
   }
-  return { code, source: "eastmoney", rows };
+  return {
+    code,
+    source: sourcePolicy.provider,
+    provider: sourcePolicy.provider,
+    availability: "available",
+    sourceReason: null,
+    rows,
+    normalizedRows: normalizeFinancialStatements(rows),
+  };
 }
 
 export function parseStatementType(value: string): StatementType | null {
@@ -68,6 +104,26 @@ export function parseStatementType(value: string): StatementType | null {
   return null;
 }
 
-function isCnExchangeCode(code: string): boolean {
-  return /\.(SH|SZ|BJ)$/.test(normalizeSecurityCode(code));
+function loadedSnapshot(
+  code: string,
+  provider: FinancialStatementProvider | null,
+  rows: FinancialStatement[]
+): {
+  code: string;
+  source: "r2";
+  provider: FinancialStatementProvider | null;
+  availability: "available";
+  sourceReason: null;
+  rows: FinancialStatement[];
+  normalizedRows: NormalizedFinancialStatement[];
+} {
+  return {
+    code,
+    source: "r2",
+    provider,
+    availability: "available",
+    sourceReason: null,
+    rows,
+    normalizedRows: normalizeFinancialStatements(rows),
+  };
 }

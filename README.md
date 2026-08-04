@@ -74,6 +74,37 @@ npm run dev:cron:once
 - 内容哈希 key
 - 浏览器直连 `KNOWLEDGE_CONTENT_PUBLIC_BASE_URL`
 
+### 机构持仓关键词信息预处理
+
+用于按机构持仓关键词筛选本地 D1 中的新闻，并逐篇调用本地 Worker 的信息处理接口。
+先用 `./start-local.sh` 启动本地运行时（信息处理只允许在 `LLM_RUNTIME=local` 下运行），再执行：
+
+```bash
+npm run process:information:institutional
+```
+
+默认读取 `config/information-processing-institutional-top300.json`，每个关键词只从最近 30 天的文档中选择，按关键词优先级、再按文档时间从近到远处理；默认最多处理 100 篇、并发 3 篇。处理进度与结果会写入 `data/stock-info/knowledge/state/` 下的 JSONL 文件。
+
+先查看候选而不调用模型：
+
+```bash
+npm run process:information:institutional -- --dry-run --max-documents 20
+```
+
+调整时间窗口、数量或并发：
+
+```bash
+npm run process:information:institutional -- --max-age-days 7 --max-documents 50 --concurrency 5
+```
+
+处理该时间窗口内全部候选：
+
+```bash
+npm run process:information:institutional -- --all --max-age-days 14
+```
+
+`--all` 只取消文档数量上限，不会取消 `--max-age-days` 的时间范围。需要使用其他关键词清单或本地 Worker 地址时，可追加 `--input /absolute/path/keywords.json`、`--server http://127.0.0.1:8000`；关键词清单必须是非空 JSON 字符串数组。
+
 ### `./process-knowledge-local-full.sh`
 
 用途：本地全量重跑知识处理。

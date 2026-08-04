@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseStructuredAnalysis } from "./information-processing.ts";
+import { discardFailedInformationAttempt, parseStructuredAnalysis, persistStructuredResult } from "./information-processing.ts";
 
 const record = (overrides = {}) => ({
   entity: "三环集团",
@@ -23,6 +23,51 @@ test("treats an empty records array as no information", () => {
   const result = parseStructuredAnalysis('{"records":[]}');
   assert.equal(result.outcome, "no_information");
   assert.equal(result.records.length, 0);
+});
+
+test("persists a no-information result without issuing an empty D1 batch", async () => {
+  let batchCalls = 0;
+  const db = {
+    prepare() {
+      return {
+        bind() {
+          return { run: async () => ({}) };
+        },
+      };
+    },
+    async batch() {
+      batchCalls += 1;
+    },
+  };
+  const analysis = parseStructuredAnalysis('{"records":[]}');
+  const count = await persistStructuredResult(db, "run", "version", analysis);
+  assert.equal(count, 0);
+  assert.equal(batchCalls, 0);
+});
+
+test("removes a failed attempt and its empty processing version", async () => {
+  const statements = [];
+  const batches = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        bind(...values) {
+          statements.push({ sql, values });
+          return { first: async () => null };
+        },
+      };
+      return statement;
+    },
+    async batch(items) { batches.push(items); },
+  };
+  await discardFailedInformationAttempt(db, "run-1", "version-1");
+  assert.equal(batches.length, 2);
+  assert.match(statements[0].sql, /delete from knowledge_information_records/i);
+  assert.match(statements[1].sql, /delete from knowledge_document_results/i);
+  assert.match(statements[2].sql, /delete from knowledge_processing_runs/i);
+  assert.match(statements.at(-2).sql, /delete from knowledge_preprocessing_decisions/i);
+  assert.match(statements.at(-1).sql, /delete from knowledge_document_versions/i);
 });
 
 test("marks invalid category/type and period-policy records for review", () => {

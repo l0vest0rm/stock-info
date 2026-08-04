@@ -142,6 +142,29 @@ await check("company report counts", async () => {
   );
 });
 
+await check("research workbench pages and API schemas", async () => {
+  const pages = [
+    ["company-research.html?code=300750.SZ", "company-research-vue-root", "js/company-research-page.js"],
+    ["industry-research.html?industry=%E9%80%9A%E4%BF%A1%E8%AE%BE%E5%A4%87", "industry-research-vue-root", "js/industry-research-page.js"],
+    ["fund-compare.html", "fund-compare-vue-root", "js/fund-compare-page.js"],
+  ];
+  for (const [pageName, rootId, bundle] of pages) {
+    const response = await fetchWithTimeout(`${baseUrl}/${pageName}`);
+    const html = await response.text();
+    assert(response.status < 400, `${pageName} status=${response.status}`);
+    assert(html.includes(rootId), `${pageName} root is missing`);
+    assert(html.includes(bundle), `${pageName} bundle is missing`);
+  }
+  const company = await fetchApi("/api/research/company/300750.SZ");
+  assert(Array.isArray(company.data?.decision?.gates) && company.data.decision.gates.length === 4, "company research gates are incomplete");
+  assert(Array.isArray(company.data?.evidence), "company research evidence is invalid");
+  assert(Array.isArray(company.data?.riskProfile?.findings) && Array.isArray(company.data?.riskProfile?.gaps), "company risk profile is incomplete");
+  const industry = await fetchApi(`/api/research/industry?industry=${encodeURIComponent("通信设备")}`);
+  assert(typeof industry.data?.assessment?.state === "string", "industry research assessment is missing");
+  const funds = await fetchApi("/api/fund/compare?codes=513100.OF,510300.OF");
+  assert(Array.isArray(funds.data?.rows) && funds.data.rows.length === 2, "fund comparison rows are incomplete");
+});
+
 await check("fund search 易方达蓝筹精选混合", async () => {
   const body = await fetchApi(`/api/search?q=${encodeURIComponent("易方达蓝筹精选混合")}`);
   assert(

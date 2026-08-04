@@ -2,12 +2,19 @@ import { Hono } from "hono";
 import financeMappings from "../../../../shared/finance-mappings.json";
 import { fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
 import { loadFinancialStatements, parseStatementType } from "../application/load-financial-statements";
+import { resolveFinancialStatementSource } from "../domain/financial-statement-source";
 import { loadKline } from "../../market/application/load-kline";
 import { externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import type { AppEnv, Bindings, KlineBar, StatementType } from "../../../types";
 
 export const financeRoutes = new Hono<AppEnv>();
+
+financeRoutes.get("/finance/source", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  return ok(c, resolveFinancialStatementSource(code));
+});
 
 financeRoutes.get("/finance/sharechange", async (c) => {
   const code = requireQuery(c, "code");
@@ -82,10 +89,29 @@ financeRoutes.get("/finance/:statementType", async (c) => {
     httpOptions: externalHttpOptions(c.env),
   }).catch((err) => {
     if (isUnsupportedFinanceError(err)) {
-      return { rows: [] };
+      const source = resolveFinancialStatementSource(code);
+      return {
+        code: source.code,
+        source: "unavailable" as const,
+        provider: source.provider,
+        availability: source.availability,
+        sourceReason: source.reason,
+        rows: [],
+        normalizedRows: [],
+      };
     }
     throw err;
   });
+  if (c.req.query("format") === "normalized") {
+    return ok(c, {
+      code: data.code,
+      source: data.source,
+      provider: data.provider,
+      availability: data.availability,
+      sourceReason: data.sourceReason,
+      rows: data.normalizedRows,
+    });
+  }
   return ok(c, data.rows.map((row) => toLegacyFinancePayload(row.payload, statementType)));
 });
 

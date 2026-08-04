@@ -638,7 +638,7 @@ export async function fetchYahooFinance(
   const normalized = normalizeSecurityCode(code);
   const symbol = yahooChartSymbol(normalized);
   const url = new URL(`https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}`);
-  url.searchParams.set("type", yahooFinanceTypes().join(","));
+  url.searchParams.set("type", yahooFinanceTypes(statementType).join(","));
   url.searchParams.set("period1", "0");
   url.searchParams.set("period2", String(yahooStablePeriod2()));
   const body = (await cachedFetchJson(db, url.toString(), {
@@ -1616,22 +1616,30 @@ function financeStyle(statementType: StatementType, reportType: string): string 
   return `APP_F10_${reportType}`;
 }
 
-function yahooFinanceTypes(): string[] {
-  return [
-    "quarterlyTotalRevenue",
-    "quarterlyCostOfRevenue",
-    "quarterlyGrossProfit",
-    "quarterlyOperatingIncome",
-    "quarterlyNetIncome",
-    "quarterlyBasicEPS",
-    "quarterlyDilutedEPS",
-    "quarterlyTotalAssets",
-    "quarterlyTotalLiabilitiesNetMinorityInterest",
-    "quarterlyStockholdersEquity",
-    "quarterlyOperatingCashFlow",
-    "quarterlyFreeCashFlow",
-    "quarterlyEndCashPosition",
-  ];
+function yahooFinanceTypes(statementType: StatementType): string[] {
+  const types: Record<StatementType, string[]> = {
+    income: [
+      "quarterlyTotalRevenue",
+      "quarterlyCostOfRevenue",
+      "quarterlyGrossProfit",
+      "quarterlyOperatingIncome",
+      "quarterlyNetIncome",
+      "quarterlyBasicEPS",
+      "quarterlyDilutedEPS",
+    ],
+    balance: [
+      "quarterlyTotalAssets",
+      "quarterlyTotalLiabilitiesNetMinorityInterest",
+      "quarterlyStockholdersEquity",
+      "quarterlyEndCashPosition",
+    ],
+    cashflow: [
+      "quarterlyOperatingCashFlow",
+      "quarterlyFreeCashFlow",
+      "quarterlyEndCashPosition",
+    ],
+  };
+  return types[statementType];
 }
 
 function yahooStablePeriod2(): number {

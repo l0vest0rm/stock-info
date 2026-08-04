@@ -140,14 +140,12 @@ API request
 
 | 数据 | 当前/目标页面 | 推荐方式 | 存储 | 原因 | 当前状态 | 待确认 |
 | --- | --- | --- | --- | --- | --- | --- |
-| A 股 K 线 | `company.html` | 请求时获取 + 写 D1；常用标的 Cron 预热 | D1 | 东财接口稳定，实时性较高，数据结构规则 | 已接东财 | 补区间覆盖和过期策略 |
-| 港股 K 线 | `company.html` | 请求时获取 + 写 D1；常用标的 Cron 预热 | D1 | 可按需取，但要观察上游稳定性 | 部分走 Yahoo/其它源 | 是否能稳定切到东财 |
-| 美股 K 线 | `company.html` | 短期请求时获取 + 缓存；中期 Cron/本地同步 | D1 | Yahoo 可能限流，页面不应频繁打上游 | 当前有 Yahoo 路径 | 是否找东财美股 K 线替代 |
+| A/H/美股 K 线 | `company.html` | 请求时获取 + 写 D1；常用标的 Cron 预热 | D1 | 统一使用雪球，价格和估值观察保持同一来源 | 已有雪球路径 | 补区间覆盖和过期策略 |
 | 基金净值/K 线 | `fund.html` | 请求时获取 + 写 D1；关注基金 Cron | D1 | 东财基金数据稳定，变化频率低于行情 | 已有东财路径 | 补基金持仓同步范围 |
-| 搜索建议/代码名称 | 全站搜索框 | 请求时获取 + 短 TTL 缓存 | D1/http_cache | 数据小，适合交互式请求 | 东财 + Yahoo | 美股搜索是否必须保留 Yahoo |
+| 搜索建议/代码名称 | 全站搜索框 | 请求时获取 + 短 TTL 缓存 | D1/http_cache | 数据小，适合交互式请求 | 东财/本地证券表 | 美股搜索的覆盖和更新策略 |
 | 公司基础概览 | 公司页头部 | D1 优先；缺失时请求时获取并缓存 | D1 | 页面通用依赖，不能慢；行情可短 TTL | 东财/A 股较合理 | 美股/港股源统一 |
 | 公司公告列表 | `company-notice.html` | 请求时按页获取 + 缓存；常用标的 Cron | D1 | 公告低频但页面按需分页 | 东财路径 | 是否保存公告详情/PDF 元数据 |
-| 财报三表 | `company-finance.html`、估值指标 | Cron 或本地同步写 D1；页面只读 D1 | D1，必要时 R2 原始响应 | 季度数据，低频变化，不应页面打开时打外部 | 当前仍有请求时路径 | 美股/港股优先东财 endpoint，避免 Yahoo |
+| 财报三表 | `company-finance.html`、估值指标 | A/H 由东财同步；美股本地经 Yahoo 代理、生产直连 Yahoo 后写 D1/cache | D1，必要时 R2 原始响应 | 季度数据，低频变化；生产直连也必须缓存、限流和可见失败 | 当前仍有请求时路径 | 港股东财字段验证；美股 Yahoo 覆盖、生产连通性和 SEC 对账 |
 | 股本结构 | `company-shares.html` | Cron 或请求时一次获取后长 TTL D1 | D1 | 低频变化，页面不该重复拉 | 部分已迁移 | 各市场数据源 |
 | 分红融资 | `company-dividend.html` | Cron 或请求时一次获取后长 TTL D1 | D1 | 低频变化，适合缓存 | 部分已迁移 | 港股/美股兼容 |
 | 股东/机构持仓 | `company-holders.html` | Cron 同步 | D1 | 数据多、低频、可能多页 | 部分已迁移 | 同步范围和历史期数 |
@@ -176,7 +174,7 @@ API request
 
 - 页面请求 `/api/finance/income|balance|cashflow`。
 - 后端优先读 D1。
-- 缺失时短期可返回空数组和同步状态；不要实时走 Yahoo。
+- 缺失时短期可返回空数组和同步状态；美股可由生产统一 HTTP client 直连 Yahoo 补齐并缓存，本地同一路径经代理访问。
 - 财报同步由 Cron 或本地脚本处理。
 
 ### `company-option.html`
@@ -284,10 +282,10 @@ API key 读取 `OPENAI_API_KEY`。复核会把边界样本按标题/摘要列表
 
 | 接口 | 当前问题 | 建议目标 |
 | --- | --- | --- |
-| `/api/finance/income?code=MU.US` | 不应实时走 Yahoo；用户确认用东财即可 | 接入东财美股财报 endpoint，写 D1；页面读 D1 |
+| `/api/finance/income?code=MU.US` | 美股财报指定 Yahoo；本地必须经代理，生产可直连 | 本地经 Yahoo 代理、生产经统一 HTTP client 直连并缓存；以 SEC 抽样对账 |
 | `/api/options/us?code=MU.US` | 已证明 Worker/Node 模拟 Yahoo 不稳定 | 保持本地 Chrome 采集写 D1，接口读 D1 |
-| `/api/kline?code=MU.US` | 如果仍走 Yahoo，长期可能同样限流 | 优先寻找东财美股 K 线；否则常用美股定时/本地同步 |
-| 搜索框美股建议 | Yahoo suggest 可能受代理/限流影响 | D1 本地证券表优先；Yahoo 只作为可失败补充 |
+| `/api/kline?code=MU.US` | 必须保持雪球为唯一股票 K 线来源 | 排查雪球请求、Cookie、缓存和区间覆盖；不增加替代源 |
+| 搜索框美股建议 | 不使用 Yahoo 搜索 | D1 本地证券表优先，按既定非 Yahoo 源补齐覆盖 |
 
 ## 热度分层策略
 

@@ -74,6 +74,21 @@ const pageEntries = [
     fileName: 'js/company-page.js',
   },
   {
+    entry: 'src/modules/research/pages/company-research-page.ts',
+    globalName: 'LicaiCompanyResearchPage',
+    fileName: 'js/company-research-page.js',
+  },
+  {
+    entry: 'src/modules/research/pages/industry-research-page.ts',
+    globalName: 'LicaiIndustryResearchPage',
+    fileName: 'js/industry-research-page.js',
+  },
+  {
+    entry: 'src/modules/research/pages/fund-compare-page.ts',
+    globalName: 'LicaiFundComparePage',
+    fileName: 'js/fund-compare-page.js',
+  },
+  {
     entry: 'src/modules/company/pages/company-trade-page.ts',
     globalName: 'LicaiCompanyTradePage',
     fileName: 'js/company-trade-page.js',

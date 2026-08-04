@@ -196,8 +196,14 @@ knowledgeRoutes.get("/knowledge/doc", async (c) => {
 });
 
 knowledgeRoutes.get("/knowledge/documents/:id/structured", async (c) => {
-  const document = await c.env.DB.prepare("select source_name from knowledge_docs where doc_id = ?")
-    .bind(c.req.param("id")).first<{ source_name: string | null }>();
+  const document = await c.env.DB.prepare(
+    `select d.doc_id, d.title, d.url, d.source_name, d.source_type, d.report_type,
+            d.published_at, d.fetched_at, d.event_time, d.summary, d.content_preview,
+            c.content_key, c.content_url
+       from knowledge_docs d
+       left join knowledge_doc_content_refs c on c.doc_id = d.doc_id
+      where d.doc_id = ?`,
+  ).bind(c.req.param("id")).first<Record<string, unknown>>();
   const versions = await c.env.DB.prepare(
     `select v.*, p.action as preprocessing_action, p.reason_code, p.rule_version, p.details_json
        from knowledge_document_versions v
@@ -217,7 +223,23 @@ knowledgeRoutes.get("/knowledge/documents/:id/structured", async (c) => {
   const runs = await c.env.DB.prepare("select * from knowledge_processing_runs where version_id = ? order by started_at desc")
     .bind(String(versions.results[0].version_id)).all<Record<string, unknown>>();
   return ok(c, {
-    source_name: document?.source_name || null,
+    document: document ? {
+      doc_id: document.doc_id,
+      title: document.title,
+      url: document.url,
+      source_name: document.source_name,
+      source_type: document.source_type,
+      report_type: document.report_type,
+      published_at: document.published_at,
+      fetched_at: document.fetched_at,
+      event_time: document.event_time,
+      summary: document.summary,
+      content_preview: document.content_preview,
+      content_url: resolveKnowledgeContentUrl(
+        document as Pick<KnowledgeContentRefRow, "content_key" | "content_url">,
+        knowledgeContentUrlContext(c),
+      ),
+    } : null,
     versions: versions.results.map(mapInformationRow), result: result ? mapInformationRow(result) : null,
     records: records.results.map(mapInformationRow),
     runs: runs.results.map(mapInformationRow),
@@ -254,6 +276,76 @@ knowledgeRoutes.get("/knowledge/processed-documents", async (c) => {
   return ok(c, {
     page, page_size: pageSize, total: total?.count || 0,
     has_next: (page * pageSize) < (total?.count || 0), list: rows.results.map(mapInformationRow),
+  });
+});
+
+knowledgeRoutes.get("/knowledge/information-records", async (c) => {
+  const entity = (c.req.query("entity") || "").trim();
+  const informationType = (c.req.query("information_type") || "").trim();
+  const category = (c.req.query("category") || "").trim();
+  const page = Math.max(1, Number(c.req.query("page") || 1));
+  const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize") || 20)));
+  const summaryConditions = [
+    "r.outcome = 'extracted'",
+    `v.version_id = (
+      select v2.version_id from knowledge_document_versions v2
+       where v2.doc_id = d.doc_id
+       order by v2.created_at desc, v2.version_id desc limit 1
+    )`,
+    `r.result_id = (
+      select r2.result_id from knowledge_document_results r2
+       where r2.version_id = v.version_id
+       order by r2.created_at desc, r2.result_id desc limit 1
+    )`,
+  ];
+  const summaryBinds: Array<string | number> = [];
+  if (entity) {
+    summaryConditions.push("lower(record.entity) = lower(?)");
+    summaryBinds.push(entity);
+  }
+  const conditions = [...summaryConditions];
+  const binds = [...summaryBinds];
+  if (informationType) {
+    conditions.push("record.information_type = ?");
+    binds.push(informationType);
+  }
+  if (category) {
+    conditions.push("record.category = ?");
+    binds.push(category);
+  }
+  const summaryWhere = summaryConditions.join(" and ");
+  const where = conditions.join(" and ");
+  const base = `from knowledge_information_records record
+    join knowledge_document_results r on r.result_id = record.result_id
+    join knowledge_document_versions v on v.version_id = r.version_id
+    join knowledge_docs d on d.doc_id = v.doc_id`;
+  const [total, informationTypes, categories, rows] = await Promise.all([
+    c.env.DB.prepare(`select count(*) as count ${base} where ${where}`).bind(...binds).first<{ count: number }>(),
+    c.env.DB.prepare(
+      `select record.information_type as value, count(*) as count ${base} where ${summaryWhere}
+       group by record.information_type order by count(*) desc, value asc`,
+    ).bind(...summaryBinds).all<Record<string, unknown>>(),
+    c.env.DB.prepare(
+      `select record.category as value, count(*) as count ${base} where ${summaryWhere}
+       group by record.category order by count(*) desc, value asc`,
+    ).bind(...summaryBinds).all<Record<string, unknown>>(),
+    c.env.DB.prepare(
+      `select record.information_id, record.entity, record.information_type, record.category, record.period, record.statement,
+            record.sort_order, record.created_at, d.doc_id, d.title, d.source_name, d.source_type, d.report_type,
+            d.published_at, d.event_time, r.created_at as processed_at
+       ${base} where ${where}
+       order by d.published_at desc, record.sort_order asc, record.information_id asc limit ? offset ?`,
+    ).bind(...binds, pageSize, (page - 1) * pageSize).all<Record<string, unknown>>(),
+  ]);
+  return ok(c, {
+    entity: entity || null,
+    information_type: informationType || null,
+    category: category || null,
+    page, page_size: pageSize, total: total?.count || 0,
+    has_next: (page * pageSize) < (total?.count || 0),
+    information_types: informationTypes.results.map(mapInformationRow),
+    categories: categories.results.map(mapInformationRow),
+    list: rows.results.map(mapInformationRow),
   });
 });
 
@@ -298,8 +390,8 @@ knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
       return { jobId: job.job_id, documentId: job.doc_id, status, ...result };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await c.env.DB.prepare("update information_processing_jobs set status = 'failed', last_error = ?, updated_at = ? where job_id = ?")
-        .bind(message.slice(0, 2000), Date.now(), job.job_id).run();
+      await c.env.DB.prepare("delete from information_processing_jobs where job_id = ?")
+        .bind(job.job_id).run();
       return { jobId: job.job_id, documentId: job.doc_id, status: "failed", error: message };
     }
   });
@@ -2269,12 +2361,6 @@ async function enqueueUnprocessedInformationDocuments(
           select 1 from information_processing_jobs j
            where j.doc_id = d.doc_id
              and (j.status = 'queued' or (j.status = 'processing' and j.updated_at >= ?))
-        )
-        and not exists (
-          select 1 from information_processing_jobs j
-           where j.doc_id = d.doc_id
-             and j.status = 'failed'
-             and j.last_error like 'knowledge document content unavailable in local cache or source: 404%'
         )
         and coalesce((
           select p.action
