@@ -1,0 +1,41 @@
+{
+  "version": "research-governance-capital-facts.v1",
+  "factDefinitions": {
+    "control_rights": { "label": "控制权、表决权与股东权利", "valueKind": "text" },
+    "board_and_audit": { "label": "董事会、审计机构与内控", "valueKind": "text" },
+    "audit_internal_control": { "label": "审计意见与内部控制事项", "valueKind": "text" },
+    "regulatory_penalty_or_litigation": { "label": "监管处罚、调查或诉讼", "valueKind": "text" },
+    "related_party_transaction": { "label": "关联交易与利益冲突", "valueKind": "text" },
+    "executive_incentive": { "label": "管理层激励、薪酬与业绩条件", "valueKind": "text" },
+    "r_and_d_spend": { "label": "研发投入", "valueKind": "number" },
+    "capital_expenditure": { "label": "资本开支", "valueKind": "number" },
+    "acquisition_or_disposal": { "label": "并购、少数股权投资或处置", "valueKind": "number" },
+    "debt_repayment": { "label": "偿债与现金储备", "valueKind": "number" },
+    "share_repurchase": { "label": "股份回购", "valueKind": "number" },
+    "cash_dividend": { "label": "现金分红", "valueKind": "number" },
+    "financing_or_dilution": { "label": "融资、增发、SBC 或其他稀释", "valueKind": "number" },
+    "capital_allocation_outcome": { "label": "已披露的资本配置后续结果", "valueKind": "text" }
+  },
+  "mappings": [
+    { "category": "shareholding_change", "informationTypes": ["fact", "event", "relationship"], "factKey": "control_rights", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "control_rights", "informationTypes": ["fact", "event", "relationship"], "factKey": "control_rights", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "executive_change", "informationTypes": ["fact", "event"], "factKey": "board_and_audit", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "audit_opinion", "informationTypes": ["fact", "event"], "factKey": "audit_internal_control", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "regulatory_investigation", "informationTypes": ["fact", "event"], "factKey": "regulatory_penalty_or_litigation", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "regulatory_penalty", "informationTypes": ["fact", "event"], "factKey": "regulatory_penalty_or_litigation", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "litigation", "informationTypes": ["fact", "event"], "factKey": "regulatory_penalty_or_litigation", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "related_party_transaction", "informationTypes": ["fact", "event", "relationship"], "factKey": "related_party_transaction", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "executive_compensation", "informationTypes": ["fact", "event"], "factKey": "executive_incentive", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] },
+    { "category": "r_and_d_spending", "informationTypes": ["fact", "guidance"], "factKey": "r_and_d_spend", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "capital_expenditure", "informationTypes": ["fact", "guidance", "event"], "factKey": "capital_expenditure", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "acquisition", "informationTypes": ["fact", "event"], "factKey": "acquisition_or_disposal", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "asset_disposal", "informationTypes": ["fact", "event"], "factKey": "acquisition_or_disposal", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "debt_repayment", "informationTypes": ["fact", "event"], "factKey": "debt_repayment", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "share_repurchase", "informationTypes": ["fact", "guidance", "event"], "factKey": "share_repurchase", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "dividend", "informationTypes": ["fact", "guidance", "event"], "factKey": "cash_dividend", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "financing", "informationTypes": ["fact", "guidance", "event"], "factKey": "financing_or_dilution", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "share_issuance", "informationTypes": ["fact", "guidance", "event"], "factKey": "financing_or_dilution", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "stock_based_compensation", "informationTypes": ["fact", "event"], "factKey": "financing_or_dilution", "requiredFields": ["asOf", "valueNumber", "unit", "sourceAuthority", "reviewNote"] },
+    { "category": "capital_allocation_outcome", "informationTypes": ["fact", "event"], "factKey": "capital_allocation_outcome", "requiredFields": ["asOf", "valueText", "sourceAuthority", "reviewNote"] }
+  ]
+}

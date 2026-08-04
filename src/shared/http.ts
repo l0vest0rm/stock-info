@@ -11,6 +11,8 @@ export type ExternalHttpOptions = {
   timeoutMs?: number;
   cacheKey?: string;
   cacheTtlMs?: number;
+  /** Do not attempt to store a response larger than this D1-safe byte size. */
+  cacheMaxBytes?: number;
   resolveCacheTtlMs?: (response: { status: number; headers: Record<string, string>; text: string }) => number;
 };
 
@@ -90,16 +92,22 @@ export async function cachedFetchText(
   const finalCacheTtlMs = Number.isFinite(resolvedTtlMs) && resolvedTtlMs && resolvedTtlMs > 0
     ? resolvedTtlMs
     : cacheTtlMs;
-  await putHttpCache(db, {
-    cacheKey,
-    url,
-    method: request.method,
-    status,
-    headersJson: JSON.stringify(headers),
-    bodyText: text,
-    expiresAt: now + Math.max(1, finalCacheTtlMs),
-    updatedAt: now,
-  });
+  // A provider's bulk registry can legitimately exceed a D1 value limit.  It
+  // remains a successful source response, but must not turn into a failed
+  // request merely because this generic, small-object cache cannot hold it.
+  // Callers that need persistent large-object caching own an R2 contract.
+  if (!options?.cacheMaxBytes || new TextEncoder().encode(text).byteLength <= options.cacheMaxBytes) {
+    await putHttpCache(db, {
+      cacheKey,
+      url,
+      method: request.method,
+      status,
+      headersJson: JSON.stringify(headers),
+      bodyText: text,
+      expiresAt: now + Math.max(1, finalCacheTtlMs),
+      updatedAt: now,
+    });
+  }
   return text;
 }
 
@@ -239,7 +247,7 @@ export function externalHttpOptions(env: Partial<Bindings>): ExternalHttpOptions
   };
 }
 
-function shouldUseProxy(url: string, options?: ExternalHttpOptions): boolean {
+export function shouldUseProxy(url: string, options?: ExternalHttpOptions): boolean {
   if (!options?.proxyUrl || options.proxyEnabled === false) {
     return false;
   }

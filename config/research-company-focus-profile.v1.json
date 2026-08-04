@@ -1,0 +1,13 @@
+{
+  "version": "research-company-focus-profile.v1",
+  "roles": {
+    "key_driver": ["operating_model", "operating_driver_plan", "operating_source_fact", "industry_kpi_driver_binding"],
+    "specialty_kpi": ["operating_source_fact", "financial_specialty_fact"],
+    "product_customer_geography": ["operating_segment", "operating_source_fact", "risk_relationship"],
+    "thesis": ["research_thesis"],
+    "management_capital": ["governance_record", "governance_capital_fact"],
+    "event": ["research_catalyst"],
+    "risk_or_invalidation": ["research_risk", "risk_relationship", "research_thesis"],
+    "security_structure": ["market_structure_fact"]
+  }
+}

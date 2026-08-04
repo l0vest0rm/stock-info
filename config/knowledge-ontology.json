@@ -1,5 +1,5 @@
 {
-  "version": "information-organization-v2",
+  "version": "information-organization-v3",
   "entityTypes": ["company", "industry", "product", "model", "technology", "customer", "region", "topic"],
   "filterClassification": {
     "documentTypes": ["news", "announcement", "research_report", "industry_report", "other"],
@@ -40,8 +40,32 @@
       "investment": { "informationTypes": ["fact", "guidance", "event", "relationship"], "periodPolicy": "optional" },
       "regulatory_approval": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
       "regulatory_investigation": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "control_rights": { "informationTypes": ["fact", "event", "relationship"], "periodPolicy": "optional" },
+      "audit_opinion": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "regulatory_penalty": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "litigation": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "related_party_transaction": { "informationTypes": ["fact", "event", "relationship"], "periodPolicy": "optional" },
+      "executive_compensation": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "r_and_d_spending": { "informationTypes": ["fact", "guidance"], "periodPolicy": "required" },
+      "capital_expenditure": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "acquisition": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "asset_disposal": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "debt_repayment": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "share_issuance": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "stock_based_compensation": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
+      "capital_allocation_outcome": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
       "executive_change": { "informationTypes": ["fact", "event"], "periodPolicy": "optional" },
-      "policy_change": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" }
+      "policy_change": { "informationTypes": ["fact", "guidance", "event"], "periodPolicy": "optional" },
+      "net_interest_margin": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "loan_growth_rate": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "deposit_growth_rate": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "deposit_cost_rate": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "non_performing_loan_ratio": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "special_mention_loan_ratio": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "loan_loss_reserve_coverage_ratio": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "credit_cost_ratio": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "capital_adequacy_ratio": { "informationTypes": ["fact"], "periodPolicy": "required" },
+      "common_equity_tier1_capital_ratio": { "informationTypes": ["fact"], "periodPolicy": "required" }
     }
   }
 }

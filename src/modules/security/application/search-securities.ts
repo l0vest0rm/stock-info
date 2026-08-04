@@ -1,14 +1,13 @@
-import { fetchEastmoneySuggest, fetchYahooSuggest } from "../../../adapters/eastmoney";
+import { fetchEastmoneySuggest } from "../../../adapters/eastmoney";
 import { findSecurity, searchLocalSecurities, upsertSecurity } from "../../../db/queries";
 import { isSupportedSecurityCode, normalizeSecurityCode } from "../../../shared/codes";
 import type { ExternalHttpOptions } from "../../../shared/http";
 import type { SecurityRecord } from "../../../types";
-import { shouldSearchYahoo } from "../domain/search-query";
 
 export async function searchSecurities(
   db: D1Database,
   q: string,
-  options?: { httpOptions?: ExternalHttpOptions }
+  _options?: { httpOptions?: ExternalHttpOptions }
 ): Promise<SecurityRecord[]> {
   const trimmed = q.trim();
   if (!trimmed) {
@@ -20,21 +19,15 @@ export async function searchSecurities(
     eastmoneyError = err;
     return [] as SecurityRecord[];
   });
-  const yahooPromise = shouldSearchYahoo(trimmed)
-    ? fetchYahooSuggest(db, trimmed, options?.httpOptions).catch((err) => {
-        console.warn(`yahoo suggest unavailable for ${trimmed}:`, err);
-        return [] as SecurityRecord[];
-      })
-    : Promise.resolve([] as SecurityRecord[]);
-  const [remote, yahoo] = await Promise.all([eastmoneyPromise, yahooPromise]);
-  const merged = mergeSecurityResults(local, remote, yahoo);
+  const remote = await eastmoneyPromise;
+  const merged = mergeSecurityResults(local, remote);
   if (eastmoneyError) {
     if (merged.length === 0) {
       throw eastmoneyError;
     }
     console.warn(`eastmoney suggest unavailable for ${trimmed}:`, eastmoneyError);
   }
-  for (const item of [...remote, ...yahoo]) {
+  for (const item of remote) {
     await upsertSecurity(db, item);
   }
   return merged;
@@ -52,7 +45,7 @@ export async function getSecurity(
   }
   const query = normalized.split(".")[0] ?? normalized;
   const remote = await fetchEastmoneySuggest(db, query).catch(() => []);
-  const match = remote.find((item) => item.code === normalized) ?? remote[0] ?? null;
+  const match = remote.find((item) => normalizeSecurityCode(item.code) === normalized) ?? null;
   if (match) {
     await upsertSecurity(db, match);
   }

@@ -3,7 +3,8 @@ import { getAppKv, putAppKv } from "../../../db/queries";
 import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { fetchCninfoCompanyNotices, supportsCninfoCompanyNotices } from "../../../adapters/cninfo";
 import { loadKline } from "../../market/application/load-kline";
-import { loadFinancialStatements } from "../../finance/application/load-financial-statements";
+import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
+import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income-statements";
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
 import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
@@ -501,31 +502,14 @@ async function fetchCompanyReportPeOverview(c: Context<AppEnv>, code: string): P
 
 async function loadActualAnnualProfitByYear(c: Context<AppEnv>, code: string): Promise<Map<number, number>> {
   try {
-    const { rows } = await loadFinancialStatements(c.env, code, "income", {
+    const financials = await loadFinancialStatementReadModel(c.env, code, "income", {
       httpOptions: externalHttpOptions(c.env),
     });
-    const annual = new Map<number, { profit: number; months: Set<string> }>();
-    for (const row of rows) {
-      const payload = row.payload && typeof row.payload === "object" ? row.payload as Record<string, unknown> : {};
-      const reportDate = text(row.reportDate || payload.REPORT_DATE);
-      const month = reportDate.slice(5, 7);
-      const year = Number(reportDate.slice(0, 4));
-      const profit = numberOrUndefined(payload.PARENT_NETPROFIT ?? payload.parentNetprofit ?? payload.NETPROFIT ?? payload.netProfit);
-      if (!Number.isInteger(year) || !["03", "06", "09", "12"].includes(month) || profit === undefined) {
-        continue;
-      }
-      const current = annual.get(year) ?? { profit: 0, months: new Set<string>() };
-      if (!current.months.has(month)) {
-        current.profit += profit;
-        current.months.add(month);
-      }
-      annual.set(year, current);
-    }
-    return new Map(
-      [...annual]
-        .filter(([, value]) => value.months.size === 4)
-        .map(([year, value]) => [year, round2(value.profit / 100_000_000)]),
-    );
+    if (financials.sourceHealth.status === "failed") throw new Error(financials.sourceHealth.message ?? "financial source failed");
+    const { rows } = financials;
+    return new Map(selectAnnualIncomeStatements(rows)
+      .filter((statement) => statement.netProfit !== null)
+      .map((statement) => [statement.fiscalYear, round2(statement.netProfit! / 100_000_000)]));
   } catch (error) {
     console.warn("company report PE financials unavailable", {
       code: normalizeSecurityCode(code),

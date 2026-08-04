@@ -12,7 +12,8 @@ import {
   runSharedReportAnalysisTask,
   sharedReportAnalysisCacheKey,
 } from "../../company/application/report-analysis-cache";
-import { loadFinancialStatements } from "../../finance/application/load-financial-statements";
+import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
+import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income-statements";
 import { INFORMATION_PROCESSING_PROMPT_VERSION, processInformationDocument } from "../application/information-processing";
 import { listKnowledgeCompanyCodeMappings, refreshKnowledgeCompanyCodeMappings } from "../application/company-code-mappings";
 import type { AppEnv } from '../../../types';
@@ -980,52 +981,18 @@ async function loadKnowledgeActualAnnualFinancials(
   code: string,
   year: number,
 ): Promise<{ year: number; revenue: number | null; netProfit: number | null } | null> {
-  const { rows } = await loadFinancialStatements(env, code, "income", {
+  const financials = await loadFinancialStatementReadModel(env, code, "income", {
     httpOptions: externalHttpOptions(env),
   });
-  const quarters = new Map<string, { revenue: number | null; netProfit: number | null }>();
-  for (const row of rows) {
-    if (!row.reportDate.startsWith(`${year}-`) || !row.payload || typeof row.payload !== "object") {
-      continue;
-    }
-    const month = row.reportDate.slice(5, 7);
-    if (!["03", "06", "09", "12"].includes(month) || quarters.has(month)) {
-      continue;
-    }
-    const payload = row.payload as Record<string, unknown>;
-    quarters.set(month, {
-      revenue: firstFiniteNumber(payload.TOTAL_OPERATE_INCOME, payload.OPERATE_INCOME),
-      netProfit: firstFiniteNumber(payload.PARENT_NETPROFIT, payload.NETPROFIT),
-    });
-  }
-  if (quarters.size !== 4) {
-    return null;
-  }
+  if (financials.sourceHealth.status === "failed") throw new Error(financials.sourceHealth.message ?? "financial source failed");
+  const { rows } = financials;
+  const annual = selectAnnualIncomeStatements(rows).find((statement) => statement.fiscalYear === year);
+  if (!annual) return null;
   return {
     year,
-    revenue: sumAnnualFinancialMetric(quarters, "revenue"),
-    netProfit: sumAnnualFinancialMetric(quarters, "netProfit"),
+    revenue: annual.revenue === null ? null : roundKnowledgeMetric(annual.revenue / 100_000_000),
+    netProfit: annual.netProfit === null ? null : roundKnowledgeMetric(annual.netProfit / 100_000_000),
   };
-}
-
-function sumAnnualFinancialMetric(
-  quarters: Map<string, { revenue: number | null; netProfit: number | null }>,
-  field: "revenue" | "netProfit",
-): number | null {
-  const values = [...quarters.values()].map((item) => item[field]);
-  return values.every((value): value is number => value !== null && Number.isFinite(value))
-    ? roundKnowledgeMetric(values.reduce((sum, value) => sum + value, 0) / 100_000_000)
-    : null;
-}
-
-function firstFiniteNumber(...values: unknown[]): number | null {
-  for (const value of values) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return null;
 }
 
 function calculateKnowledgeReportPeg(

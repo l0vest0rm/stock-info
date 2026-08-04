@@ -36,6 +36,10 @@ export KNOWLEDGE_CONTENT_LOCAL_DIR="$CONTENT_DIR"
 export KNOWLEDGE_REPORT_CONVERTER_URL="${KNOWLEDGE_REPORT_CONVERTER_URL:-${CONTENT_BASE_URL%/}/__convert-report}"
 export KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY="${KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY:-2}"
 export KNOWLEDGE_REPORT_CONVERSION_CONCURRENCY="${KNOWLEDGE_REPORT_CONVERSION_CONCURRENCY:-2}"
+# The local converter is an explicit, narrow PDF allowlist.  CNINFO/HKEX are
+# statutory evidence registries only; this does not add a market-data source
+# or a production conversion path.
+export KNOWLEDGE_REPORT_CONVERTER_HOSTS="${KNOWLEDGE_REPORT_CONVERTER_HOSTS:-pdf.dfcfw.com,static.cninfo.com.cn,www1.hkexnews.hk}"
 
 WORKER_VARS=(
   --var "HTTP_PROXY_URL:$HTTP_PROXY_URL"

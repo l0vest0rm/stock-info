@@ -20,7 +20,7 @@
   ],
   "companyNav": [
     {"href": "company.html", "text": "股价表现"},
-    {"href": "company-research.html", "text": "研究工作台"},
+    {"href": "company-research.html", "text": "研究决策"},
     {"href": "company-trade.html", "text": "买卖建议"},
     {"href": "company-option.html", "text": "期权"},
     {"href": "company-option-theta.html", "text": "时间损耗"},

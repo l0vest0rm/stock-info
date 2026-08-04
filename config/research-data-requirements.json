@@ -1,0 +1,252 @@
+{
+  "version": "research-data-requirements.v1",
+  "sources": [
+    {
+      "sourceId": "company_security_ledger",
+      "label": "经营公司—证券关系账本",
+      "policy": "只接受有来源的确认/暂定关系；不得按名称推断。",
+      "statePath": "identity.mapping.state",
+      "observedAtPath": "identity.mapping.observedAt",
+      "conflictCountPath": "identity.mapping.conflictCount",
+      "maxAgeDays": 365
+    },
+    {
+      "sourceId": "issuer_rights_documents",
+      "label": "发行人/存托权利文件",
+      "policy": "A/H、ADR、股份类别与权利以发行人、交易所或存托文件为准。",
+      "statePath": "identity.rights.state",
+      "observedAtPath": "identity.rights.observedAt",
+      "conflictCountPath": "identity.rights.conflictCount",
+      "maxAgeDays": 365
+    },
+    {
+      "sourceId": "financial_primary",
+      "label": "主结构化财报源",
+      "policy": "A/H 使用 Eastmoney；美股使用 Yahoo（本地仅经配置代理）；不自动回退。",
+      "statePath": "financial.primary.state",
+      "observedAtPath": "financial.primary.observedAt",
+      "errorPath": "financial.primary.error",
+      "maxAgeDays": 190
+    },
+    {
+      "sourceId": "financial_statutory",
+      "label": "法定披露交叉核验",
+      "policy": "A 股 CNINFO、港股 HKEX、美股 SEC；仅用于同口径字段核验，不替代主结构化源。",
+      "statePath": "financial.statutory.state",
+      "observedAtPath": "financial.statutory.observedAt",
+      "conflictCountPath": "financial.statutory.conflictCount",
+      "maxAgeDays": 190
+    },
+    {
+      "sourceId": "issuer_operating_disclosure",
+      "label": "公司经营披露与已接受证据",
+      "policy": "经营字段必须保留披露或信息账本来源链，不能由叙述或模型自动填充。",
+      "statePath": "operating.model.state",
+      "observedAtPath": "operating.model.observedAt",
+      "maxAgeDays": 365
+    },
+    {
+      "sourceId": "industry_evidence",
+      "label": "行业边界、KPI 与同行证据",
+      "policy": "需要说明边界、期间、口径和可比性；未授权行业数据不冒充完整覆盖。",
+      "statePath": "industry.evidence.state",
+      "observedAtPath": "industry.evidence.observedAt",
+      "conflictCountPath": "industry.evidence.conflictCount",
+      "maxAgeDays": 365
+    },
+    {
+      "sourceId": "approved_forecast_material",
+      "label": "已审核来源预测材料",
+      "policy": "仅纳入可追溯、去重且口径确认的样本；机会样本不是市场一致预期。",
+      "statePath": "forecast.samples.state",
+      "observedAtPath": "forecast.samples.observedAt",
+      "maxAgeDays": 365
+    },
+    {
+      "sourceId": "valuation_ledger",
+      "label": "冻结估值/情景版本账本",
+      "policy": "版本保存的是当时输入与假设；新事实只创建待复核项，不改写历史模型。",
+      "statePath": "valuation.models.state",
+      "observedAtPath": "valuation.models.observedAt",
+      "conflictCountPath": "valuation.models.conflictCount",
+      "maxAgeDays": 365
+    },
+    {
+      "sourceId": "governance_evidence",
+      "label": "管理层、治理与资本配置证据",
+      "policy": "五维记录独立保存，不能压缩为单一评分。",
+      "statePath": "governance.records.state",
+      "observedAtPath": "governance.records.observedAt",
+      "maxAgeDays": 365
+    },
+    {
+      "sourceId": "risk_evidence",
+      "label": "命题、风险与复核证据",
+      "policy": "风险、反证、触发条件和复核期独立于价格与估值保存。",
+      "statePath": "risk.review.state",
+      "observedAtPath": "risk.review.observedAt",
+      "conflictCountPath": "risk.review.conflictCount",
+      "maxAgeDays": 365
+    },
+    {
+      "sourceId": "xueqiu_kline",
+      "label": "Xueqiu 股票行情序列",
+      "policy": "股票 K 线仅使用 Xueqiu；行情观察不构成经营事实或交易指令。",
+      "statePath": "market.kline.state",
+      "observedAtPath": "market.kline.observedAt",
+      "errorPath": "market.kline.error",
+      "maxAgeDays": 10
+    }
+  ],
+  "requirements": [
+    {
+      "requirementId": "company_security_identity",
+      "category": "公司与证券",
+      "label": "经营公司与具体上市证券关系",
+      "primarySources": ["company_security_ledger"],
+      "crossSources": ["issuer_rights_documents"],
+      "frequency": "首次确认；关系、重组、ADR 或股份类别变动时复核",
+      "epistemicType": "observed_fact",
+      "allOf": ["identity.mapping.state"],
+      "conflictPaths": ["identity.mapping.conflictCount"],
+      "asOfPath": "identity.mapping.observedAt",
+      "missingImpact": "不得混用多地上市、ADR 的价格、股本、币种或股东权利。",
+      "nextEvidence": "补充经营主体、上市证券及官方关系文件。"
+    },
+    {
+      "requirementId": "security_rights_and_share_class",
+      "category": "公司与证券",
+      "label": "股份类别、ADR 比例与持有人权利",
+      "primarySources": ["issuer_rights_documents"],
+      "crossSources": ["company_security_ledger"],
+      "frequency": "年报/存托协议更新、公司行动或权利变动时复核",
+      "epistemicType": "observed_fact",
+      "allOf": ["identity.rights.state"],
+      "conflictPaths": ["identity.rights.conflictCount"],
+      "asOfPath": "identity.rights.observedAt",
+      "missingImpact": "每证券价值、ADR 换算和权利风险结论保持不可得。",
+      "nextEvidence": "绑定当前有效的发行人、交易所或存托权利文件。"
+    },
+    {
+      "requirementId": "formal_financial_statements",
+      "category": "财务",
+      "label": "同口径三表与报告期间",
+      "primarySources": ["financial_primary"],
+      "crossSources": ["financial_statutory"],
+      "frequency": "季报、年报发布后；重述时立即复核",
+      "epistemicType": "observed_fact",
+      "allOf": ["financial.primary.state"],
+      "asOfPath": "financial.primary.observedAt",
+      "missingImpact": "增长、利润、现金、营运资本、偿债和资本效率不能作为完整基本面结论。",
+      "nextEvidence": "补齐收入、利润、现金流、权益和股本所在的同口径报表期间。"
+    },
+    {
+      "requirementId": "statutory_financial_cross_check",
+      "category": "财务",
+      "label": "关键财务字段法定交叉核验",
+      "primarySources": ["financial_primary"],
+      "crossSources": ["financial_statutory"],
+      "frequency": "每个纳入研究的财报期；差异或重述时立即复核",
+      "epistemicType": "observed_fact",
+      "allOf": ["financial.primary.state", "financial.statutory.state"],
+      "conflictPaths": ["financial.statutory.conflictCount"],
+      "asOfPath": "financial.statutory.observedAt",
+      "missingImpact": "财务质量、正式实际与估值前置事实保持受阻，不能以聚合值替代法定事实。",
+      "nextEvidence": "对收入、净利润、经营现金流、权益和稀释股数完成同口径 CNINFO/HKEX/SEC 核验。"
+    },
+    {
+      "requirementId": "business_model_and_drivers",
+      "category": "经营",
+      "label": "业务、分部、合同、单位经济与增长约束",
+      "primarySources": ["issuer_operating_disclosure"],
+      "crossSources": ["financial_primary"],
+      "frequency": "财报期、重大订单/产能/定价事件后复核",
+      "epistemicType": "observed_fact",
+      "allOf": ["operating.model.state"],
+      "asOfPath": "operating.model.observedAt",
+      "missingImpact": "不能把叙述、价格走势或 LLM 输出直接变成经营驱动或财务传导。",
+      "nextEvidence": "补充带来源的分部边界、合同/回款、单位经济和增长约束。"
+    },
+    {
+      "requirementId": "industry_market_kpi_and_peers",
+      "category": "行业与市场",
+      "label": "行业边界、KPI、市场空间、竞争与同行可比性",
+      "primarySources": ["industry_evidence"],
+      "crossSources": ["issuer_operating_disclosure", "financial_primary"],
+      "frequency": "行业 KPI 节奏、财报期与重大供需/政策变化后复核",
+      "epistemicType": "observed_fact",
+      "allOf": ["industry.evidence.state"],
+      "conflictPaths": ["industry.evidence.conflictCount"],
+      "asOfPath": "industry.evidence.observedAt",
+      "missingImpact": "TAM、份额、利润池、竞争优势与跨市场同行结论不能视为已验证。",
+      "nextEvidence": "明确市场边界和口径，补充公司暴露、KPI、同行排除理由及上下校验。"
+    },
+    {
+      "requirementId": "source_forecasts_and_guidance",
+      "category": "预测",
+      "label": "来源预测与管理层指引的可比样本",
+      "primarySources": ["approved_forecast_material"],
+      "crossSources": ["issuer_operating_disclosure", "financial_statutory"],
+      "frequency": "每份可使用材料发布、修订或实际结果发布后复核",
+      "epistemicType": "third_party_forecast",
+      "allOf": ["forecast.samples.state"],
+      "asOfPath": "forecast.samples.observedAt",
+      "missingImpact": "不生成未来业绩结论；零散或未审核材料不能称为市场一致预期。",
+      "nextEvidence": "在授权范围内导入材料，审核机构独立性、期间、币种、单位和会计口径。"
+    },
+    {
+      "requirementId": "valuation_and_security_value_inputs",
+      "category": "估值",
+      "label": "经营情景、资本结构、FX 与每证券价值输入",
+      "primarySources": ["valuation_ledger"],
+      "crossSources": ["financial_primary", "issuer_rights_documents"],
+      "frequency": "模型输入、价格、股本、FX、净债务或正式实际变化后复核",
+      "epistemicType": "analysis_assumption",
+      "allOf": ["valuation.models.state"],
+      "conflictPaths": ["valuation.models.conflictCount"],
+      "asOfPath": "valuation.models.observedAt",
+      "missingImpact": "不展示精确企业价值、股权价值或每证券价值；冻结版本也不等于当前结论。",
+      "nextEvidence": "保存来源绑定的经营情景、股本/ADR、FX、净债务及估值版本，并处理待复核项。"
+    },
+    {
+      "requirementId": "governance_and_capital_allocation",
+      "category": "治理",
+      "label": "管理层、治理、利益一致性与资本配置",
+      "primarySources": ["governance_evidence"],
+      "crossSources": ["issuer_operating_disclosure"],
+      "frequency": "年报、股东会、重大处罚、融资、并购、回购或管理层变动后复核",
+      "epistemicType": "observed_fact",
+      "allOf": ["governance.records.state"],
+      "asOfPath": "governance.records.observedAt",
+      "missingImpact": "不能以单一评分替代管理层可信度、控制权、激励和资本回报审查。",
+      "nextEvidence": "补充五维独立记录及其发行人、监管或可核验来源。"
+    },
+    {
+      "requirementId": "thesis_risk_and_review",
+      "category": "风险与复盘",
+      "label": "命题、反证、风险传导、触发与复核",
+      "primarySources": ["risk_evidence"],
+      "crossSources": ["issuer_operating_disclosure", "financial_statutory"],
+      "frequency": "事件触发；经营/财务至少按财报期；长期结构按里程碑复核",
+      "epistemicType": "system_judgment",
+      "allOf": ["risk.review.state"],
+      "conflictPaths": ["risk.review.conflictCount"],
+      "asOfPath": "risk.review.observedAt",
+      "missingImpact": "不能声称研究结论已完成；价格或估值不能掩盖风险、反证和复核缺口。",
+      "nextEvidence": "建立来源绑定的核心命题、风险暴露/传导、触发条件和复核日期。"
+    },
+    {
+      "requirementId": "market_price_context",
+      "category": "市场数据",
+      "label": "股票行情时间序列",
+      "primarySources": ["xueqiu_kline"],
+      "crossSources": [],
+      "frequency": "交易日更新；研究使用时记录数据截止日",
+      "epistemicType": "observed_fact",
+      "allOf": ["market.kline.state"],
+      "asOfPath": "market.kline.observedAt",
+      "missingImpact": "价格、估值分位和反向估值的市场输入保持不可得；不得换用其他股票 K 线来源。",
+      "nextEvidence": "恢复 Xueqiu 股票行情序列，并记录最新交易日。"
+    }
+  ]
+}

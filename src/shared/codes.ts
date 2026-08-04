@@ -76,6 +76,8 @@ export function securityMarket(code: string): string {
       return "cn-bj";
     case "HK":
       return "hk";
+    case "US":
+      return "us";
     case "OF":
       return "fund";
     case "UI":

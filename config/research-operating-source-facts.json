@@ -1,0 +1,13 @@
+{
+  "version": "research-operating-source-facts.v1",
+  "mappings": [
+    { "targetModule": "operating_driver", "targetField": "segment_volume", "factKinds": ["segment_volume"], "requiresNumericValue": true, "requiresUnit": true },
+    { "targetModule": "operating_driver", "targetField": "price_per_unit", "factKinds": ["unit_price"], "requiresNumericValue": true, "requiresUnit": true, "requiresCurrency": true },
+    { "targetModule": "operating_driver", "targetField": "capacity_utilization", "factKinds": ["capacity_utilization"], "requiresNumericValue": true, "requiresUnit": true },
+    { "targetModule": "operating_model", "targetField": "order_backlog", "factKinds": ["order_backlog"], "requiresNumericValue": false, "requiresUnit": false },
+    { "targetModule": "operating_model", "targetField": "contract_driver", "factKinds": ["contract_commitment"], "requiresNumericValue": false, "requiresUnit": false, "requiresCustomerOrChannel": true },
+    { "targetModule": "operating_model", "targetField": "customer_relationship", "factKinds": ["customer_relationship"], "requiresNumericValue": false, "requiresUnit": false, "requiresCustomerOrChannel": true },
+    { "targetModule": "operating_model", "targetField": "capacity_constraint", "factKinds": ["capacity_constraint"], "requiresNumericValue": false, "requiresUnit": false },
+    { "targetModule": "operating_model", "targetField": "growth_constraint", "factKinds": ["growth_constraint"], "requiresNumericValue": false, "requiresUnit": false }
+  ]
+}

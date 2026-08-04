@@ -1,0 +1,3 @@
+# Versioned security valuation models
+
+An interactive DCF calculator is not a durable valuation record.  A saved valuation model must therefore be immutable, attached to one listed security rather than only its operating company, and retain the inputs, accounting/FX/share-rights basis, calculation-rule version, source references, outputs and sensitivity axes that were visible at its as-of time.  Narrative valuation cases remain useful for method rationale and research discussion, but cannot substitute for the model chain.  This accepts duplicated references and explicit model versions so that A/H shares and ADRs cannot inherit an unconverted target price or silently refresh after data changes.

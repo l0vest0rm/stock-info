@@ -1,0 +1,26 @@
+{
+  "version": "research-information-evidence-mapping.v2",
+  "mappings": [
+    { "category": "shipment_volume", "informationTypes": ["fact", "guidance", "forecast"], "targetModule": "operating_driver", "targetField": "segment_volume", "requiredFields": ["operatingModelId", "operatingSegmentId", "fiscalYear"] },
+    { "category": "production_capacity", "informationTypes": ["fact", "guidance", "event"], "targetModule": "operating_model", "targetField": "capacity_constraint", "requiredFields": ["operatingModelId", "constraintDescription"] },
+    { "category": "capacity_utilization", "informationTypes": ["fact", "guidance", "forecast"], "targetModule": "operating_driver", "targetField": "capacity_utilization", "requiredFields": ["operatingModelId", "operatingSegmentId", "fiscalYear"] },
+    { "category": "order_backlog", "informationTypes": ["fact", "guidance", "forecast"], "targetModule": "operating_model", "targetField": "order_backlog", "requiredFields": ["operatingModelId", "operatingSegmentId", "periodBasis"] },
+    { "category": "contract_award", "informationTypes": ["fact", "event"], "targetModule": "operating_model", "targetField": "contract_driver", "requiredFields": ["operatingModelId", "operatingSegmentId", "customerOrChannel"] },
+    { "category": "project_signing", "informationTypes": ["fact", "event"], "targetModule": "operating_model", "targetField": "contract_driver", "requiredFields": ["operatingModelId", "operatingSegmentId", "customerOrChannel"] },
+    { "category": "customer_relationship", "informationTypes": ["fact", "relationship"], "targetModule": "operating_model", "targetField": "customer_relationship", "requiredFields": ["operatingModelId", "operatingSegmentId", "customerOrChannel"] },
+    { "category": "price_change", "informationTypes": ["fact", "guidance", "forecast"], "targetModule": "operating_driver", "targetField": "price_per_unit", "requiredFields": ["operatingModelId", "operatingSegmentId", "fiscalYear", "unit"] },
+    { "category": "market_share", "informationTypes": ["fact", "forecast", "opinion"], "targetModule": "market_space", "targetField": "market_share_bridge", "requiredFields": ["marketSpaceAssessmentId", "periodLabel", "shareType"] },
+    { "category": "capacity_expansion", "informationTypes": ["fact", "guidance", "event"], "targetModule": "operating_model", "targetField": "growth_constraint", "requiredFields": ["operatingModelId", "affectedDriver"] },
+    { "category": "investment", "informationTypes": ["event"], "statementIncludesAll": ["项目", "已实施完毕"], "targetModule": "operating_model", "targetField": "growth_constraint", "requiredFields": ["operatingModelId", "affectedDriver", "independent_capacity_or_delivery_evidence"] },
+    { "category": "net_interest_margin", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "net_interest_margin", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "loan_growth_rate", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "loan_growth_rate", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "deposit_growth_rate", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "deposit_growth_rate", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "deposit_cost_rate", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "deposit_cost_rate", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "non_performing_loan_ratio", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "non_performing_loan_ratio", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "special_mention_loan_ratio", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "special_mention_loan_ratio", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "loan_loss_reserve_coverage_ratio", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "loan_loss_reserve_coverage_ratio", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "credit_cost_ratio", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "credit_cost_ratio", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "capital_adequacy_ratio", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "capital_adequacy_ratio", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] },
+    { "category": "common_equity_tier1_capital_ratio", "informationTypes": ["fact"], "targetModule": "financial_specialty", "targetField": "common_equity_tier1_capital_ratio", "requiredFields": ["financialProfileId", "asOf", "definitionNote", "comparabilityNote"] }
+  ]
+}

@@ -81,6 +81,18 @@ test("marks invalid category/type and period-policy records for review", () => {
   assert.equal(nonSelfContainedStatement.outcome, "needs_review");
 });
 
+test("accepts direct bank specialty facts only with their required period", () => {
+  const bankMetric = record({
+    entity: "建设银行",
+    category: "net_interest_margin",
+    period: "2026H1",
+    statement: "建设银行2026年上半年净息差为1.40%。",
+  });
+  assert.equal(parseStructuredAnalysis(JSON.stringify({ records: [bankMetric] })).outcome, "extracted");
+  assert.equal(parseStructuredAnalysis(JSON.stringify({ records: [{ ...bankMetric, period: null }] })).outcome, "needs_review");
+  assert.equal(parseStructuredAnalysis(JSON.stringify({ records: [{ ...bankMetric, informationType: "guidance" }] })).outcome, "needs_review");
+});
+
 test("accepts supported simple periods and rejects malformed JSON", () => {
   for (const period of ["2026Q1", "截至2026-07-31", "最近3个月", "2026年上半年"]) {
     assert.equal(parseStructuredAnalysis(JSON.stringify({ records: [record({ period })] })).outcome, "extracted");

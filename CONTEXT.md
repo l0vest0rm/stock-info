@@ -101,9 +101,21 @@ _Avoid_: Ticker, listing venue, share class
 A specific tradable equity claim on an operating company, identified by venue, currency, share class, holder rights, and any depositary ratio.
 _Avoid_: Company, interchangeable A-share/H-share/ADR
 
+**Security-rights profile**:
+A dated, source-bound description of the rights held through one listed security, including holder structure, voting and economic rights, transferability, and depositary or structural terms where applicable. It belongs to the security, not to the operating company.
+_Avoid_: Implied parity across A/H shares, an ADR ratio without a source, generic company governance
+
+**Security-rights link**:
+An explicit, source-bound relationship between two distinct listed securities that have separately confirmed operating-company mappings. It records whether they are different listings of the same company or an ADR-to-underlying relationship, any stated ratio, and conversion availability; it never asserts price, liquidity, tax, or legal-right equivalence that its evidence does not establish.
+_Avoid_: Name-only merge, ticker-stem match, automatic target-price conversion
+
 **Investment analysis snapshot**:
 A dated assessment that combines an operating-company view with the market and rights of one listed security, while preserving evidence, assumptions, scenarios, valuation, risks, and gaps separately.
 _Avoid_: Timeless stock conclusion, source summary, trade order
+
+**Owner holding snapshot reference**:
+An immutable, owner-scoped link from an already configured holding profile for one listed security to one frozen public investment-analysis snapshot of that same security. It records the snapshot identity and link time without copying, editing, or feeding back into the holding profile or public research.
+_Avoid_: Trade order, cross-security parity assumption, mutable bookmark, a channel for personal position data to enter public research
 
 **Common analysis core**:
 The non-optional questions and evidence rules applied to every company, including business model, financial quality, capital allocation, valuation, risk, and data provenance.
@@ -112,6 +124,18 @@ _Avoid_: Universal score, generic checklist result
 **Financial analysis profile**:
 The common and business-model-specific financial measures, definitions, comparisons, and exception rules used to assess growth, profitability, cash conversion, balance-sheet safety, capital efficiency, and per-share value.
 _Avoid_: Universal ratio checklist, cross-industry fixed thresholds
+
+**Financial entity profile**:
+A dated, source-bound classification of an operating company as non-financial, bank, insurer, broker, or other financial business. It selects an applicable financial-analysis profile, but does not itself contain financial facts or permit a ticker/name-based inference. Missing or conflicting records leave the classification unknown and block measures that depend on non-financial operating assumptions.
+_Avoid_: Auto-classification from code/name, a generic sector tag, a source-free exemption
+
+**Financial specialty source fact**:
+An immutable, human-normalized direct disclosure for one configured bank, insurer, or broker metric, descended from an accepted information-preprocessing evidence reference and a current financial entity profile. It preserves the reported value, period, definition, scope, and source locator; it is not a score, peer comparison, scenario, valuation input, or investment conclusion.
+_Avoid_: Generic industrial KPI, inferred ratio, automated bank rating
+
+**U.S. reporting-period equivalence**:
+An immutable, local human-review record that relates one exact Yahoo primary financial-fact identity to one exact SEC filing fact when Yahoo's display period differs from the issuer's fiscal end. It retains both periods and all metric, unit, filing, and review evidence; it never alters Yahoo dates, replaces Yahoo values, or authorizes nearest-date matching.
+_Avoid_: Date tolerance, SEC fallback, inferred fiscal-calendar alignment
 
 **Valuation archetype**:
 The primary valuation approach selected from the company's main earnings and cash-flow mechanism, such as growth earnings, stable cash return, cycle-normalized earnings, financial capital, asset value, milestone value, or sum of parts.
@@ -124,6 +148,14 @@ _Avoid_: Industry profile, company fundamentals
 **Track research profile**:
 A versioned set of demand, supply, operating, cycle, valuation, and risk questions shared by companies in one primary business track.
 _Avoid_: Theme narrative, concept-stock template
+
+**Company track exposure**:
+An evidence-bound, versioned statement of how one operating company or its named business segment participates in one track research profile, including product, customer and geographic scope and any attributable share with its measurement period. It does not turn a theme tag into a primary business classification.
+_Avoid_: Concept tag, unreferenced industry label, company-wide share inferred from a segment name
+
+**Peer comparison set**:
+A dated, purpose-specific set of candidate peers for one operating company and one track profile. Each member records inclusion or exclusion, its comparability status, and any business-model, currency, accounting, fiscal-year, capital-intensity, cycle or security-rights adjustment.
+_Avoid_: Automatically ranked ticker list, universal competitor universe, unexplained cross-market multiple table
 
 **Relevant competitive market**:
 The dated product, customer, geographic, and use-case boundary within which competitors, substitutes, market shares, and pricing are meaningfully comparable.
@@ -144,6 +176,14 @@ _Avoid_: Permanent moat, unbounded terminal advantage
 **Company focus profile**:
 An optional, evidence-backed set of drivers, metrics, theses, events, and invalidations maintained for an important company in addition to the common, market, and track analysis.
 _Avoid_: Free-form company introduction, exception that removes evidence requirements
+
+**Focus membership**:
+A private, owner-scoped, append-only selection of an operating company for additional research attention. It is shared across that company's A/H/ADR securities but contains no holding, rationale, public fact, or investment conclusion.
+_Avoid_: Public watchlist, position record, company analysis status
+
+**Public company focus profile**:
+A versioned public `system_judgment` reference graph that selects existing source-gated research ledger records for an operating company. It may be snapshotted, but never includes an owner's focus membership or personal note.
+_Avoid_: Copied KPI/risk/event narrative, personal research reason, second factual ledger
 
 **Research thesis**:
 A falsifiable proposition connecting observable business drivers to a company's financial outcome over a stated period.
@@ -172,6 +212,14 @@ _Avoid_: Market revenue, target company's net profit
 **Valuation scenario**:
 One explicit set of operating assumptions, forecast results, and valuation inputs for a stated period, normally identified as downside, base, or upside.
 _Avoid_: Unattributed consensus, single target price
+
+**Self-built operating scenario**:
+A versioned, researcher-owned chain of explicit starting conditions and annual operating assumptions that deterministically derives revenue, operating profit, cash flow, working-capital movement, and forecast debt balances. It may cite evidence that motivates an assumption, but it never imports a source forecast, forecast consolidation, local-model draft, or later actual as its own output.
+_Avoid_: Analyst consensus, copied forecast table, actual result, mutable calculator state
+
+**Valuation input projection**:
+The reproducible DCF-ready annual forecast and valuation-input set derived from exactly one self-built operating scenario. It records the scenario identity and version, retains the explicit as-of net-debt bridge separately from forecast debt balances, and is an input to an immutable valuation-model version rather than a source forecast or a valuation conclusion.
+_Avoid_: Market consensus, source forecast normalization, automatic target price
 
 **Invalidation condition**:
 An observable event or metric threshold that requires a research thesis or valuation assumption to be re-examined.
@@ -225,6 +273,14 @@ _Avoid_: Average completion percentage, investment rating
 A comparison between a versioned management, third-party, or analyst-built forecast and the later actual result on a comparable basis, including forecast date, error, and driver deviation.
 _Avoid_: Latest forecast only, hindsight-adjusted prediction
 
+**Formal actual**:
+A dated value reported in a formal filing or official financial disclosure, retained with its raw unit, normalized comparison form, accounting bases, filing reference, and revision lineage. It is an observed fact, not a source forecast or an analyst adjustment.
+_Avoid_: Screened estimate, live market-data field, reconstructed actual
+
+**Restated actual**:
+A new formal actual that explicitly supersedes an earlier reported value for the same metric and period. It remains visible as a revision, but it blocks forecast-error statistics until comparability is explicitly re-established.
+_Avoid_: Quietly overwriting the original actual, ordinary source refresh
+
 **Source forecast**:
 One dated, attributable forward estimate made by a third-party research source for a defined company, metric, period, and accounting basis. Management forward statements remain guidance.
 _Avoid_: Management guidance, fact, current result, consensus
@@ -241,6 +297,26 @@ _Avoid_: Market consensus, new third-party forecast, self-built scenario
 A forecast consolidation whose declared source universe and coverage rules support a claim of broad market coverage. It is unavailable for an opportunistic or incomplete collection of reports.
 _Avoid_: Multi-report summary, latest analyst estimate
 
+**Research subject mapping**:
+An evidenced relationship between one operating company and one listed security. Until confirmed, company-level sharing and cross-listed comparison remain unavailable even when the ticker or company name appears obvious.
+_Avoid_: Ticker-as-company identity, name-only merge
+
+**Forecast source review**:
+A recorded decision that a source-bound forecast candidate is included, excluded, or still needs review, together with its reason and the current immutable source-forecast version.
+_Avoid_: Silent filtering, model auto-approval
+
 **Financial-statement source policy**:
 The market-specific primary structured source for financial statements—Eastmoney for A-shares and Hong Kong shares, Yahoo for U.S. shares—paired with the relevant statutory filing as the verification source. It does not permit automatic fallback between providers.
 _Avoid_: Interchangeable finance-provider fallback, statutory filing substitute
+
+**Research workflow**:
+The ordered research process that first confirms the operating-company/security mapping and factual coverage, then develops operating assumptions and security valuation, and finally records falsification, review and private follow-up. A blocked earlier step prevents a stronger later conclusion.
+_Avoid_: Dashboard section order, completion percentage, automatic trade workflow
+
+**Typed research record**:
+A dated, versioned entry for one research domain that uses domain-specific fields and declares its epistemic type and source references where required. It is not a free-form JSON blob or an overwrite of historical analysis.
+_Avoid_: Generic note, raw JSON editor, mutable current-state field
+
+**Valuation model version**:
+An immutable, security-specific calculation record containing its declared operating inputs, calculation rule version, source references, FX/share-rights assumptions, outputs, and sensitivity axes at one as-of time. It is distinct from a narrative valuation case and may not silently refresh from later facts.
+_Avoid_: Editable calculator state, timeless target price, company-level value reused across securities

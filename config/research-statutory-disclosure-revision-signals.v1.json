@@ -1,0 +1,15 @@
+{
+  "version": "statutory-filing-revision.v1",
+  "registries": {
+    "cninfo": {
+      "include": ["更正后", "更正公告", "更正及补充", "修订后", "修订版"],
+      "exclude": ["公司章程", "募集说明书", "股东大会", "提示性公告", "澄清公告"],
+      "periodPatterns": ["(20\\d{2})年(?:第?([一二三]|[1-3])季度|半年度|年度)报告"]
+    },
+    "hkex": {
+      "include": ["amended", "amendment", "revised", "restated"],
+      "exclude": ["memorandum", "articles of association", "clarification announcement"],
+      "periodPatterns": ["(20\\d{2}).{0,40}(annual report|interim report|quarterly report|results)"]
+    }
+  }
+}

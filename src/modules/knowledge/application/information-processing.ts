@@ -10,7 +10,7 @@ import type { Bindings } from "../../../types";
 const MODEL = "gpt-5.6-luna" as const;
 const MAX_OUTPUT_TOKENS = 2500;
 const SCHEMA_VERSION = "information-records-v1";
-export const INFORMATION_PROCESSING_PROMPT_VERSION = "information-processing-v17";
+export const INFORMATION_PROCESSING_PROMPT_VERSION = "information-processing-v18";
 const ONTOLOGY_VERSION = ontologyConfig.version;
 
 type InformationType = "fact" | "guidance" | "forecast" | "opinion" | "event" | "relationship";
