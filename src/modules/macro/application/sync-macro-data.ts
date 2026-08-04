@@ -81,8 +81,13 @@ export async function syncMacroData(env: Bindings, scheduledTime = Date.now()): 
         sourceId: "hkma",
         displayName: "Hong Kong Monetary Authority",
         run: async () => {
-          const adapter = new HkmaOpenApiAdapter();
-          return await Promise.all([
+          // Use the same controlled fetch path as the other official sources.
+          // In local Wrangler this is the allow-listed relay; in production it
+          // remains the Worker fetch implementation.  Constructing HKMA with
+          // the global fetch bypassed that boundary and made its health depend
+          // on the local Worker network stack rather than the source itself.
+          const adapter = new HkmaOpenApiAdapter(upstreamFetch);
+          const settled = await Promise.allSettled([
             adapter.load({
               dataset: "market-data-and-statistics/monthly-statistical-bulletin/er-ir/er-eeri-daily",
               fields: [
@@ -99,6 +104,17 @@ export async function syncMacroData(env: Bindings, scheduledTime = Date.now()): 
               ],
             }),
           ]);
+          const results = settled.flatMap((item) => item.status === "fulfilled" ? [item.value] : []);
+          const failures = settled.flatMap((item) => item.status === "rejected" ? [item.reason instanceof Error ? item.reason.message : String(item.reason)] : []);
+          if (results.length === 0) throw settled.find((item) => item.status === "rejected")?.reason;
+          if (failures.length === 0) return results;
+          // One HKMA endpoint must not discard usable observations from the
+          // other. Persist the successful component and surface a degraded
+          // source state with the failed component's reason.
+          return results.map((result, index) => index === 0 ? {
+            ...result,
+            health: { ...result.health, state: "degraded", message: failures.join("; ") },
+          } : result);
         },
       },
     ];
@@ -155,7 +171,8 @@ export async function syncMacroData(env: Bindings, scheduledTime = Date.now()): 
         for (const result of results) written += await persistAdapterResult(repository, result, scheduledTime);
         stats.sourcesSucceeded += 1;
         stats.observationsWritten += written;
-        await repository.putSourceHealth(successHealth(task.sourceId, task.displayName, attemptedAt, Date.now(), written));
+        const degraded = results.find((item) => item.health.state === "degraded");
+        await repository.putSourceHealth(successHealth(task.sourceId, task.displayName, attemptedAt, Date.now(), written, degraded ? "degraded" : "healthy", degraded?.health.message ?? null));
       } catch (err) {
         const mapped = err instanceof MacroSourceError ? sourceHealthFromError(err) : null;
         const previous = previousHealth.get(task.sourceId);
@@ -241,8 +258,8 @@ function toDomainSeries(item: ConfiguredSeries, now: number): MacroSeries {
   };
 }
 
-function successHealth(sourceId: string, displayName: string, startedAt: number, finishedAt: number, observations: number): MacroSourceHealth {
-  return { sourceId, displayName, state: "healthy", lastAttemptAt: startedAt, lastSuccessAt: finishedAt, consecutiveFailures: 0, lastError: null, nextRetryAt: null, latencyMs: finishedAt - startedAt, metadata: { observations }, updatedAt: finishedAt };
+function successHealth(sourceId: string, displayName: string, startedAt: number, finishedAt: number, observations: number, state: "healthy" | "degraded" = "healthy", message: string | null = null): MacroSourceHealth {
+  return { sourceId, displayName, state, lastAttemptAt: startedAt, lastSuccessAt: finishedAt, consecutiveFailures: 0, lastError: message, nextRetryAt: null, latencyMs: finishedAt - startedAt, metadata: { observations }, updatedAt: finishedAt };
 }
 
 function failedHealth(sourceId: string, displayName: string, err: unknown, mapped: AdapterSourceHealth | null, previous: MacroSourceHealth | undefined, attemptedAt: number): MacroSourceHealth {
@@ -280,8 +297,8 @@ function dateYearsAgo(years: number): string {
 }
 
 function isoDate(timestamp: number): string { return new Date(timestamp).toISOString().slice(0, 10); }
-function releaseImportance(name: string): "low" | "medium" | "high" {
-  return /(Consumer Price|Employment Situation|Gross Domestic Product|FOMC|Personal Income)/i.test(name) ? "high" : /(Producer Price|Industrial Production|Retail Sales|Job Openings)/i.test(name) ? "medium" : "low";
+function releaseImportance(name: string): "medium" | "high" | "unclassified" {
+  return /(Consumer Price|Employment Situation|Gross Domestic Product|FOMC|Personal Income)/i.test(name) ? "high" : /(Producer Price|Industrial Production|Retail Sales|Job Openings)/i.test(name) ? "medium" : "unclassified";
 }
 
 async function startJob(db: D1Database, jobId: string, startedAt: number): Promise<void> {

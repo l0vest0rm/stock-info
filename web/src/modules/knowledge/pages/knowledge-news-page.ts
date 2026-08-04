@@ -387,13 +387,24 @@ function knowledgeNewsAnalysisStatus(row: KnowledgeNewsTableRow) {
   if (!row.analysisCalled) {
     return h('span', { class: 'text-warning', title: '没有可供模型分析的研报正文' }, '无正文')
   }
-  if (row.forecasts.length === 0) {
+  if (!knowledgeNewsHasForecastMetrics(row.forecasts)) {
     return h('span', { class: 'text-muted', title: '研报正文中没有明确的未来年度公司业绩预测' }, '已分析·无年度预测')
   }
   return h('span', {
     class: 'text-success',
     title: row.latestPrice === null ? '' : `当前价格 ${row.latestPrice.toFixed(2)}`,
   }, '已调用')
+}
+
+function knowledgeNewsHasForecastMetrics(forecasts: KnowledgeNewsTableRow['forecasts']): boolean {
+  return forecasts.some((forecast) => [
+    forecast.revenue,
+    forecast.revenue_growth,
+    forecast.net_profit,
+    forecast.profit_growth,
+    forecast.current_pe,
+    forecast.peg,
+  ].some((value) => value !== null && Number.isFinite(value)))
 }
 
 function knowledgeNewsSelectedTagText(options: KnowledgeNewsFilterOption[], selectedTags: string[]) {

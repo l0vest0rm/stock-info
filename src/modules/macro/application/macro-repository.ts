@@ -1,4 +1,5 @@
 import type {
+  MacroAlertHistoryEntry,
   MacroEvent,
   MacroObservationVintage,
   MacroSeries,
@@ -75,38 +76,22 @@ export class D1MacroRepository {
 
   async putObservationVintages(observations: readonly MacroObservationVintage[]): Promise<void> {
     if (observations.length === 0) return;
-    const sql = `insert into macro_observation_vintages
-      (series_id, observation_date, released_at, vintage_at, revision_number,
-       value, consensus, previous_value, is_preliminary, quality_status,
-       source_url, raw_r2_key, observed_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     on conflict(series_id, observation_date, vintage_at) do update set
-       released_at = excluded.released_at,
-       revision_number = excluded.revision_number,
-       value = excluded.value,
-       consensus = excluded.consensus,
-       previous_value = excluded.previous_value,
-       is_preliminary = excluded.is_preliminary,
-       quality_status = excluded.quality_status,
-       source_url = excluded.source_url,
-       raw_r2_key = excluded.raw_r2_key,
-       observed_at = excluded.observed_at`;
-    for (let offset = 0; offset < observations.length; offset += 100) {
-      await this.db.batch(observations.slice(offset, offset + 100).map((item) => this.db.prepare(sql).bind(
-        item.seriesId,
-        item.observationDate,
-        item.releasedAt,
-        item.vintageAt,
-        item.revisionNumber,
-        item.value,
-        item.consensus,
-        item.previousValue,
-        item.isPreliminary ? 1 : 0,
-        item.qualityStatus,
-        item.sourceUrl,
-        item.rawR2Key,
-        item.observedAt
-      )));
+    const grouped = new Map<string, MacroObservationVintage[]>();
+    for (const item of observations) {
+      const group = grouped.get(item.seriesId);
+      if (group) group.push(item);
+      else grouped.set(item.seriesId, [item]);
+    }
+    for (const [seriesId, additions] of grouped) {
+      const history = await this.loadHistory(seriesId);
+      const byVintage = new Map(history.map((item) => [`${item.observationDate}:${item.vintageAt}`, item]));
+      for (const item of additions) byVintage.set(`${item.observationDate}:${item.vintageAt}`, item);
+      const merged = [...byVintage.values()].sort((left, right) => left.observationDate.localeCompare(right.observationDate) || left.vintageAt - right.vintageAt);
+      await this.db.prepare(
+        `insert into macro_series_history (series_id, vintages_json, updated_at)
+         values (?, ?, ?)
+         on conflict(series_id) do update set vintages_json = excluded.vintages_json, updated_at = excluded.updated_at`
+      ).bind(seriesId, compactHistory(merged), Math.max(...merged.map((item) => item.observedAt))).run();
     }
   }
 
@@ -114,33 +99,25 @@ export class D1MacroRepository {
     seriesId: string,
     options: { from?: string; to?: string; asOf?: number; includeAllVintages?: boolean } = {}
   ): Promise<MacroObservationVintage[]> {
-    const clauses = ["series_id = ?"];
-    const bindings: unknown[] = [seriesId];
-    if (options.from) {
-      clauses.push("observation_date >= ?");
-      bindings.push(options.from);
+    const filtered = (await this.loadHistory(seriesId)).filter((item) =>
+      (!options.from || item.observationDate >= options.from)
+      && (!options.to || item.observationDate <= options.to)
+      && (options.asOf === undefined || item.vintageAt <= options.asOf)
+    );
+    if (options.includeAllVintages) return filtered.sort(compareVintage);
+    const latestByPeriod = new Map<string, MacroObservationVintage>();
+    for (const item of filtered) {
+      const current = latestByPeriod.get(item.observationDate);
+      if (!current || item.vintageAt > current.vintageAt) latestByPeriod.set(item.observationDate, item);
     }
-    if (options.to) {
-      clauses.push("observation_date <= ?");
-      bindings.push(options.to);
-    }
-    if (options.asOf !== undefined) {
-      clauses.push("vintage_at <= ?");
-      bindings.push(options.asOf);
-    }
-    const where = clauses.join(" and ");
-    const ranked = `select series_id as seriesId, observation_date as observationDate,
-      released_at as releasedAt, vintage_at as vintageAt, revision_number as revisionNumber,
-      value, consensus, previous_value as previousValue, is_preliminary as isPreliminary,
-      quality_status as qualityStatus, source_url as sourceUrl, raw_r2_key as rawR2Key,
-      observed_at as observedAt,
-      row_number() over (partition by series_id, observation_date order by vintage_at desc) as vintageRank
-     from macro_observation_vintages where ${where}`;
-    const query = options.includeAllVintages
-      ? `select * from (${ranked}) order by observationDate, vintageAt`
-      : `select * from (${ranked}) where vintageRank = 1 order by observationDate`;
-    const result = await this.db.prepare(query).bind(...bindings).all<ObservationRow>();
-    return (result.results ?? []).map(mapObservationRow);
+    return [...latestByPeriod.values()].sort(compareVintage);
+  }
+
+  private async loadHistory(seriesId: string): Promise<MacroObservationVintage[]> {
+    const result = await this.db.prepare(
+      "select vintages_json as vintagesJson from macro_series_history where series_id = ?"
+    ).bind(seriesId).first<HistoryRow>();
+    return result ? parseHistory(result.vintagesJson, seriesId) : [];
   }
 
   async upsertEvent(event: MacroEvent): Promise<void> {
@@ -263,17 +240,51 @@ export class D1MacroRepository {
       displayOptions: parseObject(row.displayOptionsJson),
     }));
   }
+
+  async recordAlertHistory(entry: Omit<MacroAlertHistoryEntry, "alertId">): Promise<boolean> {
+    const result = await this.db.prepare(
+      `insert into macro_alert_history
+        (owner_key, series_id, observation_date, observation_vintage_at,
+         observed_at, value, rule_operator, rule_threshold, source_url,
+         notification_state, notification_detail, evaluated_at, metadata_json)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       on conflict(owner_key, series_id, observation_date, observation_vintage_at, rule_operator, rule_threshold)
+       do nothing`
+    ).bind(
+      entry.ownerKey, entry.seriesId, entry.observationDate,
+      entry.observationVintageAt, entry.observedAt, entry.value,
+      entry.ruleOperator, entry.ruleThreshold, entry.sourceUrl,
+      entry.notificationState, entry.notificationDetail, entry.evaluatedAt,
+      JSON.stringify(entry.metadata)
+    ).run();
+    return (result.meta.changes ?? 0) > 0;
+  }
+
+  async listAlertHistory(ownerKey: string, limit = 20): Promise<MacroAlertHistoryEntry[]> {
+    const result = await this.db.prepare(
+      `select alert_id as alertId, owner_key as ownerKey, series_id as seriesId,
+        observation_date as observationDate, observation_vintage_at as observationVintageAt,
+        observed_at as observedAt, value, rule_operator as ruleOperator,
+        rule_threshold as ruleThreshold, source_url as sourceUrl,
+        notification_state as notificationState, notification_detail as notificationDetail,
+        evaluated_at as evaluatedAt, metadata_json as metadataJson
+       from macro_alert_history where owner_key = ?
+       order by evaluated_at desc, alert_id desc limit ?`
+    ).bind(ownerKey, limit).all<AlertHistoryRow>();
+    return (result.results ?? []).map((row) => ({ ...row, metadata: parseObject(row.metadataJson) }));
+  }
 }
 
 type SeriesRow = Omit<MacroSeries, "transmissions" | "regions" | "metadata" | "enabled"> & {
   transmissionsJson: string; regionsJson: string; metadataJson: string; enabled: number;
 };
-type ObservationRow = Omit<MacroObservationVintage, "isPreliminary"> & { isPreliminary: number; vintageRank: number };
 type EventRow = Omit<MacroEvent, "metadata"> & { metadataJson: string };
 type SourceHealthRow = Omit<MacroSourceHealth, "metadata"> & { metadataJson: string };
 type UserWatchRow = Omit<MacroUserWatchConfig, "enabled" | "alertRules" | "displayOptions"> & {
   enabled: number; alertRulesJson: string; displayOptionsJson: string;
 };
+type AlertHistoryRow = Omit<MacroAlertHistoryEntry, "metadata"> & { metadataJson: string };
+type HistoryRow = { vintagesJson: string };
 
 function mapSeriesRow(row: SeriesRow): MacroSeries {
   return {
@@ -285,13 +296,106 @@ function mapSeriesRow(row: SeriesRow): MacroSeries {
   };
 }
 
-function mapObservationRow(row: ObservationRow): MacroObservationVintage {
-  const { vintageRank: _vintageRank, ...observation } = row;
-  return { ...observation, isPreliminary: Boolean(row.isPreliminary) };
-}
-
 function mapEventRow(row: EventRow): MacroEvent {
   return { ...row, metadata: parseObject(row.metadataJson) };
+}
+
+function compareVintage(left: MacroObservationVintage, right: MacroObservationVintage): number {
+  return left.observationDate.localeCompare(right.observationDate) || left.vintageAt - right.vintageAt;
+}
+
+function parseHistory(value: string, seriesId: string): MacroObservationVintage[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (isCompactHistory(parsed)) {
+      return parsed.o.flatMap((item) => expandCompactVintage(item, seriesId, parsed.u, parsed.r));
+    }
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (Array.isArray(item)) return expandCompactVintage(item, seriesId);
+      if (!item || typeof item !== "object") return [];
+      const row = item as Record<string, unknown>;
+      const number = (key: string) => typeof row[key] === "number" && Number.isFinite(row[key]) ? row[key] : null;
+      const text = (key: string) => typeof row[key] === "string" ? row[key] : null;
+      const observationDate = text("observationDate");
+      const releasedAt = number("releasedAt"); const vintageAt = number("vintageAt");
+      const revisionNumber = number("revisionNumber"); const observation = number("value"); const observedAt = number("observedAt");
+      if (!observationDate || releasedAt === null || vintageAt === null || revisionNumber === null || observation === null || observedAt === null) return [];
+      return [{
+        seriesId, observationDate, releasedAt, vintageAt, revisionNumber, value: observation,
+        consensus: number("consensus"), previousValue: number("previousValue"),
+        isPreliminary: row.isPreliminary === true || row.isPreliminary === 1,
+        qualityStatus: row.qualityStatus === "suspect" || row.qualityStatus === "missing" ? row.qualityStatus : "valid",
+        sourceUrl: text("sourceUrl"), rawR2Key: text("rawR2Key"), observedAt,
+      } satisfies MacroObservationVintage];
+    });
+  } catch { return []; }
+}
+
+type CompactHistory = { v: 1; u: string[]; r: string[]; o: unknown[][] };
+
+function isCompactHistory(value: unknown): value is CompactHistory {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const snapshot = value as Record<string, unknown>;
+  return snapshot.v === 1 && Array.isArray(snapshot.u) && snapshot.u.every((item) => typeof item === "string")
+    && Array.isArray(snapshot.r) && snapshot.r.every((item) => typeof item === "string")
+    && Array.isArray(snapshot.o) && snapshot.o.every(Array.isArray);
+}
+
+function compactHistory(observations: readonly MacroObservationVintage[]): string {
+  const urls = uniqueText(observations.map((item) => item.sourceUrl));
+  const rawR2Keys = uniqueText(observations.map((item) => item.rawR2Key));
+  const urlIndexes = new Map(urls.map((item, index) => [item, index]));
+  const rawR2KeyIndexes = new Map(rawR2Keys.map((item, index) => [item, index]));
+  return JSON.stringify({
+    v: 1,
+    u: urls,
+    r: rawR2Keys,
+    o: observations.map((item) => compactVintage(item, urlIndexes, rawR2KeyIndexes)),
+  } satisfies CompactHistory);
+}
+
+function uniqueText(values: readonly (string | null)[]): string[] {
+  return [...new Set(values.filter((item): item is string => typeof item === "string"))].sort();
+}
+
+function compactVintage(
+  item: MacroObservationVintage,
+  urlIndexes: ReadonlyMap<string, number>,
+  rawR2KeyIndexes: ReadonlyMap<string, number>
+): unknown[] {
+  return [item.observationDate, item.releasedAt, item.vintageAt, item.revisionNumber, item.value,
+    item.consensus, item.previousValue, item.isPreliminary ? 1 : 0, qualityCode(item.qualityStatus),
+    item.sourceUrl === null ? null : urlIndexes.get(item.sourceUrl) ?? null,
+    item.rawR2Key === null ? null : rawR2KeyIndexes.get(item.rawR2Key) ?? null, item.observedAt];
+}
+
+function expandCompactVintage(
+  row: unknown[], seriesId: string, urls?: readonly string[], rawR2Keys?: readonly string[]
+): MacroObservationVintage[] {
+  const number = (index: number) => typeof row[index] === "number" && Number.isFinite(row[index]) ? row[index] : null;
+  const nullableNumber = (index: number) => row[index] === null ? null : number(index);
+  const text = (index: number) => typeof row[index] === "string" ? row[index] : null;
+  const indexedText = (index: number, dictionary: readonly string[] | undefined) => {
+    if (!dictionary) return text(index);
+    if (row[index] === null) return null;
+    const dictionaryIndex = number(index);
+    return dictionaryIndex !== null && Number.isInteger(dictionaryIndex) ? dictionary[dictionaryIndex] ?? null : null;
+  };
+  const observationDate = text(0); const releasedAt = number(1); const vintageAt = number(2); const revisionNumber = number(3); const value = number(4); const observedAt = number(11);
+  if (!observationDate || releasedAt === null || vintageAt === null || revisionNumber === null || value === null || observedAt === null) return [];
+  return [{ seriesId, observationDate, releasedAt, vintageAt, revisionNumber, value,
+    consensus: nullableNumber(5), previousValue: nullableNumber(6), isPreliminary: row[7] === true || row[7] === 1,
+    qualityStatus: decodeQuality(row[8]),
+    sourceUrl: indexedText(9, urls), rawR2Key: indexedText(10, rawR2Keys), observedAt }];
+}
+
+function qualityCode(value: MacroObservationVintage["qualityStatus"]): number {
+  return value === "suspect" ? 1 : value === "missing" ? 2 : 0;
+}
+
+function decodeQuality(value: unknown): MacroObservationVintage["qualityStatus"] {
+  return value === 1 || value === "suspect" ? "suspect" : value === 2 || value === "missing" ? "missing" : "valid";
 }
 
 function parseArray(value: string): unknown[] {

@@ -1,4 +1,4 @@
-const SHARED_REPORT_ANALYSIS_CACHE_VERSION = "v1";
+const SHARED_REPORT_ANALYSIS_CACHE_VERSION = "v5";
 const sharedReportAnalysisInFlight = new Map<string, Promise<void>>();
 
 export function eastmoneyReportInfoCode(...values: unknown[]): string {

@@ -39,7 +39,9 @@ export type MacroEvent = {
   eventId: string;
   scheduledAt: number;
   region: string;
-  importance: "low" | "medium" | "high";
+  // "unclassified" is deliberate: a source title alone is not enough to
+  // infer market importance. Profiles may promote it after verification.
+  importance: "low" | "medium" | "high" | "unclassified";
   title: string;
   seriesId: string | null;
   actual: number | null;
@@ -76,6 +78,24 @@ export type MacroUserWatchConfig = {
   displayOptions: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
+};
+
+/** A persisted threshold match. It records the exact data vintage evaluated. */
+export type MacroAlertHistoryEntry = {
+  alertId: number;
+  ownerKey: string;
+  seriesId: string;
+  observationDate: string;
+  observationVintageAt: number;
+  observedAt: number;
+  value: number;
+  ruleOperator: "gte" | "lte";
+  ruleThreshold: number;
+  sourceUrl: string | null;
+  notificationState: "not_configured";
+  notificationDetail: string | null;
+  evaluatedAt: number;
+  metadata: Record<string, unknown>;
 };
 
 export type DatedValue = { date: string; value: number };

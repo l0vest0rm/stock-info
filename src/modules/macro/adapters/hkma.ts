@@ -16,7 +16,11 @@ export type HkmaRequest = {
 export class HkmaOpenApiAdapter implements MacroSourceAdapter<HkmaRequest> {
   readonly sourceId = SOURCE_ID;
 
-  constructor(private readonly fetcher: MacroFetch = fetch, private readonly timeoutMs = 7_000) {}
+  constructor(
+    private readonly fetcher: MacroFetch = fetch,
+    private readonly timeoutMs = 12_000,
+    private readonly maxAttempts = 2,
+  ) {}
 
   async load(request: HkmaRequest): Promise<MacroAdapterResult> {
     if (!/^[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(request.dataset) || request.fields.length === 0) {
@@ -26,7 +30,7 @@ export class HkmaOpenApiAdapter implements MacroSourceAdapter<HkmaRequest> {
     url.searchParams.set("lang", "en");
     url.searchParams.set("offset", String(request.offset ?? 0));
     const sourceUrl = url.toString();
-    const payload = await fetchJson(SOURCE_ID, this.fetcher, sourceUrl, this.timeoutMs);
+    const payload = await loadWithRetry(this.fetcher, sourceUrl, this.timeoutMs, this.maxAttempts);
     const root = asRecord(payload);
     const result = asRecord(root?.result);
     const rows = recordArray(result?.records);
@@ -62,6 +66,20 @@ export class HkmaOpenApiAdapter implements MacroSourceAdapter<HkmaRequest> {
       health: { sourceId: SOURCE_ID, state: "healthy", checkedAt: new Date().toISOString(), observationCount: observations.length, message: null },
     };
   }
+}
+
+async function loadWithRetry(fetcher: MacroFetch, url: string, timeoutMs: number, maxAttempts: number): Promise<unknown> {
+  let lastError: unknown = null;
+  const attempts = Math.max(1, Math.min(2, Math.floor(maxAttempts)));
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await fetchJson(SOURCE_ID, fetcher, url, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof MacroSourceError) || !error.retryable || attempt + 1 >= attempts) throw error;
+    }
+  }
+  throw lastError;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

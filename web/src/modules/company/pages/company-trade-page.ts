@@ -1,6 +1,7 @@
 import { computed, createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import buyPointConfigJson from '../../../config/buy-point-analysis.json'
+import metricHelpJson from '../../../config/company-trade-metric-help.json'
 import {
   analyzeBuyPoint,
   buildTradeAdvice,
@@ -16,6 +17,7 @@ type CompanyTradeSnapshot = {
 }
 
 const buyPointConfig = buyPointConfigJson as BuyPointConfig
+const metricHelp = metricHelpJson as Record<string, string>
 
 const styles = `
 .company-trade-page { color:#29404f; display:grid; gap:1rem; margin:1rem auto 2rem; max-width:1200px; padding:0 .75rem; }
@@ -39,6 +41,11 @@ const styles = `
 .company-trade-levels,.company-trade-scores { display:grid; gap:.7rem; grid-template-columns:repeat(3,minmax(0,1fr)); }
 .company-trade-metric { background:#f7fafc; border-radius:.85rem; padding:.75rem; }
 .company-trade-metric-label { color:#66788a; font-size:.76rem; margin-bottom:.25rem; }
+.company-trade-label-with-help { align-items:center; display:inline-flex; gap:.25rem; position:relative; }
+.company-trade-help { align-items:center; appearance:none; background:#e5eef5; border:0; border-radius:50%; color:#31566f; cursor:help; display:inline-flex; font-family:inherit; font-size:.63rem; font-weight:800; height:1.05rem; justify-content:center; line-height:1; padding:0; vertical-align:middle; width:1.05rem; }
+.company-trade-help:focus-visible { box-shadow:0 0 0 2px rgba(15,118,110,.3); outline:0; }
+.company-trade-help-tooltip { background:#163b56; border-radius:.55rem; bottom:calc(100% + .4rem); box-shadow:0 .55rem 1.25rem rgba(15,23,42,.2); color:#fff; font-size:.75rem; font-weight:400; left:0; line-height:1.45; opacity:0; padding:.55rem .65rem; pointer-events:none; position:absolute; text-align:left; transform:translateY(.2rem); transition:opacity .14s ease,transform .14s ease; visibility:hidden; width:min(17rem,calc(100vw - 2rem)); z-index:10; }
+.company-trade-label-with-help:hover .company-trade-help-tooltip,.company-trade-label-with-help:focus-within .company-trade-help-tooltip { opacity:1; transform:translateY(0); visibility:visible; }
 .company-trade-metric-value { color:#123a67; font-size:1rem; font-weight:750; }
 .company-trade-metric-note { color:#66788a; font-size:.75rem; line-height:1.4; margin-top:.25rem; }
 .company-trade-evidence-grid { display:grid; gap:.8rem; grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -84,15 +91,21 @@ const CompanyTradePage = defineComponent({
     })
     onBeforeUnmount(() => window.removeEventListener('licai:company-trade-state', onState))
 
-    const metric = (label: string, value: string, note?: string) => h('div', { class: 'company-trade-metric' }, [
-      h('div', { class: 'company-trade-metric-label' }, label),
+    const labelWithHelp = (label: string, help?: string) => !help ? label : h('span', { class: 'company-trade-label-with-help' }, [
+      h('span', label),
+      h('button', { class: 'company-trade-help', type: 'button', 'aria-label': `${label}说明` }, '?'),
+      h('span', { class: 'company-trade-help-tooltip', role: 'tooltip' }, help),
+    ])
+
+    const metric = (label: string, value: string, note?: string, help?: string) => h('div', { class: 'company-trade-metric' }, [
+      h('div', { class: 'company-trade-metric-label' }, labelWithHelp(label, help)),
       h('div', { class: 'company-trade-metric-value' }, value),
       note ? h('div', { class: 'company-trade-metric-note' }, note) : null,
     ])
 
-    const evidenceItem = (label: string, value: string, active: boolean, risk = false) => h('div', { class: 'company-trade-evidence-item' }, [
+    const evidenceItem = (label: string, value: string, active: boolean, risk = false, help?: string) => h('div', { class: 'company-trade-evidence-item' }, [
       h('span', { class: ['company-trade-dot', active ? risk ? 'bad' : 'good' : 'off'].join(' ') }),
-      h('span', { class: 'company-trade-evidence-text flex-grow-1' }, label),
+      h('span', { class: 'company-trade-evidence-text flex-grow-1' }, labelWithHelp(label, help)),
       h('span', { class: 'company-trade-evidence-value' }, value),
     ])
 
@@ -130,62 +143,62 @@ const CompanyTradePage = defineComponent({
         h('section', { class: 'company-trade-card' }, [
           h('h2', { class: 'company-trade-title mb-3' }, '关键执行价位'),
           h('div', { class: 'company-trade-levels' }, [
-            metric('支撑观察区', `${price(levels.supportZone[0])} – ${price(levels.supportZone[1])}`, '只说明价格位置，不等于见底。'),
-            metric('买入确认触发', price(levels.confirmationTrigger), '后续收盘站上 MA5 与前一日高点的较高值。'),
-            metric('参考失效位', price(levels.invalidation), '跌破后停止加仓并重新评估；跳空可能无法按该价成交。'),
+            metric('支撑观察区', `${price(levels.supportZone[0])} – ${price(levels.supportZone[1])}`, '只说明价格位置，不等于见底。', metricHelp.supportZone),
+            metric('买入确认触发', price(levels.confirmationTrigger), '后续收盘站上 MA5 与前一日高点的较高值。', metricHelp.confirmationTrigger),
+            metric('参考失效位', price(levels.invalidation), '跌破后停止加仓并重新评估；跳空可能无法按该价成交。', metricHelp.invalidation),
           ]),
         ]),
         h('section', { class: 'company-trade-card' }, [
           h('h2', { class: 'company-trade-title mb-3' }, '为什么这样判断'),
           h('div', { class: 'company-trade-evidence-grid' }, [
             evidenceGroup('超跌与位置', [
-              evidenceItem('RSI14 进入弱势/超卖区', indicators.rsi14.toFixed(1), flags.rsiWeak),
-              evidenceItem('20 日高点回撤达到阈值', pct(decline.drawdown20), flags.moderateDrawdown),
-              evidenceItem('近 10 日下跌较密集', `${decline.downDays10} 天下跌`, flags.denseDownDays),
-              evidenceItem('价格靠近 20 日支撑', price(result.close), flags.nearSupport),
+              evidenceItem('RSI14 进入弱势/超卖区', indicators.rsi14.toFixed(1), flags.rsiWeak, false, metricHelp.rsiWeak),
+              evidenceItem('20 日高点回撤达到阈值', pct(decline.drawdown20), flags.moderateDrawdown, false, metricHelp.drawdown20),
+              evidenceItem('近 10 日下跌较密集', `${decline.downDays10} 天下跌`, flags.denseDownDays, false, metricHelp.downDays),
+              evidenceItem('价格靠近 20 日支撑', price(result.close), flags.nearSupport, false, metricHelp.nearSupport),
             ]),
             evidenceGroup('反转确认', [
-              evidenceItem('当日阳线且高于前收', flags.bullishDay ? '成立' : '未成立', flags.bullishDay),
-              evidenceItem('重新站上 MA5', price(indicators.ma5), flags.reclaimMa5),
-              evidenceItem('收盘突破前一日高点', flags.breakPreviousHigh ? '成立' : '未成立', flags.breakPreviousHigh),
-              evidenceItem('近 3 日收益转正', pct(returns.day3), flags.positiveShortReturn),
-              evidenceItem('上涨伴随量能放大', indicators.volumeRatio === null ? '无数据' : `${indicators.volumeRatio.toFixed(2)} 倍`, flags.volumeExpansion),
+              evidenceItem('当日阳线且高于前收', flags.bullishDay ? '成立' : '未成立', flags.bullishDay, false, metricHelp.bullishDay),
+              evidenceItem('重新站上 MA5', price(indicators.ma5), flags.reclaimMa5, false, metricHelp.reclaimMa5),
+              evidenceItem('收盘突破前一日高点', flags.breakPreviousHigh ? '成立' : '未成立', flags.breakPreviousHigh, false, metricHelp.previousHigh),
+              evidenceItem('近 3 日收益转正', pct(returns.day3), flags.positiveShortReturn, false, metricHelp.shortReturn),
+              evidenceItem('上涨伴随量能放大', indicators.volumeRatio === null ? '无数据' : `${indicators.volumeRatio.toFixed(2)} 倍`, flags.volumeExpansion, false, metricHelp.volumeExpansion),
             ]),
             evidenceGroup('量能与流动性', [
-              evidenceItem('当日量 / 20 日均量', indicators.volumeRatio === null ? '无数据' : `${indicators.volumeRatio.toFixed(2)} 倍`, flags.volumeExpansion),
-              evidenceItem('5 日均量 / 20 日均量', indicators.volumeShortRatio === null ? '无数据' : `${indicators.volumeShortRatio.toFixed(2)} 倍`, indicators.volumeShortRatio !== null && indicators.volumeShortRatio >= 1),
-              evidenceItem('上涨日 / 下跌日平均量', indicators.upDownVolumeRatio === null ? '无数据' : `${indicators.upDownVolumeRatio.toFixed(2)} 倍`, flags.upVolumeDominant),
-              evidenceItem('回调时成交量收缩', flags.volumeContraction ? '缩量' : '未缩量', flags.volumeContraction),
-              evidenceItem('放量下跌风险', flags.distributionRisk ? '触发' : '未触发', flags.distributionRisk, true),
-              evidenceItem('20 日流动性门槛', flags.lowLiquidity ? '不足' : indicators.liquidityCoverage > 0 ? '通过' : '数据不足', flags.lowLiquidity, true),
+              evidenceItem('当日量 / 20 日均量', indicators.volumeRatio === null ? '无数据' : `${indicators.volumeRatio.toFixed(2)} 倍`, flags.volumeExpansion, false, metricHelp.volumeRatio),
+              evidenceItem('5 日均量 / 20 日均量', indicators.volumeShortRatio === null ? '无数据' : `${indicators.volumeShortRatio.toFixed(2)} 倍`, indicators.volumeShortRatio !== null && indicators.volumeShortRatio >= 1, false, metricHelp.volumeShortRatio),
+              evidenceItem('上涨日 / 下跌日平均量', indicators.upDownVolumeRatio === null ? '无数据' : `${indicators.upDownVolumeRatio.toFixed(2)} 倍`, flags.upVolumeDominant, false, metricHelp.upDownVolumeRatio),
+              evidenceItem('回调时成交量收缩', flags.volumeContraction ? '缩量' : '未缩量', flags.volumeContraction, false, metricHelp.volumeContraction),
+              evidenceItem('放量下跌风险', flags.distributionRisk ? '触发' : '未触发', flags.distributionRisk, true, metricHelp.distributionRisk),
+              evidenceItem('20 日流动性门槛', flags.lowLiquidity ? '不足' : indicators.liquidityCoverage > 0 ? '通过' : '数据不足', flags.lowLiquidity, true, metricHelp.liquidity),
             ]),
             evidenceGroup('卖出与风险否决', [
-              evidenceItem('跌破此前 20 日最低价', flags.breakdown ? '已破位' : '未破位', flags.breakdown, true),
-              evidenceItem('MA20/MA60 空头且 MA20 下行', pct(indicators.ma20SlopePct), flags.fallingTrend, true),
-              evidenceItem('ATR 波动率偏高', pct(indicators.atrPct, false), flags.highVolatility, true),
-              evidenceItem('反弹或均线乖离偏热', flags.overextended ? '偏热' : '正常', flags.overextended, true),
-              evidenceItem('流动性不足', flags.lowLiquidity ? '触发' : '未触发', flags.lowLiquidity, true),
+              evidenceItem('跌破此前 20 日最低价', flags.breakdown ? '已破位' : '未破位', flags.breakdown, true, metricHelp.breakdown),
+              evidenceItem('MA20/MA60 空头且 MA20 下行', pct(indicators.ma20SlopePct), flags.fallingTrend, true, metricHelp.fallingTrend),
+              evidenceItem('ATR 波动率偏高', pct(indicators.atrPct, false), flags.highVolatility, true, metricHelp.atr),
+              evidenceItem('反弹或均线乖离偏热', flags.overextended ? '偏热' : '正常', flags.overextended, true, metricHelp.overextended),
+              evidenceItem('流动性不足', flags.lowLiquidity ? '触发' : '未触发', flags.lowLiquidity, true, metricHelp.liquidity),
             ]),
           ]),
         ]),
         h('section', { class: 'company-trade-card' }, [
           h('h2', { class: 'company-trade-title mb-3' }, '详细指标'),
           h('div', { class: 'company-trade-scores mb-3' }, [
-            metric('位置与缩量条件', String(scores.setup), '跌得多或缩量只进入观察池。'), metric('反转确认', String(scores.confirmation), '价格与量能共同决定是否允许试仓/加仓。'), metric('趋势与风险', `${scores.trend} / -${scores.riskPenalty}`, '破位、放量下跌和低流动性优先。'),
+            metric('位置与缩量条件', String(scores.setup), '跌得多或缩量只进入观察池。', metricHelp.setupScore), metric('反转确认', String(scores.confirmation), '价格与量能共同决定是否允许试仓/加仓。', metricHelp.confirmationScore), metric('趋势与风险', `${scores.trend} / -${scores.riskPenalty}`, '破位、放量下跌和低流动性优先。', metricHelp.trendRiskScore),
           ]),
           h('div', { class: 'table-responsive' }, [h('table', { class: 'table table-sm table-bordered company-trade-table' }, [
             h('tbody', [
-              tableRow('收盘价', price(result.close), '3 / 5 / 10 / 20 日涨跌', `${pct(returns.day3)} / ${pct(returns.day5)} / ${pct(returns.day10)} / ${pct(returns.day20)}`),
-              tableRow('近 10 日下跌', `${decline.downDays10} 天，跌日复合 ${pct(decline.downDayReturn10)}`, '连续下跌', `${decline.consecutiveDown} 天，${pct(decline.consecutiveReturn)}`),
-              tableRow('20 日回撤', pct(decline.drawdown20), '低点后反弹', `${decline.reboundBars} 日，${pct(decline.rebound20)}`),
-              tableRow('MA5 / MA10', `${price(indicators.ma5)} / ${price(indicators.ma10)}`, 'MA20 / MA60', `${price(indicators.ma20)} / ${price(indicators.ma60)}`),
-              tableRow('RSI14', indicators.rsi14.toFixed(1), 'ATR14', `${price(indicators.atr14)}（${pct(indicators.atrPct, false)}）`),
-              tableRow('MA20 近 5 日斜率', pct(indicators.ma20SlopePct), '当日 / 20 日量比', indicators.volumeRatio === null ? '—' : indicators.volumeRatio.toFixed(2)),
-              tableRow('当日成交量', compactNumber(indicators.latestVolume), '5 日 / 20 日均量', `${compactNumber(indicators.volumeMa5)} / ${compactNumber(indicators.volumeMa20)}`),
-              tableRow('5 日 / 20 日量比', indicators.volumeShortRatio === null ? '—' : indicators.volumeShortRatio.toFixed(2), '上涨 / 下跌日量比', indicators.upDownVolumeRatio === null ? '—' : indicators.upDownVolumeRatio.toFixed(2)),
-              tableRow('当日成交额', compactMoney(indicators.latestAmount), '20 日平均成交额', compactMoney(indicators.amountMa20)),
-              tableRow('当日换手率', nullablePct(indicators.latestTurnover), '20 日平均换手率', nullablePct(indicators.turnoverMa20)),
-              tableRow('流动性数据覆盖率', pct(indicators.liquidityCoverage * 100, false), '放量下跌 / 缩量回调', `${flags.distributionRisk ? '是' : '否'} / ${flags.volumeContraction ? '是' : '否'}`),
+              tableRow('收盘价', price(result.close), '3 / 5 / 10 / 20 日涨跌', `${pct(returns.day3)} / ${pct(returns.day5)} / ${pct(returns.day10)} / ${pct(returns.day20)}`, undefined, metricHelp.returns),
+              tableRow('近 10 日下跌', `${decline.downDays10} 天，跌日复合 ${pct(decline.downDayReturn10)}`, '连续下跌', `${decline.consecutiveDown} 天，${pct(decline.consecutiveReturn)}`, metricHelp.downDays, metricHelp.consecutiveDown),
+              tableRow('20 日回撤', pct(decline.drawdown20), '低点后反弹', `${decline.reboundBars} 日，${pct(decline.rebound20)}`, metricHelp.drawdown20, metricHelp.rebound),
+              tableRow('MA5 / MA10', `${price(indicators.ma5)} / ${price(indicators.ma10)}`, 'MA20 / MA60', `${price(indicators.ma20)} / ${price(indicators.ma60)}`, metricHelp.movingAverage, metricHelp.movingAverage),
+              tableRow('RSI14', indicators.rsi14.toFixed(1), 'ATR14', `${price(indicators.atr14)}（${pct(indicators.atrPct, false)}）`, metricHelp.rsiWeak, metricHelp.atr),
+              tableRow('MA20 近 5 日斜率', pct(indicators.ma20SlopePct), '当日 / 20 日量比', indicators.volumeRatio === null ? '—' : indicators.volumeRatio.toFixed(2), metricHelp.ma20Slope, metricHelp.volumeRatio),
+              tableRow('当日成交量', compactNumber(indicators.latestVolume), '5 日 / 20 日均量', `${compactNumber(indicators.volumeMa5)} / ${compactNumber(indicators.volumeMa20)}`, metricHelp.volume, metricHelp.volume),
+              tableRow('5 日 / 20 日量比', indicators.volumeShortRatio === null ? '—' : indicators.volumeShortRatio.toFixed(2), '上涨 / 下跌日量比', indicators.upDownVolumeRatio === null ? '—' : indicators.upDownVolumeRatio.toFixed(2), metricHelp.volumeShortRatio, metricHelp.upDownVolumeRatio),
+              tableRow('当日成交额', compactMoney(indicators.latestAmount), '20 日平均成交额', compactMoney(indicators.amountMa20), metricHelp.amount, metricHelp.amount),
+              tableRow('当日换手率', nullablePct(indicators.latestTurnover), '20 日平均换手率', nullablePct(indicators.turnoverMa20), metricHelp.turnover, metricHelp.turnover),
+              tableRow('流动性数据覆盖率', pct(indicators.liquidityCoverage * 100, false), '放量下跌 / 缩量回调', `${flags.distributionRisk ? '是' : '否'} / ${flags.volumeContraction ? '是' : '否'}`, metricHelp.coverage, `${metricHelp.distributionRisk} ${metricHelp.volumeContraction}`),
             ]),
           ])]),
         ]),
@@ -195,8 +208,17 @@ const CompanyTradePage = defineComponent({
   },
 })
 
-function tableRow(leftLabel: string, leftValue: string, rightLabel: string, rightValue: string) {
-  return h('tr', [h('th', { class: 'table-light' }, leftLabel), h('td', leftValue), h('th', { class: 'table-light' }, rightLabel), h('td', rightValue)])
+function tableLabel(label: string, help?: string) {
+  if (!help) return label
+  return h('span', { class: 'company-trade-label-with-help' }, [
+    h('span', label),
+    h('button', { class: 'company-trade-help', type: 'button', 'aria-label': `${label}说明` }, '?'),
+    h('span', { class: 'company-trade-help-tooltip', role: 'tooltip' }, help),
+  ])
+}
+
+function tableRow(leftLabel: string, leftValue: string, rightLabel: string, rightValue: string, leftHelp?: string, rightHelp?: string) {
+  return h('tr', [h('th', { class: 'table-light' }, tableLabel(leftLabel, leftHelp)), h('td', leftValue), h('th', { class: 'table-light' }, tableLabel(rightLabel, rightHelp)), h('td', rightValue)])
 }
 function price(value: number): string { return value >= 100 ? value.toFixed(2) : value >= 10 ? value.toFixed(3) : value.toFixed(4) }
 function pct(value: number, signed = true): string { return `${signed && value > 0 ? '+' : ''}${value.toFixed(2)}%` }

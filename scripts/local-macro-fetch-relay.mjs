@@ -6,6 +6,7 @@ const host = "127.0.0.1";
 const port = positiveInteger(process.env.MACRO_FETCH_RELAY_PORT) ?? 8791;
 const allowedHosts = new Set([
   "api.bls.gov",
+  "api.hkma.gov.hk",
   "api.stlouisfed.org",
   "fred.stlouisfed.org",
 ]);
