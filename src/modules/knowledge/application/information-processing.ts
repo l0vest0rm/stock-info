@@ -10,7 +10,7 @@ import type { Bindings } from "../../../types";
 const MODEL = "gpt-5.6-luna" as const;
 const MAX_OUTPUT_TOKENS = 2500;
 const SCHEMA_VERSION = "information-records-v1";
-export const INFORMATION_PROCESSING_PROMPT_VERSION = "information-processing-v15";
+export const INFORMATION_PROCESSING_PROMPT_VERSION = "information-processing-v18";
 const ONTOLOGY_VERSION = ontologyConfig.version;
 
 type InformationType = "fact" | "guidance" | "forecast" | "opinion" | "event" | "relationship";
@@ -120,8 +120,7 @@ export async function processInformationDocument(env: Bindings, docId: string): 
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await env.DB.prepare("update knowledge_processing_runs set status = 'failed', error = ?, completed_at = ? where run_id = ?")
-      .bind(message.slice(0, 2000), Date.now(), runId).run();
+    await discardFailedInformationAttempt(env.DB, runId, version.versionId);
     throw error;
   }
 }
@@ -191,7 +190,7 @@ function parseJsonResponse(value: string): unknown {
   }
 }
 
-async function persistStructuredResult(db: D1Database, runId: string, versionId: string, analysis: StructuredAnalysis): Promise<number> {
+export async function persistStructuredResult(db: D1Database, runId: string, versionId: string, analysis: StructuredAnalysis): Promise<number> {
   const now = Date.now();
   const resultId = `knowledge-information-result:${crypto.randomUUID()}`;
   await db.prepare(
@@ -201,14 +200,15 @@ async function persistStructuredResult(db: D1Database, runId: string, versionId:
   ).bind(
     resultId, runId, versionId, analysis.outcome, now,
   ).run();
-  await db.batch(analysis.records.map((record, sortOrder) => db.prepare(
+  const recordStatements = analysis.records.map((record, sortOrder) => db.prepare(
     `insert into knowledge_information_records (
       information_id, result_id, entity, information_type, category, period, statement, sort_order, created_at
     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     `knowledge-information-record:${crypto.randomUUID()}`, resultId, record.entity, record.informationType,
     record.category, record.period, record.statement, sortOrder, now,
-  )));
+  ));
+  if (recordStatements.length > 0) await db.batch(recordStatements);
   return analysis.records.length;
 }
 
@@ -250,6 +250,23 @@ async function ensureVersion(db: D1Database, document: SourceDocument, contentHa
      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(versionId, document.doc_id, document.url, document.content_sha256, contentHash, document.content_key, document.content_key, document.published_at, document.fetched_at, Date.now()).run();
   return { versionId };
+}
+
+export async function discardFailedInformationAttempt(db: D1Database, runId: string, versionId: string): Promise<void> {
+  await db.batch([
+    db.prepare(`delete from knowledge_information_records where result_id in (
+      select result_id from knowledge_document_results where run_id = ?
+    )`).bind(runId),
+    db.prepare("delete from knowledge_document_results where run_id = ?").bind(runId),
+    db.prepare("delete from knowledge_processing_runs where run_id = ?").bind(runId),
+  ]);
+  const remainingRun = await db.prepare("select 1 from knowledge_processing_runs where version_id = ? limit 1")
+    .bind(versionId).first();
+  if (remainingRun) return;
+  await db.batch([
+    db.prepare("delete from knowledge_preprocessing_decisions where version_id = ?").bind(versionId),
+    db.prepare("delete from knowledge_document_versions where version_id = ?").bind(versionId),
+  ]);
 }
 
 async function preprocess(

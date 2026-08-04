@@ -17,13 +17,13 @@ const concurrency = Math.min(20, positiveInteger(args.concurrency, 3, "--concurr
 const retryStaleProcessingMinutes = positiveInteger(args.retryStaleProcessingMinutes, 2, "--retry-stale-processing-minutes");
 const progressPath = resolve(root, String(args.progressFile || `data/stock-info/knowledge/state/institutional-top300-information-processing-${runStamp()}.jsonl`));
 const input = parseInput(JSON.parse(await readFile(inputPath, "utf8")));
-const promptVersion = String(args.promptVersion || "information-processing-v15").trim();
+const promptVersion = String(args.promptVersion || "information-processing-v16").trim();
 if (!promptVersion) throw new Error("--prompt-version must not be empty");
 const databaseFile = resolveLocalD1Database({ root, requiredTable: "knowledge_docs" });
 const documents = loadDocuments(databaseFile, promptVersion, retryStaleProcessingMinutes, maxAgeDays);
 const selection = selectDocuments(input, documents, maxDocuments);
 
-console.log(`关键词：${input.keywords.length} 个；最近 ${maxAgeDays} 天标题匹配：${selection.matched} 篇；已处理：${selection.alreadyProcessed} 篇；预筛跳过：${selection.preprocessedSkip} 篇；内容不可用：${selection.unavailableContent} 篇；已排队/处理中：${selection.activeJobs} 篇；本次待处理：${selection.selected.length} 篇${all ? "（全部）" : `（上限 ${maxDocuments}）`}；并发：${concurrency}`);
+console.log(`关键词：${input.keywords.length} 个；最近 ${maxAgeDays} 天标题匹配：${selection.matched} 篇；已处理：${selection.alreadyProcessed} 篇；预筛跳过：${selection.preprocessedSkip} 篇；已排队/处理中：${selection.activeJobs} 篇；本次待处理：${selection.selected.length} 篇${all ? "（全部）" : `（上限 ${maxDocuments}）`}；并发：${concurrency}`);
 console.log(`范围：每个关键词只处理最近 ${maxAgeDays} 天；排序：机构持仓优先级升序；同一关键词内按时间从近到远；${retryStaleProcessingMinutes} 分钟未更新的“处理中”任务会重试。输入：${inputPath}`);
 if (selection.selected.length === 0) {
   console.log("没有符合条件的未处理文档。");
@@ -41,9 +41,10 @@ await mkdir(dirname(progressPath), { recursive: true });
 const startedAt = Date.now();
 let completed = 0;
 let failed = 0;
+let totalItemDurationMs = 0;
 let nextIndex = 0;
 await Promise.all(Array.from({ length: Math.min(concurrency, selection.selected.length) }, () => processNextDocument()));
-console.log(`结束：待处理 ${selection.selected.length} 篇，完成 ${completed}，失败 ${failed}，总耗时 ${secondsSince(startedAt)}s。进度日志：${progressPath}`);
+console.log(`结束：待处理 ${selection.selected.length} 篇，完成 ${completed}，失败 ${failed}，总耗时 ${secondsSince(startedAt)}s，平均单篇耗时 ${averageItemSeconds(totalItemDurationMs, completed + failed)}s。进度日志：${progressPath}`);
 
 async function processNextDocument() {
   while (true) {
@@ -54,27 +55,32 @@ async function processNextDocument() {
     const position = index + 1;
     const itemStartedAt = Date.now();
     const label = `[${position}/${selection.selected.length}] #${item.priority} ${item.name} · 日期：${displayDocumentDate(item.sortTime)}`;
-    process.stdout.write(`${label} 开始：${item.title}\n`);
-    const heartbeat = setInterval(() => {
-      process.stdout.write(`${label} 仍在处理中，已等待 ${secondsSince(itemStartedAt)}s…\n`);
-    }, 10_000);
     try {
       const result = await processDocument(server, item.docId);
-      const durationSeconds = secondsSince(itemStartedAt);
+      const durationMs = Date.now() - itemStartedAt;
+      const durationSeconds = roundedSeconds(durationMs);
+      totalItemDurationMs += durationMs;
       const status = String(result.status || "unknown");
       if (status === "failed") failed += 1;
       else completed += 1;
-      process.stdout.write(`${label} ${status}，${describeResult(result)}，耗时 ${durationSeconds}s；累计完成 ${completed}，失败 ${failed}。\n`);
+      process.stdout.write(`${formatProgressLine(label, item.title, status, describeResult(result), durationSeconds)}\n`);
       await appendProgress(progressPath, { at: new Date().toISOString(), position, total: selection.selected.length, ...item, durationSeconds, result });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const durationMs = Date.now() - itemStartedAt;
+      const durationSeconds = roundedSeconds(durationMs);
+      totalItemDurationMs += durationMs;
       failed += 1;
-      process.stderr.write(`${label} 请求失败：${message}；累计完成 ${completed}，失败 ${failed}。\n`);
-      await appendProgress(progressPath, { at: new Date().toISOString(), position, total: selection.selected.length, ...item, durationSeconds: secondsSince(itemStartedAt), error: message });
-    } finally {
-      clearInterval(heartbeat);
+      process.stdout.write(`${formatProgressLine(label, item.title, "请求失败", `错误：${message}`, durationSeconds)}\n`);
+      await appendProgress(progressPath, { at: new Date().toISOString(), position, total: selection.selected.length, ...item, durationSeconds, error: message });
     }
   }
+}
+
+function formatProgressLine(label, title, status, detail, durationSeconds) {
+  const finishedAt = Date.now();
+  const processed = completed + failed;
+  return `${label} · ${status}，${detail} · ${title}；完成时间：${formatLocalTime(finishedAt)}；本篇耗时 ${durationSeconds}s；进度 ${processed}/${selection.selected.length}，累计完成 ${completed}，失败 ${failed}；总耗时 ${secondsSince(startedAt)}s，平均单篇耗时 ${averageItemSeconds(totalItemDurationMs, processed)}s。`;
 }
 
 function loadDocuments(database, promptVersion, retryStaleProcessingMinutes, maxAgeDays) {
@@ -99,12 +105,6 @@ function loadDocuments(database, promptVersion, retryStaleProcessingMinutes, max
         where j.doc_id = d.doc_id
           and (j.status = 'queued' or (j.status = 'processing' and j.updated_at >= ${activeProcessingCutoff}))
       ) as has_active_job,
-      exists (
-        select 1 from information_processing_jobs j
-        where j.doc_id = d.doc_id
-          and j.status = 'failed'
-          and j.last_error like 'knowledge document content unavailable in local cache or source: 404%'
-      ) as content_unavailable,
       coalesce((
         select p.action
         from knowledge_preprocessing_decisions p
@@ -122,7 +122,6 @@ function loadDocuments(database, promptVersion, retryStaleProcessingMinutes, max
   return JSON.parse(output || "[]").map((row) => ({
     docId: String(row.doc_id || ""), title: String(row.title || ""), sortTime: String(row.sort_time || ""),
     processed: Number(row.is_processed) === 1, activeJob: Number(row.has_active_job) === 1,
-    contentUnavailable: Number(row.content_unavailable) === 1,
     preprocessedSkip: isTerminalPreprocessingAction(row.preprocessing_action),
   }));
 }
@@ -133,7 +132,6 @@ function selectDocuments(input, documents, maxDocuments) {
   let matched = 0;
   let alreadyProcessed = 0;
   let preprocessedSkip = 0;
-  let unavailableContent = 0;
   let activeJobs = 0;
   for (const keyword of input.keywords) {
     const matches = documents.filter((document) => keyword.titleKeywords.some((needle) => document.title.includes(needle)));
@@ -143,7 +141,6 @@ function selectDocuments(input, documents, maxDocuments) {
       matched += 1;
       if (document.processed) { alreadyProcessed += 1; continue; }
       if (document.preprocessedSkip) { preprocessedSkip += 1; continue; }
-      if (document.contentUnavailable) { unavailableContent += 1; continue; }
       if (document.activeJob) { activeJobs += 1; continue; }
       candidates.push({ ...document, priority: keyword.priority, name: keyword.name });
     }
@@ -151,7 +148,7 @@ function selectDocuments(input, documents, maxDocuments) {
   candidates.sort((left, right) => left.priority - right.priority
     || newestFirst(left.sortTime, right.sortTime)
     || left.docId.localeCompare(right.docId));
-  return { matched, alreadyProcessed, preprocessedSkip, unavailableContent, activeJobs, selected: candidates.slice(0, maxDocuments) };
+  return { matched, alreadyProcessed, preprocessedSkip, activeJobs, selected: candidates.slice(0, maxDocuments) };
 }
 
 async function processDocument(server, documentId) {
@@ -219,6 +216,9 @@ function positiveInteger(value, fallback, option) {
 }
 
 function secondsSince(startedAt) { return Math.max(0, Math.round((Date.now() - startedAt) / 1000)); }
+function roundedSeconds(durationMs) { return Math.max(0, Math.round(durationMs / 1000)); }
+function averageItemSeconds(totalDurationMs, processed) { return processed > 0 ? (totalDurationMs / 1000 / processed).toFixed(1) : "0.0"; }
+function formatLocalTime(timestamp) { return new Date(timestamp).toLocaleString("sv-SE", { timeZone: "Asia/Shanghai", hour12: false }); }
 function newestFirst(left, right) {
   if (!left && !right) return 0;
   if (!left) return 1;

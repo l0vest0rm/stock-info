@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import financeMappings from "../../../../shared/finance-mappings.json";
 import { fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
-import { loadFinancialStatements, parseStatementType } from "../application/load-financial-statements";
+import { loadFinancialStatementReadModel, parseStatementType } from "../application/load-financial-statements";
 import { loadKline } from "../../market/application/load-kline";
 import { externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
 import { normalizeSecurityCode } from "../../../shared/codes";
@@ -78,14 +78,10 @@ financeRoutes.get("/finance/:statementType", async (c) => {
   if (code instanceof Response) {
     return code;
   }
-  const data = await loadFinancialStatements(c.env, code, statementType, {
+  const data = await loadFinancialStatementReadModel(c.env, code, statementType, {
     httpOptions: externalHttpOptions(c.env),
-  }).catch((err) => {
-    if (isUnsupportedFinanceError(err)) {
-      return { rows: [] };
-    }
-    throw err;
   });
+  if (c.req.query("format") === "read-model") return ok(c, data);
   return ok(c, data.rows.map((row) => toLegacyFinancePayload(row.payload, statementType)));
 });
 
@@ -454,10 +450,6 @@ function planNumber(plan: string, marker: string): number {
 
 function isCnExchangeCode(code: string): boolean {
   return /\.(SH|SZ|BJ)$/.test(normalizeSecurityCode(code));
-}
-
-function isUnsupportedFinanceError(err: unknown): boolean {
-  return err instanceof Error && err.message.startsWith("finance statement only supports CN A-share codes");
 }
 
 function num(value: unknown): number {

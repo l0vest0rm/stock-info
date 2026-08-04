@@ -20,12 +20,17 @@ const reportPdfDir = join(reportWorkDir, "remote-pdf");
 const reportMarkdownDir = join(reportWorkDir, "markdown-cache");
 const reportConversionConcurrency = positiveInteger(process.env.KNOWLEDGE_REPORT_CONVERSION_CONCURRENCY, 2);
 const reportConversionTimeoutMs = positiveInteger(process.env.KNOWLEDGE_REPORT_CONVERSION_TIMEOUT_MS, 120000);
+const requiredReportConverterHosts = ["pdf.dfcfw.com", "static.cninfo.com.cn", "www1.hkexnews.hk"];
 const reportConverterHosts = new Set(
-  String(process.env.KNOWLEDGE_REPORT_CONVERTER_HOSTS || "pdf.dfcfw.com")
+  String(process.env.KNOWLEDGE_REPORT_CONVERTER_HOSTS || requiredReportConverterHosts.join(","))
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean)
 );
+const missingRequiredReportConverterHosts = requiredReportConverterHosts.filter((host) => !reportConverterHosts.has(host));
+if (missingRequiredReportConverterHosts.length) {
+  throw new Error(`KNOWLEDGE_REPORT_CONVERTER_HOSTS must include required official hosts: ${missingRequiredReportConverterHosts.join(", ")}`);
+}
 const reportConversionQueue = createTaskQueue(reportConversionConcurrency);
 const reportConversionsInFlight = new Map();
 const execFileAsync = promisify(execFile);

@@ -106,17 +106,6 @@ type EastmoneyNoticeResponse = {
   };
 };
 
-type YahooSuggestResponse = {
-  quotes?: Array<{
-    exchange?: string;
-    exchDisp?: string;
-    longname?: string;
-    quoteType?: string;
-    shortname?: string;
-    symbol?: string;
-  }> | null;
-};
-
 type YahooTimeseriesResponse = {
   timeseries?: {
     error?: { code?: string; description?: string } | null;
@@ -161,6 +150,11 @@ type YahooTimeseriesResult = {
 
 type YahooTimeseriesPoint = {
   asOfDate?: string;
+  /** Yahoo reports the source currency per field, not per security. */
+  currencyCode?: string;
+  /** `3M` and `12M` must remain separate even when their end date is equal. */
+  periodType?: string;
+  dataId?: string;
   reportedValue?: {
     raw?: number;
   };
@@ -311,54 +305,6 @@ function normalizeEastmoneySuggestCode(rawCode: string): string {
     return `${code.slice(2).toUpperCase()}.OF`;
   }
   return normalizeSecurityCode(code);
-}
-
-export async function fetchYahooSuggest(
-  db: D1Database,
-  q: string,
-  httpOptions?: ExternalHttpOptions
-): Promise<SecurityRecord[]> {
-  const trimmed = q.trim();
-  if (!trimmed || containsHan(trimmed)) {
-    return [];
-  }
-  const url = new URL("https://query2.finance.yahoo.com/v1/finance/search");
-  url.searchParams.set("q", trimmed);
-  url.searchParams.set("lang", "en-US");
-  url.searchParams.set("region", "US");
-  url.searchParams.set("quotesCount", "8");
-  url.searchParams.set("newsCount", "0");
-  url.searchParams.set("listsCount", "0");
-  url.searchParams.set("enableFuzzyQuery", "false");
-  url.searchParams.set("quotesQueryId", "tss_match_phrase_query");
-  url.searchParams.set("multiQuoteQueryId", "multi_quote_single_token_query");
-  url.searchParams.set("enableCb", "false");
-  url.searchParams.set("enableNavLinks", "true");
-  url.searchParams.set("enableEnhancedTrivialQuery", "true");
-  const body = (await cachedFetchJson(db, url.toString(), {
-    headers: yahooHeaders("https://finance.yahoo.com/quote/AAPL/"),
-  }, 24 * 60 * 60 * 1000, httpOptions)) as YahooSuggestResponse;
-  const now = Date.now();
-  const records: SecurityRecord[] = [];
-  const seen = new Set<string>();
-  for (const item of body.quotes ?? []) {
-    const code = normalizeYahooSuggestCode(item);
-    if (!code || seen.has(code)) {
-      continue;
-    }
-    seen.add(code);
-    const name = item.longname?.trim() || item.shortname?.trim() || code;
-    records.push({
-      code,
-      market: securityMarket(code),
-      type: inferSecurityType(code),
-      name,
-      exchangeName: item.exchDisp || item.exchange || null,
-      source: "yahoo",
-      updatedAt: now,
-    });
-  }
-  return records;
 }
 
 export async function fetchEastmoneyStockKline(
@@ -555,6 +501,38 @@ export async function fetchEastmoneyFinance(
     throw new Error(`finance statement only supports CN A-share codes in the MVP: ${code}`);
   }
   const reportType = eastmoneyFinanceReportType(statementType, normalized);
+  const [quarterizedRows, annualIncomeRows] = await Promise.all([
+    fetchEastmoneyFinanceRows(db, normalized, statementType, reportType, httpOptions),
+    statementType === "income"
+      ? fetchEastmoneyFinanceRows(db, normalized, statementType, eastmoneyAnnualIncomeReportType(normalized), httpOptions)
+      : Promise.resolve([]),
+  ]);
+  // `*INCOMEQC` is Eastmoney's quarterized source family.  Its 12-31 row is
+  // Q4, not FY.  The matching `*INCOME` family is the same primary provider's
+  // annual, year-to-date statement.  Keep only its explicit annual rows and
+  // attach a source-contract period marker; raw REPORT_TYPE is a display label
+  // and is not sufficient to distinguish these two 12-31 observations.
+  const annualRows = annualIncomeRows
+    .filter((row) => isEastmoneyAnnualIncomeRow(row.payload))
+    .map((row) => ({
+      ...row,
+      fiscalPeriod: "12M",
+      payload: {
+        ...(row.payload as Record<string, unknown>),
+        FISCAL_PERIOD: "12M",
+        FINANCIAL_SOURCE_CONTRACT: "eastmoney_f10_annual_income.v1",
+      },
+    }));
+  return [...quarterizedRows, ...annualRows];
+}
+
+async function fetchEastmoneyFinanceRows(
+  db: D1Database,
+  normalized: string,
+  statementType: StatementType,
+  reportType: string,
+  httpOptions?: ExternalHttpOptions,
+): Promise<FinancialStatement[]> {
   const url = new URL("https://datacenter-web.eastmoney.com/securities/api/data/get");
   url.searchParams.set("type", `RPT_F10_FINANCE_${reportType}`);
   url.searchParams.set("sty", financeStyle(statementType, reportType));
@@ -593,6 +571,93 @@ export async function fetchEastmoneyFinance(
     });
   }
   return statements;
+}
+
+function isEastmoneyAnnualIncomeRow(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const reportType = String((payload as Record<string, unknown>).REPORT_TYPE ?? "").trim().toUpperCase();
+  return reportType === "年报" || reportType === "ANNUAL" || reportType === "FY" || reportType === "12M";
+}
+
+/**
+ * Eastmoney's Hong Kong F10 exposes the three-statement headline fields via
+ * its main-indicator report rather than the A-share RPT_F10_FINANCE_* tables.
+ * The report contract is owned by the HK F10 page and is intentionally kept on
+ * the Eastmoney primary path; callers must obtain HKEX verification separately.
+ */
+export async function fetchEastmoneyHongKongFinance(
+  db: D1Database,
+  code: string,
+  statementType: StatementType,
+  httpOptions?: ExternalHttpOptions,
+): Promise<FinancialStatement[]> {
+  const normalized = normalizeSecurityCode(code);
+  if (!/^\d{5}\.HK$/.test(normalized)) throw new Error(`Hong Kong finance requires an .HK company code: ${code}`);
+  const url = new URL("https://datacenter.eastmoney.com/securities/api/data/v1/get");
+  url.searchParams.set("reportName", "RPT_HKF10_FN_MAININDICATOR");
+  url.searchParams.set("columns", "ALL");
+  url.searchParams.set("filter", `(SECUCODE=\"${normalized}\")`);
+  url.searchParams.set("pageNumber", "1");
+  url.searchParams.set("pageSize", "40");
+  url.searchParams.set("sortColumns", "REPORT_DATE");
+  url.searchParams.set("sortTypes", "-1");
+  url.searchParams.set("source", "F10");
+  url.searchParams.set("client", "PC");
+  const [body, incomeSummary] = await Promise.all([
+    cachedFetchJson(db, url.toString(), {
+    headers: { Referer: "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html" },
+  }, 24 * 60 * 60 * 1000, {
+    ...httpOptions,
+    resolveCacheTtlMs: ({ text }) => ttlForEastmoneyFinancialResponse(text),
+    }) as Promise<EastmoneyFinanceResponse>,
+    fetchEastmoneyHongKongIncomeSummary(db, normalized, httpOptions),
+  ]);
+  const reportingMetadata = new Map<string, { currency: string | null; accountingStandard: string | null; reportType: string | null }>();
+  const summaryRow = incomeSummary.result?.data?.[0] ?? {};
+  const reports = Array.isArray(summaryRow.REPORT_LIST) ? summaryRow.REPORT_LIST as Record<string, unknown>[] : [];
+  for (const report of reports) {
+    const reportDate = trimDate(report.REPORT_DATE);
+    if (!reportDate) continue;
+    reportingMetadata.set(reportDate, {
+      currency: typeof report.CURRENCY === "string" && report.CURRENCY.trim() ? report.CURRENCY.trim() : null,
+      accountingStandard: typeof report.ACCOUNT_STANDARD === "string" && report.ACCOUNT_STANDARD.trim() ? report.ACCOUNT_STANDARD.trim() : null,
+      reportType: typeof report.REPORT_TYPE === "string" && report.REPORT_TYPE.trim() ? report.REPORT_TYPE.trim() : null,
+    });
+  }
+  const now = Date.now();
+  return (body.result?.data ?? []).flatMap((row) => {
+    const reportDate = trimDate(row.REPORT_DATE);
+    if (!reportDate) return [];
+    const meta = reportingMetadata.get(reportDate);
+    return [{
+      code: normalized, statementType, reportDate,
+      fiscalPeriod: meta?.reportType ?? (typeof row.REPORT_TYPE === "string" ? row.REPORT_TYPE : null),
+      payload: {
+        ...row,
+        REPORTING_CURRENCY: meta?.currency,
+        REPORTING_ACCOUNT_STANDARD: meta?.accountingStandard,
+        FINANCIAL_SOURCE_CONTRACT: "eastmoney_hk_f10_main_indicator.v1",
+      },
+      source: "eastmoney", rawR2Key: null, updatedAt: now,
+    } satisfies FinancialStatement];
+  });
+}
+
+async function fetchEastmoneyHongKongIncomeSummary(db: D1Database, code: string, httpOptions?: ExternalHttpOptions): Promise<EastmoneyFinanceResponse> {
+  const url = new URL("https://datacenter.eastmoney.com/securities/api/data/v1/get");
+  url.searchParams.set("reportName", "RPT_CUSTOM_HKF10_APPFN_INCOME_SUMMARY");
+  url.searchParams.set("columns", "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,START_DATE,REPORT_DATE,FISCAL_YEAR,CURRENCY,ACCOUNT_STANDARD,REPORT_TYPE");
+  url.searchParams.set("filter", `(SECUCODE=\"${code}\")`);
+  url.searchParams.set("pageNumber", "1");
+  url.searchParams.set("pageSize", "1");
+  url.searchParams.set("source", "F10");
+  url.searchParams.set("client", "PC");
+  return cachedFetchJson(db, url.toString(), {
+    headers: { Referer: "https://emweb.securities.eastmoney.com/PC_HKF10/pages/home/index.html" },
+  }, 24 * 60 * 60 * 1000, {
+    ...httpOptions,
+    resolveCacheTtlMs: ({ text }) => ttlForEastmoneyFinancialResponse(text),
+  }) as Promise<EastmoneyFinanceResponse>;
 }
 
 export async function fetchEastmoneyPerformanceReportPage(
@@ -651,7 +716,10 @@ export async function fetchYahooFinance(
   if (error) {
     throw new Error(`yahoo finance error: code=${error.code ?? ""} description=${error.description ?? ""}`);
   }
-  const rowsByDate = new Map<string, Record<string, unknown>>();
+  // The same fiscal end date can legitimately occur in both the 3M and 12M
+  // Yahoo series. A date-only key silently overwrites one source period with
+  // the other, which is especially harmful for foreign private issuers.
+  const rowsByPeriod = new Map<string, Record<string, unknown>>();
   for (const result of body.timeseries?.result ?? []) {
     const type = result.meta?.type?.[0];
     if (!type) {
@@ -667,26 +735,39 @@ export async function fetchYahooFinance(
       if (!reportDate) {
         continue;
       }
-      const row = rowsByDate.get(reportDate) ?? {
+      const periodType = yahooPeriodType(point, type);
+      const rowKey = `${reportDate}:${periodType}`;
+      const row = rowsByPeriod.get(rowKey) ?? {
         reportDate,
         noticeDate: reportDate,
         REPORT_DATE: reportDate,
         NOTICE_DATE: reportDate,
+        FISCAL_PERIOD: periodType,
+        YAHOO_PERIOD_TYPE: periodType,
+        FINANCIAL_SOURCE_CONTRACT: "yahoo_finance_timeseries.v2",
+        YAHOO_FIELD_CURRENCIES: {},
+        YAHOO_FIELD_DATA_IDS: {},
       };
       row[key] = numberOrNull(point.reportedValue?.raw);
-      rowsByDate.set(reportDate, row);
+      const currencies = row.YAHOO_FIELD_CURRENCIES as Record<string, string>;
+      const currency = yahooCurrency(point.currencyCode);
+      if (currency) currencies[key] = currency;
+      const dataIds = row.YAHOO_FIELD_DATA_IDS as Record<string, string>;
+      if (typeof point.dataId === "string" && point.dataId.trim()) dataIds[key] = point.dataId.trim();
+      rowsByPeriod.set(rowKey, row);
     }
   }
   const now = Date.now();
-  return [...rowsByDate.values()]
+  return [...rowsByPeriod.values()]
+    .map(finalizeYahooFinancePayload)
     .map((payload) => normalizeYahooFinancePayload(payload, statementType))
     .filter((payload) => Object.keys(payload).length > 4)
-    .sort((a, b) => String(b.reportDate).localeCompare(String(a.reportDate)))
+    .sort((a, b) => String(b.reportDate).localeCompare(String(a.reportDate)) || String(b.FISCAL_PERIOD).localeCompare(String(a.FISCAL_PERIOD)))
     .map((payload) => ({
       code: normalized,
       statementType,
       reportDate: String(payload.reportDate),
-      fiscalPeriod: "3M",
+      fiscalPeriod: String(payload.FISCAL_PERIOD ?? ""),
       payload,
       source: "yahoo",
       rawR2Key: null,
@@ -1479,27 +1560,6 @@ function yahooFinanceHeaders(symbol: string): Record<string, string> {
   };
 }
 
-function normalizeYahooSuggestCode(item: NonNullable<YahooSuggestResponse["quotes"]>[number]): string | null {
-  const symbol = item.symbol?.trim().toUpperCase() ?? "";
-  if (!symbol) {
-    return null;
-  }
-  if (symbol.endsWith(".KS") || symbol.endsWith(".KQ")) {
-    return symbol;
-  }
-  if (symbol.includes(".")) {
-    return null;
-  }
-  if (item.quoteType === "EQUITY" || item.quoteType === "ETF") {
-    return `${symbol}.US`;
-  }
-  return null;
-}
-
-function containsHan(value: string): boolean {
-  return [...value].some((ch) => (ch >= "\u4e00" && ch <= "\u9fff") || (ch >= "\u3400" && ch <= "\u4dbf"));
-}
-
 export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string): Promise<CompanyOverview> {
   const normalized = normalizeSecurityCode(code);
   const secid = eastmoneySecId(normalized);
@@ -1605,8 +1665,28 @@ export function eastmoneyFinanceReportType(statementType: StatementType, code: s
     case "balance":
       return `${family}BALANCE`;
     case "cashflow":
-      return `${family}CASHFLOWQC`;
+      // Eastmoney exposes the general, bank and broker cash-flow statements
+      // without the quarterly-comparison suffix. Insurers retain their
+      // dedicated ICASHFLOWQC endpoint. Using GCASHFLOWQC returns a successful
+      // but empty result, which must remain a source failure rather than being
+      // papered over by a statutory fallback.
+      return family === "I" ? "ICASHFLOWQC" : `${family}CASHFLOW`;
   }
+}
+
+/**
+ * The `*INCOMEQC` endpoint is the quarterized comparison series.  Its
+ * December row is a standalone Q4 observation, while the corresponding
+ * `*INCOME` endpoint supplies the explicit full-year income statement.
+ * Keep that distinction in the provider adapter rather than guessing from a
+ * calendar date in downstream research code.
+ */
+function eastmoneyAnnualIncomeReportType(code: string): string {
+  const quarterized = eastmoneyFinanceReportType("income", code);
+  if (!quarterized.endsWith("INCOMEQC")) {
+    throw new Error(`unexpected Eastmoney quarterized income report type: ${quarterized}`);
+  }
+  return quarterized.slice(0, -2);
 }
 
 function financeStyle(statementType: StatementType, reportType: string): string {
@@ -1617,21 +1697,11 @@ function financeStyle(statementType: StatementType, reportType: string): string 
 }
 
 function yahooFinanceTypes(): string[] {
-  return [
-    "quarterlyTotalRevenue",
-    "quarterlyCostOfRevenue",
-    "quarterlyGrossProfit",
-    "quarterlyOperatingIncome",
-    "quarterlyNetIncome",
-    "quarterlyBasicEPS",
-    "quarterlyDilutedEPS",
-    "quarterlyTotalAssets",
-    "quarterlyTotalLiabilitiesNetMinorityInterest",
-    "quarterlyStockholdersEquity",
-    "quarterlyOperatingCashFlow",
-    "quarterlyFreeCashFlow",
-    "quarterlyEndCashPosition",
+  const metrics = [
+    "TotalRevenue", "CostOfRevenue", "GrossProfit", "OperatingIncome", "NetIncome", "BasicEPS", "DilutedEPS",
+    "TotalAssets", "TotalLiabilitiesNetMinorityInterest", "StockholdersEquity", "OperatingCashFlow", "FreeCashFlow", "EndCashPosition",
   ];
+  return metrics.flatMap((metric) => [`quarterly${metric}`, `annual${metric}`]);
 }
 
 function yahooStablePeriod2(): number {
@@ -1640,22 +1710,45 @@ function yahooStablePeriod2(): number {
 }
 
 function yahooFinancePayloadKey(type: string): string | null {
+  const prefix = type.startsWith("quarterly") ? "quarterly" : type.startsWith("annual") ? "annual" : "";
+  if (!prefix) return null;
+  const metric = type.slice(prefix.length);
   const map: Record<string, string> = {
-    quarterlyTotalRevenue: "totalOperateIncome",
-    quarterlyCostOfRevenue: "operateCost",
-    quarterlyGrossProfit: "grossProfit",
-    quarterlyOperatingIncome: "operateProfit",
-    quarterlyNetIncome: "netProfit",
-    quarterlyBasicEPS: "basicEps",
-    quarterlyDilutedEPS: "dilutedEps",
-    quarterlyTotalAssets: "totaAssets",
-    quarterlyTotalLiabilitiesNetMinorityInterest: "totalLiabilities",
-    quarterlyStockholdersEquity: "totalEquity",
-    quarterlyOperatingCashFlow: "netcashOperate",
-    quarterlyFreeCashFlow: "freeCashFlow",
-    quarterlyEndCashPosition: "endCce",
+    TotalRevenue: "totalOperateIncome",
+    CostOfRevenue: "operateCost",
+    GrossProfit: "grossProfit",
+    OperatingIncome: "operateProfit",
+    NetIncome: "netProfit",
+    BasicEPS: "basicEps",
+    DilutedEPS: "dilutedEps",
+    TotalAssets: "totaAssets",
+    TotalLiabilitiesNetMinorityInterest: "totalLiabilities",
+    StockholdersEquity: "totalEquity",
+    OperatingCashFlow: "netcashOperate",
+    FreeCashFlow: "freeCashFlow",
+    EndCashPosition: "endCce",
   };
-  return map[type] ?? null;
+  return map[metric] ?? null;
+}
+
+function yahooPeriodType(point: YahooTimeseriesPoint, type: string): "3M" | "12M" {
+  if (String(point.periodType ?? "").toUpperCase() === "12M" || type.startsWith("annual")) return "12M";
+  return "3M";
+}
+
+function yahooCurrency(value: unknown): string | null {
+  const currency = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return /^[A-Z]{3}$/.test(currency) ? currency : null;
+}
+
+function finalizeYahooFinancePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const fieldCurrencies = payload.YAHOO_FIELD_CURRENCIES && typeof payload.YAHOO_FIELD_CURRENCIES === "object"
+    ? Object.values(payload.YAHOO_FIELD_CURRENCIES as Record<string, unknown>).filter((value): value is string => typeof value === "string" && value.length > 0)
+    : [];
+  const currencies = [...new Set(fieldCurrencies)];
+  if (currencies.length === 1) return { ...payload, REPORTING_CURRENCY: currencies[0] };
+  if (currencies.length > 1) return { ...payload, YAHOO_CURRENCY_CONFLICT: true };
+  return payload;
 }
 
 function normalizeYahooFinancePayload(

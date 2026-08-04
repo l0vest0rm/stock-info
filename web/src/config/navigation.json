@@ -3,6 +3,7 @@
     {"href": "/", "text": "首页"},
     {"href": "situation.html", "text": "态势感知"},
     {"href": "macro.html", "text": "宏观"},
+    {"href": "industry-research.html", "text": "行业研究"},
     {"href": "companies-filter.html", "text": "公司"},
     {"href": "funds.html", "text": "基金"},
     {"href": "research-news.html", "text": "研报资讯"},
@@ -19,6 +20,7 @@
   ],
   "companyNav": [
     {"href": "company.html", "text": "股价表现"},
+    {"href": "company-research.html", "text": "研究决策"},
     {"href": "company-trade.html", "text": "买卖建议"},
     {"href": "company-option.html", "text": "期权"},
     {"href": "company-option-theta.html", "text": "时间损耗"},
@@ -33,7 +35,8 @@
   "fundNav": [
     {"href": "fund.html", "text": "基本数据"},
     {"href": "fund-position.html", "text": "基金持仓"},
-    {"href": "fund-notice.html", "text": "基金公告"}
+    {"href": "fund-notice.html", "text": "基金公告"},
+    {"href": "fund-compare.html", "text": "基金对比"}
   ],
   "indexNav": [
     {"href": "index.html", "text": "基本数据"},

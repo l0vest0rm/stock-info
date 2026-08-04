@@ -1,0 +1,22 @@
+{
+  "version": "research-operating-source-fact-bindings.v1",
+  "targets": [
+    { "targetKind": "segment_variable", "targetFields": [
+      { "field": "volume", "factKinds": ["segment_volume"] },
+      { "field": "price_per_unit", "factKinds": ["unit_price", "unit_economics"] },
+      { "field": "revenue_formula", "factKinds": ["segment_scope", "revenue_recognition"] },
+      { "field": "revenue_recognition", "factKinds": ["revenue_recognition"] }
+    ] },
+    { "targetKind": "contract_parameter", "targetFields": [
+      { "field": "customer_or_channel", "factKinds": ["customer_relationship"] },
+      { "field": "commitment_description", "factKinds": ["contract_commitment", "order_backlog"] },
+      { "field": "pricing_basis", "factKinds": ["unit_price", "unit_economics"] },
+      { "field": "renewal_or_delivery_constraint", "factKinds": ["contract_commitment", "capacity_constraint", "growth_constraint"] }
+    ] },
+    { "targetKind": "growth_constraint", "targetFields": [
+      { "field": "description", "factKinds": ["capacity_constraint", "growth_constraint"] },
+      { "field": "affected_driver", "factKinds": ["capacity_constraint", "growth_constraint", "order_backlog"] },
+      { "field": "invalidation_or_release_condition", "factKinds": ["capacity_constraint", "growth_constraint"] }
+    ] }
+  ]
+}

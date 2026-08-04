@@ -1,0 +1,19 @@
+{
+  "version": "research-industry-kpi-transmission.v1",
+  "rules": [
+    {
+      "ruleId": "direct-segment-volume.v1",
+      "source": { "targetModule": "operating_driver", "targetField": "segment_volume" },
+      "destination": { "subject": "operating_driver_segment_year", "field": "volume" },
+      "transformation": "identity",
+      "requiredMappingFields": ["companyTrackExposureId", "industryKpiId", "operatingDriverPlanId", "operatingDriverSegmentYearId", "inputValue", "inputUnit", "mappingNote"]
+    },
+    {
+      "ruleId": "direct-segment-price.v1",
+      "source": { "targetModule": "operating_driver", "targetField": "price_per_unit" },
+      "destination": { "subject": "operating_driver_segment_year", "field": "pricePerUnit" },
+      "transformation": "identity",
+      "requiredMappingFields": ["companyTrackExposureId", "industryKpiId", "operatingDriverPlanId", "operatingDriverSegmentYearId", "inputValue", "inputUnit", "mappingNote"]
+    }
+  ]
+}

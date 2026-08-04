@@ -1,0 +1,25 @@
+{
+  "version": "research-market-structure.v1",
+  "facts": {
+    "basic_shares": { "label": "期末基本股数", "valueKind": "number" },
+    "diluted_shares": { "label": "稀释后股数", "valueKind": "number" },
+    "free_float": { "label": "自由流通/可交易股本", "valueKind": "number" },
+    "investor_accessibility": { "label": "投资者可达性与资格", "valueKind": "text" },
+    "dividend_withholding_tax": { "label": "股息预提税/税费规则", "valueKind": "text" },
+    "trading_hours": { "label": "交易时间与交易制度", "valueKind": "text" },
+    "settlement_cycle": { "label": "交收周期与交收制度", "valueKind": "text" },
+    "price_limit": { "label": "涨跌幅/停牌等价格制度", "valueKind": "text" },
+    "adr_ratio": { "label": "每 ADS/ADR 对应基础证券数", "valueKind": "number" },
+    "adr_fee": { "label": "存托费用", "valueKind": "text" },
+    "adr_conversion": { "label": "ADR 转换/注销安排", "valueKind": "text" },
+    "vie_or_offshore_structure": { "label": "VIE/境外控股权益结构", "valueKind": "text" }
+  },
+  "profiles": {
+    "a_share:equity": ["basic_shares", "diluted_shares", "free_float", "investor_accessibility", "dividend_withholding_tax", "trading_hours", "settlement_cycle", "price_limit"],
+    "h_share:equity": ["basic_shares", "diluted_shares", "free_float", "investor_accessibility", "dividend_withholding_tax", "trading_hours", "settlement_cycle"],
+    "us_share:equity": ["basic_shares", "diluted_shares", "free_float", "dividend_withholding_tax", "trading_hours", "settlement_cycle"],
+    "us_share:adr": ["basic_shares", "diluted_shares", "free_float", "investor_accessibility", "dividend_withholding_tax", "trading_hours", "settlement_cycle", "adr_ratio", "adr_fee", "adr_conversion", "vie_or_offshore_structure"]
+  },
+  "valuationRequired": ["basic_shares", "diluted_shares"],
+  "crossSecurityRequired": "all"
+}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseStructuredAnalysis } from "./information-processing.ts";
+import { discardFailedInformationAttempt, parseStructuredAnalysis, persistStructuredResult } from "./information-processing.ts";
 
 const record = (overrides = {}) => ({
   entity: "三环集团",
@@ -25,6 +25,51 @@ test("treats an empty records array as no information", () => {
   assert.equal(result.records.length, 0);
 });
 
+test("persists a no-information result without issuing an empty D1 batch", async () => {
+  let batchCalls = 0;
+  const db = {
+    prepare() {
+      return {
+        bind() {
+          return { run: async () => ({}) };
+        },
+      };
+    },
+    async batch() {
+      batchCalls += 1;
+    },
+  };
+  const analysis = parseStructuredAnalysis('{"records":[]}');
+  const count = await persistStructuredResult(db, "run", "version", analysis);
+  assert.equal(count, 0);
+  assert.equal(batchCalls, 0);
+});
+
+test("removes a failed attempt and its empty processing version", async () => {
+  const statements = [];
+  const batches = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        bind(...values) {
+          statements.push({ sql, values });
+          return { first: async () => null };
+        },
+      };
+      return statement;
+    },
+    async batch(items) { batches.push(items); },
+  };
+  await discardFailedInformationAttempt(db, "run-1", "version-1");
+  assert.equal(batches.length, 2);
+  assert.match(statements[0].sql, /delete from knowledge_information_records/i);
+  assert.match(statements[1].sql, /delete from knowledge_document_results/i);
+  assert.match(statements[2].sql, /delete from knowledge_processing_runs/i);
+  assert.match(statements.at(-2).sql, /delete from knowledge_preprocessing_decisions/i);
+  assert.match(statements.at(-1).sql, /delete from knowledge_document_versions/i);
+});
+
 test("marks invalid category/type and period-policy records for review", () => {
   const wrongType = parseStructuredAnalysis(JSON.stringify({ records: [record({ informationType: "opinion" })] }));
   const missingPeriod = parseStructuredAnalysis(JSON.stringify({ records: [record({ period: null })] }));
@@ -34,6 +79,18 @@ test("marks invalid category/type and period-policy records for review", () => {
   assert.equal(missingPeriod.outcome, "needs_review");
   assert.equal(forbiddenPeriod.outcome, "needs_review");
   assert.equal(nonSelfContainedStatement.outcome, "needs_review");
+});
+
+test("accepts direct bank specialty facts only with their required period", () => {
+  const bankMetric = record({
+    entity: "建设银行",
+    category: "net_interest_margin",
+    period: "2026H1",
+    statement: "建设银行2026年上半年净息差为1.40%。",
+  });
+  assert.equal(parseStructuredAnalysis(JSON.stringify({ records: [bankMetric] })).outcome, "extracted");
+  assert.equal(parseStructuredAnalysis(JSON.stringify({ records: [{ ...bankMetric, period: null }] })).outcome, "needs_review");
+  assert.equal(parseStructuredAnalysis(JSON.stringify({ records: [{ ...bankMetric, informationType: "guidance" }] })).outcome, "needs_review");
 });
 
 test("accepts supported simple periods and rejects malformed JSON", () => {

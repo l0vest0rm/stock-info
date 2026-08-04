@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { fetchEastmoneyText } from "../../../adapters/eastmoney";
 import { bareCode, normalizeSecurityCode } from "../../../shared/codes";
 import { ok, parseJsonOrJsonp, requireQuery } from "../../../shared/http";
-import type { AppEnv } from "../../../types";
+import { loadKline } from "../../market/application/load-kline";
+import type { AppEnv, FundNavRow } from "../../../types";
 
 export const fundRoutes = new Hono<AppEnv>();
 
@@ -50,7 +51,31 @@ fundRoutes.get("/fund/rank", async (c) => ok(c, await fetchFundRank(c.env.DB, c.
 
 fundRoutes.get("/fund/companies", async (c) => ok(c, await fetchFundCompanies(c.env.DB)));
 
-async function fetchFundInfo(db: D1Database, code: string): Promise<Record<string, string>> {
+fundRoutes.get("/fund/compare", async (c) => {
+  const codes = [...new Set(String(c.req.query("codes") ?? "").split(",").map((item) => normalizeFundCompareCode(item)).filter(Boolean))].slice(0, 6);
+  if (codes.length < 2) return ok(c, { rows: [], limitation: "请提供 2–6 只基金代码进行比较。" });
+  const to = new Date().toISOString().slice(0, 10);
+  const from = `${new Date(Date.now() - 366 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}`;
+  const rows = await Promise.all(codes.map(async (code) => {
+    const [info, allocation, positions, nav] = await Promise.all([
+      fetchFundInfo(c.env.DB, code), fetchFundAssetAllocation(c.env.DB, code), fetchFundPosition(c.env.DB, code, 1), loadKline(c.env, code, "day", "forward", from, to),
+    ]);
+    const navRows = nav.rows.filter((item): item is FundNavRow => "nav" in item);
+    const first = navRows.find((item) => item.accumNav !== null || item.nav !== null);
+    const latest = navRows.at(-1);
+    const firstValue = first?.accumNav ?? first?.nav ?? null;
+    const latestValue = latest?.accumNav ?? latest?.nav ?? null;
+    return {
+      code, info, allocation: allocation.rows.at(0) ?? null,
+      holdingCount: Array.isArray(positions[0]?.data) ? positions[0].data.length : null,
+      performance: firstValue && latestValue ? { oneYearReturnPct: Number((((latestValue / firstValue) - 1) * 100).toFixed(2)), from: first?.date ?? null, to: latest?.date ?? null } : null,
+      dataHealth: { navSource: nav.source, navRows: navRows.length, latestNavDate: latest?.date ?? null },
+    };
+  }));
+  return ok(c, { rows, limitation: "比较只呈现公开数据；收益未统一为同一风险基准，不能直接推导配置建议。" });
+});
+
+export async function fetchFundInfo(db: D1Database, code: string): Promise<Record<string, string>> {
   const fundCode = bareFundCode(code);
   const html = await fetchEastmoneyText(db, `https://fundf10.eastmoney.com/jbgk_${fundCode}.html`);
   const allText = normalizeText(stripTags(html));
@@ -90,7 +115,7 @@ async function fetchFundInfo(db: D1Database, code: string): Promise<Record<strin
   return info;
 }
 
-async function fetchFundPosition(db: D1Database, code: string, num: number): Promise<Array<Record<string, unknown>>> {
+export async function fetchFundPosition(db: D1Database, code: string, num: number): Promise<Array<Record<string, unknown>>> {
   const fundCode = bareFundCode(code);
   const now = new Date();
   const startYear = now.getMonth() + 1 < 4 ? now.getFullYear() - 1 : now.getFullYear();
@@ -119,7 +144,7 @@ type FundAssetAllocationRow = {
   netAssetsBillion: number | null;
 };
 
-async function fetchFundAssetAllocation(db: D1Database, code: string): Promise<{
+export async function fetchFundAssetAllocation(db: D1Database, code: string): Promise<{
   code: string;
   source: "eastmoney";
   rows: FundAssetAllocationRow[];
@@ -423,6 +448,12 @@ function extractFundArchivesContent(raw: string): string {
 
 function bareFundCode(code: string): string {
   return bareCode(code).trim();
+}
+
+function normalizeFundCompareCode(value: string): string {
+  const raw = value.trim();
+  if (!/^\d{6}(?:\.(?:OF|SH|SZ))?$/i.test(raw)) return "";
+  return raw.toUpperCase().endsWith(".OF") ? raw.toUpperCase() : `${raw.split(".")[0]}.OF`;
 }
 
 function stripTags(value: string): string {

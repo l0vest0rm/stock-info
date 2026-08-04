@@ -48,6 +48,14 @@ const promptEntries = [
     exportName: "INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT",
     source: "prompts/information-processing/document-analysis-user.md",
   },
+  {
+    exportName: "RESEARCH_FORECAST_SYNTHESIS_SYSTEM_PROMPT",
+    source: "prompts/research/forecast-synthesis-system.md",
+  },
+  {
+    exportName: "RESEARCH_FORECAST_SYNTHESIS_USER_PROMPT",
+    source: "prompts/research/forecast-synthesis-user.md",
+  },
 ];
 
 const generatedTsPath = resolve(PROJECT_ROOT, "src/generated/prompt-text.ts");

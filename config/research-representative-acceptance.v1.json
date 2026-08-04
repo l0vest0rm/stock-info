@@ -1,0 +1,128 @@
+{
+  "version": "research-representative-acceptance.v1",
+  "asOf": "2026-08-04",
+  "purpose": "冻结当前代表性证券的边界验收契约。它证明 API、来源状态和研究页面能诚实呈现已知资料与阻断；不把任一案例称为标准或深度研究完成。",
+  "changeControl": "当来源、映射或研究深度真实变化时，必须连同对应证据和本文件更新；不得仅放宽断言或把缺失默认成通过。",
+  "sharedAssertions": {
+    "pageShellMarkers": ["company-research-vue-root", "js/company-research-page.js"],
+    "requiredDepthRuleVersion": "research-depth.v1",
+    "requiredBundleMarkers": ["研究深度门禁", "不得输出：", "事实需求、来源健康与研究缺口", "不计算完成率"],
+    "prohibitedOutputs": {
+      "basic": "完整价值区间、确定性竞争优势或长期盈利结论。",
+      "standard": "缺少关键股本、现金流或市场边界时的精确目标价。",
+      "deep": "把渠道线索、单一研报或模型假设升级为事实。"
+    }
+  },
+  "cases": [
+    {
+      "caseId": "ccb_a_h_same_issuer",
+      "category": "A/H 同主体",
+      "label": "建设银行 A/H 双重上市",
+      "sharedOperatingCompanyId": "operating:ccb",
+      "securities": [
+        {
+          "code": "601939.SH",
+          "market": "a_share",
+          "instrumentKind": "equity",
+          "mappingStatus": "confirmed",
+          "financialPolicy": "Eastmoney → CNINFO 核验（无自动回退）",
+          "financialAvailability": "partial",
+          "requiredSourceStatus": { "company_security_ledger": "available", "financial_primary": "available", "financial_statutory": "missing" },
+          "depthStatus": { "basic": "blocked", "standard": "blocked", "deep": "blocked" },
+          "blockedRequirements": ["financial_trend", "valuation"]
+        },
+        {
+          "code": "00939.HK",
+          "market": "h_share",
+          "instrumentKind": "equity",
+          "mappingStatus": "confirmed",
+          "financialPolicy": "Eastmoney HK F10 → HKEX 核验（无自动回退）",
+          "financialAvailability": "partial",
+          "requiredSourceStatus": { "company_security_ledger": "available", "financial_primary": "available", "financial_statutory": "missing" },
+          "depthStatus": { "basic": "blocked", "standard": "blocked", "deep": "blocked" },
+          "blockedRequirements": ["financial_trend", "valuation"]
+        }
+      ],
+      "prohibitedConclusions": ["不能混用多地上市或 ADR 的市场与权利数据。", "不能在缺少股本、FX、净债务或权利输入时输出精确每股价值。"]
+    },
+    {
+      "caseId": "alibaba_adr",
+      "category": "ADR",
+      "label": "阿里巴巴美国存托证券",
+      "securities": [
+        {
+          "code": "BABA.US",
+          "market": "us_share",
+          "instrumentKind": "adr",
+          "mappingStatus": "confirmed",
+          "depositaryRatio": 8,
+          "financialPolicy": "Yahoo → SEC 核验（本地经配置代理；生产统一 HTTP；无自动回退）",
+          "financialAvailability": "partial",
+          "requiredSourceStatus": { "company_security_ledger": "available", "issuer_rights_documents": "stale", "financial_primary": "available", "financial_statutory": "conflict" },
+          "depthStatus": { "basic": "blocked", "standard": "blocked", "deep": "blocked" },
+          "blockedRequirements": ["financial_trend", "valuation"]
+        }
+      ],
+      "prohibitedConclusions": ["不能混用多地上市或 ADR 的市场与权利数据。", "不能在缺少股本、FX、净债务或权利输入时输出精确每股价值。"]
+    },
+    {
+      "caseId": "jpm_bank",
+      "category": "银行",
+      "label": "摩根大通银行例外",
+      "securities": [
+        {
+          "code": "JPM.US",
+          "market": "us_share",
+          "instrumentKind": "equity",
+          "mappingStatus": "unresolved",
+          "financialPolicy": "Yahoo → SEC 核验（本地经配置代理；生产统一 HTTP；无自动回退）",
+          "financialAvailability": "partial",
+          "requiredSourceStatus": { "company_security_ledger": "missing", "financial_primary": "available", "financial_statutory": "partial" },
+          "depthStatus": { "basic": "blocked", "standard": "unavailable", "deep": "unavailable" },
+          "blockedRequirements": ["financial_trend", "source_material", "industry"]
+        }
+      ],
+      "prohibitedConclusions": ["不能把结构化财报或缺失输入写成完整基本面事实。", "缺少关键股本、现金流或市场边界时的精确目标价。"]
+    },
+    {
+      "caseId": "bhp_cycle",
+      "category": "周期",
+      "label": "必和必拓周期商业模式",
+      "securities": [
+        {
+          "code": "BHP.US",
+          "market": "us_share",
+          "instrumentKind": "equity",
+          "mappingStatus": "unresolved",
+          "financialPolicy": "Yahoo → SEC 核验（本地经配置代理；生产统一 HTTP；无自动回退）",
+          "financialAvailability": "partial",
+          "requiredSourceStatus": { "company_security_ledger": "missing", "financial_primary": "available", "financial_statutory": "missing" },
+          "depthStatus": { "basic": "blocked", "standard": "unavailable", "deep": "unavailable" },
+          "blockedRequirements": ["financial_trend", "source_material", "market_validation"]
+        }
+      ],
+      "prohibitedConclusions": ["不能把 TAM 或领导地位直接变成收入、份额或利润结论。", "不能在无压力路径和触发条件时输出带置信边界的价值区间。"]
+    },
+    {
+      "caseId": "rivian_unprofitable",
+      "category": "未盈利",
+      "label": "Rivian 未盈利商业模式",
+      "securities": [
+        {
+          "code": "RIVN.US",
+          "market": "us_share",
+          "instrumentKind": "equity",
+          "mappingStatus": "unresolved",
+          "financialPolicy": "Yahoo → SEC 核验（本地经配置代理；生产统一 HTTP；无自动回退）",
+          "financialAvailability": "partial",
+          "requiredSourceStatus": { "company_security_ledger": "missing", "financial_primary": "available", "financial_statutory": "missing" },
+          "depthStatus": { "basic": "blocked", "standard": "unavailable", "deep": "unavailable" },
+          "blockedRequirements": ["financial_trend", "source_material", "valuation"],
+          "requiresHistoricalLoss": true
+        }
+      ],
+      "prohibitedConclusions": ["不能把结构化财报或缺失输入写成完整基本面事实。", "缺少关键股本、现金流或市场边界时的精确目标价。"]
+    }
+  ],
+  "externalDecision": "首批完整标准/深度研究公司和行业组合、商业研报/电话会导入授权，以及完整市场一致预期和行业 TAM/份额/KPI 数据授权，仍需用户明确决定。"
+}

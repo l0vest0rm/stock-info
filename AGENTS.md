@@ -47,4 +47,4 @@
 - Stock K-line data must use Xueqiu only. Do not add Eastmoney, Tencent, Yahoo, or other stock K-line fallbacks for A-shares, Hong Kong stocks, U.S. stocks, or indices.
 - Fund net-value history remains Eastmoney-only because it is not a stock K-line source.
 - Xueqiu requests require `XUEQIU_COOKIE`, refreshed locally through CDP and written to local plus production Worker variables before deployment. When the cookie is unavailable or rejected, surface the failure rather than silently switching data sources.
-- Yahoo is allowed only for U.S. stock options data. Do not reuse Yahoo endpoints, symbols, proxy configuration, or adapters for K-line, finance, search, or other market data.
+- Yahoo is allowed for U.S. stock options data and U.S. financial-statement collection. Local U.S. financial-statement requests must use the configured Yahoo proxy; production may access Yahoo finance directly through the unified HTTP client and cache. Do not use Yahoo for stock K-lines, search, Hong Kong financial statements, or other market data.
