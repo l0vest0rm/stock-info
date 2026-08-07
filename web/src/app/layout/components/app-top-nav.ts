@@ -5,6 +5,7 @@ import {
   type SecuritySearchHistoryItem,
 } from "../../../platform/search-history";
 import { navConfig } from "../config/navigation";
+import { routeForSecuritySearch } from "../security-search-route";
 
 type SearchResult = SecuritySearchHistoryItem;
 
@@ -16,17 +17,6 @@ function topNavClass(page: string, href: string): string {
   const active = href === "/" ? isHomePage(page) : page === href;
   const stateClass = active ? "text-secondary active" : "text-white";
   return `nav-link px-2 ${stateClass}`;
-}
-
-function routeForResult(result: SearchResult): string {
-  const code = String(result.code || "").trim();
-  if (!code) {
-    return "#";
-  }
-  if (String(result.type || "").toLowerCase() === "fund" || code.endsWith(".OF")) {
-    return `fund.html?code=${encodeURIComponent(code.endsWith(".OF") ? code : `${code}.OF`)}`;
-  }
-  return `company.html?code=${encodeURIComponent(code)}`;
 }
 
 export const AppTopNav = defineComponent({
@@ -99,7 +89,7 @@ export const AppTopNav = defineComponent({
 
     const openResult = (item: SearchResult) => {
       rememberResult(item);
-      window.location.href = routeForResult(item);
+      window.location.href = routeForSecuritySearch(item);
     };
 
     const onSubmit = (event: Event) => {

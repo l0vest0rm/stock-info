@@ -1,0 +1,108 @@
+{
+  "configVersion": "research-web-search-packages.v8",
+  "model": "gpt-5.6-luna",
+  "packageKind": "recent_filings",
+  "securityCode": "300308.SZ",
+  "prompt": "研究对象：300308.SZ（中际旭创，A，交易币种 CNY）\n\n这是“近期披露包”。只搜索已确认财报边界之后、最近十二个月内的公司、交易所或监管原文：季报、业绩公告/业绩会材料、重大合同、融资、回购、产品进展、审批和监管披露。不要重复抽取该边界之前的年报内容，除非新披露明确修订或比较它。\n\n已确认的法定财报边界：已确认：最新可用法定财报截至 2026-03-31；于 2026-04-17 发布；标题《2026年一季度报告》；原文 https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF。该边界由命令行传入。\n已知字段：截至 2026-03-31；发布日期 2026-04-17；标题《2026年一季度报告》；原文 https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF。\n每条记录必须能说明“相对该边界的新变化”、发生或披露日期，以及它是已发生事实、管理层指引还是待触发事件。公司结构化三表数值不是本包主值；仅补充公告正文、附注和管理层表述。\n\n允许来源：发行人、交易所、监管机构的原文；同一来源一次提取多个字段。evidence_records[].tab_id 仅可为：business, market, financial, forecast, risk。字段名和枚举值使用英文 snake_case；不得输出中文 Tab 名称。",
+  "effort": "high",
+  "elapsedMs": 248644,
+  "firstEventMs": 2128,
+  "firstTextMs": 188351,
+  "citationCount": 4,
+  "queryCount": 12,
+  "recordCount": 10,
+  "persistableRecordCount": 10,
+  "verifiedCount": 10,
+  "unavailableCount": 0,
+  "invalidStatusCount": 0,
+  "invalidTabCount": 0,
+  "summary": "相对已确认的法定财报边界（截至2026-03-31、于2026-04-17披露），本次通过发行人、深交所及中国证监会原文验证到的新增事项包括：2026年5月特定股东新增及解除质押；2026年6月针对网络虚假信息的澄清；2026年6月美国“1260H清单”相关监管风险披露及公司经营影响判断；2026年7月中国证监会对H股境外发行上市备案的确认。H股发行上市尚处备案及后续审批推进阶段，不应视为已完成上市。([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF))",
+  "facts": [
+    {
+      "key": "specific_share_pledge_transaction",
+      "status": "verified",
+      "subject": "苏州益兴福企业管理中心（有限合伙）",
+      "statement": "相对2026-03-31财报边界，2026-05-20发生并于2026-05-22披露一笔新增股票质押：益兴福将350,000股质押给中信证券，用途为偿还债务；这是已发生事实。",
+      "source": "关于特定股东部分股票进行质押交易及解除质押的公告"
+    },
+    {
+      "key": "specific_share_pledge_transaction",
+      "status": "verified",
+      "subject": "苏州益兴福企业管理中心（有限合伙）",
+      "statement": "相对2026-03-31财报边界，2026-05-20发生并于2026-05-22披露另一笔新增股票质押：益兴福将1,380,000股质押给国泰海通，用途为债权类投资；这是已发生事实。",
+      "source": "关于特定股东部分股票进行质押交易及解除质押的公告"
+    },
+    {
+      "key": "cumulative_share_pledge",
+      "status": "verified",
+      "subject": "益兴福及其一致行动人",
+      "statement": "截至2026-05-22，益兴福及其一致行动人累计质押11,584,000股，占其持有股份12.12%、占公司总股本1.04%；这是披露时点的已发生状态。",
+      "source": "关于特定股东部分股票进行质押交易及解除质押的公告"
+    },
+    {
+      "key": "share_pledge_release",
+      "status": "verified",
+      "subject": "苏州益兴福企业管理中心（有限合伙）",
+      "statement": "相对2026-03-31财报边界，益兴福于2026-05-21解除质押700,000股；这是已发生事实。",
+      "source": "关于特定股东部分股票进行质押交易及解除质押的公告"
+    },
+    {
+      "key": "rumor_clarification",
+      "status": "verified",
+      "subject": "《中际旭创董事长2026光互联论坛（5.28上海）演讲全文》网络文章",
+      "statement": "相对2026-03-31财报边界，公司于2026-06-01澄清：其不了解所谓相关论坛，也未参展或出席；网络文章为杜撰虚假内容，未由公司或董事长发表；这是已披露的事实及公司法律维权行动表述。",
+      "source": "关于网络传闻的澄清公告"
+    },
+    {
+      "key": "us_1260h_listing_disclosure",
+      "status": "verified",
+      "subject": "美国国防部“1260H清单”事件",
+      "statement": "相对2026-03-31财报边界，公司于2026-06-10披露，2026-06-08（美国时间）美国国防部将中际旭创列入“1260H清单”；公司否认其为中国军工企业或军民融合企业，并表示将沟通及采取措施维护公司利益；这是已发生的外部事件及公司回应。",
+      "source": "自愿性信息披露公告"
+    },
+    {
+      "key": "1260h_operational_impact_assessment",
+      "status": "verified",
+      "subject": "美国国防部“1260H清单”事件",
+      "statement": "相对2026-03-31财报边界，公司在2026-06-10公告中表示该事件未对公司经营产生实质性影响，订单获取、生产运营及供应链情况正常；这是管理层对当前影响的判断，不是独立经营结果验证。",
+      "source": "自愿性信息披露公告"
+    },
+    {
+      "key": "h_share_issuance_filing_cap",
+      "status": "verified",
+      "subject": "境外发行H股并在香港联合交易所上市",
+      "statement": "相对2026-03-31财报边界，中国证监会于2026-07-08确认公司拟发行不超过94,004,350股境外上市普通股并在香港联合交易所上市；这是已取得备案通知的融资及资本运作进展，后续发行上市仍待相关程序触发。",
+      "source": "关于中际旭创股份有限公司境外发行上市备案通知书"
+    },
+    {
+      "key": "h_share_post_listing_reporting_deadline",
+      "status": "verified",
+      "subject": "境外发行H股并在香港联合交易所上市",
+      "statement": "相对2026-03-31财报边界，中国证监会备案通知要求公司完成境外发行上市后15个工作日内报告发行上市情况；这是待触发的监管申报义务。",
+      "source": "关于中际旭创股份有限公司境外发行上市备案通知书"
+    },
+    {
+      "key": "h_share_filing_update_deadline",
+      "status": "verified",
+      "subject": "境外发行H股并在香港联合交易所上市",
+      "statement": "相对2026-03-31财报边界，若公司自2026-07-08备案通知出具之日起12个月内未完成境外发行上市但仍拟继续推进，则需更新备案材料；这是待触发的监管时间节点。",
+      "source": "关于中际旭创股份有限公司境外发行上市备案通知书"
+    }
+  ],
+  "modelOutput": "{\"summary\":\"相对已确认的法定财报边界（截至2026-03-31、于2026-04-17披露），本次通过发行人、深交所及中国证监会原文验证到的新增事项包括：2026年5月特定股东新增及解除质押；2026年6月针对网络虚假信息的澄清；2026年6月美国“1260H清单”相关监管风险披露及公司经营影响判断；2026年7月中国证监会对H股境外发行上市备案的确认。H股发行上市尚处备案及后续审批推进阶段，不应视为已完成上市。([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF))\",\"evidence_records\":[{\"tab_id\":\"market\",\"field_key\":\"specific_share_pledge_transaction\",\"subject\":\"苏州益兴福企业管理中心（有限合伙）\",\"statement\":\"相对2026-03-31财报边界，2026-05-20发生并于2026-05-22披露一笔新增股票质押：益兴福将350,000股质押给中信证券，用途为偿还债务；这是已发生事实。\",\"numeric_value\":350000,\"unit\":\"shares\",\"currency\":null,\"period\":\"2026-05-20\",\"product_scope\":\"shareholder_equity\",\"region_scope\":\"China\",\"source_title\":\"关于特定股东部分股票进行质押交易及解除质押的公告\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF))\",\"source_published_at\":\"2026-05-22\",\"quote\":\"益兴福 否 350,000 否 否 2026.05.20 2028.5.20 中信证券\",\"locator\":\"PDF第1页，股东部分股票质押交易基本情况表，第33-36行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"specific_share_pledge_transaction\",\"subject\":\"苏州益兴福企业管理中心（有限合伙）\",\"statement\":\"相对2026-03-31财报边界，2026-05-20发生并于2026-05-22披露另一笔新增股票质押：益兴福将1,380,000股质押给国泰海通，用途为债权类投资；这是已发生事实。\",\"numeric_value\":1380000,\"unit\":\"shares\",\"currency\":null,\"period\":\"2026-05-20\",\"product_scope\":\"shareholder_equity\",\"region_scope\":\"China\",\"source_title\":\"关于特定股东部分股票进行质押交易及解除质押的公告\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF))\",\"source_published_at\":\"2026-05-22\",\"quote\":\"益兴福 否 1,380,000 否 否 2026.05.20 2029.5.18 国泰海通\",\"locator\":\"PDF第1页，股东部分股票质押交易基本情况表，第37-40行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"cumulative_share_pledge\",\"subject\":\"益兴福及其一致行动人\",\"statement\":\"截至2026-05-22，益兴福及其一致行动人累计质押11,584,000股，占其持有股份12.12%、占公司总股本1.04%；这是披露时点的已发生状态。\",\"numeric_value\":11584000,\"unit\":\"shares\",\"currency\":null,\"period\":\"as_of_2026-05-22\",\"product_scope\":\"shareholder_equity\",\"region_scope\":\"China\",\"source_title\":\"关于特定股东部分股票进行质押交易及解除质押的公告\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF))\",\"source_published_at\":\"2026-05-22\",\"quote\":\"合计 95,603,460 8.59% 11,584,000 12.12% 1.04%\",\"locator\":\"PDF第2页，股东股份累计质押情况表，第83-85行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"share_pledge_release\",\"subject\":\"苏州益兴福企业管理中心（有限合伙）\",\"statement\":\"相对2026-03-31财报边界，益兴福于2026-05-21解除质押700,000股；这是已发生事实。\",\"numeric_value\":700000,\"unit\":\"shares\",\"currency\":null,\"period\":\"2026-05-21\",\"product_scope\":\"shareholder_equity\",\"region_scope\":\"China\",\"source_title\":\"关于特定股东部分股票进行质押交易及解除质押的公告\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-05-22/7a7dfd7d-69c4-418c-aacd-214f7311f810.PDF))\",\"source_published_at\":\"2026-05-22\",\"quote\":\"益兴福 否 700,000 2025.05.21 2026.05.21 中信证券\",\"locator\":\"PDF第1页，股东部分股票解除质押基本情况表，第58行\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"rumor_clarification\",\"subject\":\"《中际旭创董事长2026光互联论坛（5.28上海）演讲全文》网络文章\",\"statement\":\"相对2026-03-31财报边界，公司于2026-06-01澄清：其不了解所谓相关论坛，也未参展或出席；网络文章为杜撰虚假内容，未由公司或董事长发表；这是已披露的事实及公司法律维权行动表述。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026-06-01\",\"product_scope\":\"corporate_information\",\"region_scope\":\"China\",\"source_title\":\"关于网络传闻的澄清公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf))\",\"source_published_at\":\"2026-06-01\",\"quote\":\"《中际旭创董事长 2026 光互联论坛（5.28 上海）演讲全文》的文章为杜撰的虚假内容\",\"locator\":\"PDF第1页，第二项及后续声明，第10-22行\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"us_1260h_listing_disclosure\",\"subject\":\"美国国防部“1260H清单”事件\",\"statement\":\"相对2026-03-31财报边界，公司于2026-06-10披露，2026-06-08（美国时间）美国国防部将中际旭创列入“1260H清单”；公司否认其为中国军工企业或军民融合企业，并表示将沟通及采取措施维护公司利益；这是已发生的外部事件及公司回应。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026-06-08\",\"product_scope\":\"corporate_regulatory_status\",\"region_scope\":\"United States\",\"source_title\":\"自愿性信息披露公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf))\",\"source_published_at\":\"2026-06-10\",\"quote\":\"2026 年6 月8 日（美国时间），美国国防部将中际旭创列入“1260H 清单”\",\"locator\":\"PDF第1页，第3-7行\",\"status\":\"verified\"},{\"tab_id\":\"business\",\"field_key\":\"1260h_operational_impact_assessment\",\"subject\":\"美国国防部“1260H清单”事件\",\"statement\":\"相对2026-03-31财报边界，公司在2026-06-10公告中表示该事件未对公司经营产生实质性影响，订单获取、生产运营及供应链情况正常；这是管理层对当前影响的判断，不是独立经营结果验证。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026-06-10\",\"product_scope\":\"orders_production_supply_chain\",\"region_scope\":\"Global\",\"source_title\":\"自愿性信息披露公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf))\",\"source_published_at\":\"2026-06-10\",\"quote\":\"本次事件未对公司经营产生实质性影响，公司订单获取、生产运营及供应链等情况一切正常\",\"locator\":\"PDF第1页，第12-15行\",\"status\":\"verified\"},{\"tab_id\":\"financial\",\"field_key\":\"h_share_issuance_filing_cap\",\"subject\":\"境外发行H股并在香港联合交易所上市\",\"statement\":\"相对2026-03-31财报边界，中国证监会于2026-07-08确认公司拟发行不超过94,004,350股境外上市普通股并在香港联合交易所上市；这是已取得备案通知的融资及资本运作进展，后续发行上市仍待相关程序触发。\",\"numeric_value\":94004350,\"unit\":\"shares\",\"currency\":null,\"period\":\"2026-07-08\",\"product_scope\":\"H_share_listing\",\"region_scope\":\"Hong Kong\",\"source_title\":\"关于中际旭创股份有限公司境外发行上市备案通知书\",\"source_url\":\"https://www.csrc.gov.cn/csrc/c105984/c7646095/content.shtml ([csrc.gov.cn](https://www.csrc.gov.cn/csrc/c105984/c7646095/content.shtml))\",\"source_published_at\":\"2026-07-08\",\"quote\":\"你公司拟发行不超过94,004,350股境外上市普通股并在香港联合交易所上市\",\"locator\":\"中国证监会网页正文，第38-40行\",\"status\":\"verified\"},{\"tab_id\":\"financial\",\"field_key\":\"h_share_post_listing_reporting_deadline\",\"subject\":\"境外发行H股并在香港联合交易所上市\",\"statement\":\"相对2026-03-31财报边界，中国证监会备案通知要求公司完成境外发行上市后15个工作日内报告发行上市情况；这是待触发的监管申报义务。\",\"numeric_value\":15,\"unit\":\"business_days\",\"currency\":null,\"period\":\"after_h_share_listing_completion\",\"product_scope\":\"H_share_listing\",\"region_scope\":\"Hong Kong\",\"source_title\":\"关于中际旭创股份有限公司境外发行上市备案通知书\",\"source_url\":\"https://www.csrc.gov.cn/csrc/c105984/c7646095/content.shtml ([csrc.gov.cn](https://www.csrc.gov.cn/csrc/c105984/c7646095/content.shtml))\",\"source_published_at\":\"2026-07-08\",\"quote\":\"你公司完成境外发行上市后15个工作日内，应通过中国证监会备案管理信息系统报告发行上市情况\",\"locator\":\"中国证监会网页正文，第42-44行\",\"status\":\"verified\"},{\"tab_id\":\"financial\",\"field_key\":\"h_share_filing_update_deadline\",\"subject\":\"境外发行H股并在香港联合交易所上市\",\"statement\":\"相对2026-03-31财报边界，若公司自2026-07-08备案通知出具之日起12个月内未完成境外发行上市但仍拟继续推进，则需更新备案材料；这是待触发的监管时间节点。\",\"numeric_value\":12,\"unit\":\"months\",\"currency\":null,\"period\":\"from_2026-07-08\",\"product_scope\":\"H_share_listing\",\"region_scope\":\"Hong Kong\",\"source_title\":\"关于中际旭创股份有限公司境外发行上市备案通知书\",\"source_url\":\"https://www.csrc.gov.cn/csrc/c105984/c7646095/content.shtml ([csrc.gov.cn](https://www.csrc.gov.cn/csrc/c105984/c7646095/content.shtml))\",\"source_published_at\":\"2026-07-08\",\"quote\":\"你公司自本备案通知书出具之日起12个月内未完成境外发行上市，拟继续推进的，应当更新备案材料\",\"locator\":\"中国证监会网页正文，第46行\",\"status\":\"verified\"}],\"missing_fields\":[\"2026-04-17之后的发行人半年度报告或半年度业绩预告：截至2026-08-07本次搜索未定位到可访问的发行人、深交所或监管机构原文，因此未将其作为已验证记录。\",\"2026-04-17之后的业绩会材料、投资者关系活动记录及管理层对1.6T、800G、NPO、3.2T和订单能见度的表述：本次未取得可直接访问并可核验的发行人原文，因此未纳入。\",\"2026-04-17之后的重大合同、回购、产品认证或量产进展：本次未定位到可访问的发行人、深交所或监管机构原文。\",\"2026-06-10之后美国“1260H清单”事项是否发生监管撤销、豁免、限制扩大或对经营产生新的实质影响：本次未定位到后续监管或发行人原文。\",\"H股发行上市的聆讯、招股书价格区间、定价、配售结果及首日上市：已验证中国证监会备案，但本次未将后续香港联交所文件作为完整可引用的发行人或交易所原文记录。\"],\"conflicts\":[],\"refresh_triggers\":[\"2026年半年度报告或半年度业绩预告正式披露。\",\"H股取得香港联交所或香港证监会进一步批准、刊发定价及配售公告、完成上市或触发2027-07-08前备案更新。\",\"美国“1260H清单”相关监管状态或公司订单、生产运营、供应链影响出现新的发行人或监管披露。\",\"益兴福及其一致行动人新增质押、解除质押或累计质押比例发生变化。\"]}",
+  "eventTypes": [
+    "response.created",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.web_search_call.in_progress",
+    "response.web_search_call.searching",
+    "response.web_search_call.completed",
+    "response.content_part.added",
+    "response.output_text.delta",
+    "response.output_text.annotation.added",
+    "response.output_text.done",
+    "response.content_part.done",
+    "response.completed"
+  ]
+}

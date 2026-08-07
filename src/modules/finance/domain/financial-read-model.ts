@@ -1,4 +1,5 @@
 import type { FinancialStatement, StatementType } from "../../../types";
+import { normalizeFinancialStatements, type NormalizedFinancialStatement } from "./normalize-financial-statements";
 
 /**
  * The public, provider-neutral read contract for one primary financial
@@ -21,6 +22,8 @@ export type FinancialStatementReadModel = {
   fieldAvailability: { rows: number; nonEmptyPayloadRows: number; status: "available" | "unavailable" };
   sourceHealth: FinancialStatementSourceHealth;
   rows: FinancialStatement[];
+  /** Source-preserving canonical metrics for consumers; raw rows remain available for detail views. */
+  normalizedRows: NormalizedFinancialStatement[];
 };
 
 export type FinancialStatementSourcePolicy = {
@@ -117,6 +120,7 @@ export function buildFinancialStatementReadModel(input: {
       ? { status: "degraded", reason: "no_primary_data", message: "primary financial provider returned no statement rows" }
       : { status: "healthy", reason: null, message: null },
     rows,
+    normalizedRows: normalizeFinancialStatements(rows),
   };
 }
 
@@ -126,7 +130,7 @@ export function failedFinancialStatementReadModel(code: string, statementType: S
     code, statementType, sourcePolicy: financialStatementSourcePolicy(code), delivery: null,
     reportingCurrencies: [], accountingStandards: [], periods: [], latestReportDate: null, dataAsOf: null,
     revisionStatuses: [], fieldAvailability: { rows: 0, nonEmptyPayloadRows: 0, status: "unavailable" },
-    sourceHealth: { status: "failed", ...failure }, rows: [],
+    sourceHealth: { status: "failed", ...failure }, rows: [], normalizedRows: [],
   };
 }
 

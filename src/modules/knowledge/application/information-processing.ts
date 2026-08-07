@@ -9,8 +9,8 @@ import type { Bindings } from "../../../types";
 
 const MODEL = "gpt-5.6-luna" as const;
 const MAX_OUTPUT_TOKENS = 2500;
-const SCHEMA_VERSION = "information-records-v1";
-export const INFORMATION_PROCESSING_PROMPT_VERSION = "information-processing-v18";
+const SCHEMA_VERSION = "information-records-v2";
+export const INFORMATION_PROCESSING_PROMPT_VERSION = "information-processing-v19";
 const ONTOLOGY_VERSION = ontologyConfig.version;
 
 type InformationType = "fact" | "guidance" | "forecast" | "opinion" | "event" | "relationship";
@@ -50,7 +50,50 @@ export type InformationProcessResult = {
   needsReview: boolean;
 };
 
+export type InformationProcessingModelRequest = {
+  runId: string;
+  versionId: string;
+  model: typeof MODEL;
+  maxTokens: number;
+  instructions: string;
+  input: string;
+};
+
+export type PreparedInformationProcessing =
+  | { kind: "complete"; result: InformationProcessResult }
+  | { kind: "model"; request: InformationProcessingModelRequest };
+
 export async function processInformationDocument(env: Bindings, docId: string): Promise<InformationProcessResult> {
+  // This processor owns a remote-model call. Keep the production prohibition
+  // at the application boundary so a scheduler cannot create a partial run or
+  // bypass an API-level local-runtime guard.
+  if (env.LLM_RUNTIME !== "local") throw new Error("information processing is only available in local LLM runtime");
+  const prepared = await prepareInformationDocument(env, docId);
+  if (prepared.kind === "complete") return prepared.result;
+  try {
+    const response = await requestLlmText(env, {
+      model: prepared.request.model,
+      maxTokens: prepared.request.maxTokens,
+      reasoningEffort: "low",
+      cacheEnabled: false,
+      messages: [
+        { role: "system", content: prepared.request.instructions },
+        { role: "user", content: prepared.request.input },
+      ],
+    });
+    return await completeInformationProcessing(env, prepared.request, response.text, response.raw, response.cached);
+  } catch (error) {
+    await failInformationProcessing(env, prepared.request, error);
+    throw error;
+  }
+}
+
+/**
+ * Executes only D1/R2 preparation. The returned model request is deliberately
+ * transport-neutral so the local Node runner, not the Worker, owns long SSE.
+ */
+export async function prepareInformationDocument(env: Bindings, docId: string): Promise<PreparedInformationProcessing> {
+  if (env.LLM_RUNTIME !== "local") throw new Error("information processing is only available in local LLM runtime");
   const document = await env.DB.prepare(
     `select d.doc_id, d.source_type, d.report_type, d.title, d.url, d.published_at, d.fetched_at,
             c.content_key, c.content_url, c.content_sha256, d.content_preview
@@ -63,7 +106,7 @@ export async function processInformationDocument(env: Bindings, docId: string): 
   const version = await ensureVersion(env.DB, document, contentHash);
   const gate = await preprocess(env.DB, document, content, contentHash, version.versionId);
   if (gate.action !== "pass") {
-    return { versionId: version.versionId, runId: null, action: gate.action, recordCount: 0, needsReview: false };
+    return { kind: "complete", result: { versionId: version.versionId, runId: null, action: gate.action, recordCount: 0, needsReview: false } };
   }
 
   const completed = await env.DB.prepare(
@@ -73,7 +116,7 @@ export async function processInformationDocument(env: Bindings, docId: string): 
       order by r.completed_at desc limit 1`,
   ).bind(version.versionId, INFORMATION_PROCESSING_PROMPT_VERSION).first<{ run_id: string; outcome: "extracted" | "no_information" }>();
   if (completed) {
-    return { versionId: version.versionId, runId: completed.run_id, action: "reused", outcome: completed.outcome, recordCount: 0, needsReview: false };
+    return { kind: "complete", result: { versionId: version.versionId, runId: completed.run_id, action: "reused", outcome: completed.outcome, recordCount: 0, needsReview: false } };
   }
 
   const runId = `knowledge-run:${crypto.randomUUID()}`;
@@ -84,45 +127,51 @@ export async function processInformationDocument(env: Bindings, docId: string): 
      values (?, ?, 'document_analysis', ?, ?, ?, ?, ?, 'running', ?)`,
   ).bind(runId, version.versionId, MODEL, INFORMATION_PROCESSING_PROMPT_VERSION, SCHEMA_VERSION, ONTOLOGY_VERSION, inputHash, startedAt).run();
 
-  try {
-    const response = await requestLlmText(env, {
+  return {
+    kind: "model",
+    request: {
+      runId,
+      versionId: version.versionId,
       model: MODEL,
       maxTokens: MAX_OUTPUT_TOKENS,
-      reasoningEffort: "low",
-      cacheEnabled: false,
-      messages: [
-        { role: "system", content: INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT },
-        { role: "user", content: render(INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT, {
-          TITLE: document.title,
-          SOURCE_TYPE: document.source_type,
-          REPORT_TYPE: document.report_type || "",
-          PUBLISHED_AT: document.published_at || "",
-          CONTENT: content,
-          CATEGORY_CATALOG: categoryCatalogForPrompt(),
-        }) },
-      ],
-    });
-    const returnedModel = assertExpectedReturnedModel(response.raw);
-    const rawOutputKey = await saveRawOutput(env, runId, response.raw);
-    const analysis = parseStructuredAnalysis(response.text);
+      instructions: INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
+      input: render(INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT, {
+        TITLE: document.title,
+        SOURCE_TYPE: document.source_type,
+        REPORT_TYPE: document.report_type || "",
+        PUBLISHED_AT: document.published_at || "",
+        CONTENT: content,
+        CATEGORY_CATALOG: categoryCatalogForPrompt(),
+      }),
+    },
+  };
+}
+
+export async function completeInformationProcessing(
+  env: Bindings,
+  request: InformationProcessingModelRequest,
+  text: string,
+  raw: unknown,
+  cached = false,
+): Promise<InformationProcessResult> {
+  try {
+    const returnedModel = assertExpectedReturnedModel(raw);
+    const rawOutputKey = await saveRawOutput(env, request.runId, raw);
+    const analysis = parseStructuredAnalysis(text);
     const status = analysis.outcome === "needs_review" ? "needs_review" : "succeeded";
-    const recordCount = await persistStructuredResult(env.DB, runId, version.versionId, analysis);
+    const recordCount = await persistStructuredResult(env.DB, request.runId, request.versionId, analysis);
     await env.DB.prepare(
       `update knowledge_processing_runs set returned_model = ?, raw_output_key = ?, status = ?, usage_json = ?, validation_json = ?, completed_at = ? where run_id = ?`,
-    ).bind(returnedModel, rawOutputKey, status, JSON.stringify({ cached: response.cached }), JSON.stringify({ valid: true, mode: "text_first" }), Date.now(), runId).run();
-    return {
-      versionId: version.versionId,
-      runId,
-      action: "pass",
-      outcome: analysis.outcome,
-      recordCount,
-      needsReview: status === "needs_review",
-    };
+    ).bind(returnedModel, rawOutputKey, status, JSON.stringify({ cached }), JSON.stringify({ valid: true, mode: "text_first" }), Date.now(), request.runId).run();
+    return { versionId: request.versionId, runId: request.runId, action: "pass", outcome: analysis.outcome, recordCount, needsReview: status === "needs_review" };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await discardFailedInformationAttempt(env.DB, runId, version.versionId);
+    await failInformationProcessing(env, request, error);
     throw error;
   }
+}
+
+export async function failInformationProcessing(env: Bindings, request: Pick<InformationProcessingModelRequest, "runId" | "versionId">, _error: unknown): Promise<void> {
+  await discardFailedInformationAttempt(env.DB, request.runId, request.versionId);
 }
 
 type InformationRecord = {
@@ -131,7 +180,25 @@ type InformationRecord = {
   category: string;
   period: string | null;
   statement: string;
+  /** Null unless a third-party forecast has a complete source-declared measurement contract. */
+  forecastMeasurement: ForecastMeasurement | null;
 };
+
+type ForecastMeasurement = {
+  fiscalYear: number;
+  rawValue: number;
+  rawUnit: "currency" | "ten_thousand_currency" | "million_currency" | "hundred_million_currency" | "billion_currency" | "percent" | "currency_per_share";
+  currency: string | null;
+  accountingBasis: "gaap" | "non_gaap" | "adjusted" | "unspecified";
+  ownershipBasis: "attributable_to_parent" | "consolidated" | "common_shareholders" | "unspecified";
+  shareBasis: "basic" | "diluted" | "unspecified";
+};
+
+const FORECAST_MEASUREMENT_CATEGORIES = new Set(["revenue", "revenue_growth", "net_profit", "net_profit_growth", "gross_margin", "eps", "operating_cash_flow"]);
+const FORECAST_RAW_UNITS = new Set<ForecastMeasurement["rawUnit"]>(["currency", "ten_thousand_currency", "million_currency", "hundred_million_currency", "billion_currency", "percent", "currency_per_share"]);
+const FORECAST_ACCOUNTING_BASES = new Set<ForecastMeasurement["accountingBasis"]>(["gaap", "non_gaap", "adjusted", "unspecified"]);
+const FORECAST_OWNERSHIP_BASES = new Set<ForecastMeasurement["ownershipBasis"]>(["attributable_to_parent", "consolidated", "common_shareholders", "unspecified"]);
+const FORECAST_SHARE_BASES = new Set<ForecastMeasurement["shareBasis"]>(["basic", "diluted", "unspecified"]);
 
 type StructuredAnalysis = {
   outcome: "extracted" | "no_information" | "needs_review";
@@ -170,7 +237,40 @@ function parseInformationRecord(value: unknown): InformationRecord | null {
   if (rule.periodPolicy === "required" && !period) return null;
   if (rule.periodPolicy === "forbidden" && period) return null;
   if (period && !isPeriodExpression(period)) return null;
-  return { entity, informationType, category, period, statement };
+  // A rejected measurement must not discard the source-level record.  It only
+  // means this record is not a machine-readable forecast amount and remains
+  // unavailable to the forecast ledger until a later document version carries
+  // a complete, source-declared value contract.
+  const forecastMeasurement = informationType === "forecast" && FORECAST_MEASUREMENT_CATEGORIES.has(category)
+    ? parseForecastMeasurement(raw.forecastMeasurement, period)
+    : null;
+  return { entity, informationType, category, period, statement, forecastMeasurement };
+}
+
+function parseForecastMeasurement(value: unknown, period: string | null): ForecastMeasurement | null {
+  const raw = object(value);
+  if (!Number.isInteger(raw.fiscalYear) || !Number.isFinite(raw.rawValue)
+    || typeof raw.rawUnit !== "string" || !FORECAST_RAW_UNITS.has(raw.rawUnit as ForecastMeasurement["rawUnit"])
+    || typeof raw.accountingBasis !== "string" || !FORECAST_ACCOUNTING_BASES.has(raw.accountingBasis as ForecastMeasurement["accountingBasis"])
+    || typeof raw.ownershipBasis !== "string" || !FORECAST_OWNERSHIP_BASES.has(raw.ownershipBasis as ForecastMeasurement["ownershipBasis"])
+    || typeof raw.shareBasis !== "string" || !FORECAST_SHARE_BASES.has(raw.shareBasis as ForecastMeasurement["shareBasis"])) return null;
+  const fiscalYear = Number(raw.fiscalYear);
+  if (fiscalYear < 1900 || fiscalYear > 2200 || !forecastPeriodMatchesFiscalYear(period, fiscalYear)) return null;
+  if (raw.currency !== undefined && raw.currency !== null && !text(raw.currency)) return null;
+  return {
+    fiscalYear,
+    rawValue: Number(raw.rawValue),
+    rawUnit: raw.rawUnit as ForecastMeasurement["rawUnit"],
+    currency: raw.currency === undefined || raw.currency === null ? null : text(raw.currency),
+    accountingBasis: raw.accountingBasis as ForecastMeasurement["accountingBasis"],
+    ownershipBasis: raw.ownershipBasis as ForecastMeasurement["ownershipBasis"],
+    shareBasis: raw.shareBasis as ForecastMeasurement["shareBasis"],
+  };
+}
+
+function forecastPeriodMatchesFiscalYear(period: string | null, fiscalYear: number): boolean {
+  return period === `${fiscalYear}FY` || period === `${fiscalYear}Q1`
+    || period === `${fiscalYear}Q2` || period === `${fiscalYear}Q3` || period === `${fiscalYear}Q4`;
 }
 
 function isPeriodExpression(value: string): boolean {
@@ -202,11 +302,11 @@ export async function persistStructuredResult(db: D1Database, runId: string, ver
   ).run();
   const recordStatements = analysis.records.map((record, sortOrder) => db.prepare(
     `insert into knowledge_information_records (
-      information_id, result_id, entity, information_type, category, period, statement, sort_order, created_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      information_id, result_id, entity, information_type, category, period, statement, forecast_measurement_json, sort_order, created_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     `knowledge-information-record:${crypto.randomUUID()}`, resultId, record.entity, record.informationType,
-    record.category, record.period, record.statement, sortOrder, now,
+    record.category, record.period, record.statement, JSON.stringify(record.forecastMeasurement ?? {}), sortOrder, now,
   ));
   if (recordStatements.length > 0) await db.batch(recordStatements);
   return analysis.records.length;

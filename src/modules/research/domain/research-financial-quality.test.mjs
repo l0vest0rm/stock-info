@@ -101,14 +101,18 @@ test("builds quarterly and TTM financial quality observations with auditable inp
   assert.equal(observation(result, "book_value_per_share", "quarterly", "2025-12-31").value, 9.6);
 });
 
-test("does not default an unclassified company to non-financial cash-flow and ROIC mechanics", () => {
+test("keeps directly auditable free cash flow while blocking entity-specific mechanics for an unclassified company", () => {
   const period = annual(2025);
   const facts = [
     fact("revenue", period, 100), fact("net_profit", period, 10), fact("operating_cash_flow", period, 20), fact("capital_expenditure", period, 4),
     fact("total_assets", period, 80), fact("total_equity", period, 40), fact("total_debt", period, 30), fact("cash", period, 8),
   ];
   const result = buildResearchFinancialQuality({ facts, entityType: "unknown" });
-  for (const kind of ["free_cash_flow", "cash_conversion", "return_on_assets", "return_on_invested_capital"]) {
+  const freeCashFlow = observation(result, "free_cash_flow", "annual", period.endDate);
+  assert.equal(freeCashFlow.status, "available");
+  assert.equal(freeCashFlow.value, 16);
+  assert.equal(freeCashFlow.inputs.length, 2);
+  for (const kind of ["cash_conversion", "return_on_assets", "return_on_invested_capital"]) {
     const item = observation(result, kind, "annual", period.endDate);
     assert.equal(item.status, "missing"); assert.equal(item.value, null);
     assert.deepEqual(item.reasonCodes, ["entity_financial_profile_unconfirmed"]);

@@ -557,13 +557,16 @@ function buildQualityObservations(
   return entityType === "unknown" ? blockUnclassifiedFinancialEntityMetrics(result) : result;
 }
 
-// These mechanics assume an industrial/non-financial balance sheet.  A missing
-// profile is not evidence that the assumption holds, so preserve the direct
-// reported series but prevent these derived values from being displayed as
-// financial quality conclusions.  "missing" (rather than not_applicable)
-// makes the missing classification visible and actionable.
+// Most of these mechanics assume an industrial/non-financial balance sheet.
+// A missing profile is not evidence that the assumption holds, so preserve the
+// direct reported series but prevent those derived values from being displayed
+// as financial quality conclusions. Free cash flow is intentionally excluded:
+// when both current-security cash-flow inputs share a period and basis, its
+// disclosed arithmetic remains auditable even while broader entity-specific
+// conclusions stay blocked. Confirmed financial entities still mark FCF as
+// not applicable in freeCashFlowObservation.
 const unclassifiedEntityMetricKinds = new Set<ResearchFinancialObservationKind>([
-  "free_cash_flow", "free_cash_flow_margin", "cash_conversion", "free_cash_flow_per_share",
+  "free_cash_flow_margin", "cash_conversion", "free_cash_flow_per_share",
   "nopat", "working_capital", "working_capital_to_revenue", "current_ratio", "quick_ratio",
   "interest_coverage", "days_sales_outstanding", "days_inventory_outstanding", "days_payables_outstanding",
   "cash_conversion_cycle", "invested_capital", "return_on_assets", "return_on_invested_capital", "incremental_roic",

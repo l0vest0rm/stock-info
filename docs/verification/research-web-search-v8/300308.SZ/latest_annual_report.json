@@ -1,0 +1,213 @@
+{
+  "configVersion": "research-web-search-packages.v8",
+  "model": "gpt-5.6-luna",
+  "packageKind": "latest_annual_report",
+  "securityCode": "300308.SZ",
+  "prompt": "研究对象：300308.SZ（中际旭创，A，交易币种 CNY）\n\n这是“最新年报包”。只寻找并打开本公司最新年度报告、20-F 或 10-K 及其必要附件的发行人、交易所或监管原文；不要把新闻转述、搜索摘要或旧年报当作该公司最新状态。\n\n已确认的法定财报边界：已确认：最新可用法定财报截至 2026-03-31；于 2026-04-17 发布；标题《2026年一季度报告》；原文 https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF。该边界由命令行传入。\n已知字段：截至 2026-03-31；发布日期 2026-04-17；标题《2026年一季度报告》；原文 https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF。\n先核对这是否确为最新可访问年度披露；若本地边界是季度报告，不得把它误称为年度报告。只在该年报或附件的连续原文中抽取主营、产品/分部、客户或地区、产能/订单、研发、资本配置、债务/审计/治理、风险和公司自己陈述的行业边界。一份年报应覆盖多个相关字段，不要为每个字段另找新闻。\n\n允许来源：发行人 IR、交易所、CNINFO、HKEX、SEC；不得以新闻转述替代原文。evidence_records[].tab_id 仅可为：business, market, financial, industry, risk。字段名和枚举值使用英文 snake_case；不得输出中文 Tab 名称。",
+  "effort": "high",
+  "elapsedMs": 253656,
+  "firstEventMs": 1898,
+  "firstTextMs": 153865,
+  "citationCount": 8,
+  "queryCount": 9,
+  "recordCount": 25,
+  "persistableRecordCount": 25,
+  "verifiedCount": 21,
+  "unavailableCount": 4,
+  "invalidStatusCount": 0,
+  "invalidTabCount": 3,
+  "summary": "已核对：中际旭创2025年度报告及摘要于2026-03-31披露，2026-04-17文件属于更晚的季度报告，不应误称为年度报告。董事会原文确认已审议《中际旭创2025年度报告》及其摘要，交易所原文标题为《中际旭创股份有限公司2025年度报告摘要》；本包以该年度报告摘要及2026-03-31发行人/监管附件为证据基础。([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056469.PDF)) 未在本次可访问的发行人、交易所或监管原文中核验到客户收入集中度、地区收入拆分、明确在手订单金额及完整风险清单，相关字段列为unavailable。",
+  "facts": [
+    {
+      "key": "latest_annual_disclosure",
+      "status": "verified",
+      "subject": "300308.SZ",
+      "statement": "最新年度披露为中际旭创2025年度报告，披露日期为2026-03-31；2026-04-17文件属于季度报告，不应作为年度报告。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "primary_business",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "公司主营业务为高端光通信收发模块的研发、生产及销售。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "company_stated_industry_boundary",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "公司自述产品服务于云计算数据中心、数据通信、5G无线网络、电信传输和固网接入等领域。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "product_portfolio",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "报告摘要列示1.6T OSFP、800G OSFP、800G QSFP-DD、400G QSFP-DD、400G OSFP及100G QSFP28等产品系列。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "product_application_scope",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "公司为云数据中心客户提供100G、200G、400G、800G和1.6T高速光模块，并为电信设备商提供5G前传、中传和回传光模块。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "production_model",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "公司主要采取以销定产的生产模式，根据下游客户订单安排生产，并进行生产计划、调整追踪和物料追踪。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "customer_relationship_model",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "公司销售以直接销售为主，客户开拓通常需要经过供应商认证和产品代码认证；公司称已与全球领先云数据中心客户及国内外主流通信设备厂商形成长期稳定合作关系。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "customer_region_scope",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "报告摘要明确公司产品服务于国内外客户，客户范围包括全球领先的云数据中心客户及国内外主流通信设备厂商。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "competitive_position",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "公司自述在行业内保持出货量和市场份额的领先优势。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "research_and_development_model",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "公司设有光电技术部、产品开发部、项目运营部和综合管理部，并通过研究组或工作室构建技术平台和产品线；公司称拥有多项核心技术并采取技术保护措施。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "capacity_expansion",
+      "status": "verified",
+      "subject": "铜陵旭创高端光模块产业园三期项目",
+      "statement": "公司称铜陵旭创高端光模块产业园三期项目已实施完毕，有利于进一步提升高端产品产能。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "fundraising_use",
+      "status": "verified",
+      "subject": "2021年向特定对象发行股票募集资金",
+      "statement": "截至2025-12-31，公司2025年投入募集资金人民币29669.70万元，累计投入278872.51万元；公司披露截至2025-11-07募集资金已使用完毕，节余资金转入基本账户。",
+      "source": "中际旭创股份有限公司2025年度募集资金存放、管理与使用情况的专项报告"
+    },
+    {
+      "key": "external_capital_allocation",
+      "status": "verified",
+      "subject": "TeraHop Pte. Ltd.",
+      "statement": "公司及新股东拟合计出资5.17亿美元对控股孙公司TeraHop Pte. Ltd.增资；增资完成后公司持股比例仍为67.71%。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "cash_dividend_plan",
+      "status": "verified",
+      "subject": "2025年度利润分配预案",
+      "statement": "董事会拟以1,111,118,334股为基数，每10股派发现金红利10.00元人民币，不送股、不以资本公积转增股本。",
+      "source": "第五届董事会第二十九次会议决议公告"
+    },
+    {
+      "key": "bond_status",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "年度报告批准报出日，公司不存在存续债券。",
+      "source": "中际旭创股份有限公司2025年度报告摘要"
+    },
+    {
+      "key": "audit_opinion",
+      "status": "verified",
+      "subject": "2025年度财务报表",
+      "statement": "普华永道中天对公司2025年度财务报表出具无保留意见审计报告。",
+      "source": "董事会审计委员会对会计师事务所2025年度履职情况评估及履行监督职责情况的报告"
+    },
+    {
+      "key": "board_and_shareholder_meetings",
+      "status": "verified",
+      "subject": "中际旭创",
+      "statement": "2025年度公司董事会召开10次会议，股东会召开5次。",
+      "source": "中际旭创股份有限公司2025年度董事会工作报告"
+    },
+    {
+      "key": "independent_director_independence",
+      "status": "verified",
+      "subject": "中际旭创独立董事",
+      "statement": "董事会评估认为，战淑萍、成波、屈文洲及YAN ZHUANG均不存在影响独立客观判断的关系，符合独立董事任职资格及独立性要求。",
+      "source": "董事会对独立董事独立性评估的专项意见"
+    },
+    {
+      "key": "related_party_fund_occupation",
+      "status": "verified",
+      "subject": "控股股东及其他关联方",
+      "statement": "普华永道专项报告称，2025年度未发现控股股东及其他关联方非经营性资金占用及其他关联资金往来汇总表与审计财务资料存在重大不一致；汇总表中非经营性资金占用总计为无。",
+      "source": "关于中际旭创股份有限公司控股股东及其他关联方占用资金情况专项报告"
+    },
+    {
+      "key": "foreign_exchange_exposure",
+      "status": "verified",
+      "subject": "中际旭创及合并范围内子公司",
+      "statement": "公司披露存在向海外原材料供应商采购及向海外客户销售的业务，进出口货款主要以美元、欧元结算，并以外汇套期保值应对汇率波动风险。",
+      "source": "关于继续开展外汇套期保值业务的公告"
+    },
+    {
+      "key": "foreign_exchange_hedging_limit",
+      "status": "verified",
+      "subject": "中际旭创及合并范围内子公司",
+      "statement": "公司拟开展外汇套期保值业务，交易保证金或权利金上限不超过人民币150000万元，任一交易日最高合约价值不超过人民币1500000万元。",
+      "source": "关于继续开展外汇套期保值业务的公告"
+    },
+    {
+      "key": "detailed_annual_report_risks",
+      "status": "unavailable",
+      "subject": "中际旭创",
+      "statement": "本次可访问的发行人、交易所原文包中未取得2025年度报告全文第三节“公司未来发展的展望”下完整风险因素连续原文，无法在允许来源约束下核验详细风险清单。",
+      "source": null
+    },
+    {
+      "key": "customer_revenue_concentration",
+      "status": "unavailable",
+      "subject": "中际旭创",
+      "statement": "年度报告摘要及本次已访问的发行人、交易所附件未提供可核验的前五大客户收入金额或占比。",
+      "source": null
+    },
+    {
+      "key": "regional_revenue_split",
+      "status": "unavailable",
+      "subject": "中际旭创",
+      "statement": "年度报告摘要及本次已访问的发行人、交易所附件未提供可核验的按地区收入拆分。",
+      "source": null
+    },
+    {
+      "key": "order_backlog",
+      "status": "unavailable",
+      "subject": "中际旭创",
+      "statement": "报告披露以销定产并按客户订单安排生产，但本次已访问的发行人、交易所原文未提供可核验的在手订单金额、订单数量或订单覆盖期。",
+      "source": null
+    }
+  ],
+  "modelOutput": "{\"summary\":\"已核对：中际旭创2025年度报告及摘要于2026-03-31披露，2026-04-17文件属于更晚的季度报告，不应误称为年度报告。董事会原文确认已审议《中际旭创2025年度报告》及其摘要，交易所原文标题为《中际旭创股份有限公司2025年度报告摘要》；本包以该年度报告摘要及2026-03-31发行人/监管附件为证据基础。([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056469.PDF)) 未在本次可访问的发行人、交易所或监管原文中核验到客户收入集中度、地区收入拆分、明确在手订单金额及完整风险清单，相关字段列为unavailable。\",\"evidence_records\":[{\"tab_id\":\"business\",\"field_key\":\"latest_annual_disclosure\",\"subject\":\"300308.SZ\",\"statement\":\"最新年度披露为中际旭创2025年度报告，披露日期为2026-03-31；2026-04-17文件属于季度报告，不应作为年度报告。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度；披露日2026-03-31\",\"product_scope\":null,\"region_scope\":null,\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"中际旭创股份有限公司 2025 年度报告摘要\",\"locator\":\"PDF第1页，L0-L3\",\"status\":\"verified\"},{\"tab_id\":\"business\",\"field_key\":\"primary_business\",\"subject\":\"中际旭创\",\"statement\":\"公司主营业务为高端光通信收发模块的研发、生产及销售。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"高端光通信收发模块\",\"region_scope\":null,\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"公司主营业务为高端光通信收发模块的研发、生产及销售\",\"locator\":\"PDF第2页，L35-L37\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"company_stated_industry_boundary\",\"subject\":\"中际旭创\",\"statement\":\"公司自述产品服务于云计算数据中心、数据通信、5G无线网络、电信传输和固网接入等领域。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"光通信收发模块及光器件\",\"region_scope\":\"国内外客户\",\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"产品服务于云计算数据中心、数据通信、5G无线网络、电信传输和固网接入等领域\",\"locator\":\"PDF第2页，L35-L41\",\"status\":\"verified\"},{\"tab_id\":\"business\",\"field_key\":\"product_portfolio\",\"subject\":\"中际旭创\",\"statement\":\"报告摘要列示1.6T OSFP、800G OSFP、800G QSFP-DD、400G QSFP-DD、400G OSFP及100G QSFP28等产品系列。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"1.6T、800G、400G及100G光模块\",\"region_scope\":null,\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"1.6T OSFP\",\"locator\":\"PDF第2页，L42-L54\",\"status\":\"verified\"},{\"tab_id\":\"business\",\"field_key\":\"product_application_scope\",\"subject\":\"中际旭创\",\"statement\":\"公司为云数据中心客户提供100G、200G、400G、800G和1.6T高速光模块，并为电信设备商提供5G前传、中传和回传光模块。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"100G、200G、400G、800G、1.6T光模块；5G光模块\",\"region_scope\":\"云数据中心及电信设备商客户\",\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"为云数据中心客户提供 100G、200G、400G、800G 和 1.6T 的高速光模块\",\"locator\":\"PDF第2页，L37-L41\",\"status\":\"verified\"},{\"tab_id\":\"business\",\"field_key\":\"production_model\",\"subject\":\"中际旭创\",\"statement\":\"公司主要采取以销定产的生产模式，根据下游客户订单安排生产，并进行生产计划、调整追踪和物料追踪。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"高速光通信模块\",\"region_scope\":null,\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"主要是采取“以销定产”的生产模式\",\"locator\":\"PDF第3页，L117-L121\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"customer_relationship_model\",\"subject\":\"中际旭创\",\"statement\":\"公司销售以直接销售为主，客户开拓通常需要经过供应商认证和产品代码认证；公司称已与全球领先云数据中心客户及国内外主流通信设备厂商形成长期稳定合作关系。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"高速光通信模块\",\"region_scope\":\"全球领先云数据中心客户；国内外主流通信设备厂商\",\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"以直接销售模式为主\",\"locator\":\"PDF第3页，L122-L130\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"customer_region_scope\",\"subject\":\"中际旭创\",\"statement\":\"报告摘要明确公司产品服务于国内外客户，客户范围包括全球领先的云数据中心客户及国内外主流通信设备厂商。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"光通信模块\",\"region_scope\":\"国内外\",\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"国内外客户\",\"locator\":\"PDF第2页，L35-L37\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"competitive_position\",\"subject\":\"中际旭创\",\"statement\":\"公司自述在行业内保持出货量和市场份额的领先优势。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"高端光通信收发模块\",\"region_scope\":null,\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"在行业内保持了出货量和市场份额的领先优势\",\"locator\":\"PDF第2页，L39-L41\",\"status\":\"verified\"},{\"tab_id\":\"business\",\"field_key\":\"research_and_development_model\",\"subject\":\"中际旭创\",\"statement\":\"公司设有光电技术部、产品开发部、项目运营部和综合管理部，并通过研究组或工作室构建技术平台和产品线；公司称拥有多项核心技术并采取技术保护措施。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"光通信模块技术及产品线\",\"region_scope\":null,\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"共同构建了完善的技术平台和产品线\",\"locator\":\"PDF第3页，L131-L139\",\"status\":\"verified\"},{\"tab_id\":\"business\",\"field_key\":\"capacity_expansion\",\"subject\":\"铜陵旭创高端光模块产业园三期项目\",\"statement\":\"公司称铜陵旭创高端光模块产业园三期项目已实施完毕，有利于进一步提升高端产品产能。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"高端光模块\",\"region_scope\":\"铜陵\",\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"铜陵旭创高端光模块产业园三期项目实施完毕\",\"locator\":\"PDF第8页，L299-L301\",\"status\":\"verified\"},{\"tab_id\":\"financial\",\"field_key\":\"fundraising_use\",\"subject\":\"2021年向特定对象发行股票募集资金\",\"statement\":\"截至2025-12-31，公司2025年投入募集资金人民币29669.70万元，累计投入278872.51万元；公司披露截至2025-11-07募集资金已使用完毕，节余资金转入基本账户。\",\"numeric_value\":29669.70,\"unit\":\"万元\",\"currency\":\"CNY\",\"period\":\"2025年度；截至2025-12-31\",\"product_scope\":\"苏州研发中心及高端光模块生产基地、铜陵生产基地、成都储翰技改、补充流动资金及偿还银行贷款\",\"region_scope\":\"苏州、铜陵、成都\",\"source_title\":\"中际旭创股份有限公司2025年度募集资金存放、管理与使用情况的专项报告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-03-31/1225056467.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056467.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"2025 年投入募集资金人民币 29,669.70 万元\",\"locator\":\"PDF第1页，L18-L23\",\"status\":\"verified\"},{\"tab_id\":\"financial\",\"field_key\":\"external_capital_allocation\",\"subject\":\"TeraHop Pte. Ltd.\",\"statement\":\"公司及新股东拟合计出资5.17亿美元对控股孙公司TeraHop Pte. Ltd.增资；增资完成后公司持股比例仍为67.71%。\",\"numeric_value\":5.17,\"unit\":\"百亿美元?\",\"currency\":\"USD\",\"period\":\"2025年度\",\"product_scope\":\"海外业务拓展及生产运营\",\"region_scope\":\"海外；TeraHop Pte. Ltd.\",\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"拟合计出资 5.17 亿美元对公司控股孙公司 TeraHop Pte. Ltd.进行增资\",\"locator\":\"PDF第8页，L312-L318\",\"status\":\"verified\"},{\"tab_id\":\"financial\",\"field_key\":\"cash_dividend_plan\",\"subject\":\"2025年度利润分配预案\",\"statement\":\"董事会拟以1,111,118,334股为基数，每10股派发现金红利10.00元人民币，不送股、不以资本公积转增股本。\",\"numeric_value\":10.00,\"unit\":\"CNY per 10 shares\",\"currency\":\"CNY\",\"period\":\"2025年度利润分配预案\",\"product_scope\":null,\"region_scope\":null,\"source_title\":\"第五届董事会第二十九次会议决议公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-03-31/1225056469.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056469.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"每 10 股派发现金红利 10.00 元人民币\",\"locator\":\"PDF第2页，L36-L46\",\"status\":\"verified\"},{\"tab_id\":\"financial\",\"field_key\":\"bond_status\",\"subject\":\"中际旭创\",\"statement\":\"年度报告批准报出日，公司不存在存续债券。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"年度报告批准报出日\",\"product_scope\":null,\"region_scope\":null,\"source_title\":\"中际旭创股份有限公司2025年度报告摘要\",\"source_url\":\"https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF ([disc.static.szse.cn](https://disc.static.szse.cn/download/disc/disk03/finalpage/2026-03-31/0705fce8-6b15-46e2-b0b1-85fcca93b698.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"在年度报告批准报出日存续的债券情况 □适用\",\"locator\":\"PDF第7页，L286-L287\",\"status\":\"verified\"},{\"tab_id\":\"financial\",\"field_key\":\"audit_opinion\",\"subject\":\"2025年度财务报表\",\"statement\":\"普华永道中天对公司2025年度财务报表出具无保留意见审计报告。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度；审计报告签署日2026-03-27\",\"product_scope\":\"合并及母公司财务报表\",\"region_scope\":null,\"source_title\":\"董事会审计委员会对会计师事务所2025年度履职情况评估及履行监督职责情况的报告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-03-31/1225056464.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056464.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"并出具了无保留意见审计报告\",\"locator\":\"PDF第2页，L35-L46\",\"status\":\"verified\"},{\"tab_id\":\"governance\",\"field_key\":\"board_and_shareholder_meetings\",\"subject\":\"中际旭创\",\"statement\":\"2025年度公司董事会召开10次会议，股东会召开5次。\",\"numeric_value\":10,\"unit\":\"board meetings\",\"currency\":null,\"period\":\"2025年度\",\"product_scope\":null,\"region_scope\":null,\"source_title\":\"中际旭创股份有限公司2025年度董事会工作报告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-03-31/1225056493.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056493.PDF?utm_source=openai))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"筹备和召开了10次会议\",\"locator\":\"董事会工作报告，第一节董事会规范运作情况（一）\",\"status\":\"verified\"},{\"tab_id\":\"governance\",\"field_key\":\"independent_director_independence\",\"subject\":\"中际旭创独立董事\",\"statement\":\"董事会评估认为，战淑萍、成波、屈文洲及YAN ZHUANG均不存在影响独立客观判断的关系，符合独立董事任职资格及独立性要求。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"截至2026-03-27\",\"product_scope\":null,\"region_scope\":null,\"source_title\":\"董事会对独立董事独立性评估的专项意见\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-03-31/1225056462.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056462.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"不存在其他影响其独立性的情况\",\"locator\":\"PDF第1页，L6-L12\",\"status\":\"verified\"},{\"tab_id\":\"governance\",\"field_key\":\"related_party_fund_occupation\",\"subject\":\"控股股东及其他关联方\",\"statement\":\"普华永道专项报告称，2025年度未发现控股股东及其他关联方非经营性资金占用及其他关联资金往来汇总表与审计财务资料存在重大不一致；汇总表中非经营性资金占用总计为无。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"截至2025-12-31\",\"product_scope\":null,\"region_scope\":null,\"source_title\":\"关于中际旭创股份有限公司控股股东及其他关联方占用资金情况专项报告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-03-31/1225056463.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056463.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"非经营性资金占用总计 — — 无\",\"locator\":\"PDF第4页，L61-L67\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"foreign_exchange_exposure\",\"subject\":\"中际旭创及合并范围内子公司\",\"statement\":\"公司披露存在向海外原材料供应商采购及向海外客户销售的业务，进出口货款主要以美元、欧元结算，并以外汇套期保值应对汇率波动风险。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026年度业务安排；基于2025年度报告配套披露\",\"product_scope\":\"海外采购及海外销售\",\"region_scope\":\"海外\",\"source_title\":\"关于继续开展外汇套期保值业务的公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-03-31/1225056473.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056473.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"进出口业务货款主要以美元、欧元结算\",\"locator\":\"PDF第1页，L14-L20\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"foreign_exchange_hedging_limit\",\"subject\":\"中际旭创及合并范围内子公司\",\"statement\":\"公司拟开展外汇套期保值业务，交易保证金或权利金上限不超过人民币150000万元，任一交易日最高合约价值不超过人民币1500000万元。\",\"numeric_value\":150000,\"unit\":\"万元\",\"currency\":\"CNY\",\"period\":\"授权期限不超过十二个月\",\"product_scope\":\"外汇远期、掉期、期权及相关组合产品\",\"region_scope\":\"海外采购及销售相关外汇敞口\",\"source_title\":\"关于继续开展外汇套期保值业务的公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-03-31/1225056473.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-03-31/1225056473.PDF))\",\"source_published_at\":\"2026-03-31\",\"quote\":\"交易保证金或权利金上限不超过 150,000 万元人民币\",\"locator\":\"PDF第1页，L3-L9\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"detailed_annual_report_risks\",\"subject\":\"中际旭创\",\"statement\":\"本次可访问的发行人、交易所原文包中未取得2025年度报告全文第三节“公司未来发展的展望”下完整风险因素连续原文，无法在允许来源约束下核验详细风险清单。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":null,\"region_scope\":null,\"source_title\":null,\"source_url\":null,\"source_published_at\":null,\"quote\":null,\"locator\":null,\"status\":\"unavailable\"},{\"tab_id\":\"market\",\"field_key\":\"customer_revenue_concentration\",\"subject\":\"中际旭创\",\"statement\":\"年度报告摘要及本次已访问的发行人、交易所附件未提供可核验的前五大客户收入金额或占比。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":null,\"region_scope\":null,\"source_title\":null,\"source_url\":null,\"source_published_at\":null,\"quote\":null,\"locator\":null,\"status\":\"unavailable\"},{\"tab_id\":\"market\",\"field_key\":\"regional_revenue_split\",\"subject\":\"中际旭创\",\"statement\":\"年度报告摘要及本次已访问的发行人、交易所附件未提供可核验的按地区收入拆分。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":null,\"region_scope\":null,\"source_title\":null,\"source_url\":null,\"source_published_at\":null,\"quote\":null,\"locator\":null,\"status\":\"unavailable\"},{\"tab_id\":\"business\",\"field_key\":\"order_backlog\",\"subject\":\"中际旭创\",\"statement\":\"报告披露以销定产并按客户订单安排生产，但本次已访问的发行人、交易所原文未提供可核验的在手订单金额、订单数量或订单覆盖期。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025年度\",\"product_scope\":\"高速光通信模块\",\"region_scope\":null,\"source_title\":null,\"source_url\":null,\"source_published_at\":null,\"quote\":null,\"locator\":null,\"status\":\"unavailable\"}],\"missing_fields\":[\"customer_revenue_concentration\",\"regional_revenue_split\",\"order_backlog_amount\",\"order_coverage_period\",\"detailed_annual_report_risks\",\"debt_maturity_schedule\",\"capacity_by_product_and_site\",\"rd_expense_amount\"],\"conflicts\":[],\"refresh_triggers\":[\"2026年度报告或后续年度报告披露\",\"新的年度报告全文或监管附件可访问\",\"公司披露客户集中度、地区收入、订单/在手订单或产能明细\",\"公司披露新的审计意见、债务融资或重大资本配置事项\"]}",
+  "eventTypes": [
+    "response.created",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.web_search_call.in_progress",
+    "response.web_search_call.searching",
+    "response.web_search_call.completed",
+    "response.content_part.added",
+    "response.output_text.delta",
+    "response.output_text.annotation.added",
+    "response.output_text.done",
+    "response.content_part.done",
+    "response.completed"
+  ]
+}

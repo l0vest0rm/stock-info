@@ -96,6 +96,52 @@ export type ForecastScenarioWrite = {
   status?: "draft" | "reviewed";
 };
 
+/**
+ * A source collector may attach this contract to `knowledge_docs.metadata_json`
+ * under `researchForecastEvidence`.  It deliberately references an immutable
+ * information-record id rather than trying to match a sentence, date, analyst
+ * name, or provider label after the fact.  The collector is therefore the
+ * only place allowed to attest that a stored document is the original carrier.
+ */
+type AutomaticForecastMeasurement = {
+  informationId: string;
+  forecastDate: string;
+  fiscalYear: number;
+  rawValue: number;
+  rawUnit: ForecastRawUnit;
+  currency?: string | null;
+  accountingBasis: ForecastAccountingBasis;
+  ownershipBasis: ForecastOwnershipBasis;
+  shareBasis: ForecastShareBasis;
+  analysts?: string[];
+  /** An explicit immutable predecessor, if the original source declares it. */
+  supersedesForecastId?: string | null;
+};
+
+type AutomaticForecastEvidenceContract = {
+  schemaVersion: "research-source-forecast.v1";
+  carrierRelation: "original";
+  origin: {
+    displayName: string;
+    identityType: ForecastSourceIdentityType;
+    independenceGroupName: string;
+    evidenceUrl: string;
+    evidenceTitle: string;
+  };
+  modelLineage: {
+    lineageName: string;
+    evidenceUrl: string;
+    evidenceTitle: string;
+  };
+  /**
+   * Optional legacy collector contract. New values are stored with the
+   * immutable information record instead, while provenance stays here.
+   */
+  measurements?: AutomaticForecastMeasurement[];
+};
+
+const AUTOMATIC_FORECAST_ACTOR = "system:forecast-auto-evidence.v1";
+
 type ForecastCandidateRow = {
   informationId: string;
   resultId: string;
@@ -105,11 +151,13 @@ type ForecastCandidateRow = {
   processingSchemaVersion: string;
   processingOntologyVersion: string;
   processingInputHash: string;
+  processingCompletedAt: number | null;
   entity: string;
   informationType: string;
   category: string;
   period: string | null;
   statement: string;
+  measurementJson: string | null;
   resultOutcome: string;
   versionId: string;
   contentHash: string;
@@ -126,6 +174,7 @@ type ForecastCandidateRow = {
   reviewReason: string | null;
   currentForecastId: string | null;
   reviewedAt: number | null;
+  reviewedBy: string | null;
   discoveryMethod: string | null;
   metadataJson: string | null;
 };
@@ -250,6 +299,10 @@ export async function loadForecastWorkspace(db: D1Database, code: string, securi
     // this read model. All visible calibration records are tied to a stored
     // filing-backed formal actual and retain their comparability block.
     calibrations: formalActualCalibrations,
+    // Keep the source-bound statutory actual beside its calibration reference
+    // so the page can link each error measurement back to the formal filing.
+    // This remains read-only and does not let a page supply an actual value.
+    formalActuals,
     // This is a read-only health projection. It never rewrites a historical
     // calibration when an amended filing supersedes the underlying actual.
     // Consumers must use `currentComparableCalibrationCount`, not merely a
@@ -272,8 +325,8 @@ export async function loadForecastWorkspace(db: D1Database, code: string, securi
 }
 
 /**
- * Registry rows are immutable local-review facts.  A forecast stores only the
- * identity id; the group is resolved here and also frozen into a consolidation
+ * Registry rows are immutable source-evidence facts. A forecast stores only
+ * the identity id; the group is resolved here and also frozen into a consolidation
  * member whenever that forecast is aggregated.
  */
 export async function loadForecastSourceIdentityRegistry(db: D1Database) {
@@ -494,6 +547,97 @@ export async function saveForecastReview(db: D1Database, code: string, input: Fo
 }
 
 /**
+ * Materializes third-party forecasts without a person in the runtime path.
+ *
+ * The job accepts an entry only when the saved source document itself carries
+ * a strict original-carrier provenance contract and an exact measurement
+ * contract for this immutable information record.  It never derives an
+ * original provider, an independence group, a revision predecessor, a unit,
+ * or an accounting basis from a publication label, URL, date, or prose.
+ * Incomplete candidates become an automatically recorded exclusion so the
+ * read model can state exactly which new machine-readable input is needed.
+ */
+export async function syncAutomaticThirdPartyForecastEvidence(db: D1Database, code: string) {
+  const candidates = await listForecastCandidates(db, code);
+  const identity = await db.prepare(`select company_id as companyId from research_listed_securities
+    where security_code=? and mapping_status in ('confirmed','provisional')`).bind(code).first<{ companyId: string | null }>();
+  const companyId = identity?.companyId ?? null;
+  const now = Date.now();
+  const results: Array<{ informationId: string; status: "included" | "blocked" | "preserved"; reason: string; forecastId?: string | null }> = [];
+
+  for (const candidate of candidates) {
+    // Do not replace a historical local decision or an earlier automatic
+    // result.  A changed document creates a new immutable version/candidate,
+    // which is the only supported path for recomputation.
+    if (candidate.reviewId && (candidate.reviewedBy !== AUTOMATIC_FORECAST_ACTOR || candidate.reviewStatus === "included")) {
+      results.push({ informationId: candidate.informationId, status: "preserved", reason: candidate.reviewReason || "existing_forecast_ledger_decision", forecastId: candidate.currentForecastId });
+      continue;
+    }
+
+    const contract = parseAutomaticForecastEvidenceContract(candidate.metadataJson);
+    if (!contract.ok) {
+      await recordAutomaticForecastBlock(db, { code, companyId, candidate, reason: contract.reason, now });
+      results.push({ informationId: candidate.informationId, status: "blocked", reason: contract.reason });
+      continue;
+    }
+    const contractMeasurement = contract.value.measurements?.find((item) => item.informationId === candidate.informationId);
+    const storedMeasurement = contractMeasurement
+      ? null
+      : parseStoredForecastMeasurement(candidate.measurementJson, candidate.period, candidate.publishedAt);
+    const measurement = contractMeasurement ?? (storedMeasurement?.ok ? storedMeasurement.value : null);
+    if (!measurement) {
+      const reason = storedMeasurement && !storedMeasurement.ok
+        ? storedMeasurement.reason
+        : "forecast_measurement_contract_missing_for_information_record";
+      await recordAutomaticForecastBlock(db, { code, companyId, candidate, reason, now });
+      results.push({ informationId: candidate.informationId, status: "blocked", reason });
+      continue;
+    }
+    if (measurement.fiscalYear < 1900 || measurement.fiscalYear > 2200 || !Number.isFinite(measurement.rawValue)
+      || !FORECAST_METRICS.includes(candidate.category as ForecastMetric)
+      || !forecastPeriodMatchesFiscalYear(candidate.period, measurement.fiscalYear)) {
+      const reason = "forecast_measurement_contract_incomplete";
+      await recordAutomaticForecastBlock(db, { code, companyId, candidate, reason, now });
+      results.push({ informationId: candidate.informationId, status: "blocked", reason });
+      continue;
+    }
+    if (measurement.accountingBasis === "unspecified"
+      || ((candidate.category === "net_profit" || candidate.category === "net_profit_growth") && measurement.ownershipBasis === "unspecified")
+      || (candidate.category === "eps" && measurement.shareBasis === "unspecified")) {
+      const reason = "forecast_measurement_semantic_basis_incomplete";
+      await recordAutomaticForecastBlock(db, { code, companyId, candidate, reason, now });
+      results.push({ informationId: candidate.informationId, status: "blocked", reason });
+      continue;
+    }
+
+    try {
+      const sourceAssertion = await ensureAutomaticOriginalSourceAssertion(db, candidate, contract.value, now);
+      const forecast = await writeAutomaticSourceForecast(db, {
+        code, companyId, candidate, sourceIdentityAssertionId: sourceAssertion.sourceIdentityAssertionId,
+        measurement, now,
+      });
+      results.push({ informationId: candidate.informationId, status: "included", reason: "source_bound_original_evidence_complete", forecastId: forecast.forecastId });
+    } catch (error) {
+      const reason = automaticForecastErrorReason(error);
+      await recordAutomaticForecastBlock(db, { code, companyId, candidate, reason, now });
+      results.push({ informationId: candidate.informationId, status: "blocked", reason });
+    }
+  }
+
+  const consolidation = await persistForecastConsolidation(db, code, companyId);
+  return {
+    code,
+    actor: AUTOMATIC_FORECAST_ACTOR,
+    processedAt: now,
+    included: results.filter((item) => item.status === "included").length,
+    blocked: results.filter((item) => item.status === "blocked").length,
+    preserved: results.filter((item) => item.status === "preserved").length,
+    results,
+    consolidationId: consolidation.consolidationId,
+  };
+}
+
+/**
  * A self-built scenario is intentionally versioned and never merges into a
  * source forecast or its opportunistic sample consolidation.
  */
@@ -669,14 +813,14 @@ function forecastCandidateSelect(): string {
   return `select record.information_id as informationId, result.result_id as resultId,
       run.run_id as processingRunId, run.model as processingModel,
       run.prompt_version as processingPromptVersion, run.schema_version as processingSchemaVersion,
-      run.ontology_version as processingOntologyVersion, run.input_hash as processingInputHash,
+      run.ontology_version as processingOntologyVersion, run.input_hash as processingInputHash, run.completed_at as processingCompletedAt,
       record.entity, record.information_type as informationType,
-      record.category, record.period, record.statement, result.outcome as resultOutcome,
+      record.category, record.period, record.statement, record.forecast_measurement_json as measurementJson, result.outcome as resultOutcome,
       version.version_id as versionId, version.content_hash as contentHash, d.doc_id as docId, d.title,
       d.source_name as sourceName, d.source_type as sourceType, d.report_type as reportType, d.discovery_method as discoveryMethod, d.metadata_json as metadataJson,
       d.published_at as publishedAt, coalesce(version.source_url, d.url) as sourceUrl, content.content_url as contentUrl,
       review.review_id as reviewId, review.review_status as reviewStatus, review.review_reason as reviewReason,
-      review.current_forecast_id as currentForecastId, review.reviewed_at as reviewedAt
+      review.current_forecast_id as currentForecastId, review.reviewed_at as reviewedAt, review.reviewed_by as reviewedBy
     from knowledge_information_records record
     join knowledge_document_results result on result.result_id=record.result_id
     join knowledge_processing_runs run on run.run_id=result.run_id
@@ -826,6 +970,306 @@ function reviewUpsertStatement(db: D1Database, input: {
       reviewed_at=excluded.reviewed_at, updated_at=excluded.updated_at`)
     .bind(input.reviewId, input.code, input.companyId, input.informationId, input.currentForecastId,
       input.reviewStatus, input.reviewReason, input.now, input.now, input.now);
+}
+
+async function recordAutomaticForecastBlock(db: D1Database, input: {
+  code: string; companyId: string | null; candidate: ForecastCandidateRow; reason: string; now: number;
+}) {
+  const reviewId = input.candidate.reviewId ?? `forecast-auto-gate:${crypto.randomUUID()}`;
+  await automaticReviewUpsertStatement(db, {
+    reviewId, code: input.code, companyId: input.companyId, informationId: input.candidate.informationId,
+    currentForecastId: null, reviewStatus: "excluded", reviewReason: input.reason, now: input.now,
+  }).run();
+}
+
+async function ensureAutomaticOriginalSourceAssertion(
+  db: D1Database,
+  candidate: ForecastCandidateRow,
+  contract: AutomaticForecastEvidenceContract,
+  now: number,
+) {
+  const origin = contract.origin;
+  const group = await db.prepare(`select independence_group_id as independenceGroupId
+    from research_forecast_source_independence_groups
+    where lower(canonical_name)=lower(?) and status='confirmed'`).bind(origin.independenceGroupName)
+    .first<{ independenceGroupId: string }>();
+  const independenceGroupId = group?.independenceGroupId ?? `forecast-source-group:${crypto.randomUUID()}`;
+  if (!group) {
+    await db.prepare(`insert into research_forecast_source_independence_groups (
+      independence_group_id, canonical_name, status, created_by, created_at
+    ) values (?, ?, 'confirmed', ?, ?)`)
+      .bind(independenceGroupId, origin.independenceGroupName, AUTOMATIC_FORECAST_ACTOR, now).run();
+  }
+  const knownIdentity = await db.prepare(`select source_identity_id as sourceIdentityId
+    from research_forecast_source_identities
+    where lower(display_name)=lower(?) and identity_type=? and independence_group_id=? and identity_status='confirmed'`)
+    .bind(origin.displayName, origin.identityType, independenceGroupId).first<{ sourceIdentityId: string }>();
+  const sourceIdentityId = knownIdentity?.sourceIdentityId ?? `forecast-source-identity:${crypto.randomUUID()}`;
+  if (!knownIdentity) {
+    await db.prepare(`insert into research_forecast_source_identities (
+      source_identity_id, display_name, identity_type, independence_group_id, evidence_url, evidence_title,
+      evidence_doc_id, identity_status, created_by, created_at
+    ) values (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?)`)
+      .bind(sourceIdentityId, origin.displayName, origin.identityType, independenceGroupId, origin.evidenceUrl,
+        origin.evidenceTitle, candidate.docId, AUTOMATIC_FORECAST_ACTOR, now).run();
+  }
+  const knownLineage = await db.prepare(`select model_lineage_id as modelLineageId
+    from research_forecast_model_lineages
+    where origin_source_identity_id=? and lower(lineage_name)=lower(?) and lineage_status='confirmed'`)
+    .bind(sourceIdentityId, contract.modelLineage.lineageName).first<{ modelLineageId: string }>();
+  const modelLineageId = knownLineage?.modelLineageId ?? `forecast-model-lineage:${crypto.randomUUID()}`;
+  if (!knownLineage) {
+    await db.prepare(`insert into research_forecast_model_lineages (
+      model_lineage_id, origin_source_identity_id, lineage_name, evidence_url, evidence_title, evidence_doc_id,
+      lineage_status, created_by, created_at
+    ) values (?, ?, ?, ?, ?, ?, 'confirmed', ?, ?)`)
+      .bind(modelLineageId, sourceIdentityId, contract.modelLineage.lineageName, contract.modelLineage.evidenceUrl,
+        contract.modelLineage.evidenceTitle, candidate.docId, AUTOMATIC_FORECAST_ACTOR, now).run();
+  }
+  const existing = await db.prepare(`select source_identity_assertion_id as sourceIdentityAssertionId,
+      carrier_source_identity_id as carrierSourceIdentityId, origin_source_identity_id as originSourceIdentityId,
+      model_lineage_id as modelLineageId, carrier_relation as carrierRelation, assertion_status as assertionStatus
+    from research_forecast_source_identity_assertions where doc_id=? and version_id=?`)
+    .bind(candidate.docId, candidate.versionId).first<{
+      sourceIdentityAssertionId: string; carrierSourceIdentityId: string; originSourceIdentityId: string | null;
+      modelLineageId: string | null; carrierRelation: ForecastCarrierRelation; assertionStatus: string;
+    }>();
+  if (existing) {
+    if (existing.assertionStatus !== "confirmed" || existing.carrierRelation !== "original"
+      || existing.carrierSourceIdentityId !== sourceIdentityId || existing.originSourceIdentityId !== sourceIdentityId
+      || existing.modelLineageId !== modelLineageId) {
+      throw new Error("source_identity_assertion_conflicts_with_existing_document_version");
+    }
+    return { sourceIdentityAssertionId: existing.sourceIdentityAssertionId, sourceIdentityId, modelLineageId, independenceGroupId };
+  }
+  const sourceIdentityAssertionId = `forecast-source-assertion:${crypto.randomUUID()}`;
+  await db.prepare(`insert into research_forecast_source_identity_assertions (
+    source_identity_assertion_id, doc_id, version_id, content_hash, carrier_source_identity_id, origin_source_identity_id,
+    model_lineage_id, carrier_relation, evidence_url, evidence_title, evidence_doc_id, assertion_status, created_by, created_at
+  ) values (?, ?, ?, ?, ?, ?, ?, 'original', ?, ?, ?, 'confirmed', ?, ?)`)
+    .bind(sourceIdentityAssertionId, candidate.docId, candidate.versionId, candidate.contentHash, sourceIdentityId,
+      sourceIdentityId, modelLineageId, origin.evidenceUrl, origin.evidenceTitle, candidate.docId,
+      AUTOMATIC_FORECAST_ACTOR, now).run();
+  return { sourceIdentityAssertionId, sourceIdentityId, modelLineageId, independenceGroupId };
+}
+
+async function writeAutomaticSourceForecast(db: D1Database, input: {
+  code: string; companyId: string | null; candidate: ForecastCandidateRow; sourceIdentityAssertionId: string;
+  measurement: AutomaticForecastMeasurement; now: number;
+}) {
+  const assertion = await getConfirmedForecastSourceIdentityAssertion(db, input.sourceIdentityAssertionId, input.candidate);
+  const forecastDate = normalizeDate(input.measurement.forecastDate);
+  if (!forecastDate) throw new Error("forecast_date_missing_or_invalid");
+  const metric = requireEnum(input.candidate.category, FORECAST_METRICS, "metric");
+  const rawUnit = requireEnum(input.measurement.rawUnit, FORECAST_RAW_UNITS, "rawUnit");
+  const normalized = normalizeSourceForecast({
+    forecastId: "automatic-source-forecast", institution: assertion.originDisplayName,
+    sourceIdentityId: assertion.originSourceIdentityId, sourceIdentityAssertionId: input.sourceIdentityAssertionId,
+    originSourceIdentityId: assertion.originSourceIdentityId, carrierSourceIdentityId: assertion.carrierSourceIdentityId,
+    carrierRelation: assertion.carrierRelation, modelLineageId: assertion.modelLineageId,
+    independenceGroupId: assertion.independenceGroupId, forecastDate, metric, fiscalYear: input.measurement.fiscalYear,
+    rawValue: input.measurement.rawValue, rawUnit, currency: normalizeCurrency(input.measurement.currency),
+    accountingBasis: input.measurement.accountingBasis, ownershipBasis: input.measurement.ownershipBasis,
+    shareBasis: input.measurement.shareBasis, createdAt: input.now,
+  });
+  if (normalized.normalizationStatus !== "comparable") throw new Error(normalized.normalizationNotes || "forecast_measurement_not_comparable");
+  const predecessorId = normalizeOptionalId(input.measurement.supersedesForecastId);
+  if (predecessorId) {
+    const predecessor = await db.prepare(`select model_lineage_id as modelLineageId from research_source_forecasts
+      where forecast_id=? and security_code=?`).bind(predecessorId, input.code).first<{ modelLineageId: string | null }>();
+    if (!predecessor) throw new Error("supersedes_forecast_not_found_for_security");
+    assertForecastSupersedesSameModelLineage(predecessor.modelLineageId, assertion.modelLineageId);
+  }
+  const forecastId = `source-forecast:${crypto.randomUUID()}`;
+  const reviewId = input.candidate.reviewId ?? `forecast-auto-review:${crypto.randomUUID()}`;
+  await db.batch([
+    automaticReviewUpsertStatement(db, {
+      reviewId, code: input.code, companyId: input.companyId, informationId: input.candidate.informationId,
+      currentForecastId: input.candidate.currentForecastId, reviewStatus: "included", reviewReason: null, now: input.now,
+    }),
+    db.prepare(`insert into research_source_forecasts (
+      forecast_id, review_id, information_id, version_id, doc_id, security_code, company_id,
+      institution, source_identity_id, source_identity_assertion_id, origin_source_identity_id, carrier_source_identity_id,
+      carrier_relation, model_lineage_id, independence_group_id, analysts_json, forecast_date, metric, fiscal_year, fiscal_period, raw_value, raw_unit,
+      currency, accounting_basis, ownership_basis, share_basis, normalized_value, normalized_unit,
+      normalization_status, normalization_notes, source_statement, supersedes_forecast_id, created_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(forecastId, reviewId, input.candidate.informationId, input.candidate.versionId, input.candidate.docId,
+        input.code, input.companyId, assertion.originDisplayName, assertion.originSourceIdentityId,
+        input.sourceIdentityAssertionId, assertion.originSourceIdentityId, assertion.carrierSourceIdentityId,
+        assertion.carrierRelation, assertion.modelLineageId, assertion.independenceGroupId,
+        JSON.stringify(cleanAnalysts(input.measurement.analysts)), forecastDate, metric, input.measurement.fiscalYear,
+        `${input.measurement.fiscalYear}FY`, input.measurement.rawValue, rawUnit, normalized.currency,
+        input.measurement.accountingBasis, input.measurement.ownershipBasis, input.measurement.shareBasis,
+        normalized.normalizedValue, normalized.normalizedUnit, normalized.normalizationStatus,
+        normalized.normalizationNotes, input.candidate.statement, predecessorId, input.now),
+    db.prepare(`update research_forecast_source_reviews set current_forecast_id=?, review_status='included', review_reason=null,
+      company_id=?, reviewed_by=?, reviewed_at=?, updated_at=? where review_id=?`)
+      .bind(forecastId, input.companyId, AUTOMATIC_FORECAST_ACTOR, input.now, input.now, reviewId),
+  ]);
+  return { forecastId };
+}
+
+function automaticReviewUpsertStatement(db: D1Database, input: {
+  reviewId: string; code: string; companyId: string | null; informationId: string; currentForecastId: string | null;
+  reviewStatus: ForecastReviewWrite["reviewStatus"]; reviewReason: string | null; now: number;
+}) {
+  return db.prepare(`insert into research_forecast_source_reviews (
+    review_id, security_code, company_id, information_id, current_forecast_id, review_status, review_reason,
+    reviewed_by, reviewed_at, created_at, updated_at
+  ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  on conflict(security_code, information_id) do update set company_id=excluded.company_id,
+    current_forecast_id=excluded.current_forecast_id, review_status=excluded.review_status,
+    review_reason=excluded.review_reason, reviewed_by=excluded.reviewed_by,
+    reviewed_at=excluded.reviewed_at, updated_at=excluded.updated_at`)
+    .bind(input.reviewId, input.code, input.companyId, input.informationId, input.currentForecastId,
+      input.reviewStatus, input.reviewReason, AUTOMATIC_FORECAST_ACTOR, input.now, input.now, input.now);
+}
+
+function parseAutomaticForecastEvidenceContract(value: unknown):
+  | { ok: true; value: AutomaticForecastEvidenceContract }
+  | { ok: false; reason: string } {
+  let metadata: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(String(value || "{}"));
+    if (!isPlainRecord(parsed)) return { ok: false, reason: "forecast_provenance_contract_missing" };
+    metadata = parsed;
+  } catch {
+    return { ok: false, reason: "forecast_provenance_contract_missing" };
+  }
+  const source = metadata.researchForecastEvidence;
+  if (!isPlainRecord(source) || source.schemaVersion !== "research-source-forecast.v1") {
+    return { ok: false, reason: "forecast_provenance_contract_missing" };
+  }
+  if (source.carrierRelation !== "original") return { ok: false, reason: "source_carrier_not_explicitly_original" };
+  const origin = source.origin;
+  const modelLineage = source.modelLineage;
+  if (!isPlainRecord(origin) || !isPlainRecord(modelLineage)) return { ok: false, reason: "source_identity_assertion_unresolved" };
+  if (!nonemptyText(origin.displayName) || !nonemptyText(origin.independenceGroupName)
+    || !isOneOf(origin.identityType, FORECAST_SOURCE_IDENTITY_TYPES)
+    || !isHttpsUrl(origin.evidenceUrl) || !nonemptyText(origin.evidenceTitle)) {
+    return { ok: false, reason: "source_identity_assertion_unresolved" };
+  }
+  if (!nonemptyText(modelLineage.lineageName) || !isHttpsUrl(modelLineage.evidenceUrl) || !nonemptyText(modelLineage.evidenceTitle)) {
+    return { ok: false, reason: "source_model_lineage_unresolved" };
+  }
+  if (source.measurements !== undefined && (!Array.isArray(source.measurements) || source.measurements.length > 100)) {
+    return { ok: false, reason: "forecast_measurement_contract_incomplete" };
+  }
+  const measurements: AutomaticForecastMeasurement[] = [];
+  for (const item of source.measurements ?? []) {
+    if (!isPlainRecord(item) || !nonemptyText(item.informationId) || !nonemptyText(item.forecastDate)
+      || !Number.isInteger(item.fiscalYear) || !Number.isFinite(item.rawValue)
+      || !isOneOf(item.rawUnit, FORECAST_RAW_UNITS) || !isOneOf(item.accountingBasis, FORECAST_ACCOUNTING_BASES)
+      || !isOneOf(item.ownershipBasis, FORECAST_OWNERSHIP_BASES) || !isOneOf(item.shareBasis, FORECAST_SHARE_BASES)
+      || (item.currency !== undefined && item.currency !== null && !nonemptyText(item.currency))
+      || (item.analysts !== undefined && (!Array.isArray(item.analysts) || item.analysts.some((name) => !nonemptyText(name))))
+      || (item.supersedesForecastId !== undefined && item.supersedesForecastId !== null && !nonemptyText(item.supersedesForecastId))) {
+      return { ok: false, reason: "forecast_measurement_contract_incomplete" };
+    }
+    measurements.push({
+      informationId: String(item.informationId).trim(), forecastDate: String(item.forecastDate).trim(),
+      fiscalYear: Number(item.fiscalYear), rawValue: Number(item.rawValue), rawUnit: item.rawUnit as ForecastRawUnit,
+      currency: item.currency === undefined || item.currency === null ? null : String(item.currency).trim(),
+      accountingBasis: item.accountingBasis as ForecastAccountingBasis,
+      ownershipBasis: item.ownershipBasis as ForecastOwnershipBasis, shareBasis: item.shareBasis as ForecastShareBasis,
+      analysts: Array.isArray(item.analysts) ? item.analysts.map((name) => String(name).trim()) : undefined,
+      supersedesForecastId: item.supersedesForecastId === undefined || item.supersedesForecastId === null
+        ? null : String(item.supersedesForecastId).trim(),
+    });
+  }
+  return {
+    ok: true,
+    value: {
+      schemaVersion: "research-source-forecast.v1", carrierRelation: "original",
+      origin: {
+        displayName: String(origin.displayName).trim(), identityType: origin.identityType as ForecastSourceIdentityType,
+        independenceGroupName: String(origin.independenceGroupName).trim(), evidenceUrl: String(origin.evidenceUrl).trim(),
+        evidenceTitle: String(origin.evidenceTitle).trim(),
+      },
+      modelLineage: {
+        lineageName: String(modelLineage.lineageName).trim(), evidenceUrl: String(modelLineage.evidenceUrl).trim(),
+        evidenceTitle: String(modelLineage.evidenceTitle).trim(),
+      },
+      measurements: measurements.length > 0 ? measurements : undefined,
+    },
+  };
+}
+
+/**
+ * Forecast numbers are extracted by the information processor, not inferred
+ * from prose at ledger-sync time.  The direct document date is the only
+ * eligible forecast date for this path; metadata remains the separate,
+ * mandatory source-identity and original-carrier contract.
+ */
+function parseStoredForecastMeasurement(
+  value: string | null,
+  period: string | null,
+  publishedAt: string | null,
+): { ok: true; value: AutomaticForecastMeasurement } | { ok: false; reason: string } {
+  let raw: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(String(value || "{}"));
+    if (!isPlainRecord(parsed) || Object.keys(parsed).length === 0) {
+      return { ok: false, reason: "forecast_measurement_contract_missing_for_information_record" };
+    }
+    raw = parsed;
+  } catch {
+    return { ok: false, reason: "forecast_measurement_contract_incomplete" };
+  }
+  if (!Number.isInteger(raw.fiscalYear) || !Number.isFinite(raw.rawValue)
+    || !isOneOf(raw.rawUnit, FORECAST_RAW_UNITS) || !isOneOf(raw.accountingBasis, FORECAST_ACCOUNTING_BASES)
+    || !isOneOf(raw.ownershipBasis, FORECAST_OWNERSHIP_BASES) || !isOneOf(raw.shareBasis, FORECAST_SHARE_BASES)
+    || (raw.currency !== undefined && raw.currency !== null && !nonemptyText(raw.currency))) {
+    return { ok: false, reason: "forecast_measurement_contract_incomplete" };
+  }
+  const fiscalYear = Number(raw.fiscalYear);
+  if (fiscalYear < 1900 || fiscalYear > 2200 || !forecastPeriodMatchesFiscalYear(period, fiscalYear)) {
+    return { ok: false, reason: "forecast_measurement_contract_incomplete" };
+  }
+  const forecastDate = normalizeDate(publishedAt ?? "");
+  if (!forecastDate) return { ok: false, reason: "forecast_date_missing_or_invalid" };
+  return {
+    ok: true,
+    value: {
+      informationId: "stored-information-record",
+      forecastDate,
+      fiscalYear,
+      rawValue: Number(raw.rawValue),
+      rawUnit: raw.rawUnit as ForecastRawUnit,
+      currency: raw.currency === undefined || raw.currency === null ? null : String(raw.currency).trim(),
+      accountingBasis: raw.accountingBasis as ForecastAccountingBasis,
+      ownershipBasis: raw.ownershipBasis as ForecastOwnershipBasis,
+      shareBasis: raw.shareBasis as ForecastShareBasis,
+    },
+  };
+}
+
+function forecastPeriodMatchesFiscalYear(period: string | null, fiscalYear: number): boolean {
+  return period === `${fiscalYear}FY` || period === `${fiscalYear}Q1`
+    || period === `${fiscalYear}Q2` || period === `${fiscalYear}Q3` || period === `${fiscalYear}Q4`;
+}
+
+function automaticForecastErrorReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/^(source_identity_assertion_conflicts_with_existing_document_version|forecast_date_missing_or_invalid|supersedes_forecast_not_found_for_security)$/.test(message)) return message;
+  if (/source identity assertion|sourceIdentityAssertionId|model lineage/i.test(message)) return "source_identity_assertion_unresolved";
+  if (/currency|required|unit|basis|comparable|normalization/i.test(message)) return "forecast_measurement_contract_incomplete";
+  return "automatic_forecast_ledger_write_rejected";
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function nonemptyText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isHttpsUrl(value: unknown): boolean {
+  if (!nonemptyText(value)) return false;
+  try { const url = new URL(value); return url.protocol === "https:" && Boolean(url.hostname); }
+  catch { return false; }
 }
 
 function mapCandidate(row: ForecastCandidateRow) {

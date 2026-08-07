@@ -1,4 +1,4 @@
-import type { ForecastAccountingBasis, ForecastOwnershipBasis, ForecastShareBasis } from "../domain/forecast-consolidation";
+import type { ForecastAccountingBasis, ForecastMetric, ForecastOwnershipBasis, ForecastShareBasis } from "../domain/forecast-consolidation";
 import {
   FORMAL_ACTUAL_CANDIDATE_RULE_VERSION,
   FORMAL_FINANCIAL_FACT_DICTIONARY_VERSION,
@@ -11,7 +11,7 @@ import {
   type ResearchModelReviewItem,
 } from "../domain/formal-actual-candidate";
 import { loadFinancialStatutoryVerifications } from "./financial-statutory-verification";
-import { registerFormalActual, type FormalActualRegistrationWrite } from "./forecast-actual-calibration";
+import { createForecastActualCalibration, registerFormalActual, type FormalActualRegistrationWrite } from "./forecast-actual-calibration";
 import { assertNoUnreviewedStatutoryRevisionCandidate } from "./statutory-disclosure-revision-candidates";
 
 type Row = Record<string, unknown>;
@@ -109,6 +109,193 @@ export async function materializeFormalActualCandidates(
     blockedByReason: [...blockedReasons.entries()].map(([reason, count]) => ({ reason, count })).sort((left, right) => left.reason.localeCompare(right.reason)),
     created,
   };
+}
+
+/**
+ * Fully automatic bridge from an already matched statutory field to a formal
+ * actual and its historical forecast calibrations.  It is deliberately
+ * narrower than the legacy candidate-review route: the rule may only admit a
+ * metric when its accounting and ownership basis are deterministically fixed
+ * by the source contract.  Anything else stays source-visible and blocked;
+ * there is no operator queue or silent semantic choice.
+ */
+export async function syncAutomaticFormalActuals(
+  db: D1Database,
+  securityCode: string,
+  createdAt = Date.now(),
+): Promise<{
+  materialization: FormalActualCandidateMaterialization;
+  acceptedActualIds: string[];
+  calibrationIds: string[];
+  blocked: Array<{ candidateId: string; reason: string }>;
+}> {
+  const code = securityCode.trim().toUpperCase();
+  const materialization = await materializeFormalActualCandidates(db, [code], createdAt);
+  const candidates = await loadFormalActualCandidates(db, code);
+  const acceptedActualIds: string[] = [];
+  const calibrationIds: string[] = [];
+  const blocked: Array<{ candidateId: string; reason: string }> = [];
+
+  for (const candidate of candidates) {
+    const existingDecision = await db.prepare(`select decision from research_formal_actual_candidate_reviews
+      where candidate_id=? order by reviewed_at desc, review_id desc limit 1`).bind(candidate.candidateId).first<{ decision: string }>();
+    if (existingDecision) continue;
+    const basisResolution = await automaticBasis(db, candidate);
+    if (!basisResolution.basis) {
+      blocked.push({ candidateId: candidate.candidateId, reason: basisResolution.reason });
+      continue;
+    }
+    const basis = basisResolution.basis;
+    const currentnessBlock = await automaticCandidateCurrentnessBlock(db, candidate);
+    if (currentnessBlock) {
+      blocked.push({ candidateId: candidate.candidateId, reason: currentnessBlock });
+      continue;
+    }
+    const currentActual = await db.prepare(`select actual_id as actualId from research_formal_actuals
+      where security_code=? and metric=? and fiscal_period=? and actual_status in ('original','restated') limit 1`)
+      .bind(code, candidate.forecastMetric, candidate.fiscalPeriod).first<{ actualId: string }>();
+    if (currentActual) {
+      blocked.push({ candidateId: candidate.candidateId, reason: "current_formal_actual_already_exists_requires_explicit_restatement_evidence" });
+      continue;
+    }
+    const actualId = `formal-actual:auto:${candidate.candidateId}`;
+    const actual = await registerFormalActual(db, {
+      actualId,
+      securityCode: code,
+      companyId: await companyIdForSecurity(db, code),
+      metric: candidate.forecastMetric!,
+      fiscalYear: candidate.fiscalYear,
+      fiscalPeriod: candidate.fiscalPeriod,
+      rawValue: candidate.reportedValue!,
+      rawUnit: candidate.reportedUnit!,
+      currency: candidate.currency!,
+      accountingBasis: basis.accountingBasis,
+      ownershipBasis: basis.ownershipBasis,
+      shareBasis: "unspecified",
+      filedAt: candidate.statutoryPublishedAt!,
+      sourceStatement: `自动法定字段核验 ${candidate.verificationId}；规则 ${AUTOMATIC_FORMAL_ACTUAL_RULE_VERSION} 仅接受已匹配且口径可机械确定的 ${candidate.metric}。定位：${candidate.statutoryLocator}`,
+      sourceReferences: [{ sourceKind: "filing", url: candidate.statutoryDisclosureUrl!, locator: candidate.statutoryLocator! }],
+      restatesActualId: null,
+      restatementNote: null,
+    } satisfies FormalActualRegistrationWrite, createdAt);
+    await insertReview(db, {
+      reviewId: `formal-actual-auto-decision:${candidate.candidateId}`,
+      candidateId: candidate.candidateId,
+      decision: "accepted",
+      reviewer: `system:${AUTOMATIC_FORMAL_ACTUAL_RULE_VERSION}`,
+      reason: `系统按 ${AUTOMATIC_FORMAL_ACTUAL_RULE_VERSION} 自动接受：法定核验为 match，事实字典和可机械确定的会计/所有权口径均完整。`,
+      accountingBasis: basis.accountingBasis,
+      ownershipBasis: basis.ownershipBasis,
+      shareBasis: "unspecified",
+      candidate,
+      actualId: actual.actualId,
+      reviewedAt: createdAt,
+    });
+    acceptedActualIds.push(actual.actualId);
+    calibrationIds.push(...await createAutomaticCalibrations(db, code, actual.actualId, candidate.forecastMetric!, candidate.fiscalPeriod, createdAt));
+  }
+  return { materialization, acceptedActualIds, calibrationIds, blocked };
+}
+
+export const AUTOMATIC_FORMAL_ACTUAL_RULE_VERSION = "formal-actual-auto.v1";
+
+async function automaticBasis(
+  db: D1Database,
+  candidate: FormalActualCandidate,
+): Promise<{ basis: { accountingBasis: ForecastAccountingBasis; ownershipBasis: ForecastOwnershipBasis } | null; reason: string }> {
+  if (!candidate.forecastMetric) return { basis: null, reason: "forecast_metric_dictionary_mapping_missing" };
+  if (candidate.reportedValue === null || !candidate.reportedUnit || !candidate.currency) return { basis: null, reason: "statutory_value_or_currency_incomplete" };
+  if (!candidate.statutoryDisclosureUrl || !candidate.statutoryLocator || !candidate.statutoryPublishedAt) return { basis: null, reason: "statutory_source_binding_incomplete" };
+  if (candidate.forecastMetric === "revenue" || candidate.forecastMetric === "operating_cash_flow") {
+    return { basis: { accountingBasis: "gaap", ownershipBasis: "unspecified" }, reason: "" };
+  }
+  if (candidate.forecastMetric !== "net_profit") return { basis: null, reason: "automatic_basis_not_available" };
+
+  // A scope label only becomes a forecast ownership basis when both immutable
+  // sides of the statutory comparison carry the *same controlled value*.
+  // In particular, do not translate a display label such as "归母净利润" or
+  // infer common-shareholder earnings from an ADR, ticker, or report title.
+  const verification = await db.prepare(`select outcome, normalized_scope as normalizedScope, statutory_scope as statutoryScope,
+      normalized_accounting_standard as normalizedAccountingStandard, statutory_accounting_standard as statutoryAccountingStandard
+    from research_financial_statutory_verifications where verification_id=?`)
+    .bind(candidate.verificationId).first<{
+      outcome: string; normalizedScope: string | null; statutoryScope: string | null;
+      normalizedAccountingStandard: string | null; statutoryAccountingStandard: string | null;
+    }>();
+  if (!verification || verification.outcome !== "match") return { basis: null, reason: "statutory_match_no_longer_available" };
+  if (!sameControlledBasis(verification.normalizedAccountingStandard, verification.statutoryAccountingStandard)) {
+    return { basis: null, reason: "accounting_basis_not_machine_resolved" };
+  }
+  if (!sameControlledBasis(verification.normalizedScope, verification.statutoryScope)) {
+    return { basis: null, reason: "ownership_basis_source_scope_conflict" };
+  }
+  const ownershipBasis = ownershipBasisFromControlledScope(verification.statutoryScope);
+  if (!ownershipBasis) return { basis: null, reason: "ownership_basis_not_machine_resolved" };
+  return { basis: { accountingBasis: "gaap", ownershipBasis }, reason: "" };
+}
+
+function sameControlledBasis(left: unknown, right: unknown): boolean {
+  const normalizedLeft = String(left || "").trim();
+  const normalizedRight = String(right || "").trim();
+  return Boolean(normalizedLeft) && normalizedLeft === normalizedRight;
+}
+
+function ownershipBasisFromControlledScope(value: unknown): ForecastOwnershipBasis | null {
+  const scope = String(value || "").trim();
+  if (scope === "consolidated") return "consolidated";
+  if (scope === "attributable_to_parent") return "attributable_to_parent";
+  if (scope === "common_shareholders") return "common_shareholders";
+  return null;
+}
+
+async function automaticCandidateCurrentnessBlock(db: D1Database, candidate: FormalActualCandidate): Promise<string | null> {
+  if (!candidate.statutoryDocumentId || !candidate.statutoryPublishedAt) return "statutory_source_binding_incomplete";
+  // A later document is an objectively newer input. A same-day different
+  // document has no deterministic order in the source contract, so neither
+  // may be silently selected by the automatic pipeline.
+  const [later, sameDay] = await Promise.all([
+    db.prepare(`select candidate_id as candidateId from research_formal_actual_candidates
+      where security_code=? and metric=? and fiscal_period=? and statutory_document_id is not null
+        and statutory_document_id<>? and statutory_published_at>?
+      order by statutory_published_at desc, created_at desc limit 1`)
+      .bind(candidate.securityCode, candidate.metric, candidate.fiscalPeriod, candidate.statutoryDocumentId, candidate.statutoryPublishedAt)
+      .first<{ candidateId: string }>(),
+    db.prepare(`select candidate_id as candidateId from research_formal_actual_candidates
+      where security_code=? and metric=? and fiscal_period=? and statutory_document_id is not null
+        and statutory_document_id<>? and statutory_published_at=?
+      order by created_at desc limit 1`)
+      .bind(candidate.securityCode, candidate.metric, candidate.fiscalPeriod, candidate.statutoryDocumentId, candidate.statutoryPublishedAt)
+      .first<{ candidateId: string }>(),
+  ]);
+  if (later) return "newer_statutory_document_available";
+  if (sameDay) return "same_day_statutory_document_order_ambiguous";
+  return null;
+}
+
+async function createAutomaticCalibrations(
+  db: D1Database,
+  securityCode: string,
+  actualId: string,
+  metric: ForecastMetric,
+  fiscalPeriod: string,
+  createdAt: number,
+): Promise<string[]> {
+  const forecastRows = await db.prepare(`select 'third_party_forecast' as forecastKind, forecast_id as forecastId
+      from research_source_forecasts where security_code=? and metric=? and fiscal_period=?
+    union all
+    select 'management_guidance' as forecastKind, guidance_forecast_id as forecastId
+      from research_management_guidance_forecasts where security_code=? and metric=? and fiscal_period=?`)
+    .bind(securityCode, metric, fiscalPeriod, securityCode, metric, fiscalPeriod).all<{ forecastKind: "third_party_forecast" | "management_guidance"; forecastId: string }>();
+  const calibrationIds: string[] = [];
+  for (const forecast of forecastRows.results) {
+    const prior = await db.prepare(`select calibration_id as calibrationId from research_forecast_actual_calibration_records
+      where forecast_kind=? and forecast_id=? and actual_id=?`).bind(forecast.forecastKind, forecast.forecastId, actualId).first<{ calibrationId: string }>();
+    if (prior) continue;
+    const calibrationId = `formal-actual-auto-calibration:${forecast.forecastKind}:${forecast.forecastId}:${actualId}`;
+    await createForecastActualCalibration(db, { calibrationId, securityCode, forecastKind: forecast.forecastKind, forecastId: forecast.forecastId, actualId, calibratedAt: createdAt });
+    calibrationIds.push(calibrationId);
+  }
+  return calibrationIds;
 }
 
 /** Returns only candidates eligible for human review; blocked comparisons are source-health evidence, not queue items. */

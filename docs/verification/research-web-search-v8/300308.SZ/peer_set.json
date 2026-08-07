@@ -1,0 +1,213 @@
+{
+  "configVersion": "research-web-search-packages.v8",
+  "model": "gpt-5.6-luna",
+  "packageKind": "peer_set",
+  "securityCode": "300308.SZ",
+  "prompt": "研究对象：300308.SZ（中际旭创，A，交易币种 CNY）\n\n这是“同行竞争包”。先用公司产品页、IR、同行披露或公开行业原文确认可比关系：产品/服务边界、地区、客户或技术路线；不能从公司名称、单一媒体文章或模型常识推定竞争关系。然后在同一批可比同行的发行人披露中提取产品边界、经营披露、产能/出货、战略动作和明确的可比性限制。不要默认请求、打开或引用目标公司的财报。\n不要把不同产品、地区、期间或收入/出货单位的同行指标直接并列成份额、排名或优劣结论；边界不一致时单独记录限制或 unavailable。\n\n允许来源：同行发行人 IR、交易所、监管披露和公开行业原文。evidence_records[].tab_id 仅可为：market, industry。字段名和枚举值使用英文 snake_case；不得输出中文 Tab 名称。",
+  "effort": "high",
+  "elapsedMs": 262700,
+  "firstEventMs": 1644,
+  "firstTextMs": 151820,
+  "citationCount": 4,
+  "queryCount": 3,
+  "recordCount": 25,
+  "persistableRecordCount": 25,
+  "verifiedCount": 22,
+  "unavailableCount": 3,
+  "invalidStatusCount": 0,
+  "invalidTabCount": 0,
+  "summary": "本来源包基于公开产品页及同行发行人披露，将成都新易盛通信技术股份有限公司、武汉光迅科技股份有限公司列为300308.SZ的功能可比同行：三者均公开覆盖高速光模块/光收发模块，并在数据中心、AI算力或互联网通信场景，以及400G、800G、1.6T等速率或相近封装/技术路线存在产品边界重叠。该判断是基于公开产品边界和应用场景的研究判断，不等同于已验证的直接客户竞争关系。同行披露的产能、产量、销量口径不一致，不据此形成份额、排名或优劣结论。([innolight.com](https://www.innolight.com/data-center-networking))",
+  "facts": [
+    {
+      "key": "product_boundary",
+      "status": "verified",
+      "subject": "300308.SZ",
+      "statement": "公司公开产品页将自身产品边界定义为面向AI和数据中心网络的完整光收发模块产品组合，覆盖100G、200G、400G、800G和1.6T解决方案。",
+      "source": "AI and Data Center Networking"
+    },
+    {
+      "key": "comparable_basis",
+      "status": "verified",
+      "subject": "300308.SZ vs 成都新易盛通信技术股份有限公司",
+      "statement": "基于产品边界重叠，可将新易盛列为功能可比同行：新易盛披露了400G、800G、1.6T高速光模块，以及数据中心和数据通信应用；该结论不证明双方存在相同客户或全部产品直接竞争。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文；AI and Data Center Networking"
+    },
+    {
+      "key": "comparable_basis",
+      "status": "verified",
+      "subject": "300308.SZ vs 武汉光迅科技股份有限公司",
+      "statement": "基于产品边界、应用场景和速率范围重叠，可将光迅科技列为功能可比同行：光迅科技披露数据中心内/间互联光模块、AOC，以及100G至1.6T产品；该结论不证明双方存在相同客户或全部产品直接竞争。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文；AI and Data Center Networking"
+    },
+    {
+      "key": "product_boundary",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛披露的产品覆盖50G、100G、200G、400G、800G、1.6T高速光模块、400G/800G ZR/ZR+相干光模块及400G/800G LPO光模块，应用覆盖数据中心、数据通信、5G无线网络、电信传输、固网接入等。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "technical_route",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛披露的高速模块技术路线包括VCSEL/EML、硅光和薄膜铌酸锂，并布局相干光模块和LPO。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "customer_scope",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛披露已与全球主流通信设备制造商及互联网厂商建立合作关系，但未在该段披露可与300308.SZ逐一核对的客户名单。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "production_capacity",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛2024年点对点光模块披露产能为1060万只。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "production_volume",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛2024年点对点光模块产量为979万只。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "shipment_volume",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛2024年点对点光模块销量为873万只。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "operating_disclosure",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛2024年点对点光模块收入为8591708917.12元，占营业收入99.36%。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "region_scope",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛2024年国外收入占营业收入78.70%，国内收入占21.30%。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "strategic_action",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司",
+      "statement": "新易盛围绕主业实施垂直整合，并推动硅光、相干光模块、800G/1.6T光模块等前沿领域研究及商用；其泰国工厂二期预计2025年投入运营。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "product_boundary",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技披露其数据通信产品面向云计算数据中心、AI智算中心、企业网和存储网，提供数据中心内互联光模块、数据中心间互联光模块和AOC。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "technical_route",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技数据中心内光模块覆盖100G、200G、400G、800G和1.6T速率，支持QSFP、QSFP-DD和OSFP封装，披露了VCSEL、EML、硅光、LPO和LRO等路线。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "operating_disclosure",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技2024年数据与接入产品收入为5101462259.15元，占营业收入61.67%；该口径包含接入及数据通信产品，不等同于纯数据中心高速光模块收入。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "region_scope",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技2024年国内收入为5933988428.12元，占营业收入71.73%，国外收入占28.27%。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "production_volume",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技披露的2024年通讯设备制造业生产量为27838.05万只。该口径覆盖通讯设备制造业整体，不等同于数据中心高速光模块产量。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "shipment_volume",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技披露的2024年通讯设备制造业销售量为25093.16万只。该口径覆盖通讯设备制造业整体，不等同于数据中心高速光模块销量。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "strategic_action",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技将AI算力光模块作为研发项目，目标为实现800G/1.6T产品研制与批量交付；披露部分产品已开始交付，并计划形成规模交付能力。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "strategic_action",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技披露其持续提升海外制造和高端数通产品交付能力，并完成海外制造基地及武汉高端光电子器件产业基地的产能建设。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "strategic_action",
+      "status": "verified",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "光迅科技在OFC 2025公开展示800G DR8、800G 2xFR4的LPO、LRO、DSP方案、液冷兼容产品和800ZR，并与Celestica的数据中心交换机进行联合演示。",
+      "source": "Accelink to Demonstrate Innovative Green Optics at OFC 2025"
+    },
+    {
+      "key": "comparability_limit",
+      "status": "verified",
+      "subject": "成都新易盛通信技术股份有限公司 vs 武汉光迅科技股份有限公司",
+      "statement": "两家公司公开披露的实物口径不同：新易盛披露的是点对点光模块产能、产量和销量；光迅科技披露的是通讯设备制造业整体生产量和销售量。因此不能将两者直接计算为同口径份额、排名或产能优劣。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文；武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "comparability_limit",
+      "status": "unavailable",
+      "subject": "300308.SZ vs peer set",
+      "statement": "本次同行原文未提供与300308.SZ完全一致的同期间、同产品、同地区客户收入或800G/1.6T细分市场出货口径，因此不形成直接客户竞争、市场份额或同行排名结论。",
+      "source": null
+    },
+    {
+      "key": "direct_customer_overlap",
+      "status": "unavailable",
+      "subject": "300308.SZ vs peer set",
+      "statement": "未验证到可逐一核对的共同客户名单：新易盛仅披露全球主流通信设备制造商及互联网厂商，光迅科技年报中的主要客户以客户1至客户5匿名列示，无法据此确认与300308.SZ的直接客户重叠。",
+      "source": "成都新易盛通信技术股份有限公司2024年年度报告全文；武汉光迅科技股份有限公司2024年年度报告全文"
+    },
+    {
+      "key": "peer_specific_capacity_by_product",
+      "status": "unavailable",
+      "subject": "武汉光迅科技股份有限公司",
+      "statement": "未找到光迅科技按800G/1.6T数据中心光模块单独拆分的产能、产量或销量；已披露的通讯设备制造业实物数据范围更宽，不能替代该细分口径。",
+      "source": "武汉光迅科技股份有限公司2024年年度报告全文"
+    }
+  ],
+  "modelOutput": "{\"summary\":\"本来源包基于公开产品页及同行发行人披露，将成都新易盛通信技术股份有限公司、武汉光迅科技股份有限公司列为300308.SZ的功能可比同行：三者均公开覆盖高速光模块/光收发模块，并在数据中心、AI算力或互联网通信场景，以及400G、800G、1.6T等速率或相近封装/技术路线存在产品边界重叠。该判断是基于公开产品边界和应用场景的研究判断，不等同于已验证的直接客户竞争关系。同行披露的产能、产量、销量口径不一致，不据此形成份额、排名或优劣结论。([innolight.com](https://www.innolight.com/data-center-networking))\",\"evidence_records\":[{\"tab_id\":\"industry\",\"field_key\":\"product_boundary\",\"subject\":\"300308.SZ\",\"statement\":\"公司公开产品页将自身产品边界定义为面向AI和数据中心网络的完整光收发模块产品组合，覆盖100G、200G、400G、800G和1.6T解决方案。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":null,\"product_scope\":\"optical transceivers for AI and data center networking\",\"region_scope\":\"global\",\"source_title\":\"AI and Data Center Networking\",\"source_url\":\"https://www.innolight.com/data-center-networking ([innolight.com](https://www.innolight.com/data-center-networking))\",\"source_published_at\":null,\"quote\":\"Complete Optical Transceiver Product Portfolio for AI and Data Center Networking\",\"locator\":\"lines 44-48\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"comparable_basis\",\"subject\":\"300308.SZ vs 成都新易盛通信技术股份有限公司\",\"statement\":\"基于产品边界重叠，可将新易盛列为功能可比同行：新易盛披露了400G、800G、1.6T高速光模块，以及数据中心和数据通信应用；该结论不证明双方存在相同客户或全部产品直接竞争。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"high-speed optical modules\",\"region_scope\":\"global\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文；AI and Data Center Networking\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF | https://www.innolight.com/data-center-networking ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"已成功推出基于 VCSEL/EML、硅光及薄膜铌酸锂方案的 400G、800G、1.6T 系列高速光模块产品\",\"locator\":\"新易盛年报P13，lines 452-458\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"comparable_basis\",\"subject\":\"300308.SZ vs 武汉光迅科技股份有限公司\",\"statement\":\"基于产品边界、应用场景和速率范围重叠，可将光迅科技列为功能可比同行：光迅科技披露数据中心内/间互联光模块、AOC，以及100G至1.6T产品；该结论不证明双方存在相同客户或全部产品直接竞争。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"data-center interconnect optical modules and AOC\",\"region_scope\":\"domestic and overseas\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文；AI and Data Center Networking\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf | https://www.innolight.com/data-center-networking ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"公司数据通信产品主要用于云计算数据中心、AI 智算中心、企业网、存储网等领域\",\"locator\":\"光迅科技年报P15，lines 392-395\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"product_boundary\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛披露的产品覆盖50G、100G、200G、400G、800G、1.6T高速光模块、400G/800G ZR/ZR+相干光模块及400G/800G LPO光模块，应用覆盖数据中心、数据通信、5G无线网络、电信传输、固网接入等。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"high-speed optical modules, coherent modules and LPO modules\",\"region_scope\":\"global\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"产品应用领域覆盖了数据中心、数据通信、5G 无线网络、电信传输、固网接入\",\"locator\":\"新易盛年报P14，lines 514-517\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"technical_route\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛披露的高速模块技术路线包括VCSEL/EML、硅光和薄膜铌酸锂，并布局相干光模块和LPO。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"400G/800G/1.6T optical modules\",\"region_scope\":\"global\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"基于 VCSEL/EML、硅光及薄膜铌酸锂方案\",\"locator\":\"新易盛年报P13，lines 452-454\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"customer_scope\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛披露已与全球主流通信设备制造商及互联网厂商建立合作关系，但未在该段披露可与300308.SZ逐一核对的客户名单。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"high-speed optical modules\",\"region_scope\":\"global\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"已与全球主流的通信设备制造商及互联网厂商建起了良好合作的关系\",\"locator\":\"新易盛年报P15，lines 537-539\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"production_capacity\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛2024年点对点光模块披露产能为1060万只。\",\"numeric_value\":1060,\"unit\":\"万只\",\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"point-to-point optical modules\",\"region_scope\":\"not separately disclosed\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"产能 1060 万只\",\"locator\":\"新易盛年报P14，lines 477-483\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"production_volume\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛2024年点对点光模块产量为979万只。\",\"numeric_value\":979,\"unit\":\"万只\",\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"point-to-point optical modules\",\"region_scope\":\"not separately disclosed\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"产量 979 万只\",\"locator\":\"新易盛年报P14，lines 477-483\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"shipment_volume\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛2024年点对点光模块销量为873万只。\",\"numeric_value\":873,\"unit\":\"万只\",\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"point-to-point optical modules\",\"region_scope\":\"not separately disclosed\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"销量 873 万只\",\"locator\":\"新易盛年报P14，lines 477-483\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"operating_disclosure\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛2024年点对点光模块收入为8591708917.12元，占营业收入99.36%。\",\"numeric_value\":8591708917.12,\"unit\":\"CNY\",\"currency\":\"CNY\",\"period\":\"FY2024\",\"product_scope\":\"point-to-point optical modules\",\"region_scope\":\"global\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"点对点光模块 8,591,708,917.12\",\"locator\":\"新易盛年报P15，lines 555-558\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"region_scope\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛2024年国外收入占营业收入78.70%，国内收入占21.30%。\",\"numeric_value\":78.70,\"unit\":\"percent\",\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"all products\",\"region_scope\":\"overseas\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"国外 6,804,933,855.42 78.70%\",\"locator\":\"新易盛年报P15，lines 559-561\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"strategic_action\",\"subject\":\"成都新易盛通信技术股份有限公司\",\"statement\":\"新易盛围绕主业实施垂直整合，并推动硅光、相干光模块、800G/1.6T光模块等前沿领域研究及商用；其泰国工厂二期预计2025年投入运营。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024-FY2025\",\"product_scope\":\"high-speed optical modules and related components\",\"region_scope\":\"global; Thailand manufacturing\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23\",\"quote\":\"泰国工厂二期建筑工程基本完成，预计 2025 年正式投入运营\",\"locator\":\"新易盛年报P14，lines 526-534\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"product_boundary\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技披露其数据通信产品面向云计算数据中心、AI智算中心、企业网和存储网，提供数据中心内互联光模块、数据中心间互联光模块和AOC。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"data-center interconnect optical modules and AOC\",\"region_scope\":\"domestic and overseas\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"提供数据中心内互联光模块、数据中心间互联光模块、AOC\",\"locator\":\"光迅科技年报P15，lines 392-395\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"technical_route\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技数据中心内光模块覆盖100G、200G、400G、800G和1.6T速率，支持QSFP、QSFP-DD和OSFP封装，披露了VCSEL、EML、硅光、LPO和LRO等路线。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"data-center optical modules\",\"region_scope\":\"domestic and overseas\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"支持 100Gb/s、200Gb/s、400Gb/s、800Gb/s、1.6T 等速率\",\"locator\":\"光迅科技年报P15，lines 392-395\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"operating_disclosure\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技2024年数据与接入产品收入为5101462259.15元，占营业收入61.67%；该口径包含接入及数据通信产品，不等同于纯数据中心高速光模块收入。\",\"numeric_value\":5101462259.15,\"unit\":\"CNY\",\"currency\":\"CNY\",\"period\":\"FY2024\",\"product_scope\":\"data and access products\",\"region_scope\":\"domestic and overseas\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"数据与接入 5,101,462,259.15\",\"locator\":\"光迅科技年报P18，lines 498-501\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"region_scope\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技2024年国内收入为5933988428.12元，占营业收入71.73%，国外收入占28.27%。\",\"numeric_value\":71.73,\"unit\":\"percent\",\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"all products\",\"region_scope\":\"domestic\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"国内 5,933,988,428.12 71.73%\",\"locator\":\"光迅科技年报P18，lines 503-505\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"production_volume\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技披露的2024年通讯设备制造业生产量为27838.05万只。该口径覆盖通讯设备制造业整体，不等同于数据中心高速光模块产量。\",\"numeric_value\":27838.05,\"unit\":\"万只\",\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"communications equipment manufacturing\",\"region_scope\":\"domestic and overseas\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"生产量 万只 27,838.05\",\"locator\":\"光迅科技年报P19，lines 530-536\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"shipment_volume\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技披露的2024年通讯设备制造业销售量为25093.16万只。该口径覆盖通讯设备制造业整体，不等同于数据中心高速光模块销量。\",\"numeric_value\":25093.16,\"unit\":\"万只\",\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"communications equipment manufacturing\",\"region_scope\":\"domestic and overseas\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"销售量 万只 25,093.16\",\"locator\":\"光迅科技年报P19，lines 530-536\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"strategic_action\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技将AI算力光模块作为研发项目，目标为实现800G/1.6T产品研制与批量交付；披露部分产品已开始交付，并计划形成规模交付能力。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"800G/1.6T AI computing optical modules\",\"region_scope\":\"domestic and overseas\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"实现 800G/1.6T AI 算力光模块产品研制与批量交付\",\"locator\":\"光迅科技年报P21，lines 603-614\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"strategic_action\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技披露其持续提升海外制造和高端数通产品交付能力，并完成海外制造基地及武汉高端光电子器件产业基地的产能建设。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"high-end data communication optical products\",\"region_scope\":\"overseas and Wuhan, China\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"顺利完成了海外制造基地及武汉东湖综合保税区高端光电子器件产业基地的产能建设\",\"locator\":\"光迅科技年报P17，lines 469-472\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"strategic_action\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"光迅科技在OFC 2025公开展示800G DR8、800G 2xFR4的LPO、LRO、DSP方案、液冷兼容产品和800ZR，并与Celestica的数据中心交换机进行联合演示。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025-03-31\",\"product_scope\":\"800G datacom optical transceivers\",\"region_scope\":\"global exhibition; AI/ML, cloud computing and HPC applications\",\"source_title\":\"Accelink to Demonstrate Innovative Green Optics at OFC 2025\",\"source_url\":\"https://www.accelink.com/en/lighting_your_dreams/1906618234845560833.html ([accelink.com](https://www.accelink.com/en/lighting_your_dreams/1906618234845560833.html))\",\"source_published_at\":\"2025-03-31\",\"quote\":\"800G DR8 Linear Pluggable Optics (LPO)\",\"locator\":\"lines 144-157\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"comparability_limit\",\"subject\":\"成都新易盛通信技术股份有限公司 vs 武汉光迅科技股份有限公司\",\"statement\":\"两家公司公开披露的实物口径不同：新易盛披露的是点对点光模块产能、产量和销量；光迅科技披露的是通讯设备制造业整体生产量和销售量。因此不能将两者直接计算为同口径份额、排名或产能优劣。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"point-to-point optical modules vs communications equipment manufacturing\",\"region_scope\":\"not directly comparable\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文；武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF | https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23/2025-04-24\",\"quote\":\"点对点光模块；通讯设备制造业\",\"locator\":\"新易盛年报P14；光迅科技年报P19\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"comparability_limit\",\"subject\":\"300308.SZ vs peer set\",\"statement\":\"本次同行原文未提供与300308.SZ完全一致的同期间、同产品、同地区客户收入或800G/1.6T细分市场出货口径，因此不形成直接客户竞争、市场份额或同行排名结论。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"800G/1.6T high-speed optical modules\",\"region_scope\":\"not disclosed on a fully harmonized basis\",\"source_title\":null,\"source_url\":null,\"source_published_at\":null,\"quote\":\"\",\"locator\":\"本来源包已访问的同行产品页、年度报告和公开IR原文未提供完全一致口径\",\"status\":\"unavailable\"},{\"tab_id\":\"industry\",\"field_key\":\"direct_customer_overlap\",\"subject\":\"300308.SZ vs peer set\",\"statement\":\"未验证到可逐一核对的共同客户名单：新易盛仅披露全球主流通信设备制造商及互联网厂商，光迅科技年报中的主要客户以客户1至客户5匿名列示，无法据此确认与300308.SZ的直接客户重叠。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"high-speed optical modules\",\"region_scope\":\"global and domestic/overseas\",\"source_title\":\"成都新易盛通信技术股份有限公司2024年年度报告全文；武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF | https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-04-23/1223219348.PDF))\",\"source_published_at\":\"2025-04-23/2025-04-24\",\"quote\":\"全球主流的通信设备制造商及互联网厂商；客户 1\",\"locator\":\"新易盛年报P15；光迅科技年报P20\",\"status\":\"unavailable\"},{\"tab_id\":\"industry\",\"field_key\":\"peer_specific_capacity_by_product\",\"subject\":\"武汉光迅科技股份有限公司\",\"statement\":\"未找到光迅科技按800G/1.6T数据中心光模块单独拆分的产能、产量或销量；已披露的通讯设备制造业实物数据范围更宽，不能替代该细分口径。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"FY2024\",\"product_scope\":\"800G/1.6T data-center optical modules\",\"region_scope\":\"not disclosed\",\"source_title\":\"武汉光迅科技股份有限公司2024年年度报告全文\",\"source_url\":\"https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf ([accelink.com](https://www.accelink.com/upload/1/cms/20250427/1745744221633.pdf))\",\"source_published_at\":\"2025-04-24\",\"quote\":\"通讯设备制造业\",\"locator\":\"光迅科技年报P19，lines 532-541\",\"status\":\"unavailable\"}],\"missing_fields\":[\"direct_customer_overlap\",\"same_scope_800g_1_6t_shipments\",\"same_scope_800g_1_6t_capacity\",\"harmonized_peer_market_share\",\"same_scope_peer_margin_comparison\"],\"conflicts\":[\"新易盛的产能、产量、销量口径为点对点光模块；光迅科技的生产量、销售量口径为通讯设备制造业整体，不能直接并列为同口径出货或份额。\",\"新易盛2024年国外收入占78.70%，光迅科技2024年国内收入占71.73%，地区结构不同，不能据此推断全球竞争力或区域优劣。\",\"光迅科技的收入分部包含传输、数据与接入等更宽业务边界；新易盛披露的点对点光模块收入更聚焦，不能直接以收入规模排序产品竞争力。\"],\"refresh_triggers\":[\"同行发行人披露同一期间、同一产品范围的800G/1.6T产能、产量和销量时，刷新同口径经营对比。\",\"同行发行人披露可核验的共同客户、客户认证或同一项目供货信息时，刷新直接竞争关系。\",\"同行发行人发布新的800G、1.6T、LPO、LRO、硅光、相干或液冷产品页和量产/批量交付公告时，刷新技术路线和战略动作。\",\"同行发行人披露海外制造基地、产线投产或产能爬坡进度时，刷新地区和产能边界。\"]}",
+  "eventTypes": [
+    "response.created",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.web_search_call.in_progress",
+    "response.web_search_call.searching",
+    "response.web_search_call.completed",
+    "response.content_part.added",
+    "response.output_text.delta",
+    "response.output_text.annotation.added",
+    "response.output_text.done",
+    "response.content_part.done",
+    "response.completed"
+  ]
+}

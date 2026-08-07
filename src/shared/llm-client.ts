@@ -17,12 +17,27 @@ export type LlmTextRequest = {
   reasoningEffort?: "low" | "medium" | "high" | "xhigh";
   cacheTtlMs?: number;
   cacheEnabled?: boolean;
+  /** Web search is opt-in per explicit user task.  Callers must not attach it
+   * to ordinary page reads or background refreshes. */
+  webSearch?: {
+    searchContextSize?: "low" | "medium" | "high";
+    allowedDomains?: string[];
+    required?: boolean;
+  };
+  signal?: AbortSignal;
+};
+
+export type LlmWebSearchMetadata = {
+  searched: boolean;
+  queries: string[];
+  citations: Array<{ title: string; url: string; start?: number; end?: number }>;
 };
 
 export type LlmTextResponse = {
   model: SupportedLlmModel;
   text: string;
   cached: boolean;
+  webSearch?: LlmWebSearchMetadata;
   raw: unknown;
 };
 
@@ -46,11 +61,17 @@ export async function requestLlmText(
     reasoningEffort: request.reasoningEffort,
     cacheTtlMs: request.cacheTtlMs,
     cacheEnabled: request.cacheEnabled,
+    signal: request.signal,
+    ...(request.webSearch ? {
+      tools: [{ type: "web_search" as const, searchContextSize: request.webSearch.searchContextSize ?? "high", ...(request.webSearch.allowedDomains?.length ? { filters: { allowedDomains: request.webSearch.allowedDomains } } : {}) }],
+      toolChoice: request.webSearch.required === false ? "auto" as const : "required" as const,
+    } : {}),
   });
   return {
     model: request.model,
     text: result.text,
     cached: result.cached,
+    webSearch: result.webSearch,
     raw: result.raw ?? null,
   };
 }

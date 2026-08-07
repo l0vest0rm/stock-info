@@ -1,0 +1,45 @@
+{
+  "configVersion": "research-web-search-packages.v4",
+  "model": "gpt-5.6-luna",
+  "packageKind": "event_risk",
+  "securityCode": "300308.SZ",
+  "prompt": "研究对象：300308.SZ（中际旭创，A，交易币种 CNY）\n来源包：事件风险包\n任务：寻找监管、诉讼、审计、债务、重大合同、审批、产品或证伪事件，并记录发生日期与后续触发器。\n允许来源：监管、法院、交易所和公司原文；新闻仅可作为线索，不能写入事实。\n本地财报检索边界：已确认：最新可用法定财报截至 2026-03-31；于 2026-04-17 发布；标题《2026年一季度报告》；原文 https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF。该边界由命令行传入。\n已知财报字段：截至 2026-03-31；发布日期 2026-04-17；标题《2026年一季度报告》；原文 https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF。\n若边界已确认，先以该财报和其发布日期之后的法定披露/事件为检索基准。更早财报只能用于明确的历史比较，或该事项在最新财报中缺失且该更早财报是可访问原文时；不得把更早财报写成最新财务或风险状态。\n本包 evidence_records[].tab_id 只允许以下英文枚举值：risk。字段名和枚举值必须使用英文 snake_case；不得输出中文 Tab 名称。\n请用 Web Search 真实检索，并返回可复用的来源绑定事实包。每条 verified source_url 必须是你本次 Web Search 返回的可回链原文 URL。",
+  "effort": "low",
+  "elapsedMs": 32390,
+  "firstEventMs": 1940,
+  "firstTextMs": 15193,
+  "citationCount": 1,
+  "queryCount": 2,
+  "recordCount": 1,
+  "persistableRecordCount": 1,
+  "verifiedCount": 1,
+  "unavailableCount": 0,
+  "invalidStatusCount": 0,
+  "invalidTabCount": 0,
+  "summary": "基于截至2026年3月31日的最新法定财报及其后法定披露检索，发现1项公司正式澄清的产品/信息真实性风险事件：公司否认网络流传的所谓“2026光互联论坛（5.28上海）”及董事长演讲全文，认定相关文章为杜撰虚假内容，并表示已固定证据、将依法追究相关人员法律责任。未检索到可由本次访问的监管、法院、交易所或公司原文确认的新增诉讼、监管处罚、审计意见变化、债务违约、重大合同取消或审批否决事件。",
+  "facts": [
+    {
+      "key": "product_or_falsification_event",
+      "status": "verified",
+      "subject": "中际旭创股份有限公司及董事长所谓“2026光互联论坛（5.28上海）演讲全文”网络传闻",
+      "statement": "公司表示不了解所谓“2026光互联论坛（5.28上海）”活动，未收到或知晓同名活动信息；公司未参加或出席与其时间和名称接近的“2026中国光通信高质量发展论坛‘X’PO赋能AI数据中心光互连论坛”；相关《中际旭创董事长2026光互联论坛（5.28上海）演讲全文》为杜撰的虚假内容，公司及董事长从未发表其中提及的内容，文章与公司无关且不代表公司立场。公司已就虚假信息内容和传播线索固定证据，并表示将依法",
+      "source": "中际旭创股份有限公司关于网络传闻的澄清公告"
+    }
+  ],
+  "modelOutput": "{\"summary\":\"基于截至2026年3月31日的最新法定财报及其后法定披露检索，发现1项公司正式澄清的产品/信息真实性风险事件：公司否认网络流传的所谓“2026光互联论坛（5.28上海）”及董事长演讲全文，认定相关文章为杜撰虚假内容，并表示已固定证据、将依法追究相关人员法律责任。未检索到可由本次访问的监管、法院、交易所或公司原文确认的新增诉讼、监管处罚、审计意见变化、债务违约、重大合同取消或审批否决事件。\",\"evidence_records\":[{\"tab_id\":\"risk\",\"field_key\":\"product_or_falsification_event\",\"subject\":\"中际旭创股份有限公司及董事长所谓“2026光互联论坛（5.28上海）演讲全文”网络传闻\",\"statement\":\"公司表示不了解所谓“2026光互联论坛（5.28上海）”活动，未收到或知晓同名活动信息；公司未参加或出席与其时间和名称接近的“2026中国光通信高质量发展论坛‘X’PO赋能AI数据中心光互连论坛”；相关《中际旭创董事长2026光互联论坛（5.28上海）演讲全文》为杜撰的虚假内容，公司及董事长从未发表其中提及的内容，文章与公司无关且不代表公司立场。公司已就虚假信息内容和传播线索固定证据，并表示将依法追究相关人员法律责任。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026-06-01公告；传闻涉及2026-05-28所谓论坛\",\"product_scope\":\"光通信、AI数据中心光互连相关演讲及论坛信息\",\"region_scope\":\"中国；网络媒体、自媒体和社交媒体传播\",\"source_title\":\"中际旭创股份有限公司关于网络传闻的澄清公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf))\",\"source_published_at\":\"2026-06-01\",\"quote\":\"近日，公司有关注到部分网络媒体、自媒体和社交媒体平台传播《中际旭创董事长 2026 光互联论坛（5.28 上海）演讲全文》的文章……本公司不了解所谓的“2026 光互联论坛（5.28 上海）”活动，亦从未收到或知晓与此名称相同的活动信息……公司并未参展或出席……《中际旭创董事长 2026 光互联论坛（5.28 上海）演讲全文》的文章为杜撰的虚假内容，公司及董事长从未发表此文中提及的内容，上述文章与公司无关且完全不代表公司立场。……公司已就此文涉及的虚假信息内容和传播线索固定证据，将依法追究相关人员的法律责任。\",\"locator\":\"公告第1页，PDF第0页，L3-L20；公告落款第2页，PDF第1页，L23-L27\",\"status\":\"verified\"}],\"missing_fields\":[\"regulatory_penalty_or_investigation_after_2026-04-17\",\"court_litigation_or_arbitration_after_2026-04-17\",\"audit_opinion_change_after_2026-04-17\",\"debt_default_or_material_debt_event_after_2026-04-17\",\"material_contract_termination_or_breach_after_2026-04-17\",\"approval_rejection_or_revocation_after_2026-04-17\",\"product_recall_or_product_quality_event_after_2026-04-17\"],\"conflicts\":[],\"refresh_triggers\":[\"公司或监管机构披露与虚假信息传播相关的立案、行政处罚、法院受理或判决文件\",\"公司披露相关侵权诉讼、索赔、和解或执行进展\",\"出现重大产品质量、客户认证、产品召回或供应限制公告\",\"出现重大合同签署、取消、违约或客户集中度异常披露\",\"出现交易所问询、监管措施、立案调查或审计机构意见变化公告\"]}",
+  "eventTypes": [
+    "response.created",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.web_search_call.in_progress",
+    "response.web_search_call.searching",
+    "response.web_search_call.completed",
+    "response.output_item.done",
+    "response.content_part.added",
+    "response.output_text.delta",
+    "response.output_text.annotation.added",
+    "response.output_text.done",
+    "response.content_part.done",
+    "response.completed"
+  ]
+}

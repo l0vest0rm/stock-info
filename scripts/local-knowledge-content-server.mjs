@@ -21,6 +21,7 @@ const reportMarkdownDir = join(reportWorkDir, "markdown-cache");
 const reportConversionConcurrency = positiveInteger(process.env.KNOWLEDGE_REPORT_CONVERSION_CONCURRENCY, 2);
 const reportConversionTimeoutMs = positiveInteger(process.env.KNOWLEDGE_REPORT_CONVERSION_TIMEOUT_MS, 120000);
 const requiredReportConverterHosts = ["pdf.dfcfw.com", "static.cninfo.com.cn", "www1.hkexnews.hk"];
+const secFilingHost = "www.sec.gov";
 const reportConverterHosts = new Set(
   String(process.env.KNOWLEDGE_REPORT_CONVERTER_HOSTS || requiredReportConverterHosts.join(","))
     .split(",")
@@ -63,6 +64,18 @@ async function handleRequest(req, res) {
     const docId = normalizeDocId(body.docId);
     const url = normalizeReportUrl(body.url);
     const markdown = await convertReportCached(docId, url);
+    res.writeHead(200, {
+      "content-type": "text/markdown; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end(markdown);
+    return;
+  }
+  if (req.url === "/__convert-sec-filing" && method === "POST") {
+    const body = await readJsonRequest(req, 32 * 1024);
+    const docId = normalizeDocId(body.docId);
+    const url = normalizeSecFilingUrl(body.url);
+    const markdown = await convertSecFilingCached(docId, url);
     res.writeHead(200, {
       "content-type": "text/markdown; charset=utf-8",
       "cache-control": "no-store",
@@ -142,6 +155,32 @@ async function convertReportCached(docId, url) {
     return readFile(markdownFile, "utf8");
   }).finally(() => reportConversionsInFlight.delete(docId));
   reportConversionsInFlight.set(docId, pending);
+  return pending;
+}
+
+async function convertSecFilingCached(docId, url) {
+  const cacheKey = `sec-${docId}`;
+  const existing = reportConversionsInFlight.get(cacheKey);
+  if (existing) return existing;
+  const pending = reportConversionQueue.run(async () => {
+    const markdownFile = join(reportMarkdownDir, `${cacheKey}.md`);
+    if (existsSync(markdownFile) && statSync(markdownFile).size > 0) return readFile(markdownFile, "utf8");
+    const response = await fetch(url, {
+      headers: {
+        accept: "text/html,application/xhtml+xml",
+        "user-agent": "stock-info research contact research@localhost",
+      },
+    });
+    if (!response.ok) throw new Error(`SEC filing download failed: ${response.status}`);
+    const html = await response.text();
+    const markdown = secHtmlToMarkdown(html);
+    if (!markdown.trim()) throw new Error("SEC filing conversion returned empty content");
+    const temporaryFile = `${markdownFile}.tmp-${process.pid}`;
+    await writeFile(temporaryFile, markdown, "utf8");
+    await rename(temporaryFile, markdownFile);
+    return markdown;
+  }).finally(() => reportConversionsInFlight.delete(cacheKey));
+  reportConversionsInFlight.set(cacheKey, pending);
   return pending;
 }
 
@@ -259,6 +298,37 @@ function normalizeReportUrl(value) {
     throw new Error("report URL is not allowed by the converter");
   }
   return url.toString();
+}
+
+function normalizeSecFilingUrl(value) {
+  const url = new URL(String(value || ""));
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== secFilingHost || !/^\/Archives\/edgar\/data\/\d+\/.+\.html?$/i.test(url.pathname)) {
+    throw new Error("SEC filing URL is not allowed by the converter");
+  }
+  return url.toString();
+}
+
+function secHtmlToMarkdown(html) {
+  const text = String(html)
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|noscript|svg|head)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|section|article|tr|li|h[1-6]|table)>/gi, "\n")
+    .replace(/<t[dh][^>]*>/gi, " | ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  return text.slice(0, 2 * 1024 * 1024);
 }
 
 function positiveInteger(value, fallback) {

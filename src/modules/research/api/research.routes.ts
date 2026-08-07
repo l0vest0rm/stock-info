@@ -15,18 +15,7 @@ import { buildResearchReviewQueue } from "../domain/research-review-queue";
 import { buildManagementGuidanceRevisionReadModel } from "../domain/management-guidance-revision";
 import {
   loadForecastWorkspace,
-  createForecastSourceIdentity,
-  createForecastSourceIndependenceGroup,
-  createForecastModelLineage,
-  createForecastSourceIdentityAssertion,
-  saveForecastReview,
-  saveForecastScenario,
-  type ForecastSourceIdentityWrite,
-  type ForecastSourceIndependenceGroupWrite,
-  type ForecastModelLineageWrite,
-  type ForecastSourceIdentityAssertionWrite,
-  type ForecastReviewWrite,
-  type ForecastScenarioWrite,
+  syncAutomaticThirdPartyForecastEvidence,
 } from "../application/forecast-ledger";
 import { createForecastSynthesisDraft } from "../application/forecast-synthesis";
 import {
@@ -57,7 +46,8 @@ import {
   type SecurityRightsProfileWrite,
 } from "../application/research-identity";
 import { loadResearchFinancialFactSet, loadResearchFinancialQuality } from "../application/research-financials";
-import { appendResearchFinancialProfile, loadResearchFinancialProfile } from "../application/research-financial-profile";
+import { bootstrapResearchCompany } from "../application/bootstrap-research-company";
+import { loadResearchFinancialProfile } from "../application/research-financial-profile";
 import { insertResearchGovernance, loadResearchGovernance } from "../application/research-governance";
 import { loadFinancialStatutoryVerifications } from "../application/financial-statutory-verification";
 import {
@@ -102,22 +92,18 @@ import type { BuildReverseDcfValuationModelInput } from "../domain/reverse-valua
 import { classifyResearchSecurity } from "../domain/research-identity";
 import { buildResearchRiskThesisPropagation, calculateResearchRiskStress } from "../domain/research-risk-review";
 import {
-  createForecastActualCalibration,
   loadForecastActualCalibrationRecords,
   loadFormalActuals,
   loadFormalActualById,
   loadManagementGuidanceForecasts,
-  recordManagementGuidanceForecast,
 } from "../application/forecast-actual-calibration";
 import {
-  enqueueModelReviews,
   loadCandidateReviews,
   loadFormalActualCandidates,
   loadModelReviewActions,
   loadModelReviewItems,
   materializeFormalActualCandidates,
-  resolveModelReviewItem,
-  reviewFormalActualCandidate,
+  syncAutomaticFormalActuals,
 } from "../application/formal-actual-candidates";
 import {
   insertResearchMarketSpaceAssessment,
@@ -134,6 +120,11 @@ import {
 } from "../application/research-information-evidence";
 import { produceResearchStatutoryOperatingEvidenceCandidates } from "../application/research-statutory-operating-candidates";
 import { importIndexedStatutoryDisclosureToKnowledge } from "../application/import-statutory-disclosure-to-knowledge";
+import { extractResearchAutoFilingInsights, loadResearchAutoBusinessDriverTree, loadResearchAutoFilingDocumentVersions, loadResearchAutoFilingFactInputs, loadResearchAutoFilingInsights, loadResearchAutoFilingModuleRebuilds, loadResearchAutoForecastInputGate, loadResearchAutoGovernanceCapitalLedger, loadResearchAutoIndustryCompetitionInputs, loadResearchAutoMarketSpaceInputs, loadResearchAutoRiskLedger, loadResearchAutoRiskQuantitativeInputGate, loadResearchAutoRiskSnapshotHistory, loadResearchAutoSecurityStructureCandidates, rebuildResearchAutoFilingReadModels } from "../application/research-auto-filing-insights";
+import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } from "../application/research-industry-source-series";
+import { claimNextResearchWebSearchPackageJob, completeResearchWebSearchPackageJob, enqueueResearchWebSearchPackage, failResearchWebSearchPackageJob, loadResearchWebSearchPackages } from "../application/research-web-search-packages";
+import { checkpointResearchOperatingAnalysisWebQaTask, claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, loadResearchOperatingAnalysis } from "../application/research-operating-analysis";
+import { renewResearchWebQaRunnerLease } from "../application/research-webqa-runner-lease";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
 import {
   loadResearchOperatingSourceFactBindings,
@@ -149,6 +140,7 @@ import { projectIndustryKpiDriverTransmission, researchIndustryKpiTransmissionRu
 import { insertResearchCatalystReview } from "../application/research-catalyst-review";
 import { createGuidanceEventImpactReview, loadGuidanceEventImpactReviews, resolveGuidanceEventImpactReviewTarget } from "../application/guidance-event-impact-reviews";
 import { insertResearchMarketStructureFact, loadResearchMarketStructure, requirePerShareMarketStructure, type MarketStructureFactWrite } from "../application/research-market-structure";
+import { loadResearchFxBridgesForSecurity } from "../application/research-fx-bridge";
 import {
   loadResearchGovernanceCapitalFactCandidates,
   loadResearchGovernanceCapitalFactLedger,
@@ -157,7 +149,7 @@ import {
 } from "../application/research-governance-capital-facts";
 import { createResearchRelativeValuationLedger, loadResearchRelativeValuationLedgers } from "../application/relative-valuation-ledger";
 import type { BuildRelativeValuationLedgerInput } from "../domain/relative-valuation-ledger";
-import { loadResearchFinancialSpecialtyLedger, recordResearchFinancialSpecialtyFact, type ResearchFinancialSpecialtyFactWrite } from "../application/research-financial-specialty-metrics";
+import { loadResearchFinancialSpecialtyLedger } from "../application/research-financial-specialty-metrics";
 import { appendResearchCompanyFocusMembership, createResearchCompanyFocusProfile, loadResearchCompanyFocusProfile } from "../application/research-company-focus-profile";
 import { loadStatutoryDisclosureRevisionCandidates, refreshStatutoryDisclosureRevisionCandidates, reviewStatutoryDisclosureRevisionCandidate } from "../application/statutory-disclosure-revision-candidates";
 import {
@@ -202,58 +194,45 @@ researchRoutes.get("/research/company/:code/forecasts", async (c) => {
     modelReviewActions,
     capabilities: researchCapabilities(c.env),
     limitations: [
-      "来源候选来自信息预处理账本；只有人工纳入且口径可比的样本才进入汇总。",
+      "来源候选来自信息预处理账本；只有原始载体、来源身份、独立性和口径证据均完整的自动账本样本才进入汇总。",
       "每个纳入样本必须绑定有 HTTPS 证据的已确认来源身份及独立来源组；转载、联合署名和同源数据库按来源组去重。",
       "当前来源集合属于机会性收集，汇总固定称为已纳入样本的预测汇总，不是市场一致预期。",
       "自建情景和实际校准是独立账本，不会回写来源预测。",
-      "正式实际只能由法定字段核验候选经人工口径确认后生成；候选、重述和校准只会创建待复核项，绝不改写既有模型。",
+      "正式实际只由法定字段核验为 match 且口径可由规则唯一确定的候选自动生成；无法确定时保留阻断原因，重述和既有模型不会被自动改写。",
     ],
   });
 });
 
 researchRoutes.post("/research/company/:code/forecast-reviews", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "forecast review writes are only available in local research runtime");
+  return fail(c, 410, "manual forecast review is retired; run the local automatic third-party forecast sync with source-bound evidence");
+});
+
+// Third-party forecasts follow the same no-human runtime rule as statutory
+// actuals: a local refresh either accepts a fully source-bound original
+// carrier/measurement contract or stores the exact automatic block reason.
+// Production can only read the resulting immutable ledger.
+researchRoutes.post("/research/company/:code/third-party-forecasts/sync-auto", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "automatic third-party forecast sync is only available in local research runtime");
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json().catch(() => null) as ForecastReviewWrite | null;
-  if (!body || typeof body !== "object") return fail(c, 400, "invalid forecast review body");
-  try {
-    return ok(c, await saveForecastReview(c.env.DB, code, body));
-  } catch (error) {
-    return fail(c, 400, error instanceof Error ? error.message : String(error));
-  }
+  try { return ok(c, await syncAutomaticThirdPartyForecastEvidence(c.env.DB, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
 researchRoutes.post("/research/forecast-source-independence-groups", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "forecast source identity writes are only available in local research runtime");
-  const body = await c.req.json().catch(() => null) as ForecastSourceIndependenceGroupWrite | null;
-  if (!body || typeof body !== "object") return fail(c, 400, "invalid forecast source independence group body");
-  try { return ok(c, await createForecastSourceIndependenceGroup(c.env.DB, body)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual forecast source identity writes are retired; identity evidence must arrive in the automatic document provenance contract");
 });
 
 researchRoutes.post("/research/forecast-source-identities", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "forecast source identity writes are only available in local research runtime");
-  const body = await c.req.json().catch(() => null) as ForecastSourceIdentityWrite | null;
-  if (!body || typeof body !== "object") return fail(c, 400, "invalid forecast source identity body");
-  try { return ok(c, await createForecastSourceIdentity(c.env.DB, body)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual forecast source identity writes are retired; identity evidence must arrive in the automatic document provenance contract");
 });
 
 researchRoutes.post("/research/forecast-model-lineages", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "forecast model lineage writes are only available in local research runtime");
-  const body = await c.req.json().catch(() => null) as ForecastModelLineageWrite | null;
-  if (!body || typeof body !== "object") return fail(c, 400, "invalid forecast model lineage body");
-  try { return ok(c, await createForecastModelLineage(c.env.DB, body)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual forecast lineage writes are retired; model lineage must arrive in the automatic document provenance contract");
 });
 
 researchRoutes.post("/research/forecast-source-identity-assertions", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "forecast source identity assertion writes are only available in local research runtime");
-  const body = await c.req.json().catch(() => null) as ForecastSourceIdentityAssertionWrite | null;
-  if (!body || typeof body !== "object") return fail(c, 400, "invalid forecast source identity assertion body");
-  try { return ok(c, await createForecastSourceIdentityAssertion(c.env.DB, body)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual forecast identity assertions are retired; the automatic sync binds exact document versions only");
 });
 
 researchRoutes.post("/research/company/:code/forecast-synthesis-drafts", async (c) => {
@@ -269,13 +248,7 @@ researchRoutes.post("/research/company/:code/forecast-synthesis-drafts", async (
 });
 
 researchRoutes.post("/research/company/:code/forecast-scenarios", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "research writes are only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json().catch(() => null) as ForecastScenarioWrite | null;
-  if (!body || typeof body !== "object") return fail(c, 400, "invalid scenario body");
-  try { return ok(c, await saveForecastScenario(c.env.DB, code, body)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual forecast scenarios are retired; only issuer-explicit source scenarios are written by the automatic filing pipeline");
 });
 
 researchRoutes.post("/research/company/:code/forecast-calibrations", async (c) => {
@@ -284,24 +257,12 @@ researchRoutes.post("/research/company/:code/forecast-calibrations", async (c) =
 });
 
 researchRoutes.post("/research/company/:code/management-guidance-forecasts", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "management guidance writes are only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return fail(c, 400, "invalid management guidance body");
-  try {
-    const security = (await getSecurity(c.env.DB, code)) ?? fallbackResearchSecurity(code);
-    const identity = await loadResearchIdentityFinancials(c.env.DB, security); const now = Date.now();
-    return ok(c, await recordManagementGuidanceForecast(c.env.DB, {
-      ...body, guidanceForecastId: stringOrNull(body.guidanceForecastId) ?? `management-guidance:${crypto.randomUUID()}`,
-      securityCode: code, companyId: (identity.operatingCompany as { companyId?: string } | null)?.companyId ?? null,
-    } as Parameters<typeof recordManagementGuidanceForecast>[1], now));
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual management guidance writes are retired; only source-bound issuer guidance is written by the automatic filing pipeline");
 });
 
 researchRoutes.post("/research/company/:code/formal-actuals", async (c) => {
   if (!canWriteResearchLocally(c.env)) return fail(c, 404, "formal actual writes are only available in local research runtime");
-  return fail(c, 410, "formal actual values are server-generated only from an accepted statutory candidate review");
+  return fail(c, 410, "formal actual values are server-generated only by the automatic statutory-evidence sync");
 });
 
 researchRoutes.post("/research/company/:code/formal-actual-candidates/refresh", async (c) => {
@@ -312,6 +273,19 @@ researchRoutes.post("/research/company/:code/formal-actual-candidates/refresh", 
     const result = await materializeFormalActualCandidates(c.env.DB, [code]);
     return ok(c, { ...result, candidates: result.created });
   }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// The production research pipeline does not wait for a person to accept a
+// statutory match.  This local-only job accepts only the subset whose metric
+// and semantic bases are deterministically defined by the source contract,
+// then calibrates already-saved matching forecasts.  All other candidates
+// remain visible with a machine-readable block reason.
+researchRoutes.post("/research/company/:code/formal-actuals/sync-auto", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "automatic formal-actual sync is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await syncAutomaticFormalActuals(c.env.DB, code)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -343,37 +317,11 @@ researchRoutes.get("/research/company/:code/formal-actual-candidates", async (c)
 });
 
 researchRoutes.post("/research/company/:code/formal-actual-candidate-reviews", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "formal actual candidate reviews are only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return fail(c, 400, "invalid formal actual candidate review body");
-  try { return ok(c, await reviewFormalActualCandidate(c.env.DB, code, { ...body, reviewId: stringOrNull(body.reviewId) ?? `formal-actual-review:${crypto.randomUUID()}`, reviewer: stringOrNull(body.reviewer) ?? "local-user" } as Parameters<typeof reviewFormalActualCandidate>[2])); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual formal-actual acceptance is retired; run the local automatic statutory-evidence sync");
 });
 
 researchRoutes.post("/research/company/:code/formal-actual-calibrations", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "formal actual calibration writes are only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return fail(c, 400, "invalid formal actual calibration body");
-  try {
-    const actualId = stringOrNull(body.actualId);
-    if (!actualId) return fail(c, 400, "actualId is required");
-    const accepted = await c.env.DB.prepare(`select 1 as ok from research_formal_actual_candidate_reviews r
-      join research_formal_actual_candidates x on x.candidate_id=r.candidate_id
-      where r.actual_id=? and r.decision='accepted' and x.security_code=? limit 1`).bind(actualId, code).first<{ ok: number }>();
-    if (!accepted) return fail(c, 400, "formal actual calibration requires an accepted statutory candidate actual");
-    const saved = await createForecastActualCalibration(c.env.DB, {
-      ...body, calibrationId: stringOrNull(body.calibrationId) ?? `formal-actual-calibration:${crypto.randomUUID()}`,
-      securityCode: code, calibratedAt: finiteTimestamp(body.calibratedAt) ?? Date.now(),
-    } as Parameters<typeof createForecastActualCalibration>[1]);
-    await enqueueModelReviews(c.env.DB, code, saved.comparabilityStatus === "comparable" ? "calibration_available" : "calibration_blocked", saved.calibrationId,
-      saved.comparabilityStatus === "comparable" ? "新的预测—实际校准已可用；模型不会自动重算，请人工检查假设。" : `预测—实际校准不可比：${saved.comparabilityReason || "unknown"}。`,
-      { calibrationId: saved.calibrationId, actualId: saved.actualId, forecastId: saved.forecastId, comparabilityStatus: saved.comparabilityStatus }, saved.calibratedAt);
-    return ok(c, saved);
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual forecast-actual calibration is retired; automatic statutory actual sync calibrates all matching saved forecasts");
 });
 
 researchRoutes.get("/research/company/:code/model-review-items", async (c) => {
@@ -387,22 +335,7 @@ researchRoutes.get("/research/company/:code/model-review-items", async (c) => {
 });
 
 researchRoutes.post("/research/company/:code/model-review-items/:id/resolve", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "model review writes are only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return fail(c, 400, "invalid model review resolution body");
-  try {
-    return ok(c, await resolveModelReviewItem(c.env.DB, code, c.req.param("id"), {
-      actionId: stringOrNull(body.actionId) ?? `model-review-action:${crypto.randomUUID()}`,
-      state: String(body.state) as "acknowledged" | "resolved" | "not_applicable",
-      resolutionNote: String(body.resolutionNote || ""),
-      actedBy: stringOrNull(body.actedBy) ?? "local-user",
-      followUpTargetKind: stringOrNull(body.followUpTargetKind) as "dcf" | "reverse_dcf" | "scenario" | null,
-      followUpTargetVersionId: stringOrNull(body.followUpTargetVersionId),
-      reviewedAt: finiteTimestamp(body.reviewedAt) ?? Date.now(),
-    }));
-  }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "manual model-review resolution is retired; source updates automatically rebuild supported read models or keep unsupported conclusions blocked");
 });
 
 researchRoutes.get("/research/company/:code", async (c) => {
@@ -415,7 +348,7 @@ researchRoutes.get("/research/company/:code", async (c) => {
   try { classifyResearchSecurity({ code, name: security.name, instrumentType: security.type }); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
   const ownerKey = canWriteResearchLocally(c.env) ? (c.req.query("owner")?.trim() || "local-user") : undefined;
-  const [kline, events, impacts, signals, candidates, snapshot, sources, documentStats, identity, financials, dossier, governance, valuationModels, reverseValuationModels, relativeValuationLedgers, statutoryDocuments, managementGuidance, formalActuals, formalActualCalibrations, guidanceEventImpactReviews, forecastWorkspace] = await Promise.all([
+  const [kline, events, impacts, signals, candidates, snapshot, sources, documentStats, identity, financials, dossier, governance, valuationModels, reverseValuationModels, relativeValuationLedgers, statutoryDocuments, managementGuidance, formalActuals, formalActualCalibrations, guidanceEventImpactReviews, forecastWorkspace, autoFilingInsights, autoFilingFactInputs, autoFilingDocumentVersions, autoFilingModuleRebuilds, autoBusinessDriverTree, autoMarketSpaceInputs, autoGovernanceCapitalLedger, autoRiskLedger, autoRiskQuantitativeInputGate, autoRiskSnapshotHistory, autoSecurityStructureCandidates, autoIndustryCompetitionInputs, industrySourceSeries, autoForecastInputGate, fxBridges] = await Promise.all([
     loadKline(c.env, code, "day", "forward", from, new Date(now).toISOString().slice(0, 10)),
     repository.listEvents({ asOf: now, targetCode: code, limit: 100 }),
     repository.listImpacts({ asOf: now, targetType: "company", targetIds: [code] }),
@@ -444,6 +377,21 @@ researchRoutes.get("/research/company/:code", async (c) => {
     loadForecastActualCalibrationRecords(c.env.DB, code),
     loadOptionalResearchExtension(() => loadGuidanceEventImpactReviews(c.env.DB, code)),
     loadForecastWorkspace(c.env.DB, code, security),
+    loadResearchAutoFilingInsights(c.env.DB, code),
+    loadResearchAutoFilingFactInputs(c.env.DB, code),
+    loadResearchAutoFilingDocumentVersions(c.env.DB, code),
+    loadResearchAutoFilingModuleRebuilds(c.env.DB, code),
+    loadResearchAutoBusinessDriverTree(c.env.DB, code),
+    loadResearchAutoMarketSpaceInputs(c.env.DB, code),
+    loadResearchAutoGovernanceCapitalLedger(c.env.DB, code),
+    loadResearchAutoRiskLedger(c.env.DB, code),
+    loadResearchAutoRiskQuantitativeInputGate(c.env.DB, code),
+    loadResearchAutoRiskSnapshotHistory(c.env.DB, code),
+    loadResearchAutoSecurityStructureCandidates(c.env.DB, code),
+    loadResearchAutoIndustryCompetitionInputs(c.env.DB, code),
+    loadResearchIndustrySourceSeries(c.env.DB, code),
+    loadResearchAutoForecastInputGate(c.env.DB, code),
+    loadResearchFxBridgesForSecurity(c.env.DB, { securityCode: code, securityCurrency: security.currency, asOf: now }),
   ]);
   const rows = (kline.rows as KlineBar[]).filter((item) => "close" in item);
   const evidence = events.flatMap((event) => event.evidence.map((item) => ({
@@ -524,7 +472,7 @@ researchRoutes.get("/research/company/:code", async (c) => {
     asOf: now,
     signals: researchDataRequirementSignals({
       identity, financials, statutoryVerifications, operatingModels, operatingDriverPlans, marketSpaceAssessments,
-      operatingSourceFacts, operatingSourceFactBindings, typedTrackExposures, typedPeerComparisonSets, forecastWorkspace, valuationModels, reverseValuationModels,
+      operatingSourceFacts, operatingSourceFactBindings, typedTrackExposures, typedPeerComparisonSets, forecastWorkspace, valuationModels, reverseValuationModels, autoFilingInsights, autoFilingFactInputs,
       governance, governanceCapitalFacts, dossier, modelReviewItems, kline: { rows, source: kline.source },
     }),
   });
@@ -599,6 +547,21 @@ researchRoutes.get("/research/company/:code", async (c) => {
     riskReview: { ...riskReview, reviewQueue: riskReviewQueue },
     coverage,
     dataRequirementCoverage,
+    autoFilingInsights,
+    autoFilingFactInputs,
+    autoFilingDocumentVersions,
+    autoFilingModuleRebuilds,
+    autoBusinessDriverTree,
+    autoMarketSpaceInputs,
+    autoGovernanceCapitalLedger,
+    autoRiskLedger,
+    autoRiskQuantitativeInputGate,
+    autoRiskSnapshotHistory,
+    autoSecurityStructureCandidates,
+    autoIndustryCompetitionInputs,
+    industrySourceSeries,
+    autoForecastInputGate,
+    fxBridges,
     researchDepth,
     decision,
     riskProfile,
@@ -620,6 +583,21 @@ researchRoutes.get("/research/company/:code", async (c) => {
       ],
     },
   });
+});
+
+/** Local collector entry point.  It deliberately creates evidence-bearing
+ * inputs only; document extraction and LLM synthesis remain separately
+ * governed local jobs and are never triggered by a public page read. */
+researchRoutes.post("/research/company/:code/bootstrap", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "research bootstrap is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    const security = (await getSecurity(c.env.DB, code)) ?? fallbackResearchSecurity(code);
+    return ok(c, await bootstrapResearchCompany(c.env, security));
+  } catch (error) {
+    return fail(c, 502, error instanceof Error ? error.message : String(error));
+  }
 });
 
 researchRoutes.get("/research/company/:code/focus-profile", async (c) => {
@@ -669,6 +647,22 @@ researchRoutes.post("/research/company/:code/statutory-disclosures/refresh", asy
   catch (error) { return fail(c, 502, error instanceof Error ? error.message : String(error)); }
 });
 
+researchRoutes.get("/research/company/:code/statutory-disclosures", async (c) => {
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await loadResearchStatutoryDisclosureDocuments(c.env.DB, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// Read-only in every runtime: production serves only facts that were already
+// source-bound and persisted by a local research task.
+researchRoutes.get("/research/company/:code/auto-filing-insights", async (c) => {
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await loadResearchAutoFilingInsights(c.env.DB, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
 // This is the sole bridge from the issuer/exchange disclosure index into the
 // knowledge ledger.  It takes a native indexed ID, never a client URL, and
 // stops before information processing so local model use remains explicit.
@@ -681,6 +675,168 @@ researchRoutes.post("/research/company/:code/statutory-disclosures/:documentId/i
   } catch (error) {
     return fail(c, 400, error instanceof Error ? error.message : String(error));
   }
+});
+
+// The expensive remote-model step is intentionally an explicit local job.
+// A page GET must never trigger model calls or mutate the research ledger.
+researchRoutes.post("/research/company/:code/statutory-disclosures/:documentId/auto-insights", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "filing insight extraction is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    const extraction = await extractResearchAutoFilingInsights(c.env, code, c.req.param("documentId"));
+    const rebuild = await rebuildResearchAutoFilingReadModels(c.env.DB, code);
+    return ok(c, { ...extraction, rebuild });
+  }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// Local scheduler entry point for events accumulated while files were imported
+// or a previous local job stopped mid-run.  GET pages must remain read-only.
+researchRoutes.post("/research/company/:code/rebuild-auto-filing-inputs", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "automatic filing rebuild is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await rebuildResearchAutoFilingReadModels(c.env.DB, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// Imported official/association documents are processed only by this explicit
+// local job. A normal research GET must not call the remote model or write an
+// industry series observation.
+researchRoutes.post("/research/company/:code/sync-industry-source-series", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "industry source extraction is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await syncResearchIndustrySourceSeries(c.env, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// Read-only in every runtime.  The page uses this persisted ledger to show
+// the original source, source date and local processing time for each manual
+// Web Search package; GET never causes a search or a model call.
+researchRoutes.get("/research/company/:code/web-search-packages", async (c) => {
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await loadResearchWebSearchPackages(c.env.DB, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// One click only persists or reuses one task. The local Node runner claims it
+// from D1; the Worker never owns a long-lived remote model stream.
+researchRoutes.post("/research/company/:code/web-search-packages/:packageKind", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    const task = await enqueueResearchWebSearchPackage(c.env.DB, code, c.req.param("packageKind"));
+    if (!task.job) return fail(c, 500, "web search package job was not created");
+    return ok(c, { accepted: true, deduplicated: task.deduplicated, job: task.job });
+  }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// The Node runner is launched only by local development scripts. These
+// endpoints keep D1 state transitions inside the Worker while its process is
+// never held open by an upstream Responses SSE connection.
+researchRoutes.post("/research/web-search-package-jobs/claim-next", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
+  try { return ok(c, await claimNextResearchWebSearchPackageJob(c.env.DB)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/web-search-package-jobs/:code/:packageKind/complete", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    const body = await c.req.json<unknown>();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return fail(c, 400, "web search package result is required");
+    return ok(c, await completeResearchWebSearchPackageJob(c.env.DB, code, c.req.param("packageKind"), body as { model: string; text: string; webSearch?: { searched?: boolean; queries?: string[]; citations?: Array<{ title: string; url: string; start?: number; end?: number }> } }));
+  }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/web-search-package-jobs/:code/:packageKind/fail", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    const body = await c.req.json<unknown>();
+    const message = body && typeof body === "object" && !Array.isArray(body) && typeof (body as { error?: unknown }).error === "string"
+      ? (body as { error: string }).error : "local Web Search runner failed without an error message";
+    return ok(c, await failResearchWebSearchPackageJob(c.env.DB, code, c.req.param("packageKind"), message));
+  }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// The full operating analysis is a separate, long-form WebQA artifact. GET is
+// safe in every runtime; only the local runner can create or update it.
+researchRoutes.get("/research/company/:code/operating-analysis", async (c) => {
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await loadResearchOperatingAnalysis(c.env.DB, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/company/:code/operating-analysis/refresh", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis refresh is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  try { return ok(c, await enqueueResearchOperatingAnalysis(c.env.DB, code, body.force === true)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/operating-analysis-jobs/claim-next", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
+  try { return ok(c, await claimResearchOperatingAnalysisJob(c.env.DB, body.runnerInstanceId)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/webqa-runner-lease/heartbeat", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "WebQA runner lease is only available in local research runtime");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
+  try { return ok(c, { active: await renewResearchWebQaRunnerLease(c.env.DB, body.runnerInstanceId) }); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/operating-analysis-jobs/:code/complete", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    const body = await c.req.json<Record<string, unknown>>();
+    if (typeof body.reportMarkdown !== "string" || typeof body.inputFingerprint !== "string") return fail(c, 400, "reportMarkdown and inputFingerprint are required");
+    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
+    return ok(c, await completeResearchOperatingAnalysisJob(c.env.DB, code, body.input, body.reportMarkdown, body.inputFingerprint, body.runnerInstanceId));
+  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/operating-analysis-jobs/:code/webqa-task", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  try {
+    if (typeof body.webqaTaskId !== "string" || typeof body.runnerInstanceId !== "string") return fail(c, 400, "webqaTaskId and runnerInstanceId are required");
+    return ok(c, await checkpointResearchOperatingAnalysisWebQaTask(c.env.DB, code, body.webqaTaskId, body.runnerInstanceId));
+  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/operating-analysis-jobs/:code/fail", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  try {
+    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
+    return ok(c, await failResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "local operating-analysis runner failed", body.runnerInstanceId));
+  }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
 researchRoutes.get("/research/company/:code/statutory-disclosure-revision-candidates", async (c) => {
@@ -1125,23 +1281,7 @@ researchRoutes.get("/research/company/:code/financial-profile", async (c) => {
 });
 
 researchRoutes.post("/research/company/:code/financial-profile", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "financial profile writes are only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return fail(c, 400, "invalid financial profile body");
-  try {
-    await appendResearchFinancialProfile(c.env.DB, {
-      financialProfileId: stringOrNull(body.financialProfileId) ?? `financial-profile:${crypto.randomUUID()}`,
-      securityCode: code,
-      entityType: enumValue(body.entityType, ["non_financial", "bank", "insurer", "broker", "financial_other"] as const, "entityType"),
-      asOf: requiredText(body.asOf, "asOf"),
-      sourceAuthority: enumValue(body.sourceAuthority, ["issuer_disclosure", "exchange_filing", "regulator_or_court", "audit_report"] as const, "sourceAuthority"),
-      sourceUrl: requiredText(body.sourceUrl, "sourceUrl"), sourceTitle: requiredText(body.sourceTitle, "sourceTitle"), sourceNote: requiredText(body.sourceNote, "sourceNote"),
-      recordedBy: stringOrNull(body.recordedBy) ?? "local-user", recordedAt: finiteTimestamp(body.recordedAt) ?? Date.now(),
-    });
-    return ok(c, await loadResearchFinancialProfile(c.env.DB, code));
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "financial profile manual writes are retired; only automatic source-bound filing inputs may update research profiles");
 });
 
 researchRoutes.get("/research/company/:code/financial-specialty-metrics", async (c) => {
@@ -1152,27 +1292,7 @@ researchRoutes.get("/research/company/:code/financial-specialty-metrics", async 
 });
 
 researchRoutes.post("/research/company/:code/financial-specialty-metrics", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "financial specialty metric writes are only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return fail(c, 400, "invalid financial specialty metric body");
-  try {
-    await recordResearchFinancialSpecialtyFact(c.env.DB, {
-      ...body,
-      expectedSecurityCode: code,
-      financialSpecialtyFactId: stringOrNull(body.financialSpecialtyFactId) ?? undefined,
-      financialProfileId: requiredText(body.financialProfileId, "financialProfileId"),
-      evidenceReferenceId: requiredText(body.evidenceReferenceId, "evidenceReferenceId"),
-      metricKey: requiredText(body.metricKey, "metricKey"), reportedLabel: requiredText(body.reportedLabel, "reportedLabel"),
-      reportedValue: requiredText(body.reportedValue, "reportedValue"), valueNumber: requiredFiniteNumber(body.valueNumber, "valueNumber"),
-      unit: requiredText(body.unit, "unit"), currency: stringOrNull(body.currency), amountScale: stringOrNull(body.amountScale),
-      asOf: requiredText(body.asOf, "asOf"), periodLabel: requiredText(body.periodLabel, "periodLabel"),
-      definitionNote: requiredText(body.definitionNote, "definitionNote"), comparabilityNote: requiredText(body.comparabilityNote, "comparabilityNote"),
-      recordedBy: stringOrNull(body.recordedBy) ?? "local-user", recordedAt: finiteTimestamp(body.recordedAt) ?? Date.now(),
-    } satisfies ResearchFinancialSpecialtyFactWrite);
-    return ok(c, await loadResearchFinancialSpecialtyLedger(c.env.DB, code));
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+  return fail(c, 410, "financial specialty metric manual writes are retired; only automatic source-bound filing inputs may update research metrics");
 });
 
 researchRoutes.post("/research/company/:code/market-structure/facts", async (c) => {
@@ -1980,6 +2100,8 @@ export function researchDataRequirementSignals(input: {
   governanceCapitalFacts: unknown;
   dossier: unknown;
   modelReviewItems: unknown;
+  autoFilingInsights: unknown;
+  autoFilingFactInputs: unknown;
   kline: { rows: KlineBar[]; source: string };
 }): Record<string, unknown> {
   const identity = objectRecord(input.identity);
@@ -2013,6 +2135,10 @@ export function researchDataRequirementSignals(input: {
   const valuationItems = [...sectionItems(input.valuationModels), ...sectionItems(input.reverseValuationModels)];
   const openModelReviewCount = records(input.modelReviewItems).filter((item) => stringValue(item.state) === "open").length;
   const dossier = objectRecord(input.dossier);
+  const autoFilingInsightItems = sectionItems(input.autoFilingInsights);
+  const autoFilingFactInputItems = sectionItems(input.autoFilingFactInputs);
+  const autoInsightTabs = new Set(autoFilingFactInputItems.map((item) => targetTabForInputModule(stringValue(item.targetModule))));
+  const autoInsightObservedAt = latestTimestamp(autoFilingFactInputItems.length ? autoFilingFactInputItems : autoFilingInsightItems);
   const thesisItems = sectionItems(dossier.theses);
   const conflictThesisEvidence = thesisItems.reduce((total, thesis) => total + records(thesis.evidence).filter((evidence) => stringValue(evidence.stance) === "conflict").length, 0);
   const industrySections = [input.typedTrackExposures, input.typedPeerComparisonSets, input.marketSpaceAssessments];
@@ -2038,11 +2164,22 @@ export function researchDataRequirementSignals(input: {
     },
     operating: {
       model: {
-        state: operatingEvidenceState,
-        observedAt: latestTimestamp([...operatingSourceFacts, ...reviewedOperatingInputs]) ?? operatingModelState.observedAt,
+        // Filing insights are source-bound extraction candidates.  They make
+        // operating coverage partial, never a complete operating model.
+        state: operatingEvidenceState === "missing" && autoInsightTabs.has("business") ? "partial" : operatingEvidenceState,
+        observedAt: latestTimestamp([...operatingSourceFacts, ...reviewedOperatingInputs]) ?? operatingModelState.observedAt ?? autoInsightObservedAt,
       },
     },
-    industry: { evidence: { ...sectionBundleState(industrySections), conflictCount: 0 } },
+    industry: {
+      evidence: (() => {
+        const base = sectionBundleState(industrySections);
+        return {
+          state: base.state === "missing" && (autoInsightTabs.has("industry") || autoInsightTabs.has("market")) ? "partial" : base.state,
+          observedAt: base.observedAt ?? autoInsightObservedAt,
+          conflictCount: 0,
+        };
+      })(),
+    },
     forecast: {
       samples: {
         // Candidate discovery does not make an opportunity sample available.
@@ -2062,19 +2199,33 @@ export function researchDataRequirementSignals(input: {
       const ledger = objectRecord(input.governanceCapitalFacts);
       const facts = records(ledger.latestFacts);
       const legacy = sectionBundleState([input.governance]);
-      return {
-        state: facts.length ? "available" : legacy.state,
-        observedAt: latestTimestamp(facts),
+      return { records: {
+        // Filing extraction gives source-bound capital/governance facts but
+        // does not replace the five-dimension governance ledger.
+        state: facts.length ? "available" : legacy.state === "missing" && autoInsightTabs.has("financial") ? "partial" : legacy.state,
+        observedAt: latestTimestamp(facts) ?? autoInsightObservedAt,
         conflictCount: facts.filter((item) => stringValue(item.factStatus) === "conflicting").length,
-      };
+      } };
     })(),
     risk: {
-      review: { ...sectionBundleState([dossier.risks, dossier.theses]), conflictCount: conflictThesisEvidence },
+      review: (() => {
+        const base = sectionBundleState([dossier.risks, dossier.theses]);
+        return {
+          state: base.state === "missing" && autoInsightTabs.has("risk") ? "partial" : base.state,
+          observedAt: base.observedAt ?? autoInsightObservedAt,
+          conflictCount: conflictThesisEvidence,
+        };
+      })(),
     },
     market: {
       kline: { state: input.kline.rows.length ? "available" : "missing", observedAt: latestKlineTimestamp(input.kline.rows), error: null },
     },
   };
+}
+function targetTabForInputModule(module: string): string {
+  if (module === "operating") return "business";
+  if (module === "governance") return "financial";
+  return module;
 }
 
 function objectRecord(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
@@ -2090,7 +2241,7 @@ function sectionBundleState(sections: unknown[]): { state: "available" | "partia
   };
 }
 function latestTimestamp(items: Array<Record<string, unknown>>): number | null {
-  const timestamps = items.flatMap((item) => [item.observedAt, item.recordedAt, item.updatedAt, item.createdAt, item.asOf, objectRecord(item.period).endDate, item.forecastDate])
+  const timestamps = items.flatMap((item) => [item.observedAt, item.recordedAt, item.updatedAt, item.createdAt, item.processedAt, item.asOf, objectRecord(item.period).endDate, item.forecastDate])
     .map(timestampValue).filter((value): value is number => value !== null);
   return timestamps.length ? Math.max(...timestamps) : null;
 }

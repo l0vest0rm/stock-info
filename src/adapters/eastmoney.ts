@@ -633,14 +633,41 @@ export async function fetchEastmoneyHongKongFinance(
       code: normalized, statementType, reportDate,
       fiscalPeriod: meta?.reportType ?? (typeof row.REPORT_TYPE === "string" ? row.REPORT_TYPE : null),
       payload: {
-        ...row,
+        ...normalizeEastmoneyHongKongFinancePayload(row),
         REPORTING_CURRENCY: meta?.currency,
         REPORTING_ACCOUNT_STANDARD: meta?.accountingStandard,
-        FINANCIAL_SOURCE_CONTRACT: "eastmoney_hk_f10_main_indicator.v1",
+        FINANCIAL_SOURCE_CONTRACT: "eastmoney_hk_f10_main_indicator.v2",
       },
       source: "eastmoney", rawR2Key: null, updatedAt: now,
     } satisfies FinancialStatement];
   });
+}
+
+/**
+ * Eastmoney's HK F10 main-indicator feed uses a different, documented field
+ * vocabulary from the A-share statement tables.  Keep every provider field
+ * unchanged, then add only lossless aliases required by the shared financial
+ * contract.  In particular, do not manufacture operating cost from gross
+ * profit: the source did not publish that input in this feed.
+ */
+function normalizeEastmoneyHongKongFinancePayload(row: Record<string, unknown>): Record<string, unknown> {
+  const aliases: Record<string, string> = {
+    TOTAL_OPERATE_INCOME: "OPERATE_INCOME",
+    PARENT_NETPROFIT: "HOLDER_PROFIT",
+    END_CCE: "END_CASH",
+  };
+  const payload: Record<string, unknown> = { ...row };
+  const origins: Record<string, string> = {};
+  for (const [canonicalField, sourceField] of Object.entries(aliases)) {
+    if (typeof row[sourceField] === "number" && Number.isFinite(row[sourceField])) {
+      payload[canonicalField] = row[sourceField];
+      origins[canonicalField] = sourceField;
+    }
+  }
+  if (Object.keys(origins).length > 0) {
+    payload.FINANCIAL_FIELD_ORIGINS = origins;
+  }
+  return payload;
 }
 
 async function fetchEastmoneyHongKongIncomeSummary(db: D1Database, code: string, httpOptions?: ExternalHttpOptions): Promise<EastmoneyFinanceResponse> {
@@ -744,7 +771,7 @@ export async function fetchYahooFinance(
         NOTICE_DATE: reportDate,
         FISCAL_PERIOD: periodType,
         YAHOO_PERIOD_TYPE: periodType,
-        FINANCIAL_SOURCE_CONTRACT: "yahoo_finance_timeseries.v2",
+        FINANCIAL_SOURCE_CONTRACT: "yahoo_finance_timeseries.v3",
         YAHOO_FIELD_CURRENCIES: {},
         YAHOO_FIELD_DATA_IDS: {},
       };
@@ -1585,6 +1612,7 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
     name: String(data.f58 ?? "").trim() || normalized,
     market: securityMarket(normalized),
     type: inferSecurityType(normalized),
+    marketDate: null,
     latestPrice: latestPriceRaw !== null ? latestPriceRaw / priceDivisor : null,
     pctChange: pctChangeRaw !== null ? pctChangeRaw / 100 : null,
     changeAmount: changeAmountRaw !== null ? changeAmountRaw / priceDivisor : null,
@@ -1592,6 +1620,8 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
     marketCapYi: numberOrNull(data.f116) !== null ? numberOrNull(data.f116)! / 100_000_000 : null,
     peTtm: numberOrNull(data.f162) !== null ? numberOrNull(data.f162)! / 100 : null,
     pb: numberOrNull(data.f167) !== null ? numberOrNull(data.f167)! / 100 : null,
+    psTtm: null,
+    pcfTtm: null,
     source: "eastmoney",
     updatedAt: Date.now(),
   };
@@ -1756,6 +1786,31 @@ function normalizeYahooFinancePayload(
   statementType: StatementType
 ): Record<string, unknown> {
   const row = { ...payload };
+  const periodPrefix = row.FISCAL_PERIOD === "12M" ? "annual" : "quarterly";
+  const aliases: Record<string, { sourceField: string; yahooMetric: string }> = {
+    TOTAL_OPERATE_INCOME: { sourceField: "totalOperateIncome", yahooMetric: "TotalRevenue" },
+    OPERATE_COST: { sourceField: "operateCost", yahooMetric: "CostOfRevenue" },
+    GROSS_PROFIT: { sourceField: "grossProfit", yahooMetric: "GrossProfit" },
+    OPERATE_PROFIT: { sourceField: "operateProfit", yahooMetric: "OperatingIncome" },
+    NETPROFIT: { sourceField: "netProfit", yahooMetric: "NetIncome" },
+    PARENT_NETPROFIT: { sourceField: "netProfit", yahooMetric: "NetIncome" },
+    BASIC_EPS: { sourceField: "basicEps", yahooMetric: "BasicEPS" },
+    DILUTED_EPS: { sourceField: "dilutedEps", yahooMetric: "DilutedEPS" },
+    TOTAL_ASSETS: { sourceField: "totaAssets", yahooMetric: "TotalAssets" },
+    TOTAL_LIABILITIES: { sourceField: "totalLiabilities", yahooMetric: "TotalLiabilitiesNetMinorityInterest" },
+    TOTAL_EQUITY: { sourceField: "totalEquity", yahooMetric: "StockholdersEquity" },
+    NETCASH_OPERATE: { sourceField: "netcashOperate", yahooMetric: "OperatingCashFlow" },
+    FREE_CASH_FLOW: { sourceField: "freeCashFlow", yahooMetric: "FreeCashFlow" },
+    END_CCE: { sourceField: "endCce", yahooMetric: "EndCashPosition" },
+  };
+  const origins: Record<string, string> = {};
+  for (const [canonicalField, { sourceField, yahooMetric }] of Object.entries(aliases)) {
+    if (typeof row[sourceField] === "number" && Number.isFinite(row[sourceField])) {
+      row[canonicalField] = row[sourceField];
+      origins[canonicalField] = `${periodPrefix}${yahooMetric}`;
+    }
+  }
+  if (Object.keys(origins).length > 0) row.FINANCIAL_FIELD_ORIGINS = origins;
   if (statementType === "income") {
     row.operateIncome = row.totalOperateIncome;
     row.totalOperateCost = row.operateCost;

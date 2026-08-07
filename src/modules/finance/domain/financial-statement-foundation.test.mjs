@@ -17,8 +17,8 @@ test("routes financial statements by market without provider fallback", () => {
 
   const hongKong = resolveFinancialStatementSource("00700.HK");
   assert.equal(hongKong.provider, "eastmoney");
-  assert.equal(hongKong.availability, "source_unavailable");
-  assert.match(hongKong.reason ?? "", /Yahoo fallback is disabled/);
+  assert.equal(hongKong.availability, "available");
+  assert.equal(hongKong.reason, null);
 });
 
 test("normalizes only disclosed source fields and preserves their provenance", () => {
@@ -86,15 +86,15 @@ test("loads U.S. statements from Yahoo through the shared HTTP path", async () =
   };
   try {
     const result = await loadFinancialStatements({ DB: db, MARKET_DATA_BUCKET: bucket }, "NVDA.US", "income");
-    assert.equal(result.provider, "yahoo");
     assert.equal(result.source, "yahoo");
     assert.equal(result.rows.length, 1);
     assert.match(requestedUrl, /query1\.finance\.yahoo\.com/);
     assert.match(requestedUrl, /quarterlyTotalRevenue/);
-    assert.doesNotMatch(requestedUrl, /quarterlyTotalAssets/);
-    assert.deepEqual(result.normalizedRows[0].values, [
-      { metric: "revenue", value: 44_062_000_000, sourceField: "totalOperateIncome" },
-      { metric: "netIncome", value: 18_775_000_000, sourceField: "netProfit" },
+    assert.match(requestedUrl, /quarterlyTotalAssets/);
+    assert.deepEqual(normalizeFinancialStatement(result.rows[0]).values, [
+      { metric: "revenue", value: 44_062_000_000, sourceField: "TOTAL_OPERATE_INCOME" },
+      { metric: "netIncome", value: 18_775_000_000, sourceField: "NETPROFIT" },
+      { metric: "parentNetIncome", value: 18_775_000_000, sourceField: "PARENT_NETPROFIT" },
     ]);
   } finally {
     globalThis.fetch = originalFetch;

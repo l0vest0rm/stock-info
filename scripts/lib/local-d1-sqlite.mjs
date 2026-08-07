@@ -3,8 +3,12 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 export function executeLocalD1SqlFile(sqlFile, options = {}) {
-  const databaseFile = resolveLocalD1Database(options);
   const sql = readFileSync(sqlFile, "utf8");
+  return executeLocalD1Sql(sql, options);
+}
+
+export function executeLocalD1Sql(sql, options = {}) {
+  const databaseFile = resolveLocalD1Database(options);
   const transaction = [
     "PRAGMA foreign_keys=ON;",
     "PRAGMA busy_timeout=30000;",

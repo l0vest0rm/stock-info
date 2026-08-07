@@ -10,7 +10,7 @@ import {
 function row(overrides = {}) {
   return {
     code: "BABA.US", statementType: "income", reportDate: "2025-03-31", fiscalPeriod: "12M",
-    payload: { FINANCIAL_SOURCE_CONTRACT: "yahoo_finance_timeseries.v2", REPORTING_CURRENCY: "CNY" },
+    payload: { FINANCIAL_SOURCE_CONTRACT: "yahoo_finance_timeseries.v2", REPORTING_CURRENCY: "CNY", operateIncome: 42 },
     source: "yahoo", rawR2Key: null, updatedAt: 123,
     ...overrides,
   };
@@ -26,6 +26,7 @@ test("financial read model preserves provider origin separately from R2 cache de
   assert.deepEqual(model.reportingCurrencies, ["CNY"]);
   assert.equal(model.dataAsOf, "2025-03-31");
   assert.deepEqual(model.periods, [{ reportDate: "2025-03-31", fiscalPeriod: "12M" }]);
+  assert.deepEqual(model.normalizedRows[0].values, [{ metric: "revenue", value: 42, sourceField: "operateIncome" }]);
   assert.deepEqual(model.fieldAvailability, { rows: 1, nonEmptyPayloadRows: 1, status: "available" });
   assert.deepEqual(model.sourceHealth, { status: "healthy", reason: null, message: null });
 });

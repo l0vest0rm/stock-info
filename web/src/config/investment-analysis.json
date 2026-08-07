@@ -1,0 +1,119 @@
+{
+  "title": "个股投资分析 | 投研社",
+  "description": "基于当前证券真实行情、财报、公告与已保存来源的可追溯投资分析页面。",
+  "canonicalPath": "investment-analysis.html",
+  "noindex": true,
+  "legacyRuntime": false,
+  "tabGoalChecks": {
+    "fundamentals": {"goal": "在同一条可追溯证据链中回答：公司靠什么赚钱、增长由什么驱动和约束；这些经营变化是否转化为利润、现金、资本效率与当前证券的每股价值。", "checks": [{"function": "商业模式与收入结构", "result": "已实现：产品、收入、地域和客户构成只展示当前证券法定原文的来源绑定事实。", "status": "ready"}, {"function": "增长驱动、约束与财务传导", "result": "已实现：量、结构/效率、产能、库存等经营节点与同报告期收入、利润、现金环节并列展示；无来源因果边时不解释。", "status": "ready"}, {"function": "财务质量与营运资本验证", "result": "已实现：年度与连续十二季三表趋势、毛利率、现金转换、应收和存货均显示报告期、公式和来源。", "status": "ready"}, {"function": "资本效率、治理与每股价值", "result": "已实现：自由现金流、ROIC/ROE、资本配置与股本/稀释门禁独立展示；缺少同口径输入时不计算每股价值。", "status": "ready"}, {"function": "增长持续性与完整自由现金流结论", "result": "自动阻断：产品代际 ASP、订单覆盖期、单一客户、完整自由现金流或法定字段缺失时，不发布精确持续性或价值结论。", "status": "blocked"}]},
+    "market": {"goal": "界定行业空间中公司真实可服务、可获得的部分，并将其与收入和利润传导区分开。", "checks": [{"function": "行业市场规模、高速率子市场和公司产品覆盖", "result": "已实现：年报引用的行业预测与公司产品范围在同处展示。", "status": "ready"}, {"function": "TAM/SAM/SOM 的定义、公式和期间", "result": "已实现：逐层展示输入、公式及其投资含义。", "status": "ready"}, {"function": "公司/同行同口径份额桥、利润池及公司传导数值", "result": "自动阻断：缺少按速率、客户和同行出货/收入的同口径输入。", "status": "blocked"}]},
+    "industry": {"goal": "区分行业需求/供给顺风与公司特有能力，避免把公司自述或同行体量误作已验证壁垒。", "checks": [{"function": "需求、供应链、技术和产品暴露事实", "result": "已实现：年报事实与公司自述分开标示并保留来源。", "status": "ready"}, {"function": "可比同行的合并财务量级", "result": "已实现：三家公司的收入、利润和毛利率用于量级比较。", "status": "ready"}, {"function": "竞争排名、护城河持续期及份额传导", "result": "自动阻断：缺少同行出货、价格、认证和份额等独立证据。", "status": "blocked"}]},
+    "forecast": {"goal": "将来源预测、当前价格和估值输入连接起来，并仅在口径与桥接项完整时输出价值结论。", "checks": [{"function": "逐篇预测的机构、日期、数值和原始链接", "result": "已实现：逐条保留来源，不把材料链接直接当作一致预期。", "status": "ready"}, {"function": "当前证券价格、PE、PB和市值", "result": "已实现：复用 Xueqiu 行情，仅作为估值观察输入。", "status": "ready"}, {"function": "预测汇总、目标价、DCF与每股价值", "result": "自动阻断：样本独立性/口径、历史校准、股本和净债务等桥接项未完成。", "status": "blocked"}]},
+    "risk": {"goal": "把投资逻辑可能失效的风险事实、财务传导和下一次自动验证条件放在同一处。", "checks": [{"function": "客户、库存、供应链与营运资本风险事实", "result": "已实现：年报/季报事实逐项连接到收入、利润或现金流。", "status": "ready"}, {"function": "每条风险的触发指标和自动刷新条件", "result": "已实现：风险台账显示下一次应检查的披露或财务指标。", "status": "ready"}, {"function": "损失区间、概率和完整历史复盘", "result": "自动阻断：历史快照、压力情景及监管/诉讼分类输入未齐。", "status": "blocked"}]}
+  },
+  "businessEvidence": {
+    "securityCode": "300308.SZ",
+    "reportPeriod": "2025FY",
+    "publishedAt": "2026-03-31",
+    "sourceTitle": "中际旭创股份有限公司 2025 年年度报告",
+    "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF",
+    "extractionMethod": "CNINFO 原文先导入本地知识账本；远端模型已在 LLM_RUNTIME=local 下完成来源绑定的信息提取并持久化。本页的表格数字按年报表格原始字段结构化，不由模型生成。",
+    "processing": "工程字段化：读取 CNINFO 年报对应章节/表格；远端模型只在本地研究运行时作来源绑定，不直接生成财务事实或数值。",
+    "processedAt": "字段化：2026-08-05 18:28 CST；来源绑定模型：2026-08-05 17:07:30 CST",
+    "latestOperatingUpdate": {
+      "reportDate": "2026-03-31",
+      "reportPeriod": "2026Q1",
+      "publishedAt": "2026-04-17",
+      "sourceTitle": "中际旭创股份有限公司 2026 年第一季度报告",
+      "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF",
+      "structuralDisclosure": "2026Q1 提供当期三表和期末营运资本，但未提供可与 2025FY 年报逐项对应的产品、地域、客户集中度、销量或产能明细；这些年度结构事实暂不以总收入反推。"
+    },
+    "facts": [
+      {"label": "主营业务", "value": "高端光通信收发模块研发、生产及销售", "evidence": "年报“公司主要业务”章节；产品服务云计算数据中心、数据通信、5G 无线网络、电信传输和固网接入。", "processing": "工程字段化（验证配置）：PDF 转 Markdown 后按“公司主要业务”章节定位；不使用模型直接生成字段。", "processedAt": "字段化：2026-08-05 18:28 CST；来源绑定模型：2026-08-05 17:07:30 CST"},
+      {"label": "产品覆盖", "value": "100G–1.6T 高速光模块", "evidence": "年报“公司主要业务/主要产品”章节；800G、1.6T 产品已列示，3.2T 为后续研发投入方向。", "processing": "工程字段化（验证配置）：PDF 转 Markdown 后按“公司主要业务/主要产品”章节定位；不使用模型直接生成字段。", "processedAt": "字段化：2026-08-05 18:28 CST；来源绑定模型：2026-08-05 17:07:30 CST"},
+      {"label": "核心产品收入", "value": "374.57 亿元，占总收入 97.95%", "evidence": "年报“主营业务分析—主营构成”表；光通信收发模块收入同比增长 63.67%。", "processing": "工程表格字段化（验证配置）：读取“主营构成”原始金额和披露占比；不由模型计算或补数。", "processedAt": "字段化：2026-08-05 18:28 CST；来源绑定模型：2026-08-05 17:07:30 CST"},
+      {"label": "地域暴露", "value": "境外收入 346.37 亿元，占 90.58%", "evidence": "年报“主营业务分析—分地区”表；境外收入同比增长 67.20%。", "processing": "工程表格字段化（验证配置）：读取“分地区”表的原始金额和披露占比；不由模型计算或补数。", "processedAt": "字段化：2026-08-05 18:28 CST；来源绑定模型：2026-08-05 17:07:30 CST"},
+      {"label": "客户集中", "value": "前五大客户占年度销售额 75.98%", "evidence": "年报“主要客户情况”表；不披露单一客户名称。", "processing": "工程表格字段化（验证配置）：读取“主要客户情况”表的披露比例；未披露的单一客户字段不补全。", "processedAt": "字段化：2026-08-05 18:28 CST；来源绑定模型：2026-08-05 17:07:30 CST"}
+    ],
+    "drivers": [
+      {"label": "出货量扩张", "fact": "光通信模块销量 2,109 万只，同比增长 44.55%；产量同比增长 54.69%。", "investmentValue": "确认收入增长不只是会计口径变化，至少有实际销量增长支撑。", "limitation": "年报未按 800G、1.6T 等速率披露销量，不能计算各代际产品对增长的贡献。"},
+      {"label": "产品结构与运营效率", "fact": "公司披露高速光模块占比持续提高、产品方案优化和运营效率提升；光通信收发模块毛利率为 42.61%，较上年提高 7.96 个百分点。", "investmentValue": "收入增速高于销量增速时，结构、价格或制造效率可能贡献了增量利润；毛利率改善是可见财务结果。", "limitation": "年报未把产品结构、ASP 与成本降幅分别量化，不能把全部毛利率改善归因给任一因素。"},
+      {"label": "产能与交付", "fact": "光通信收发模块产能 2,806 万只；“铜陵旭创高端光模块产业园三期项目”已实施完毕。", "investmentValue": "产能和项目完工为高端产品规模交付提供事实基础。", "limitation": "产能不等于订单或未来收入；年报没有披露各速率产能利用率和可执行订单覆盖期。"}
+    ],
+    "constraints": [
+      {"label": "库存与需求兑现", "fact": "光通信模块年末库存量 521 万只，同比增长 105.12%。", "transmission": "若客户需求、产品代际或价格发生不利变化，库存增长可能压制现金流或导致减值风险。", "status": "需结合后续季度销量、存货账面金额和跌价准备持续验证。"},
+      {"label": "客户与区域集中", "fact": "前五大客户销售占比 75.98%，境外收入占比 90.58%。", "transmission": "重点客户采购节奏、海外云资本开支、贸易政策或供应链扰动可显著影响收入和回款。", "status": "客户名称、单一客户占比和合同期限未披露，不能估算客户替代或订单覆盖度。"},
+      {"label": "高端供应链与贸易", "fact": "年报称 200G 及以上 EML 激光器仍主要依赖进口，并披露贸易壁垒和关税政策变化风险。", "transmission": "关键原料取得困难或关税变化可能影响交付、成本和盈利能力。", "status": "未取得采购金额、替代供应商和价格敏感性，不能量化冲击。"}
+    ]
+  },
+  "marketEvidence": {
+    "reportPeriod": "2025FY",
+    "sourceTitle": "中际旭创股份有限公司 2025 年年度报告引用 LightCounting 数据",
+    "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF",
+    "processing": "工程字段化：读取 CNINFO 年报行业概况中的 LightCounting 引用数值；远端模型仅在本地研究运行时作来源绑定，不生成市场数值或补齐边界。",
+    "processedAt": "字段化：2026-08-05 18:28 CST；来源绑定模型：2026-08-05 17:07:30 CST",
+    "facts": [
+      {"label": "全球数通光模块市场", "value": "2026 年 228 亿美元；2030 年 414 亿美元；2025–2030 年 CAGR 20%", "evidence": "年报行业概况引用 LightCounting 预测。"},
+      {"label": "高速率子市场", "value": "2026 年 800G 和 1.6T 合计 146 亿美元，占整体市场约 64%", "evidence": "年报行业概况引用 LightCounting 预测。"},
+      {"label": "公司可服务产品", "value": "公司年报列示 800G 和 1.6T 数通产品，3.2T 为研发投入方向", "evidence": "年报公司主要业务、主要产品和 2026 年工作计划章节。"}
+    ],
+    "blocks": [
+      "LightCounting 预测是行业第三方预测，不是公司可获得收入；页面不把它直接转换为中际旭创 TAM。",
+      "公司没有披露按速率、客户、地区的可服务市场边界与收入映射，SAM/SOM 不能计算。",
+      "年报仅陈述领先与份额持续成长，未披露同口径公司/同行收入或出货量份额；市场份额、CR3/CR5 与行业利润池保持不可得。"
+    ]
+  },
+  "industryEvidence": {
+    "reportPeriod": "2025FY",
+    "sourceTitle": "中际旭创股份有限公司 2025 年年度报告",
+    "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF",
+    "processing": "工程字段化：读取 CNINFO 年报对应章节和表格；远端模型仅在本地研究运行时作来源绑定，不生成事实、专利数或竞争结论。",
+    "processedAt": "字段化：2026-08-05 18:28 CST；来源绑定模型：2026-08-05 17:07:30 CST",
+    "facts": [
+      {"label": "需求侧", "value": "公司披露终端客户算力基础设施投入强劲，高速光模块占比持续提高。", "evidence": "年报主营业务分析；这是公司对本期经营环境的披露。"},
+      {"label": "供给与技术", "value": "200G 及以上 EML 激光器主要依赖进口；公司披露 411 件专利，其中发明专利 215 件，2025 年新增授权 44 件。", "evidence": "年报上游行业概况、领先研发与创新能力章节。"},
+      {"label": "竞争能力事实", "value": "年报披露 1.6T、800G 等产品组合，并称具备快速量产、交付与规模制造能力。", "evidence": "年报主要产品、竞争优势章节；属于公司自述。"}
+    ],
+    "blocks": [
+      "没有独立同行出货、价格、良率、认证或份额数据，不能验证竞争位置或优势持续期。",
+      "公司自述的市场领先、技术和交付能力不能单独升级为已验证壁垒；需后续同业及客户侧证据。"
+    ]
+  },
+  "riskEvidence": {
+    "annualSourceTitle": "中际旭创股份有限公司 2025 年年度报告",
+    "annualSourceUrl": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF",
+    "quarterlySourceTitle": "中际旭创股份有限公司 2026 年一季度报告",
+    "quarterlySourceUrl": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF",
+    "items": [
+      {"label": "客户与区域集中", "fact": "2025 年前五大客户占销售额 75.98%，境外收入占比 90.58%。", "transmission": "重点客户采购和海外需求/贸易变化可影响收入与回款。", "trigger": "后续财报的客户集中、境外收入、应收账款和经营现金流变化。", "sourceTitle": "中际旭创 2025 年年度报告", "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF", "reportPeriod": "2025FY", "processing": "工程表格字段化：读取年报主要客户情况和分地区表；传导和触发为规则化风险说明。", "processedAt": "2026-08-05 18:28 CST"},
+      {"label": "库存与代际风险", "fact": "2025 年光通信模块库存量 521 万只，同比增长 105.12%；一季度末存货账面金额 156.72 亿元。", "transmission": "需求或产品代际偏离时，库存可能占用现金或产生跌价压力。", "trigger": "销量、库存、存货跌价准备和毛利率的季度联动。", "sourceTitle": "中际旭创 2025 年年报 + 2026 年一季报", "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF", "reportPeriod": "2025FY + 2026Q1", "processing": "工程字段化：库存量取年报主营构成/产销量披露，期末存货取 2026Q1 资产负债表字段；传导和触发为规则化风险说明。", "processedAt": "2026-08-05 18:28 CST"},
+      {"label": "供应链与关税", "fact": "年报披露高端 EML 激光器进口依赖及贸易壁垒、关税政策风险。", "transmission": "关键原材料受限或成本提高可能影响交付和利润率。", "trigger": "关税/制裁公告、采购/交付披露与毛利率变化。", "sourceTitle": "中际旭创 2025 年年度报告", "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF", "reportPeriod": "2025FY", "processing": "工程字段化：读取年报上游行业概况和风险因素章节；传导和触发为规则化风险说明。", "processedAt": "2026-08-05 18:28 CST"},
+      {"label": "营运资本", "fact": "2026 年一季度应收账款 95.36 亿元，较年初增长 51.92%；经营现金流 33.68 亿元。", "transmission": "收入增长若不能持续转为回款，会降低现金质量。", "trigger": "应收增速相对收入增速、经营现金流/归母利润比率与坏账准备。", "sourceTitle": "中际旭创 2026 年第一季度报告", "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF", "reportPeriod": "2026Q1", "processing": "工程读取 Eastmoney 2026Q1 资产负债表/现金流量表字段，并与 CNINFO 一季报交叉定位；同比/期初变化为确定性计算。", "processedAt": "2026-08-05 18:28 CST"}
+    ]
+  },
+  "financialEvidence": {
+    "statutoryVerification": {
+      "checkedAt": "2026-08-05",
+      "primarySource": "Eastmoney 结构化三表",
+      "statutorySource": "CNINFO 已索引法定披露",
+      "matchedMetrics": ["营业收入", "营业利润", "归母净利润", "货币资金", "所有者权益", "经营活动现金流"],
+      "matchedPeriods": ["2025FY", "2026Q1"],
+      "limitation": "本地核验任务共追加 190 个字段比较，其中 16 个同期间、同口径字段匹配，未解析或无同口径法定字段的项目保持“未核验”，不会当作匹配。法定披露用于交叉验证，不替换 Eastmoney 主数据源。"
+    }
+  },
+  "peerEvidence": {
+    "asOf": "2025FY（报告期截至 2025-12-31）",
+    "source": "Eastmoney 结构化利润表；中际旭创、 新易盛（300502.SZ）、天孚通信（300394.SZ）",
+    "sourceTitle": "Eastmoney 结构化利润表（打开对应公司 read-model）",
+    "sourceUrl": "/api/finance/income?code=300308.SZ&format=read-model",
+    "reportPeriod": "2025FY（报告期截至 2025-12-31）",
+    "processing": "工程读取 Eastmoney 2025FY 合并利润表；收入与归母净利润取原始字段，毛利率 = 1 − OPERATE_COST ÷ TOTAL_OPERATE_INCOME。",
+    "processedAt": "2026-08-05 18:28 CST",
+    "comparability": "三者均为整家公司合并口径。该表用于确认可比公司的收入、利润和毛利率量级，不能推出任一速率光模块的出货、价格、认证或市场份额。",
+    "items": [
+      {"code": "300308.SZ", "name": "中际旭创", "revenueYi": 382.40, "netProfitYi": 107.97, "grossMargin": 42.04, "limitation": "合并口径，含公司全部业务。", "sourceUrl": "/api/finance/income?code=300308.SZ&format=read-model", "reportPeriod": "2025FY", "processing": "工程读取 Eastmoney 2025FY 合并利润表；毛利率为确定性公式计算。", "processedAt": "2026-08-05 18:28 CST"},
+      {"code": "300502.SZ", "name": "新易盛", "revenueYi": 248.42, "netProfitYi": 95.32, "grossMargin": 47.81, "limitation": "合并口径，产品结构与客户结构不等同。", "sourceUrl": "/api/finance/income?code=300502.SZ&format=read-model", "reportPeriod": "2025FY", "processing": "工程读取 Eastmoney 2025FY 合并利润表；毛利率为确定性公式计算。", "processedAt": "2026-08-05 18:28 CST"},
+      {"code": "300394.SZ", "name": "天孚通信", "revenueYi": 51.63, "netProfitYi": 20.17, "grossMargin": 53.96, "limitation": "合并口径，位于产业链不同环节，不能直接代表模块份额。", "sourceUrl": "/api/finance/income?code=300394.SZ&format=read-model", "reportPeriod": "2025FY", "processing": "工程读取 Eastmoney 2025FY 合并利润表；毛利率为确定性公式计算。", "processedAt": "2026-08-05 18:28 CST"}
+    ]
+  }
+}

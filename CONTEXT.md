@@ -89,7 +89,7 @@ The controlled business topic of a record, such as revenue, financing, listing, 
 _Avoid_: Entity type, sentiment
 
 **Processing outcome**:
-The result for one document version: extracted, no information, or needs review. A failed model attempt is not a processing outcome and does not remain in the information-processing ledger.
+The automatic result for one document version: extracted, no information, or unresolved. An unresolved result records its reason and reprocessing condition; a failed model attempt is not a processing outcome and does not remain in the information-processing ledger.
 
 ## Company Investment Analysis
 
@@ -106,7 +106,7 @@ A dated, source-bound description of the rights held through one listed security
 _Avoid_: Implied parity across A/H shares, an ADR ratio without a source, generic company governance
 
 **Security-rights link**:
-An explicit, source-bound relationship between two distinct listed securities that have separately confirmed operating-company mappings. It records whether they are different listings of the same company or an ADR-to-underlying relationship, any stated ratio, and conversion availability; it never asserts price, liquidity, tax, or legal-right equivalence that its evidence does not establish.
+An explicit, source-bound relationship between two distinct listed securities that have separately validated operating-company mappings. It records whether they are different listings of the same company or an ADR-to-underlying relationship, any stated ratio, and conversion availability; it never asserts price, liquidity, tax, or legal-right equivalence that its evidence does not establish.
 _Avoid_: Name-only merge, ticker-stem match, automatic target-price conversion
 
 **Investment analysis snapshot**:
@@ -130,12 +130,12 @@ A dated, source-bound classification of an operating company as non-financial, b
 _Avoid_: Auto-classification from code/name, a generic sector tag, a source-free exemption
 
 **Financial specialty source fact**:
-An immutable, human-normalized direct disclosure for one configured bank, insurer, or broker metric, descended from an accepted information-preprocessing evidence reference and a current financial entity profile. It preserves the reported value, period, definition, scope, and source locator; it is not a score, peer comparison, scenario, valuation input, or investment conclusion.
+An immutable, source-bound direct disclosure for one configured bank, insurer, or broker metric that has passed automated extraction, schema, identity, and financial-entity-profile validation. It preserves the reported value, period, definition, scope, source locator, and processing version; it is not a score, peer comparison, scenario, valuation input, or investment conclusion.
 _Avoid_: Generic industrial KPI, inferred ratio, automated bank rating
 
 **U.S. reporting-period equivalence**:
-An immutable, local human-review record that relates one exact Yahoo primary financial-fact identity to one exact SEC filing fact when Yahoo's display period differs from the issuer's fiscal end. It retains both periods and all metric, unit, filing, and review evidence; it never alters Yahoo dates, replaces Yahoo values, or authorizes nearest-date matching.
-_Avoid_: Date tolerance, SEC fallback, inferred fiscal-calendar alignment
+An immutable, automatically validated record that relates one exact Yahoo primary financial-fact identity to one exact SEC filing fact when Yahoo's display period differs from the issuer's fiscal end. It retains both periods and all metric, unit, filing, rule-version, and validation evidence; an unresolved mapping remains conflicting or unavailable and never alters Yahoo dates, replaces Yahoo values, or authorizes nearest-date matching.
+_Avoid_: Human review queue, date tolerance, SEC fallback, inferred fiscal-calendar alignment
 
 **Valuation archetype**:
 The primary valuation approach selected from the company's main earnings and cash-flow mechanism, such as growth earnings, stable cash return, cycle-normalized earnings, financial capital, asset value, milestone value, or sum of parts.
@@ -174,7 +174,7 @@ The explicit period over which a competitive advantage is expected to persist, t
 _Avoid_: Permanent moat, unbounded terminal advantage
 
 **Company focus profile**:
-An optional, evidence-backed set of drivers, metrics, theses, events, and invalidations maintained for an important company in addition to the common, market, and track analysis.
+A versioned, evidence-backed set of drivers, metrics, theses, events, and invalidations automatically loaded for a company selected by declared research-priority and information-density rules, in addition to the common, market, and track analysis.
 _Avoid_: Free-form company introduction, exception that removes evidence requirements
 
 **Focus membership**:
@@ -213,20 +213,20 @@ _Avoid_: Market revenue, target company's net profit
 One explicit set of operating assumptions, forecast results, and valuation inputs for a stated period, normally identified as downside, base, or upside.
 _Avoid_: Unattributed consensus, single target price
 
-**Self-built operating scenario**:
-A versioned, researcher-owned chain of explicit starting conditions and annual operating assumptions that deterministically derives revenue, operating profit, cash flow, working-capital movement, and forecast debt balances. It may cite evidence that motivates an assumption, but it never imports a source forecast, forecast consolidation, local-model draft, or later actual as its own output.
+**System operating scenario**:
+A versioned, automatically generated chain of explicit starting conditions and annual analysis assumptions that deterministically derives revenue, operating profit, cash flow, working-capital movement, and forecast debt balances. It preserves the evidence, rule/model versions, confidence, and bounds motivating every assumption; it never presents a source forecast, forecast consolidation, or later actual as its own output.
 _Avoid_: Analyst consensus, copied forecast table, actual result, mutable calculator state
 
 **Valuation input projection**:
-The reproducible DCF-ready annual forecast and valuation-input set derived from exactly one self-built operating scenario. It records the scenario identity and version, retains the explicit as-of net-debt bridge separately from forecast debt balances, and is an input to an immutable valuation-model version rather than a source forecast or a valuation conclusion.
+The reproducible DCF-ready annual forecast and valuation-input set derived from exactly one system operating scenario. It records the scenario identity and version, retains the explicit as-of net-debt bridge separately from forecast debt balances, and is an input to an immutable valuation-model version rather than a source forecast or a valuation conclusion.
 _Avoid_: Market consensus, source forecast normalization, automatic target price
 
 **Invalidation condition**:
-An observable event or metric threshold that requires a research thesis or valuation assumption to be re-examined.
+An observable event or metric threshold that automatically requires a research thesis or valuation assumption to be re-evaluated.
 _Avoid_: Stop-loss price, generic risk warning
 
 **Risk register**:
-The dated set of material operating-company and listed-security risks, each linked to exposure, transmission, impact, evidence, mitigation, triggers, and review status.
+The dated set of material operating-company and listed-security risks, each linked to exposure, transmission, impact, evidence, mitigation, triggers, and automated resolution state.
 _Avoid_: Generic disclaimer list, volatility dashboard
 
 **Risk transmission path**:
@@ -234,7 +234,7 @@ The explicit chain by which a risk event affects operating drivers, financial st
 _Avoid_: Risk label without financial consequence
 
 **Early-warning trigger**:
-An observable signal that increases review urgency without by itself invalidating a research thesis.
+An observable signal that increases automatic refresh priority without by itself invalidating a research thesis.
 _Avoid_: Automatic sell signal, thesis invalidation
 
 **Residual risk**:
@@ -266,11 +266,11 @@ A reproducible result calculated from identified source facts using an explicit 
 _Avoid_: Extracted fact, opaque model conclusion
 
 **Research completion state**:
-The state of a module at a declared research coverage level after object, blocking-data, conflict, freshness, and review rules are applied in order.
+The state of a module at a declared research coverage level after object, blocking-data, conflict, freshness, and automated-resolution rules are applied in order.
 _Avoid_: Average completion percentage, investment rating
 
 **Forecast calibration record**:
-A comparison between a versioned management, third-party, or analyst-built forecast and the later actual result on a comparable basis, including forecast date, error, and driver deviation.
+A comparison between a versioned management, third-party, or system-generated forecast and the later actual result on a comparable basis, including forecast date, error, and driver deviation.
 _Avoid_: Latest forecast only, hindsight-adjusted prediction
 
 **Formal actual**:
@@ -285,33 +285,53 @@ _Avoid_: Quietly overwriting the original actual, ordinary source refresh
 One dated, attributable forward estimate made by a third-party research source for a defined company, metric, period, and accounting basis. Management forward statements remain guidance.
 _Avoid_: Management guidance, fact, current result, consensus
 
-**Forecast synthesis draft**:
-A source-linked, reviewable local-model draft that proposes how multiple source forecasts map, conflict, and relate to stated drivers; it has no authority to create a forecast number or source fact.
-_Avoid_: Verified extraction, consensus, final forecast
+**Forecast synthesis analysis**:
+An automatic, source-linked remote-model analysis that proposes how multiple source forecasts map, conflict, and relate to stated drivers. It has no authority to create a source forecast number or source fact; unresolved mappings become low-confidence, conflicting, unavailable, or excluded until automatic validation succeeds.
+_Avoid_: Manual review task, consensus, invented source forecast
 
 **Forecast consolidation**:
 A dated derived observation that summarizes a defined, deduplicated set of comparable source forecasts, with its membership, normalization rules, statistics, and exclusions preserved.
-_Avoid_: Market consensus, new third-party forecast, self-built scenario
+_Avoid_: Market consensus, new third-party forecast, system operating scenario
 
 **Market consensus**:
 A forecast consolidation whose declared source universe and coverage rules support a claim of broad market coverage. It is unavailable for an opportunistic or incomplete collection of reports.
 _Avoid_: Multi-report summary, latest analyst estimate
 
 **Research subject mapping**:
-An evidenced relationship between one operating company and one listed security. Until confirmed, company-level sharing and cross-listed comparison remain unavailable even when the ticker or company name appears obvious.
+An automatically validated, evidenced relationship between one operating company and one listed security. Until validation succeeds, company-level sharing and cross-listed comparison remain unavailable even when the ticker or company name appears obvious.
 _Avoid_: Ticker-as-company identity, name-only merge
 
-**Forecast source review**:
-A recorded decision that a source-bound forecast candidate is included, excluded, or still needs review, together with its reason and the current immutable source-forecast version.
-_Avoid_: Silent filtering, model auto-approval
+**Forecast source resolution**:
+An automatically produced, versioned state that marks one source-bound forecast candidate as included, excluded, conflicting, low-confidence, or unavailable, together with its reason, evidence, rule/model versions, and immutable source-forecast version. Only candidates that pass all required deterministic identity and comparability gates may contribute to forecast consolidation.
+_Avoid_: Manual review queue, silent filtering, model-only approval
 
 **Financial-statement source policy**:
 The market-specific primary structured source for financial statements—Eastmoney for A-shares and Hong Kong shares, Yahoo for U.S. shares—paired with the relevant statutory filing as the verification source. It does not permit automatic fallback between providers.
 _Avoid_: Interchangeable finance-provider fallback, statutory filing substitute
 
 **Research workflow**:
-The ordered research process that first confirms the operating-company/security mapping and factual coverage, then develops operating assumptions and security valuation, and finally records falsification, review and private follow-up. A blocked earlier step prevents a stronger later conclusion.
-_Avoid_: Dashboard section order, completion percentage, automatic trade workflow
+The fully automated research process that first validates the operating-company/security mapping and factual coverage, then develops operating assumptions and security valuation, and finally records falsification triggers and automatic refresh conditions. A blocked earlier step prevents a stronger later conclusion.
+_Avoid_: Analyst approval workflow, dashboard section order, completion percentage, automatic trade workflow
+
+**Research value formation chain**:
+The traceable path by which one displayed research result moves from identified source inputs through source-bound extraction or normalization, deterministic validation, reproducible derivation, remote-model synthesis or judgement where needed, and automatic result resolution. Every participating stage and blocking gap remains visible; a search result, document summary, or unvalidated model draft is never itself an investment conclusion.
+_Avoid_: LLM summary as fact, news count as confidence, hidden formula, unvalidated extraction as a final judgement
+
+**Inline research provenance**:
+The source, as-of time, epistemic type, calculation inputs, formula or judgement evidence, automated resolution state, and blocking gaps attached to a research result at its point of use. It is a cross-cutting requirement of every module, not a separate research conclusion or a destination users must visit to understand another page.
+_Avoid_: Evidence tab as the only provenance access, detached source dump, important number without derivation, conclusion whose contrary evidence is hidden elsewhere
+
+**Module-owned research result**:
+A dated conclusion, calculation, coverage state, blocking gap, and next automatic refresh condition owned and explained by the research module that produces it. A cross-module header may reference the result for navigation, but may not determine its credibility, repair its missing inputs, or publish a competing summary conclusion.
+_Avoid_: Module output that waits for an overview to judge reliability, overview-only blocker, duplicated conclusion with different status
+
+**Automated research resolution**:
+The final machine-produced state of a source record, derived result, or system judgement after source identity, schema, comparability, evidence, and dependency gates run. Unresolved items become low-confidence, conflicting, unavailable, stale, or excluded from downstream calculation until new data or a new rule/model version automatically reruns them; they never wait in a human approval queue.
+_Avoid_: Manual review, user confirmation, analyst approval, assumed value
+
+**Research data acquisition mode**:
+The declared way one research input becomes available: reuse an existing structured record, extract an existing source document, follow an existing discovery result to its original source, acquire a new external source automatically, or derive it from already acquired inputs. It is separate from data quality and from the calculation or judgement that later consumes the input.
+_Avoid_: LLM as a data source, available without provenance, mixing acquisition with derivation
 
 **Typed research record**:
 A dated, versioned entry for one research domain that uses domain-specific fields and declares its epistemic type and source references where required. It is not a free-form JSON blob or an overwrite of historical analysis.

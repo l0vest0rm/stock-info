@@ -1,0 +1,87 @@
+{
+  "configVersion": "research-web-search-packages.v4",
+  "model": "gpt-5.6-luna",
+  "packageKind": "event_risk",
+  "securityCode": "300308.SZ",
+  "prompt": "研究对象：300308.SZ（中际旭创，A，交易币种 CNY）\n来源包：事件风险包\n任务：寻找监管、诉讼、审计、债务、重大合同、审批、产品或证伪事件，并记录发生日期与后续触发器。\n允许来源：监管、法院、交易所和公司原文；新闻仅可作为线索，不能写入事实。\n本地财报检索边界：已确认：最新可用法定财报截至 2026-03-31；于 2026-04-17 发布；标题《2026年一季度报告》；原文 https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF。该边界由命令行传入。\n已知财报字段：截至 2026-03-31；发布日期 2026-04-17；标题《2026年一季度报告》；原文 https://static.cninfo.com.cn/finalpage/2026-04-17/1225111941.PDF。\n若边界已确认，先以该财报和其发布日期之后的法定披露/事件为检索基准。更早财报只能用于明确的历史比较，或该事项在最新财报中缺失且该更早财报是可访问原文时；不得把更早财报写成最新财务或风险状态。\n本包 evidence_records[].tab_id 只允许以下英文枚举值：risk。字段名和枚举值必须使用英文 snake_case；不得输出中文 Tab 名称。\n请用 Web Search 真实检索，并返回可复用的来源绑定事实包。每条 verified source_url 必须是你本次 Web Search 返回的可回链原文 URL。",
+  "effort": "high",
+  "elapsedMs": 303865,
+  "firstEventMs": 8915,
+  "firstTextMs": 256873,
+  "citationCount": 3,
+  "queryCount": 10,
+  "recordCount": 7,
+  "persistableRecordCount": 7,
+  "verifiedCount": 7,
+  "unavailableCount": 0,
+  "invalidStatusCount": 0,
+  "invalidTabCount": 0,
+  "summary": "在已确认的最新法定财报发布日期2026-04-17之后，公开原文中发现两类事件风险：2026-06-08美国国防部发布1260H清单更新，称识别出188家符合纳入条件的实体；公司于2026-06-10披露其被列入该清单并否认认定依据符合客观事实。2026-06-01公司澄清网络流传的“董事长演讲全文”为杜撰内容，并称已固定证据、将依法追究相关人员责任。未在本次允许来源检索中定位到同期新增的公司重大诉讼、审计非标意见、重大债务违约、重大合同违约、产品召回或监管处罚原文。",
+  "facts": [
+    {
+      "key": "regulatory_list_update",
+      "status": "verified",
+      "subject": "300308.SZ / 中际旭创",
+      "statement": "美国国防部于2026-06-08发布1260H清单更新，并称经尽职调查识别出188家符合最近一期1260H清单法定纳入条件的实体。",
+      "source": "DOW Releases List of Chinese Military Companies in Accordance With Section 1260H of the National Defense Authorization Act for Fiscal Year 2021"
+    },
+    {
+      "key": "regulatory_list_inclusion",
+      "status": "verified",
+      "subject": "300308.SZ / 中际旭创",
+      "statement": "公司披露，美国国防部于美国时间2026-06-08将中际旭创列入“1260H清单”；公司同时表示该认定及其依据不符合客观事实，并否认自身属于中国军工企业或军民融合企业。",
+      "source": "中际旭创股份有限公司自愿性信息披露公告"
+    },
+    {
+      "key": "regulatory_operational_impact",
+      "status": "verified",
+      "subject": "300308.SZ / 中际旭创",
+      "statement": "公司披露，截至2026-06-10，该1260H清单事件未对公司经营产生实质性影响，订单获取、生产运营及供应链情况正常。",
+      "source": "中际旭创股份有限公司自愿性信息披露公告"
+    },
+    {
+      "key": "regulatory_follow_up_trigger",
+      "status": "verified",
+      "subject": "300308.SZ / 中际旭创",
+      "statement": "公司表示将基于事实与相关方进行有效沟通，并采取适当措施维护公司利益；后续应跟踪美国相关清单是否更新、公司是否取得更正或撤除结果，以及订单、生产和供应链是否出现实际影响。",
+      "source": "中际旭创股份有限公司自愿性信息披露公告"
+    },
+    {
+      "key": "false_information_clarification",
+      "status": "verified",
+      "subject": "300308.SZ / 中际旭创",
+      "statement": "公司于2026-06-01澄清，网络传播的《中际旭创董事长2026光互联论坛（5.28上海）演讲全文》属于杜撰的虚假内容，公司及董事长从未发表其中提及的内容。",
+      "source": "中际旭创股份有限公司关于网络传闻的澄清公告"
+    },
+    {
+      "key": "legal_action_trigger",
+      "status": "verified",
+      "subject": "300308.SZ / 中际旭创",
+      "statement": "针对虚假文章及其传播线索，公司披露已固定证据，并表示将依法追究相关人员的法律责任。",
+      "source": "中际旭创股份有限公司关于网络传闻的澄清公告"
+    },
+    {
+      "key": "false_information_follow_up_trigger",
+      "status": "verified",
+      "subject": "300308.SZ / 中际旭创",
+      "statement": "后续触发器为公司是否披露报案、立案、诉讼、调解、判决或其他正式法律处理结果，以及是否出现新的虚假信息传播并造成公司经营或证券交易影响。",
+      "source": "中际旭创股份有限公司关于网络传闻的澄清公告"
+    }
+  ],
+  "modelOutput": "{\"summary\":\"在已确认的最新法定财报发布日期2026-04-17之后，公开原文中发现两类事件风险：2026-06-08美国国防部发布1260H清单更新，称识别出188家符合纳入条件的实体；公司于2026-06-10披露其被列入该清单并否认认定依据符合客观事实。2026-06-01公司澄清网络流传的“董事长演讲全文”为杜撰内容，并称已固定证据、将依法追究相关人员责任。未在本次允许来源检索中定位到同期新增的公司重大诉讼、审计非标意见、重大债务违约、重大合同违约、产品召回或监管处罚原文。\",\"evidence_records\":[{\"tab_id\":\"risk\",\"field_key\":\"regulatory_list_update\",\"subject\":\"300308.SZ / 中际旭创\",\"statement\":\"美国国防部于2026-06-08发布1260H清单更新，并称经尽职调查识别出188家符合最近一期1260H清单法定纳入条件的实体。\",\"numeric_value\":188,\"unit\":\"entities\",\"currency\":null,\"period\":\"2026-06-08\",\"product_scope\":\"corporate regulatory status\",\"region_scope\":\"United States\",\"source_title\":\"DOW Releases List of Chinese Military Companies in Accordance With Section 1260H of the National Defense Authorization Act for Fiscal Year 2021\",\"source_url\":\"https://www.war.gov/News/Releases/Release/Article/4511232/dow-releases-list-of-chinese-military-companies-in-accordance-with-section-1260/ ([war.gov](https://www.war.gov/News/Releases/Release/Article/4511232/dow-releases-list-of-chinese-military-companies-in-accordance-with-section-1260/))\",\"source_published_at\":\"2026-06-08\",\"quote\":\"it identified 188 entities that meet the statutory requirements for inclusion on the most recent 1260H List.\",\"locator\":\"网页正文第176-181行\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"regulatory_list_inclusion\",\"subject\":\"300308.SZ / 中际旭创\",\"statement\":\"公司披露，美国国防部于美国时间2026-06-08将中际旭创列入“1260H清单”；公司同时表示该认定及其依据不符合客观事实，并否认自身属于中国军工企业或军民融合企业。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026-06-08\",\"product_scope\":\"corporate regulatory status\",\"region_scope\":\"United States\",\"source_title\":\"中际旭创股份有限公司自愿性信息披露公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf?utm_source=openai))\",\"source_published_at\":\"2026-06-10\",\"quote\":\"2026 年6 月8 日（美国时间），美国国防部将中际旭创列入“1260H 清单”。公司确认，将中际旭创列入名单的认定和依据均是不符合客观事实\",\"locator\":\"PDF第1页，公告正文第1段\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"regulatory_operational_impact\",\"subject\":\"300308.SZ / 中际旭创\",\"statement\":\"公司披露，截至2026-06-10，该1260H清单事件未对公司经营产生实质性影响，订单获取、生产运营及供应链情况正常。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"截至2026-06-10\",\"product_scope\":\"orders, production, supply chain\",\"region_scope\":\"Global operations\",\"source_title\":\"中际旭创股份有限公司自愿性信息披露公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf?utm_source=openai))\",\"source_published_at\":\"2026-06-10\",\"quote\":\"本次事件未对公司经营产生实质性影响，公司订单获取、生产运营及供应链等情况一切正常。\",\"locator\":\"PDF第1页，公告正文第2段\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"regulatory_follow_up_trigger\",\"subject\":\"300308.SZ / 中际旭创\",\"statement\":\"公司表示将基于事实与相关方进行有效沟通，并采取适当措施维护公司利益；后续应跟踪美国相关清单是否更新、公司是否取得更正或撤除结果，以及订单、生产和供应链是否出现实际影响。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"自2026-06-10起\",\"product_scope\":\"regulatory response and business continuity\",\"region_scope\":\"United States and global operations\",\"source_title\":\"中际旭创股份有限公司自愿性信息披露公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-10/1225364128.pdf?utm_source=openai))\",\"source_published_at\":\"2026-06-10\",\"quote\":\"我们将以充分的事实进行有效沟通并采取合适的措施以维护公司利益。\",\"locator\":\"PDF第1页，公告正文第1段\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"false_information_clarification\",\"subject\":\"300308.SZ / 中际旭创\",\"statement\":\"公司于2026-06-01澄清，网络传播的《中际旭创董事长2026光互联论坛（5.28上海）演讲全文》属于杜撰的虚假内容，公司及董事长从未发表其中提及的内容。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026-06-01\",\"product_scope\":\"corporate communications and market information\",\"region_scope\":\"China capital market\",\"source_title\":\"中际旭创股份有限公司关于网络传闻的澄清公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf))\",\"source_published_at\":\"2026-06-01\",\"quote\":\"《中际旭创董事长 2026 光互联论坛（5.28 上海）演讲全文》的文章为杜撰的虚假内容，公司及董事长从未发表此文中提及的内容\",\"locator\":\"PDF第1页第10-12行\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"legal_action_trigger\",\"subject\":\"300308.SZ / 中际旭创\",\"statement\":\"针对虚假文章及其传播线索，公司披露已固定证据，并表示将依法追究相关人员的法律责任。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"截至2026-06-01\",\"product_scope\":\"legal response to false information\",\"region_scope\":\"China\",\"source_title\":\"中际旭创股份有限公司关于网络传闻的澄清公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf))\",\"source_published_at\":\"2026-06-01\",\"quote\":\"公司已就此文涉及的虚假信息内容和传播线索固定证据，将依法追究相关人员的法律责任。\",\"locator\":\"PDF第1页第18-22行\",\"status\":\"verified\"},{\"tab_id\":\"risk\",\"field_key\":\"false_information_follow_up_trigger\",\"subject\":\"300308.SZ / 中际旭创\",\"statement\":\"后续触发器为公司是否披露报案、立案、诉讼、调解、判决或其他正式法律处理结果，以及是否出现新的虚假信息传播并造成公司经营或证券交易影响。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"自2026-06-01起\",\"product_scope\":\"legal proceedings and market information integrity\",\"region_scope\":\"China capital market\",\"source_title\":\"中际旭创股份有限公司关于网络传闻的澄清公告\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2026-06-01/1225340998.pdf))\",\"source_published_at\":\"2026-06-01\",\"quote\":\"为维护公司、股东及全体投资者的合法权益，保障信息披露公开、公平、公正\",\"locator\":\"PDF第1页第13-14行\",\"status\":\"verified\"}],\"missing_fields\":[\"post_2026-04-17_litigation_or_arbitration: 本次允许来源检索未定位到2026-04-17之后新增且可访问的公司、法院或交易所原文；不将第三方数据库摘要写入事实。\",\"post_2026-04-17_audit_event: 本次允许来源检索未定位到2026-04-17之后新增的审计意见、会计师事务所变更、监管处罚或审计争议公司原文。\",\"post_2026-04-17_debt_default_or_major_financing_risk: 本次允许来源检索未定位到2026-04-17之后新增的重大债务违约、逾期、债券或融资风险原文。\",\"post_2026-04-17_major_contract_event: 本次允许来源检索未定位到2026-04-17之后新增的重大合同签署、终止、违约或重大客户取消原文。\",\"post_2026-04-17_product_recall_or_product_falsification: 本次允许来源检索未定位到2026-04-17之后新增的产品召回、产品认证失败、质量事故或产品事实证伪原文。\",\"post_2026-04-17_domestic_regulatory_sanction: 本次允许来源检索未定位到2026-04-17之后针对中际旭创及其主要子公司的中国证监会、深交所或其他中国监管机关行政处罚、监管措施或纪律处分原文。\"],\"conflicts\":[\"公司否认美国1260H清单对其作出的认定及依据符合客观事实；美国国防部公开原文确认于2026-06-08发布并更新1260H清单，但本次可访问页面未展示中际旭创逐一实体名单，因此未独立核验公司名称在清单中的具体条目。\"],\"refresh_triggers\":[\"美国国防部或联邦公报更新、修订或撤销1260H清单，或对中际旭创作出进一步说明。\",\"中际旭创披露与美国相关方沟通、申诉、澄清、法律程序或清单状态变化。\",\"公司披露订单获取、生产运营、供应链、客户关系或海外业务受到1260H事件实际影响。\",\"公司就虚假演讲文章披露报案、立案、诉讼、调解、判决、赔偿或其他法律处理结果。\",\"出现新的监管、法院、交易所或公司原文，涉及重大诉讼、审计、债务违约、重大合同、产品质量或产品事实证伪。\"]}",
+  "eventTypes": [
+    "response.created",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.web_search_call.in_progress",
+    "response.web_search_call.searching",
+    "response.web_search_call.completed",
+    "response.content_part.added",
+    "response.output_text.delta",
+    "response.output_text.annotation.added",
+    "response.output_text.done",
+    "response.content_part.done",
+    "response.completed"
+  ]
+}

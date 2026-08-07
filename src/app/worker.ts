@@ -5,7 +5,9 @@ import type { Bindings } from "../types";
 const app = createRouter();
 
 export default {
-  fetch: app.fetch,
+  fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
+    return app.fetch(request, env, ctx);
+  },
   scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     ctx.waitUntil(dispatchScheduledTask(event, env));
   },

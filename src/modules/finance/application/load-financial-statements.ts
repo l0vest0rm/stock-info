@@ -149,14 +149,14 @@ function isHongKongExchangeCode(code: string): boolean {
 
 function hasHongKongReportingMetadata(row: FinancialStatement): boolean {
   const payload = row.payload && typeof row.payload === "object" ? row.payload as Record<string, unknown> : {};
-  return payload.FINANCIAL_SOURCE_CONTRACT === "eastmoney_hk_f10_main_indicator.v1"
+  return payload.FINANCIAL_SOURCE_CONTRACT === "eastmoney_hk_f10_main_indicator.v2"
     && typeof payload.REPORTING_CURRENCY === "string" && payload.REPORTING_CURRENCY.trim().length > 0
     && typeof payload.REPORTING_ACCOUNT_STANDARD === "string" && payload.REPORTING_ACCOUNT_STANDARD.trim().length > 0;
 }
 
 function hasYahooReportingMetadata(row: FinancialStatement): boolean {
   const payload = row.payload && typeof row.payload === "object" ? row.payload as Record<string, unknown> : {};
-  return payload.FINANCIAL_SOURCE_CONTRACT === "yahoo_finance_timeseries.v2"
+  return payload.FINANCIAL_SOURCE_CONTRACT === "yahoo_finance_timeseries.v3"
     && typeof payload.REPORTING_CURRENCY === "string" && payload.REPORTING_CURRENCY.trim().length > 0
     && typeof payload.FISCAL_PERIOD === "string" && payload.FISCAL_PERIOD.trim().length > 0;
 }

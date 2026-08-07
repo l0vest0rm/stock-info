@@ -141,7 +141,7 @@ type ForecastPayload = {
     calibrationCount: number;
     currentComparableCalibrationCount: number;
     historicalCalibrationAffectedByRestatementCount: number;
-    candidateWorkflow: { pendingHumanReviewCount: number; blockedByStatutoryVerificationCount: number; needsEvidenceCount: number; rejectedCount: number; acceptedCount: number; acceptedActualMissingCount: number; newerStatutoryDocumentAvailableCount: number; sameDayStatutoryDocumentAmbiguityCount: number };
+    candidateWorkflow: { pendingAutomaticEvidenceCount: number; blockedByStatutoryVerificationCount: number; needsEvidenceCount: number; rejectedCount: number; acceptedCount: number; acceptedActualMissingCount: number; newerStatutoryDocumentAvailableCount: number; sameDayStatutoryDocumentAmbiguityCount: number };
     lineageIssues: Array<{ actualId: string; relatedActualId: string | null; reason: string }>;
   };
   formalActualCandidates: Array<{ candidateId: string; verificationId: string; metric: string; forecastMetric: string | null; fiscalYear: number; fiscalPeriod: string; reportedValue: number | null; reportedUnit: string | null; currency: string | null; statutoryProvider: string; statutoryDisclosureUrl: string | null; statutoryLocator: string | null; statutoryPublishedAt: string | null; eligibility: "ready_for_review"; blockingReason: null; sourceBinding: Record<string, unknown> }>;
@@ -611,7 +611,7 @@ function calibrationSection(data: ForecastPayload, actions: any) {
   const health = data.formalActualHealth;
   const healthSummary = h("div", { class: "research-note mt-3", "data-formal-actual-health": health.ruleVersion }, [
     h("strong", `法定实际健康：${health.calibrationAvailability}`),
-    h("div", { class: "research-meta mt-1" }, `实际 ${health.currentActualCount}/${health.actualCount} 当前；校准当前可比 ${health.currentComparableCalibrationCount}/${health.calibrationCount}；待人工审核候选 ${health.candidateWorkflow.pendingHumanReviewCount}。`),
+    h("div", { class: "research-meta mt-1" }, `实际 ${health.currentActualCount}/${health.actualCount} 当前；校准当前可比 ${health.currentComparableCalibrationCount}/${health.calibrationCount}；待下一自动证据同步候选 ${health.candidateWorkflow.pendingAutomaticEvidenceCount}。`),
     health.historicalCalibrationAffectedByRestatementCount ? h("div", { class: "research-meta mt-1" }, `有 ${health.historicalCalibrationAffectedByRestatementCount} 条历史可比校准已受重述影响，保留原记录但不作为当前可用校准。`) : null,
     health.candidateWorkflow.newerStatutoryDocumentAvailableCount ? h("div", { class: "research-meta mt-1" }, `${health.candidateWorkflow.newerStatutoryDocumentAvailableCount} 条候选已有更晚法定披露，旧候选不可接受为当前实际。`) : null,
     health.candidateWorkflow.sameDayStatutoryDocumentAmbiguityCount ? h("div", { class: "research-meta mt-1" }, `${health.candidateWorkflow.sameDayStatutoryDocumentAmbiguityCount} 条候选同日多文件，顺序不自动猜测。`) : null,

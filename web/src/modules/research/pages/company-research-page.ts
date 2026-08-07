@@ -1,7 +1,4 @@
 import { createApp, defineComponent, h, nextTick, onMounted, ref } from "vue";
-import { ForecastWorkbench } from "../components/forecast-workbench";
-import { ValuationWorkbench } from "../components/valuation-workbench";
-import { OperatingScenarioWorkbench } from "../components/operating-scenario-workbench";
 import { IndustryComparabilityWorkbench } from "../components/industry-comparability-workbench";
 import { OperatingMarketWorkbench } from "../components/operating-market-workbench";
 import { RiskReviewWorkbench } from "../components/risk-review-workbench";
@@ -20,7 +17,6 @@ import { FinancialEntityProfilePanel } from "../components/financial-entity-prof
 import { FinancialSpecialtyMetricsPanel } from "../components/financial-specialty-metrics-panel";
 import { GovernanceCapitalFactsPanel } from "../components/governance-capital-facts-panel";
 import { ResearchReviewQueuePanel } from "../components/research-review-queue-panel";
-import { RelativeValuationWorkbench } from "../components/relative-valuation-workbench";
 import { CompanyFocusProfilePanel } from "../components/company-focus-profile-panel";
 import { StatutoryRevisionCandidatesPanel } from "../components/statutory-revision-candidates-panel";
 import { UsFinancialPeriodEquivalencePanel } from "../components/us-financial-period-equivalence-panel";
@@ -614,7 +610,7 @@ function financialSeriesRows(series: RecordValue[]) {
 }
 function governanceCard(section: RecordValue) { return sectionCard("管理层、治理与资本配置", section, (item) => [h("strong", `${item.dimension} · ${item.title}`), h("p", item.statement), refs(item.sourceReferences)], "管理层能力、指引可信度、治理、利益一致性与资本配置各自留证。") }
 
-function model(data: RecordValue, canWrite: boolean) { const dossier = data.dossier || {}; const valuationProps = { securityCode: data.code, canWrite, securityCurrency: data.identity?.listedSecurity?.tradingCurrency || "", underlyingSharesPerSecurity: data.identity?.listedSecurity?.depositaryRatio || 1 }; const relativeItems = Array.isArray(data.relativeValuationLedgers?.items) ? data.relativeValuationLedgers.items : []; return h("div", { id: researchTargets.valuation.anchor, tabindex: -1, "data-research-anchor": "valuation" }, [h("section", { class: "research-card research-reading-guide" }, [h("h2", "预测、情景与估值：阅读层"), h("p", { class: "research-meta mb-0" }, "来源预测、整理草稿、自建情景和估值版本彼此独立。以下先显示冻结版本和门禁；录入与计算工具只在本地工作台展开。")]), researchAnchor("forecasts", forecastSummaryCard(data.forecastWorkspace || {})), valuationModelsCard(data.valuationModels || {}, data.reverseValuationModels || {}, data.coverage || {}), relativeValuationLedgerCard(data.relativeValuationLedgers || {}), h("section", { class: "research-grid" }, [sectionCard("证券估值与预期", dossier.valuationCases, valuationContent, "从经营假设到企业价值、股权价值和每股价值；未接证券权利/股本时保持不可得。"), valuationGate(data)]), h("details", { class: "research-card research-workbench", "data-research-workbench": "forecast-valuation" }, [h("summary", [h("strong", "本地研究工作台：预测审核、情景与估值录入"), h("span", { class: "research-meta ms-2" }, relativeItems.length ? `已有 ${relativeItems.length} 版相对估值账本；展开查看或新增` : "仅本地可编辑，生产保持只读")]), h("div", { class: "research-workbench-body" }, [h(ForecastWorkbench), h(OperatingScenarioWorkbench, valuationProps), h(ValuationWorkbench, valuationProps), h(RelativeValuationWorkbench, { securityCode: data.code, securityCurrency: valuationProps.securityCurrency, initial: data.relativeValuationLedgers || {}, canWrite })])])]); }
+function model(data: RecordValue, _canWrite: boolean) { const dossier = data.dossier || {}; return h("div", { id: researchTargets.valuation.anchor, tabindex: -1, "data-research-anchor": "valuation" }, [h("section", { class: "research-card research-reading-guide" }, [h("h2", "预测、情景与估值：自动研究阅读层"), h("p", { class: "research-meta mb-0" }, "来源预测、来源情景、确定性汇总、校准和估值版本均由已保存输入自动生成或自动阻断；页面不提供人工审核、手填情景或估值录入入口。")]), researchAnchor("forecasts", forecastSummaryCard(data.forecastWorkspace || {})), valuationModelsCard(data.valuationModels || {}, data.reverseValuationModels || {}, data.coverage || {}), relativeValuationLedgerCard(data.relativeValuationLedgers || {}), h("section", { class: "research-grid" }, [sectionCard("证券估值与预期", dossier.valuationCases, valuationContent, "从来源绑定经营假设到企业价值、股权价值和每股价值；未接证券权利/股本时保持不可得。"), valuationGate(data)])]); }
 
 function forecastSummaryCard(workspace: RecordValue) {
   const forecasts = Array.isArray(workspace.sourceForecasts) ? workspace.sourceForecasts : Array.isArray(workspace.sourceForecasts?.items) ? workspace.sourceForecasts.items : [];

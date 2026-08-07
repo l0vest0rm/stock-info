@@ -4,6 +4,7 @@ import {
   rememberSecuritySearch,
   type SecuritySearchHistoryItem,
 } from '../../../platform/search-history'
+import { routeForSecuritySearch } from '../../../app/layout/security-search-route'
 
 type SearchResult = SecuritySearchHistoryItem
 
@@ -241,17 +242,6 @@ function labelForMarket(result: SearchResult) {
   }
 }
 
-function routeForResult(result: SearchResult) {
-  const code = String(result.code || '').trim()
-  if (!code) {
-    return '#'
-  }
-  if (String(result.type || '').toLowerCase() === 'fund' || code.endsWith('.OF')) {
-    return `fund.html?code=${encodeURIComponent(code.endsWith('.OF') ? code : `${code}.OF`)}`
-  }
-  return `company.html?code=${encodeURIComponent(code)}`
-}
-
 const HomePage = defineComponent({
   name: 'HomePage',
   setup() {
@@ -326,7 +316,7 @@ const HomePage = defineComponent({
         return
       }
       history.value = rememberSecuritySearch(first)
-      window.location.href = routeForResult(first)
+      window.location.href = routeForSecuritySearch(first)
     }
 
     const onSubmit = (event: Event) => {
@@ -384,7 +374,7 @@ const HomePage = defineComponent({
               suggestions.value.length > 0
                 ? h('div', { class: 'mt-3 border rounded-4 overflow-hidden bg-white' }, suggestions.value.map((item) => h('a', {
                   key: item.code,
-                  href: routeForResult(item),
+                  href: routeForSecuritySearch(item),
                   class: 'home-search-result',
                   onClick: () => {
                     history.value = rememberSecuritySearch(item)

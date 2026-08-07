@@ -181,7 +181,7 @@ export function normalizeStatementRows(statementType: StatementType, rows: Finan
 }
 
 function hasYahooReportingMetadata(payload: Record<string, unknown>): boolean {
-  return payload.FINANCIAL_SOURCE_CONTRACT === "yahoo_finance_timeseries.v2"
+  return (payload.FINANCIAL_SOURCE_CONTRACT === "yahoo_finance_timeseries.v2" || payload.FINANCIAL_SOURCE_CONTRACT === "yahoo_finance_timeseries.v3")
     && typeof payload.REPORTING_CURRENCY === "string" && payload.REPORTING_CURRENCY.trim().length > 0
     && typeof payload.FISCAL_PERIOD === "string" && payload.FISCAL_PERIOD.trim().length > 0;
 }

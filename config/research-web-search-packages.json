@@ -1,0 +1,45 @@
+{
+  "version": "research-web-search-packages.v10",
+  "model": "gpt-5.6-luna",
+  "reasoningEffort": "high",
+  "maxOutputTokens": 2800,
+  "jobTimeoutMs": 600000,
+  "packages": {
+    "latest_annual_report": {
+      "promptVersion": "research-web-search.company-business-structure.v3",
+      "label": "公司经营与结构包",
+      "tabs": ["business", "market", "financial", "industry", "risk"],
+      "objective": "围绕主营业务、产品与收入结构、客户与地区、产能与订单、研发、资本配置、治理、风险和行业边界采集信息；年报是重要基线，但不是唯一来源。"
+    },
+    "recent_filings": {
+      "promptVersion": "research-web-search.business-changes.v2",
+      "label": "经营变化包",
+      "tabs": ["business", "market", "financial", "forecast", "risk"],
+      "objective": "寻找最新经营、产品、订单、资本配置、管理层指引、催化剂与风险变化，并说明它相对既有财报基线新增或修正了什么。"
+    },
+    "industry_market": {
+      "promptVersion": "research-web-search.industry-market.v3",
+      "label": "行业与市场空间包",
+      "tabs": ["market", "industry"],
+      "objective": "围绕公司明确主营的二级赛道，寻找行业定义、市场规模、供需、价格、出货、产品结构与增长数据。"
+    },
+    "peer_set": {
+      "promptVersion": "research-web-search.peer-set.v2",
+      "label": "同行与竞争包",
+      "tabs": ["market", "industry"],
+      "objective": "先界定可比同行，再获取其产品边界、经营披露、产能/出货/战略动作与可比性限制。"
+    },
+    "forecast_consensus": {
+      "promptVersion": "research-web-search.forecast-external-supplement.v3",
+      "label": "外部预测补充包",
+      "tabs": ["forecast"],
+      "objective": "只在内部研报预测账本无法覆盖所需的外部预测内容时，按需补充公开、可回链的行业或公司前瞻原文；不搜索或替代项目内研报数据。"
+    },
+    "event_risk": {
+      "promptVersion": "research-web-search.event-risk.v2",
+      "label": "风险与证伪包",
+      "tabs": ["risk"],
+      "objective": "寻找监管、诉讼、审计、债务、重大合同、审批、产品或证伪事件，并记录发生日期与后续触发器。"
+    }
+  }
+}

@@ -31,12 +31,12 @@ export function resolveFinancialStatementSource(rawCode: string): FinancialState
     return {
       code,
       provider: "eastmoney",
-      // The current public Eastmoney A-share endpoint returns no HK rows.  Do
-      // not guess an HK endpoint or substitute Yahoo until its schema is
-      // independently validated against the selected HK company samples.
-      availability: "source_unavailable",
+      // Hong Kong statements use Eastmoney's HK F10 main-indicator contract,
+      // not the A-share RPT_F10_FINANCE_* endpoint.  The adapter preserves
+      // the original HK field names and attaches auditable canonical aliases.
+      availability: "available",
       statutoryVerificationSource: "HKEXnews periodic report, interim report, or results announcement",
-      reason: "Eastmoney Hong Kong structured financial-statement schema is not yet validated; Yahoo fallback is disabled by source policy.",
+      reason: null,
     };
   }
   if (/\.US$/.test(code)) {

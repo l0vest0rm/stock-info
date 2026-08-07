@@ -76,6 +76,9 @@ export async function recordResearchFinancialSpecialtyFact(db: D1Database, input
 export async function loadResearchFinancialSpecialtyLedger(db: D1Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   const profile = await loadResearchFinancialProfile(db, code);
+  let historical: Row[] = [];
+  let automatic: Row[] = [];
+  let readable = false;
   try {
     const rows = await db.prepare(`select financial_specialty_fact_id, financial_profile_id, company_id, security_code, evidence_reference_id,
       candidate_id, candidate_review_id, entity_type, metric_key, reported_label, reported_value, value_number, unit, currency, amount_scale,
@@ -84,12 +87,28 @@ export async function loadResearchFinancialSpecialtyLedger(db: D1Database, secur
       from research_financial_specialty_fact_versions
       where company_id=(select company_id from research_listed_securities where security_code=?)
       order by as_of desc, recorded_at desc, financial_specialty_fact_id desc`).bind(code).all<Row>();
-    const facts = rows.results.map(mapFact);
-    return resolveResearchFinancialSpecialtyLedger(profile, facts, facts.length ? "available" : "empty");
+    historical = rows.results; readable = true;
   } catch (error) {
-    if (missing(error, "research_financial_specialty_fact_versions")) return resolveResearchFinancialSpecialtyLedger(profile, [], "unavailable");
-    throw error;
+    if (!missing(error, "research_financial_specialty_fact_versions")) throw error;
   }
+  try {
+    const rows = await db.prepare(`select fact.auto_financial_specialty_fact_id as financialSpecialtyFactId,
+      fact.auto_financial_profile_id as financialProfileId, fact.operating_company_id as companyId, fact.security_code as securityCode,
+      fact.entity_type as entityType, fact.metric_key as metricKey, fact.reported_label as reportedLabel, fact.reported_value as reportedValue,
+      fact.value_number as valueNumber, fact.unit, fact.currency, fact.amount_scale as amountScale, fact.as_of as asOf, fact.period_label as periodLabel,
+      fact.definition_note as definitionNote, fact.comparability_note as comparabilityNote, fact.statement, fact.source_url as sourceUrl,
+      fact.source_title as sourceTitle, fact.evidence_locator as sourceLocator, fact.prompt_version as metricConfigVersion,
+      fact.processed_at as recordedAt, fact.materialized_at as createdAt, fact.source_filing_fact_input_id as sourceInputId
+      from research_auto_filing_financial_specialty_facts fact
+      join research_auto_filing_fact_inputs input on input.filing_fact_input_id=fact.source_filing_fact_input_id
+      where fact.security_code=? and input.validity_status='current'
+      order by fact.as_of desc, fact.processed_at desc, fact.auto_financial_specialty_fact_id desc`).bind(code).all<Row>();
+    automatic = rows.results; readable = true;
+  } catch (error) {
+    if (!missing(error, "research_auto_filing_financial_specialty_facts")) throw error;
+  }
+  const facts = [...historical.map(mapFact), ...automatic.map(mapAutomaticFact)];
+  return resolveResearchFinancialSpecialtyLedger(profile, facts, readable ? (facts.length ? "available" : "empty") : "unavailable");
 }
 
 type AcceptedEvidence = {
@@ -117,6 +136,18 @@ async function acceptedEvidenceReference(db: D1Database, evidenceReferenceId: st
 function mapFact(row: Row): ResearchFinancialSpecialtyFactVersion { return {
   financialSpecialtyFactId: text(row.financial_specialty_fact_id), financialProfileId: text(row.financial_profile_id), companyId: text(row.company_id), securityCode: text(row.security_code), evidenceReferenceId: text(row.evidence_reference_id), candidateId: text(row.candidate_id), candidateReviewId: text(row.candidate_review_id), entityType: text(row.entity_type) as ResearchFinancialSpecialtyFactVersion["entityType"], metricKey: text(row.metric_key), reportedLabel: text(row.reported_label), reportedValue: text(row.reported_value), valueNumber: number(row.value_number), unit: text(row.unit), currency: optional(row.currency), amountScale: optional(row.amount_scale), asOf: text(row.as_of), periodLabel: text(row.period_label), definitionNote: text(row.definition_note), comparabilityNote: text(row.comparability_note), statement: text(row.statement), sourceUrl: optional(row.source_url), contentUrl: optional(row.content_url), sourceTitle: optional(row.source_title), sourceName: optional(row.source_name), publishedAt: optional(row.published_at), sourceLocator: text(row.source_locator), metricConfigVersion: text(row.metric_config_version), recordedBy: text(row.recorded_by), recordedAt: number(row.recorded_at), createdAt: number(row.created_at),
 }; }
+function mapAutomaticFact(row: Row): ResearchFinancialSpecialtyFactVersion {
+  const sourceInputId = text(row.sourceInputId);
+  return {
+    financialSpecialtyFactId: text(row.financialSpecialtyFactId), financialProfileId: text(row.financialProfileId), companyId: text(row.companyId), securityCode: text(row.securityCode),
+    // The domain record retains these non-empty identifiers for both legacy
+    // and automatic sources.  The synthetic values are never rendered as
+    // human evidence references; sourceUrl/title/locator below remain the
+    // actual statutory provenance shown by the page.
+    evidenceReferenceId: `auto-filing:${sourceInputId}`, candidateId: `auto-filing:${sourceInputId}`, candidateReviewId: `auto-filing:${sourceInputId}`,
+    entityType: text(row.entityType) as ResearchFinancialSpecialtyFactVersion["entityType"], metricKey: text(row.metricKey), reportedLabel: text(row.reportedLabel), reportedValue: text(row.reportedValue), valueNumber: number(row.valueNumber), unit: text(row.unit), currency: optional(row.currency), amountScale: optional(row.amountScale), asOf: text(row.asOf), periodLabel: text(row.periodLabel), definitionNote: text(row.definitionNote), comparabilityNote: text(row.comparabilityNote), statement: text(row.statement), sourceUrl: optional(row.sourceUrl), contentUrl: null, sourceTitle: optional(row.sourceTitle), sourceName: "发行人法定披露", publishedAt: null, sourceLocator: text(row.sourceLocator), metricConfigVersion: researchFinancialSpecialtyMetricConfigVersion(), recordedBy: "system:auto-filing-financial-specialty.v1", recordedAt: number(row.recordedAt), createdAt: number(row.createdAt),
+  };
+}
 function isSpecialtyEntity(value: string): value is ResearchFinancialSpecialtyFactVersion["entityType"] { return value === "bank" || value === "insurer" || value === "broker"; }
 function required(value: unknown, label: string): string { const result = String(value ?? "").trim(); if (!result) throw new Error(`${label} is required`); return result; }
 function text(value: unknown): string { return required(value, "stored financial specialty field"); }

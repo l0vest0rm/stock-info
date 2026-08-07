@@ -12,11 +12,11 @@ export type ForecastCoverageReadModel = {
   counts: {
     /** Source-bound forecast assertions discovered from information processing. */
     candidates: number;
-    /** Candidates that a local reviewer has explicitly decided on. */
+    /** Candidates resolved by a saved deterministic source-evidence decision. */
     reviewed: number;
-    /** Candidates that still require a local review decision. */
+    /** Candidates for which no automatic source-evidence result has been saved. */
     pending: number;
-    /** Candidates manually rejected before source-forecast standardisation. */
+    /** Candidates automatically excluded before source-forecast standardisation. */
     reviewExcluded: number;
     /** Reviewed current samples with a confirmed original carrier, lineage and independent group. */
     originalEligible: number;
@@ -67,7 +67,8 @@ const records = <T>(value: unknown): T[] => Array.isArray(value) ? value as T[] 
 const timestamp = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 
 /**
- * Read-only v4 forecast coverage.  Candidate discovery, review, eligible
+ * Read-only v4 forecast coverage.  Candidate discovery, automatic source
+ * evidence gating, eligible
  * original research, aggregation membership and later self-built scenarios
  * are intentionally separate states.  This function does not create a
  * forecast, infer an identity, or promote an opportunistic sample to a market

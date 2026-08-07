@@ -47,7 +47,7 @@ const METRICS_BY_STATEMENT: Record<StatementType, Array<[NormalizedFinancialMetr
     ["grossProfit", ["GROSS_PROFIT", "grossProfit"]],
     ["operatingIncome", ["OPERATE_PROFIT", "operateProfit"]],
     ["netIncome", ["NETPROFIT", "netProfit"]],
-    ["parentNetIncome", ["PARENT_NETPROFIT"]],
+    ["parentNetIncome", ["PARENT_NETPROFIT", "HOLDER_PROFIT"]],
     ["basicEps", ["BASIC_EPS", "basicEps"]],
     ["dilutedEps", ["DILUTED_EPS", "dilutedEps"]],
   ],
@@ -55,13 +55,13 @@ const METRICS_BY_STATEMENT: Record<StatementType, Array<[NormalizedFinancialMetr
     ["totalAssets", ["TOTAL_ASSETS", "totalAssets", "totaAssets"]],
     ["totalLiabilities", ["TOTAL_LIABILITIES", "totalLiabilities"]],
     ["totalEquity", ["TOTAL_EQUITY", "totalEquity"]],
-    ["cashAndCashEquivalents", ["MONETARYFUNDS", "END_CCE", "endCce"]],
+    ["cashAndCashEquivalents", ["MONETARYFUNDS", "END_CCE", "END_CASH", "endCce"]],
   ],
   cashflow: [
     ["operatingCashFlow", ["NETCASH_OPERATE", "netcashOperate"]],
     ["freeCashFlow", ["FREE_CASH_FLOW", "freeCashFlow"]],
     ["capitalExpenditure", ["CONSTRUCT_LONG_ASSET", "capitalExpenditure"]],
-    ["cashAndCashEquivalents", ["END_CCE", "endCce"]],
+    ["cashAndCashEquivalents", ["END_CCE", "END_CASH", "endCce"]],
   ],
 };
 

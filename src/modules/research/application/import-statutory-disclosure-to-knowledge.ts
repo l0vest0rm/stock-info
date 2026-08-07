@@ -3,7 +3,7 @@ import type { Bindings } from "../../../types";
 type Row = Record<string, unknown>;
 
 type IndexedStatutoryDisclosure = {
-  registry: "cninfo" | "hkex";
+  registry: "cninfo" | "hkex" | "sec";
   securityCode: string;
   documentId: string;
   title: string;
@@ -16,7 +16,7 @@ type IndexedStatutoryDisclosure = {
 
 export type ImportIndexedStatutoryDisclosureResult = {
   securityCode: string;
-  registry: "cninfo" | "hkex";
+  registry: "cninfo" | "hkex" | "sec";
   statutoryDocumentId: string;
   statutoryDocumentUrl: string;
   sourceLocator: string;
@@ -33,7 +33,7 @@ export type ImportIndexedStatutoryDisclosureResult = {
 const MAX_CONVERTED_MARKDOWN_BYTES = 2 * 1024 * 1024;
 
 /**
- * Imports one already-indexed issuer/exchange PDF into the normal local
+ * Imports one already-indexed issuer/exchange/SEC filing into the normal local
  * knowledge ledger.  The caller supplies only the native registry document
  * identifier; a URL is never accepted from the client.  The materialized
  * content hash is part of the document/content key, so no prior local
@@ -57,7 +57,7 @@ export async function importIndexedStatutoryDisclosureToKnowledge(
   if (!row) throw new Error("indexed statutory disclosure document not found; refresh the issuer/exchange index first");
   const disclosure = indexedDisclosure(row);
   assertOfficialDocumentUrl(disclosure);
-  const converterUrl = localConverterUrl(env.KNOWLEDGE_REPORT_CONVERTER_URL);
+  const converterUrl = localConverterUrl(env.KNOWLEDGE_REPORT_CONVERTER_URL, disclosure.registry);
   const converterDocumentId = `statutory_${disclosure.registry}_${hashSafe(disclosure.securityCode)}_${hashSafe(disclosure.documentId)}`;
   const response = await fetch(converterUrl, {
     method: "POST",
@@ -140,7 +140,7 @@ async function insertImmutableKnowledgeDocument(
       ?, ?, 0, null, ?, ?, 0, 0, ?, ?, ?, ?)
     on conflict(doc_id) do nothing`)
       .bind(
-        knowledgeDocumentId, disclosure.registry === "cninfo" ? "CNINFO" : "HKEXnews", disclosure.title, disclosure.documentUrl,
+        knowledgeDocumentId, disclosure.registry === "cninfo" ? "CNINFO" : disclosure.registry === "hkex" ? "HKEXnews" : "SEC EDGAR", disclosure.title, disclosure.documentUrl,
         disclosure.publishedAt, fetchedAt, disclosure.publishedAt, disclosure.securityCode,
         content.slice(0, 600), metadata, JSON.stringify(["statutory_disclosure", disclosure.registry]), JSON.stringify([]),
         disclosure.publishedAt, disclosure.registry, disclosure.securityCode, importedAt,
@@ -173,7 +173,7 @@ async function insertImmutableKnowledgeDocument(
 
 function indexedDisclosure(row: Row): IndexedStatutoryDisclosure {
   const registry = required(row.registry, "stored statutory registry");
-  if (registry !== "cninfo" && registry !== "hkex") throw new Error("indexed statutory disclosure registry is unsupported for local import");
+  if (registry !== "cninfo" && registry !== "hkex" && registry !== "sec") throw new Error("indexed statutory disclosure registry is unsupported for local import");
   return {
     registry,
     securityCode: required(row.securityCode, "stored statutory securityCode").toUpperCase(),
@@ -188,20 +188,26 @@ function assertOfficialDocumentUrl(disclosure: IndexedStatutoryDisclosure): void
   let url: URL;
   try { url = new URL(disclosure.documentUrl); } catch { throw new Error("indexed statutory disclosure URL is invalid"); }
   const host = url.hostname.toLowerCase();
-  const allowed = disclosure.registry === "cninfo" ? ["static.cninfo.com.cn"] : ["www1.hkexnews.hk"];
-  if (url.protocol !== "https:" || !allowed.includes(host) || !url.pathname.toLowerCase().endsWith(".pdf")) {
+  const allowed = disclosure.registry === "cninfo" ? ["static.cninfo.com.cn"] : disclosure.registry === "hkex" ? ["www1.hkexnews.hk"] : ["www.sec.gov"];
+  const permittedPath = disclosure.registry === "sec"
+    ? /^\/Archives\/edgar\/data\/\d+\/.+\.html?$/i.test(url.pathname)
+    : url.pathname.toLowerCase().endsWith(".pdf");
+  if (url.protocol !== "https:" || !allowed.includes(host) || !permittedPath) {
+    if (disclosure.registry === "sec") throw new Error("indexed statutory disclosure URL is not an allowlisted SEC EDGAR HTML filing");
     throw new Error(`indexed statutory disclosure URL is not an allowlisted ${disclosure.registry.toUpperCase()} HTTPS PDF`);
   }
 }
 
-function localConverterUrl(value: string | undefined): string {
+function localConverterUrl(value: string | undefined, registry: IndexedStatutoryDisclosure["registry"]): string {
   const raw = required(value, "KNOWLEDGE_REPORT_CONVERTER_URL");
   let url: URL;
   try { url = new URL(raw); } catch { throw new Error("KNOWLEDGE_REPORT_CONVERTER_URL must be an absolute local HTTP URL"); }
   const host = url.hostname.toLowerCase();
+  const expectedPath = registry === "sec" ? "/__convert-sec-filing" : "/__convert-report";
   if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "::1", "[::1]"].includes(host) || url.pathname !== "/__convert-report") {
-    throw new Error("KNOWLEDGE_REPORT_CONVERTER_URL must point to the local allowlisted PDF converter");
+    throw new Error("KNOWLEDGE_REPORT_CONVERTER_URL must point to the local allowlisted report converter");
   }
+  url.pathname = expectedPath;
   return url.toString();
 }
 

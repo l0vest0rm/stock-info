@@ -1,6 +1,6 @@
 # 投资分析长期技术架构
 
-状态：多个来源绑定的本地研究垂直切片已实现；完整框架尚未完成，必须以 `investment-analysis-delivery-todo.md` 的真实样本矩阵为完成口径。
+状态：多个来源绑定的本地研究垂直切片已实现；完整框架尚未完成，必须以 [`investment-analysis-master-todo.md`](./investment-analysis-master-todo.md) 的按 Tab 页面验收为完成口径。
 需求来源：[`investment-analysis-framework.md`](./investment-analysis-framework.md)
 更新时间：2026-08-05
 
@@ -202,7 +202,7 @@ information_id
 
 ## 2026-08-04 初始交付核对（历史快照）
 
-本节保留首次架构落地时的历史判断，不能作为当前验收依据。当前的逐条状态、代表样本与外部授权边界以 [`investment-analysis-delivery-todo.md`](./investment-analysis-delivery-todo.md) 的 C6 审计为准；其中已经补齐 v4 来源预测身份、港股真实字段核验、正式实际候选和来源影响复核等后续能力。
+本节保留首次架构落地时的历史判断，不能作为当前验收依据。当前的逐条状态、代表样本与外部授权边界以 [`investment-analysis-master-todo.md`](./investment-analysis-master-todo.md) 的按 Tab 验收为准；该清单记录来源预测身份、港股真实字段核验、正式实际候选和来源影响复核等页面能力的当前状态。
 
 本表是对 `investment-analysis-framework.md` 第 13、15、16、20 节的逐项核对。它刻意不把数据库表、空态卡片或单条 fixture 当作“完整实现”。
 

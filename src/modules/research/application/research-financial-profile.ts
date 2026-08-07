@@ -39,23 +39,49 @@ export async function appendResearchFinancialProfile(db: D1Database, input: Rese
 }
 
 export async function loadResearchFinancialProfile(db: D1Database, securityCode: string) {
+  const code = required(securityCode, "securityCode").toUpperCase();
+  let historical: Row[] = [];
+  let automatic: Row[] = [];
+  let readable = false;
   try {
     const rows = await db.prepare(`select p.financial_profile_id as financialProfileId, p.company_id as companyId, p.source_security_code as sourceSecurityCode,
       p.entity_type as entityType, p.as_of as asOf, p.source_authority as sourceAuthority, p.source_url as sourceUrl, p.source_title as sourceTitle,
       p.source_note as sourceNote, p.recorded_by as recordedBy, p.recorded_at as recordedAt, p.created_at as createdAt
       from research_company_financial_profiles p where p.company_id=(select company_id from research_listed_securities where security_code=?)
-      order by p.as_of desc, p.recorded_at desc, p.financial_profile_id desc`).bind(required(securityCode, "securityCode").toUpperCase()).all<Row>();
-    return resolveResearchFinancialProfile(rows.results.map(mapRecord));
+      order by p.as_of desc, p.recorded_at desc, p.financial_profile_id desc`).bind(code).all<Row>();
+    historical = rows.results; readable = true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (/no such table|does not exist|not found/i.test(message)) return { availability: "unavailable" as const, status: "unknown" as const, entityType: null, qualityEntityType: "unknown" as const, asOf: null, reason: "金融实体类型账本尚未初始化；通用非金融指标保持阻断。", records: [] as ResearchFinancialProfileRecord[] };
-    throw error;
+    if (!/no such table|does not exist|not found/i.test(message)) throw error;
   }
+  try {
+    const rows = await db.prepare(`select profile.auto_financial_profile_id as financialProfileId, profile.operating_company_id as companyId,
+      profile.security_code as sourceSecurityCode, profile.entity_type as entityType, profile.as_of as asOf, profile.source_url as sourceUrl,
+      profile.source_title as sourceTitle, profile.source_note as sourceNote, profile.processed_at as recordedAt, profile.materialized_at as createdAt
+      from research_auto_filing_financial_profiles profile
+      join research_auto_filing_fact_inputs input on input.filing_fact_input_id=profile.source_filing_fact_input_id
+      where profile.security_code=? and input.validity_status='current'
+      order by profile.as_of desc, profile.processed_at desc, profile.auto_financial_profile_id desc`).bind(code).all<Row>();
+    automatic = rows.results; readable = true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/no such table|does not exist|not found/i.test(message)) throw error;
+  }
+  if (!readable) return { availability: "unavailable" as const, status: "unknown" as const, entityType: null, qualityEntityType: "unknown" as const, asOf: null, reason: "金融实体类型账本尚未初始化；通用非金融指标保持阻断。", records: [] as ResearchFinancialProfileRecord[] };
+  return resolveResearchFinancialProfile([
+    ...historical.map(mapRecord),
+    ...automatic.map(mapAutomaticRecord),
+  ]);
 }
 
 function mapRecord(row: Row): ResearchFinancialProfileRecord { return {
   financialProfileId: text(row.financialProfileId), companyId: text(row.companyId), sourceSecurityCode: text(row.sourceSecurityCode), entityType: text(row.entityType) as ResearchFinancialEntityType,
   asOf: text(row.asOf), sourceAuthority: text(row.sourceAuthority) as ResearchFinancialProfileAuthority, sourceUrl: text(row.sourceUrl), sourceTitle: text(row.sourceTitle), sourceNote: text(row.sourceNote), recordedBy: text(row.recordedBy), recordedAt: number(row.recordedAt), createdAt: number(row.createdAt),
+}; }
+function mapAutomaticRecord(row: Row): ResearchFinancialProfileRecord { return {
+  financialProfileId: text(row.financialProfileId), companyId: text(row.companyId), sourceSecurityCode: text(row.sourceSecurityCode), entityType: text(row.entityType) as ResearchFinancialEntityType,
+  asOf: text(row.asOf), sourceAuthority: "issuer_disclosure", sourceUrl: text(row.sourceUrl), sourceTitle: text(row.sourceTitle), sourceNote: text(row.sourceNote),
+  recordedBy: "system:auto-filing-financial-profile.v1", recordedAt: number(row.recordedAt), createdAt: number(row.createdAt),
 }; }
 function required(value: unknown, label: string): string { const text = String(value ?? "").trim(); if (!text) throw new Error(`${label} is required`); return text; }
 function text(value: unknown): string { return required(value, "stored financial profile value"); }

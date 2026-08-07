@@ -1,0 +1,199 @@
+{
+  "configVersion": "research-web-search-packages.v8",
+  "model": "gpt-5.6-luna",
+  "packageKind": "industry_market",
+  "securityCode": "300308.SZ",
+  "prompt": "研究对象：300308.SZ（中际旭创，A，交易币种 CNY）\n\n这是“行业市场与 TAM/SAM/SOM 输入包”，不是财报检索。先从公司公开产品、IR 或行业原文识别其明确主营、产品、地区和客户边界，再围绕可辨识的二级赛道搜索行业定义、市场规模、需求、供给、价格、出货、库存、产能、产品结构和增长。不要请求、打开或引用公司财报作为默认材料；公司财报数值也绝不能当成行业市场规模或 TAM 的分母。\n\nTAM：只记录公开原文直接给出的市场规模，或原文明确给出的可复算输入；每条必须保留产品、地区、客户、期间、收入/出货/数量和预测/实际口径。不要把不同产品、地区、期间或收入/出货口径混成一个 TAM，不要把付费报告目录或搜索摘要写成已验证数值。\nSAM：只能记录可服务边界的公开事实，例如公司实际产品/地区、客户类型、认证、监管、渠道、交付或相邻子市场。除非原文直接披露公司可服务市场，不得把相邻子市场或模型推断标为“公司 SAM”。\nSOM/份额：只记录同口径公司分子与行业分母，或记录可用于后续程序计算的单独输入；不得自行计算或把不同边界强行相除。缺 ASP、分速率出货、产品收入拆分或排重信息时，应写 unavailable/缺口。\n\n允许来源：政府、统计部门、行业协会、公开行业机构原文和产业链公司法定披露；搜索摘要或付费报告目录只能标记 unavailable。evidence_records[].tab_id 仅可为：market, industry。字段名和枚举值使用英文 snake_case；不得输出中文 Tab 名称。",
+  "effort": "high",
+  "elapsedMs": 203561,
+  "firstEventMs": 2768,
+  "firstTextMs": 104147,
+  "citationCount": 7,
+  "queryCount": 4,
+  "recordCount": 23,
+  "persistableRecordCount": 23,
+  "verifiedCount": 20,
+  "unavailableCount": 3,
+  "invalidStatusCount": 0,
+  "invalidTabCount": 0,
+  "summary": "已从中际旭创官网、公司公开投资者关系记录、Ethernet Alliance公开材料、LightCounting公开行业原文及产业链公司公开披露中识别业务边界并采集行业输入。公司明确覆盖云计算与AI基础设施、超大规模数据中心、AI训练与推理集群、GPU集群互连及数据中心交换网络，产品覆盖100G/200G/400G/800G/1.6T以太网光模块及AEC/AOC、LPO/LRO、NPO、XPO等。公开原文未直接披露与中际旭创可服务边界严格一致的公司SAM，也未提供可与行业分母同口径的产品级收入、分速率出货、ASP或排重后的公司SOM分子，因此未自行计算TAM/SAM/SOM或市场份额。",
+  "facts": [
+    {
+      "key": "company_primary_business",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司官网将公司定位为面向全球AI基础设施的高速光互连解决方案提供商，应用边界包括超大规模数据中心、AI训练与推理集群、GPU集群互连和数据中心交换网络。",
+      "source": "云计算与AI基础设施-中际旭创"
+    },
+    {
+      "key": "company_product_scope",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司在云计算与AI基础设施页面列示以太网光模块覆盖100G、200G、400G、800G和1.6T，并列示AEC/AOC、LPO/LRO、NPO和XPO产品系列。",
+      "source": "云计算与AI基础设施-中际旭创"
+    },
+    {
+      "key": "company_application_and_customer_scope",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司公开IR记录显示，其800G和1.6T需求主要对应北美CSP客户、传统云数据中心迭代、AI算力提升；同时设备商客户、算力租赁运营商及政企算力和云服务项目也构成需求来源。",
+      "source": "中际旭创2025-006投资者关系活动记录表"
+    },
+    {
+      "key": "company_region_scope",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司公开IR记录确认已有基于DCI互联的相干光模块进入海外数据中心客户并实现销售；同时公司称国内市场400G需求正在快速起量。",
+      "source": "中际旭创2024-003投资者关系活动记录表"
+    },
+    {
+      "key": "company_800g_1_6t_demand_signal",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司2025年6月IR记录称，部分海外客户预计下一年800G将大幅增长，部分客户已有1.6T部署计划和需求指引，预计1.6T需求将在2026年快速增长。",
+      "source": "中际旭创2025-006投资者关系活动记录表"
+    },
+    {
+      "key": "company_800g_price_signal",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司IR对800G价格仅作定性表述，预计会有一定降价；1.6T属于新产品，价格取决于后续对客户的报价，未披露行业统一ASP或价格区间。",
+      "source": "中际旭创2025-006投资者关系活动记录表"
+    },
+    {
+      "key": "company_high_speed_capacity_structure",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司IR称，海外预计进一步扩产，产能结构已转向以高速率光模块为主；泰国工厂出货量预计可全面满足北美客户订单需求。",
+      "source": "中际旭创2025-006投资者关系活动记录表"
+    },
+    {
+      "key": "ai_cluster_optical_market_size_2025",
+      "status": "verified",
+      "subject": "AI集群光互连行业",
+      "statement": "LightCounting公开行业原文估计，AI集群scale-out和scale-up网络使用的100G及以上以太网光模块与CPO市场在2025年达到16.5亿美元。",
+      "source": "AI creates a new wave in demand for optical transceivers and accelerates CPO adoption"
+    },
+    {
+      "key": "ai_cluster_optical_market_size_2026",
+      "status": "verified",
+      "subject": "AI集群光互连行业",
+      "statement": "LightCounting公开行业原文预测，AI集群scale-out和scale-up网络使用的100G及以上以太网光模块与CPO市场将在2026年达到260亿美元。",
+      "source": "AI creates a new wave in demand for optical transceivers and accelerates CPO adoption"
+    },
+    {
+      "key": "cloud_sp_optical_pluggable_market_size_2029",
+      "status": "verified",
+      "subject": "云服务商数据中心可插拔光模块行业",
+      "statement": "Ethernet Alliance公开演示材料援引Omdia预测，云服务商数据中心光学可插拔收发器市场到2029年将接近120亿美元。",
+      "source": "Exploration of AI Interconnect, Ethernet Alliance panel presentation"
+    },
+    {
+      "key": "cloud_sp_optical_pluggable_device_volume_2029",
+      "status": "verified",
+      "subject": "云服务商数据中心可插拔光模块行业",
+      "statement": "Ethernet Alliance公开演示材料援引Omdia预测，云服务商数据中心可插拔光模块到2029年销量将超过3500万只。",
+      "source": "Exploration of AI Interconnect, Ethernet Alliance panel presentation"
+    },
+    {
+      "key": "800g_2xfr4_market_size_2024",
+      "status": "verified",
+      "subject": "800G 2xFR4光模块行业",
+      "statement": "POET公开公司公告援引LightCounting称，800G 2xFR4收发器市场在2024年为7.5亿美元。",
+      "source": "POET Enters Optical Module Market with 800G Transceiver for Artificial Intelligence Networks"
+    },
+    {
+      "key": "800g_2xfr4_market_size_2027",
+      "status": "verified",
+      "subject": "800G 2xFR4光模块行业",
+      "statement": "POET公开公司公告援引LightCounting预测，800G 2xFR4收发器市场到2027年将增长至17亿美元。",
+      "source": "POET Enters Optical Module Market with 800G Transceiver for Artificial Intelligence Networks"
+    },
+    {
+      "key": "800g_2xfr4_ai_demand_share",
+      "status": "verified",
+      "subject": "800G 2xFR4光模块行业",
+      "statement": "POET公开公司公告援引LightCounting称，800G 2xFR4收发器需求中超过一半由AI网络驱动。",
+      "source": "POET Enters Optical Module Market with 800G Transceiver for Artificial Intelligence Networks"
+    },
+    {
+      "key": "cloud_sp_product_mix_transition",
+      "status": "verified",
+      "subject": "云服务商数据中心光模块产品结构",
+      "statement": "Omdia公开预测显示，云数据中心中100G设备将让位于200G、400G和800G；200G随后快速下降，产品结构转向400G、800G和1.6T。",
+      "source": "Exploration of AI Interconnect, Ethernet Alliance panel presentation"
+    },
+    {
+      "key": "800g_1_6t_deployment_timeline",
+      "status": "verified",
+      "subject": "800G与1.6T云数据中心光模块",
+      "statement": "Omdia公开预测显示，800G可插拔模块部署在2024年加速并将在2025年及以后继续加速；1.6T将在2025年出现小规模生产部署，并在2026年及以后加速。",
+      "source": "Exploration of AI Interconnect, Ethernet Alliance panel presentation"
+    },
+    {
+      "key": "ethernet_transceiver_growth_2026",
+      "status": "verified",
+      "subject": "以太网光模块行业",
+      "statement": "LightCounting公开行业原文预测，以太网收发器市场2026年增长65%。",
+      "source": "Demand for optical connectivity continues to surprise"
+    },
+    {
+      "key": "optical_transceiver_supply_demand_gap_2026",
+      "status": "verified",
+      "subject": "光模块供应链",
+      "statement": "LightCounting公开行业原文称，InP EML和激光器芯片产能限制增长，当前光模块需求超过供给30%，短缺预计在2026年底前后缓解。",
+      "source": "Demand for optical connectivity continues to surprise"
+    },
+    {
+      "key": "optical_transceiver_price_cycle_signal",
+      "status": "verified",
+      "subject": "光模块行业价格",
+      "statement": "LightCounting公开行业原文称，供应商增加产能、供给短缺缓解后，重复下单消退，价格下降会加速；未披露与中际旭创产品边界一致的ASP。",
+      "source": "Demand for optical connectivity continues to surprise"
+    },
+    {
+      "key": "industry_shipments_by_rate",
+      "status": "verified",
+      "subject": "分速率光模块行业出货量",
+      "statement": "公开行业原文可确认LightCounting报告数据库覆盖2022-2025历史数据及2026-2031预测，并包含超过200种产品的出货量、价格和销售额，但本次可访问公开页面未给出与中际旭创产品边界一致的分速率具体出货量表。",
+      "source": "Demand for optical connectivity continues to surprise"
+    },
+    {
+      "key": "industry_inventory",
+      "status": "unavailable",
+      "subject": "光模块行业库存",
+      "statement": "本次检索到的公开原文未提供与800G、1.6T及中际旭创可服务边界一致的行业库存量、库存周转或渠道库存数据。",
+      "source": null
+    },
+    {
+      "key": "company_product_level_revenue_split",
+      "status": "unavailable",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司未在本次可访问公开IR材料中披露可与行业市场规模同口径的100G、200G、400G、800G、1.6T产品收入拆分，因此不能作为TAM分母或SOM分子使用。",
+      "source": null
+    },
+    {
+      "key": "company_product_level_shipments_and_asp",
+      "status": "unavailable",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司未在本次可访问公开IR材料中同时披露分速率出货量、ASP、客户去重口径和产品收入拆分，因此暂不能计算同口径SOM或市场份额。",
+      "source": null
+    }
+  ],
+  "modelOutput": "{\"summary\":\"已从中际旭创官网、公司公开投资者关系记录、Ethernet Alliance公开材料、LightCounting公开行业原文及产业链公司公开披露中识别业务边界并采集行业输入。公司明确覆盖云计算与AI基础设施、超大规模数据中心、AI训练与推理集群、GPU集群互连及数据中心交换网络，产品覆盖100G/200G/400G/800G/1.6T以太网光模块及AEC/AOC、LPO/LRO、NPO、XPO等。公开原文未直接披露与中际旭创可服务边界严格一致的公司SAM，也未提供可与行业分母同口径的产品级收入、分速率出货、ASP或排重后的公司SOM分子，因此未自行计算TAM/SAM/SOM或市场份额。\",\"evidence_records\":[{\"tab_id\":\"market\",\"field_key\":\"company_primary_business\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司官网将公司定位为面向全球AI基础设施的高速光互连解决方案提供商，应用边界包括超大规模数据中心、AI训练与推理集群、GPU集群互连和数据中心交换网络。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"undated current website\",\"product_scope\":\"高速光互连解决方案\",\"region_scope\":\"全球\",\"source_title\":\"云计算与AI基础设施-中际旭创\",\"source_url\":\"https://www.zj-innolight.com/cn/cloud_ai_infrastructure.html ([zj-innolight.com](https://www.zj-innolight.com/cn/cloud_ai_infrastructure.html))\",\"source_published_at\":null,\"quote\":\"## 赋能全球AI基础设施发展\",\"locator\":\"网页第141-168行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_product_scope\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司在云计算与AI基础设施页面列示以太网光模块覆盖100G、200G、400G、800G和1.6T，并列示AEC/AOC、LPO/LRO、NPO和XPO产品系列。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"undated current website\",\"product_scope\":\"Ethernet optical transceivers; AEC/AOC; LPO/LRO; NPO; XPO\",\"region_scope\":\"全球\",\"source_title\":\"云计算与AI基础设施-中际旭创\",\"source_url\":\"https://www.zj-innolight.com/cn/cloud_ai_infrastructure.html ([zj-innolight.com](https://www.zj-innolight.com/cn/cloud_ai_infrastructure.html))\",\"source_published_at\":null,\"quote\":\"Ethernet Optical Transceivers (100G/200G/400G/800G/1.6T)\",\"locator\":\"网页第170-198行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_application_and_customer_scope\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司公开IR记录显示，其800G和1.6T需求主要对应北美CSP客户、传统云数据中心迭代、AI算力提升；同时设备商客户、算力租赁运营商及政企算力和云服务项目也构成需求来源。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"2025-06-11 IR discussion\",\"product_scope\":\"800G and 1.6T optical modules\",\"region_scope\":\"北美及海外，另含国内政企和算力服务项目\",\"source_title\":\"中际旭创2025-006投资者关系活动记录表\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-06-12/1223848900.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-06-12/1223848900.PDF))\",\"source_published_at\":\"2025-06-12\",\"quote\":\"北美 CSP 客户需求旺盛，预计会进一步增加资本开支\",\"locator\":\"PDF第2页，Q11，原文第56-61行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_region_scope\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司公开IR记录确认已有基于DCI互联的相干光模块进入海外数据中心客户并实现销售；同时公司称国内市场400G需求正在快速起量。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"2024-04-30 IR discussion\",\"product_scope\":\"DCI coherent optical modules; 400G optical modules\",\"region_scope\":\"海外数据中心客户及中国国内市场\",\"source_title\":\"中际旭创2024-003投资者关系活动记录表\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2024-04-30/1219958948.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2024-04-30/1219958948.PDF))\",\"source_published_at\":\"2024-04-30\",\"quote\":\"公司已有基于 DCI 互联的相干光模块进入海外数据中心客户，并已实现销售\",\"locator\":\"PDF第1页，Q2，原文第28-32行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_800g_1_6t_demand_signal\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司2025年6月IR记录称，部分海外客户预计下一年800G将大幅增长，部分客户已有1.6T部署计划和需求指引，预计1.6T需求将在2026年快速增长。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"2026 forecast based on 2025-06-11 customer guidance\",\"product_scope\":\"800G and 1.6T optical modules\",\"region_scope\":\"部分海外客户\",\"source_title\":\"中际旭创2025-006投资者关系活动记录表\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-06-12/1223848900.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-06-12/1223848900.PDF))\",\"source_published_at\":\"2025-06-12\",\"quote\":\"预计这部分客户明年 800G 将有较大幅度增长\",\"locator\":\"PDF第1页，Q1，原文第25-29行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_800g_price_signal\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司IR对800G价格仅作定性表述，预计会有一定降价；1.6T属于新产品，价格取决于后续对客户的报价，未披露行业统一ASP或价格区间。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"2026 outlook based on 2025-06-11 IR discussion\",\"product_scope\":\"800G and 1.6T optical modules\",\"region_scope\":\"公司客户市场，未限定单一地区\",\"source_title\":\"中际旭创2025-006投资者关系活动记录表\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-06-12/1223848900.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-06-12/1223848900.PDF))\",\"source_published_at\":\"2025-06-12\",\"quote\":\"800G 预计会有一定降价\",\"locator\":\"PDF第1页，Q3，原文第33-34行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_high_speed_capacity_structure\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司IR称，海外预计进一步扩产，产能结构已转向以高速率光模块为主；泰国工厂出货量预计可全面满足北美客户订单需求。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"2025-06-11 IR discussion\",\"product_scope\":\"高速率光模块，含800G和1.6T\",\"region_scope\":\"泰国生产基地、北美客户\",\"source_title\":\"中际旭创2025-006投资者关系活动记录表\",\"source_url\":\"https://static.cninfo.com.cn/finalpage/2025-06-12/1223848900.PDF ([static.cninfo.com.cn](https://static.cninfo.com.cn/finalpage/2025-06-12/1223848900.PDF))\",\"source_published_at\":\"2025-06-12\",\"quote\":\"产能的整体增长不一定非常明显，但是结构已经发生变化，以高速率光模块的产能为主\",\"locator\":\"PDF第2页，Q13，原文第65-68行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"ai_cluster_optical_market_size_2025\",\"subject\":\"AI集群光互连行业\",\"statement\":\"LightCounting公开行业原文估计，AI集群scale-out和scale-up网络使用的100G及以上以太网光模块与CPO市场在2025年达到16.5亿美元。\",\"numeric_value\":16.5,\"unit\":\"billion\",\"currency\":\"USD\",\"period\":\"2025 actual estimate\",\"product_scope\":\"Ethernet optical transceivers starting with 100G and CPO for AI-cluster scale-out and scale-up networks\",\"region_scope\":\"全球口径未在该段单独限定\",\"source_title\":\"AI creates a new wave in demand for optical transceivers and accelerates CPO adoption\",\"source_url\":\"https://lightcounting.com/newsletter/en/january-2026-optics-for-ai-clusters-366 ([lightcounting.com](https://lightcounting.com/newsletter/en/january-2026-optics-for-ai-clusters-366))\",\"source_published_at\":\"2026-01\",\"quote\":\"We estimate that the market reached $16.5 billion in 2025\",\"locator\":\"网页第21行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"ai_cluster_optical_market_size_2026\",\"subject\":\"AI集群光互连行业\",\"statement\":\"LightCounting公开行业原文预测，AI集群scale-out和scale-up网络使用的100G及以上以太网光模块与CPO市场将在2026年达到260亿美元。\",\"numeric_value\":26,\"unit\":\"billion\",\"currency\":\"USD\",\"period\":\"2026 forecast\",\"product_scope\":\"Ethernet optical transceivers starting with 100G and CPO for AI-cluster scale-out and scale-up networks\",\"region_scope\":\"全球口径未在该段单独限定\",\"source_title\":\"AI creates a new wave in demand for optical transceivers and accelerates CPO adoption\",\"source_url\":\"https://lightcounting.com/newsletter/en/january-2026-optics-for-ai-clusters-366 ([lightcounting.com](https://lightcounting.com/newsletter/en/january-2026-optics-for-ai-clusters-366))\",\"source_published_at\":\"2026-01\",\"quote\":\"it will reach $26 billion in 2026\",\"locator\":\"网页第21行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"cloud_sp_optical_pluggable_market_size_2029\",\"subject\":\"云服务商数据中心可插拔光模块行业\",\"statement\":\"Ethernet Alliance公开演示材料援引Omdia预测，云服务商数据中心光学可插拔收发器市场到2029年将接近120亿美元。\",\"numeric_value\":12,\"unit\":\"billion\",\"currency\":\"USD\",\"period\":\"2029 forecast\",\"product_scope\":\"Optical pluggable transceivers for global cloud service provider data centers, including scale-up and scale-out networks\",\"region_scope\":\"全球云服务商数据中心\",\"source_title\":\"Exploration of AI Interconnect, Ethernet Alliance panel presentation\",\"source_url\":\"https://ethernetalliance.org/wp-content/uploads/2024/10/Panel3_24_1022_.pdf ([ethernetalliance.org](https://ethernetalliance.org/wp-content/uploads/2024/10/Panel3_24_1022_.pdf))\",\"source_published_at\":\"2024-10-28\",\"quote\":\"Omdia expects the optical pluggable transceiver market to become nearly $12bn\",\"locator\":\"PDF第9页，原文第119-128行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"cloud_sp_optical_pluggable_device_volume_2029\",\"subject\":\"云服务商数据中心可插拔光模块行业\",\"statement\":\"Ethernet Alliance公开演示材料援引Omdia预测，云服务商数据中心可插拔光模块到2029年销量将超过3500万只。\",\"numeric_value\":35,\"unit\":\"million devices\",\"currency\":null,\"period\":\"2029 forecast\",\"product_scope\":\"Optical pluggable transceivers for global cloud service provider data centers, including scale-up and scale-out networks\",\"region_scope\":\"全球云服务商数据中心\",\"source_title\":\"Exploration of AI Interconnect, Ethernet Alliance panel presentation\",\"source_url\":\"https://ethernetalliance.org/wp-content/uploads/2024/10/Panel3_24_1022_.pdf ([ethernetalliance.org](https://ethernetalliance.org/wp-content/uploads/2024/10/Panel3_24_1022_.pdf))\",\"source_published_at\":\"2024-10-28\",\"quote\":\"with over 35 million devices sold in 2029\",\"locator\":\"PDF第9页，原文第125-128行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"800g_2xfr4_market_size_2024\",\"subject\":\"800G 2xFR4光模块行业\",\"statement\":\"POET公开公司公告援引LightCounting称，800G 2xFR4收发器市场在2024年为7.5亿美元。\",\"numeric_value\":750,\"unit\":\"million\",\"currency\":\"USD\",\"period\":\"2024 actual estimate\",\"product_scope\":\"800G 2xFR4 pluggable transceivers, including OSFP form factor; up to 2km single-mode fiber link\",\"region_scope\":\"全球口径未在该段单独限定\",\"source_title\":\"POET Enters Optical Module Market with 800G Transceiver for Artificial Intelligence Networks\",\"source_url\":\"https://www.poet-technologies.com/news/2024-mar-26 ([poet-technologies.com](https://www.poet-technologies.com/news/2024-mar-26))\",\"source_published_at\":\"2024-03-26\",\"quote\":\"the market for 800G 2xFR4 transceivers in 2024 is $750 million\",\"locator\":\"网页第15行及第96行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"800g_2xfr4_market_size_2027\",\"subject\":\"800G 2xFR4光模块行业\",\"statement\":\"POET公开公司公告援引LightCounting预测，800G 2xFR4收发器市场到2027年将增长至17亿美元。\",\"numeric_value\":1.7,\"unit\":\"billion\",\"currency\":\"USD\",\"period\":\"2027 forecast\",\"product_scope\":\"800G 2xFR4 pluggable transceivers, including OSFP form factor; up to 2km single-mode fiber link\",\"region_scope\":\"全球口径未在该段单独限定\",\"source_title\":\"POET Enters Optical Module Market with 800G Transceiver for Artificial Intelligence Networks\",\"source_url\":\"https://www.poet-technologies.com/news/2024-mar-26 ([poet-technologies.com](https://www.poet-technologies.com/news/2024-mar-26))\",\"source_published_at\":\"2024-03-26\",\"quote\":\"is forecasted to grow to $1.7 billion by 2027\",\"locator\":\"网页第15行及第96行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"800g_2xfr4_ai_demand_share\",\"subject\":\"800G 2xFR4光模块行业\",\"statement\":\"POET公开公司公告援引LightCounting称，800G 2xFR4收发器需求中超过一半由AI网络驱动。\",\"numeric_value\":50,\"unit\":\"percent minimum\",\"currency\":null,\"period\":\"2024 market estimate and 2027 forecast context\",\"product_scope\":\"800G 2xFR4 pluggable transceivers\",\"region_scope\":\"全球口径未在该段单独限定\",\"source_title\":\"POET Enters Optical Module Market with 800G Transceiver for Artificial Intelligence Networks\",\"source_url\":\"https://www.poet-technologies.com/news/2024-mar-26 ([poet-technologies.com](https://www.poet-technologies.com/news/2024-mar-26))\",\"source_published_at\":\"2024-03-26\",\"quote\":\"with more than half of the demand driven by AI networks\",\"locator\":\"网页第15行及第96行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"cloud_sp_product_mix_transition\",\"subject\":\"云服务商数据中心光模块产品结构\",\"statement\":\"Omdia公开预测显示，云数据中心中100G设备将让位于200G、400G和800G；200G随后快速下降，产品结构转向400G、800G和1.6T。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"2024-2026 and beyond outlook\",\"product_scope\":\"Cloud service provider data-center optical pluggable transceivers\",\"region_scope\":\"全球云服务商数据中心\",\"source_title\":\"Exploration of AI Interconnect, Ethernet Alliance panel presentation\",\"source_url\":\"https://ethernetalliance.org/wp-content/uploads/2024/10/Panel3_24_1022_.pdf ([ethernetalliance.org](https://ethernetalliance.org/wp-content/uploads/2024/10/Panel3_24_1022_.pdf))\",\"source_published_at\":\"2024-10-28\",\"quote\":\"100G devices to disappear from cloud data centers this year in favor of 200G, 400G, and 800G\",\"locator\":\"PDF第9页，原文第129-134行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"800g_1_6t_deployment_timeline\",\"subject\":\"800G与1.6T云数据中心光模块\",\"statement\":\"Omdia公开预测显示，800G可插拔模块部署在2024年加速并将在2025年及以后继续加速；1.6T将在2025年出现小规模生产部署，并在2026年及以后加速。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"2023-2026 and beyond outlook\",\"product_scope\":\"800G and 1.6T optical pluggables\",\"region_scope\":\"全球云服务商数据中心\",\"source_title\":\"Exploration of AI Interconnect, Ethernet Alliance panel presentation\",\"source_url\":\"https://ethernetalliance.org/wp-content/uploads/2024/10/Panel3_24_1022_.pdf ([ethernetalliance.org](https://ethernetalliance.org/wp-content/uploads/2024/10/Panel3_24_1022_.pdf))\",\"source_published_at\":\"2024-10-28\",\"quote\":\"Small deployments of 1.6T expected to be in production data centers in 2025\",\"locator\":\"PDF第9页，原文第135-140行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"ethernet_transceiver_growth_2026\",\"subject\":\"以太网光模块行业\",\"statement\":\"LightCounting公开行业原文预测，以太网收发器市场2026年增长65%。\",\"numeric_value\":65,\"unit\":\"percent growth\",\"currency\":null,\"period\":\"2026 forecast\",\"product_scope\":\"Ethernet transceivers\",\"region_scope\":\"全球口径未在该段单独限定\",\"source_title\":\"Demand for optical connectivity continues to surprise\",\"source_url\":\"https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379 ([lightcounting.com](https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379))\",\"source_published_at\":\"2026-04\",\"quote\":\"We now forecast 65% growth for 2026\",\"locator\":\"网页第17-24行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"optical_transceiver_supply_demand_gap_2026\",\"subject\":\"光模块供应链\",\"statement\":\"LightCounting公开行业原文称，InP EML和激光器芯片产能限制增长，当前光模块需求超过供给30%，短缺预计在2026年底前后缓解。\",\"numeric_value\":30,\"unit\":\"percent demand exceeds supply\",\"currency\":null,\"period\":\"2026 current assessment\",\"product_scope\":\"Optical transceivers, with InP EML and laser-chip supply constraints\",\"region_scope\":\"全球口径未在该段单独限定\",\"source_title\":\"Demand for optical connectivity continues to surprise\",\"source_url\":\"https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379 ([lightcounting.com](https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379))\",\"source_published_at\":\"2026-04\",\"quote\":\"The current demand is exceeding supply by 30%\",\"locator\":\"网页第24行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"optical_transceiver_price_cycle_signal\",\"subject\":\"光模块行业价格\",\"statement\":\"LightCounting公开行业原文称，供应商增加产能、供给短缺缓解后，重复下单消退，价格下降会加速；未披露与中际旭创产品边界一致的ASP。\",\"numeric_value\":null,\"unit\":\"qualitative\",\"currency\":null,\"period\":\"current-cycle outlook\",\"product_scope\":\"Optical transceivers\",\"region_scope\":\"全球口径未在该段单独限定\",\"source_title\":\"Demand for optical connectivity continues to surprise\",\"source_url\":\"https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379 ([lightcounting.com](https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379))\",\"source_published_at\":\"2026-04\",\"quote\":\"price declines accelerate\",\"locator\":\"网页第26-27行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"industry_shipments_by_rate\",\"subject\":\"分速率光模块行业出货量\",\"statement\":\"公开行业原文可确认LightCounting报告数据库覆盖2022-2025历史数据及2026-2031预测，并包含超过200种产品的出货量、价格和销售额，但本次可访问公开页面未给出与中际旭创产品边界一致的分速率具体出货量表。\",\"numeric_value\":null,\"unit\":\"unavailable\",\"currency\":null,\"period\":\"2022-2031\",\"product_scope\":\"超过200种光模块及相关产品\",\"region_scope\":\"未限定\",\"source_title\":\"Demand for optical connectivity continues to surprise\",\"source_url\":\"https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379 ([lightcounting.com](https://www.lightcounting.com/newsletter/en/april-2026-market-forecast-379))\",\"source_published_at\":\"2026-04\",\"quote\":\"The forecast database includes historical data (2022-2025) and forecast (2026-2031) for shipments, pricing and sales of more than 200 different products\",\"locator\":\"网页第31行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"industry_inventory\",\"subject\":\"光模块行业库存\",\"statement\":\"本次检索到的公开原文未提供与800G、1.6T及中际旭创可服务边界一致的行业库存量、库存周转或渠道库存数据。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":null,\"product_scope\":\"800G/1.6T及相关高速光模块\",\"region_scope\":null,\"source_title\":null,\"source_url\":null,\"source_published_at\":null,\"quote\":\"\",\"locator\":null,\"status\":\"unavailable\"},{\"tab_id\":\"market\",\"field_key\":\"company_product_level_revenue_split\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司未在本次可访问公开IR材料中披露可与行业市场规模同口径的100G、200G、400G、800G、1.6T产品收入拆分，因此不能作为TAM分母或SOM分子使用。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":null,\"product_scope\":\"100G/200G/400G/800G/1.6T\",\"region_scope\":null,\"source_title\":null,\"source_url\":null,\"source_published_at\":null,\"quote\":\"\",\"locator\":null,\"status\":\"unavailable\"},{\"tab_id\":\"market\",\"field_key\":\"company_product_level_shipments_and_asp\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司未在本次可访问公开IR材料中同时披露分速率出货量、ASP、客户去重口径和产品收入拆分，因此暂不能计算同口径SOM或市场份额。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":null,\"product_scope\":\"高速光模块\",\"region_scope\":null,\"source_title\":null,\"source_published_at\":null,\"source_url\":null,\"quote\":\"\",\"locator\":null,\"status\":\"unavailable\"}],\"missing_fields\":[\"公司明确披露且与产品、地区、客户和期间边界一致的TAM总额\",\"公司直接披露的可服务市场SAM\",\"按100G/200G/400G/800G/1.6T拆分的行业出货量和收入\",\"与公司产品边界一致的行业ASP和价格序列\",\"行业库存、渠道库存和库存周转\",\"公司分速率产品收入、出货量、客户去重和可与行业分母匹配的SOM分子\",\"可验证的公司与行业同口径市场份额\"],\"conflicts\":[],\"refresh_triggers\":[\"LightCounting或Omdia公开发布新的分产品、分地区、分客户市场规模和出货数据库摘要\",\"中际旭创公开披露分速率产品收入、出货量、ASP、客户去重或认证覆盖范围\",\"公司或行业协会公开披露800G/1.6T库存、产能利用率、有效产能和交付周期\",\"行业公开资料出现新的800G/1.6T价格、供需缺口或产品结构预测\"]}",
+  "eventTypes": [
+    "response.created",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.web_search_call.in_progress",
+    "response.web_search_call.searching",
+    "response.web_search_call.completed",
+    "response.content_part.added",
+    "response.output_text.delta",
+    "response.output_text.annotation.added",
+    "response.output_text.done",
+    "response.content_part.done",
+    "response.completed"
+  ]
+}

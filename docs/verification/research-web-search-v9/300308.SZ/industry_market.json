@@ -1,0 +1,241 @@
+{
+  "configVersion": "research-web-search-packages.v9",
+  "model": "gpt-5.6-luna",
+  "packageKind": "industry_market",
+  "securityCode": "300308.SZ",
+  "prompt": "研究对象：300308.SZ（中际旭创，A，交易币种 CNY）\n\n这是“行业市场与 TAM/SAM/SOM 输入包”，不是财报检索。先从公司公开产品、IR 或行业原文识别其明确主营、产品、地区和客户边界，再围绕可辨识的二级赛道搜索行业定义、市场规模、需求、供给、价格、出货、库存、产能、产品结构和增长。不要请求、打开或引用公司财报作为默认材料；公司财报数值也绝不能当成行业市场规模或 TAM 的分母。\n\nTAM：只记录公开原文直接给出的市场规模，或原文明确给出的可复算输入；每条必须保留产品、地区、客户、期间、收入/出货/数量和预测/实际口径。不要把不同产品、地区、期间或收入/出货口径混成一个 TAM，不要把付费报告目录或搜索摘要写成已验证数值。\n若公开页只说明某数据库/报告“覆盖”出货量、价格或销售额，却没有展示该指标的实际数值、期间和边界，该指标必须标记 `unavailable`；不得把目录或覆盖描述写成 `verified` 的出货量、价格、TAM 或份额事实。\nSAM：只能记录可服务边界的公开事实，例如公司实际产品/地区、客户类型、认证、监管、渠道、交付或相邻子市场。除非原文直接披露公司可服务市场，不得把相邻子市场或模型推断标为“公司 SAM”。\nSOM/份额：只记录同口径公司分子与行业分母，或记录可用于后续程序计算的单独输入；不得自行计算或把不同边界强行相除。缺 ASP、分速率出货、产品收入拆分或排重信息时，应写 unavailable/缺口。\n\n允许来源：政府、统计部门、行业协会、公开行业机构原文和产业链公司法定披露；搜索摘要或付费报告目录只能标记 unavailable。evidence_records[].tab_id 仅可为：market, industry。字段名和枚举值使用英文 snake_case；不得输出中文 Tab 名称。",
+  "effort": "high",
+  "elapsedMs": 228010,
+  "firstEventMs": 2165,
+  "firstTextMs": 122209,
+  "citationCount": 7,
+  "queryCount": 3,
+  "recordCount": 28,
+  "persistableRecordCount": 28,
+  "verifiedCount": 22,
+  "unavailableCount": 6,
+  "invalidStatusCount": 0,
+  "statusCounts": {
+    "verified": 22,
+    "unavailable": 6,
+    "uncited": 0,
+    "citation_unquoted": 0,
+    "format_incomplete": 0
+  },
+  "invalidTabCount": 0,
+  "summary": "已从中际旭创公开产品页确认其主营边界为面向数据中心、AI互联及云计算基础设施的高速光互连产品，核心产品覆盖100G至1.6T光模块，并具备全球化制造与交付能力。公开行业原文提供了AI光模块市场规模、400G及以上和800G及以上光模块出货量、800G及以上产品出货占比、需求增速及供应瓶颈等输入；不同指标的产品范围、地区和期间不同，未合并为单一TAM或份额。",
+  "facts": [
+    {
+      "key": "company_primary_business",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司公开产品边界为面向数据中心及AI互联的高速光通信解决方案，聚焦高速光模块，覆盖100G、200G、400G、800G及1.6T。",
+      "source": "产品方案-旭创科技"
+    },
+    {
+      "key": "company_application_scope",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司公开的云计算与AI基础设施应用边界包括超大规模数据中心、AI训练与推理集群、GPU集群互连和数据中心交换网络。",
+      "source": "云计算与AI基础设施-中际旭创"
+    },
+    {
+      "key": "company_adjacent_product_scope",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司公开产品方案还覆盖相干传输，应用定义为长距离大容量传输。",
+      "source": "产品方案-旭创科技"
+    },
+    {
+      "key": "company_region_scope",
+      "status": "verified",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司官网公开表述具备全球化规模制造与交付能力，可作为其公开的地区服务边界输入，但未给出按地区的收入、出货或客户拆分。",
+      "source": "云计算与AI基础设施-中际旭创"
+    },
+    {
+      "key": "ai_optical_transceiver_market_size",
+      "status": "verified",
+      "subject": "全球AI光模块市场",
+      "statement": "TrendForce公开原文给出的AI-focused optical transceiver市场规模为2025年165亿美元。该口径是全球、AI-focused optical transceivers，不等同于全部光模块市场。",
+      "source": "Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce"
+    },
+    {
+      "key": "ai_optical_transceiver_market_size",
+      "status": "verified",
+      "subject": "全球AI光模块市场",
+      "statement": "TrendForce公开原文预测AI-focused optical transceiver市场规模2026年达到260亿美元。该口径是全球、AI-focused optical transceivers，不等同于全部光模块市场。",
+      "source": "Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce"
+    },
+    {
+      "key": "ai_optical_transceiver_market_growth",
+      "status": "verified",
+      "subject": "全球AI光模块市场",
+      "statement": "TrendForce公开原文预计AI-focused optical transceiver市场2026年同比增长超过57%。",
+      "source": "Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce"
+    },
+    {
+      "key": "optical_transceiver_shipments",
+      "status": "verified",
+      "subject": "全球400G及以上光模块",
+      "statement": "TrendForce报告全球400G及以上光模块出货量2023年为640万只。",
+      "source": "DeepSeek's Low-Cost AI Model to Spur Demand for Optical Communication, with Optical Transceiver Shipments Projected to Grow by 56.5% in 2025, Says TrendForce"
+    },
+    {
+      "key": "optical_transceiver_shipments",
+      "status": "verified",
+      "subject": "全球400G及以上光模块",
+      "statement": "TrendForce预计全球400G及以上光模块出货量2024年为2040万只。",
+      "source": "DeepSeek's Low-Cost AI Model to Spur Demand for Optical Communication, with Optical Transceiver Shipments Projected to Grow by 56.5% in 2025, Says TrendForce"
+    },
+    {
+      "key": "optical_transceiver_shipments",
+      "status": "verified",
+      "subject": "全球400G及以上光模块",
+      "statement": "TrendForce预计全球400G及以上光模块出货量2025年超过3190万只。",
+      "source": "DeepSeek's Low-Cost AI Model to Spur Demand for Optical Communication, with Optical Transceiver Shipments Projected to Grow by 56.5% in 2025, Says TrendForce"
+    },
+    {
+      "key": "optical_transceiver_shipments_growth",
+      "status": "verified",
+      "subject": "全球400G及以上光模块",
+      "statement": "TrendForce预计全球400G及以上光模块2025年出货量同比增长56.5%。",
+      "source": "DeepSeek's Low-Cost AI Model to Spur Demand for Optical Communication, with Optical Transceiver Shipments Projected to Grow by 56.5% in 2025, Says TrendForce"
+    },
+    {
+      "key": "high_speed_optical_transceiver_shipments",
+      "status": "verified",
+      "subject": "全球800G及以上光模块",
+      "statement": "TrendForce预计全球800G及以上光模块出货量2025年为2400万只。",
+      "source": "MediaTek Ventures into Micro LED Optical Communication"
+    },
+    {
+      "key": "high_speed_optical_transceiver_shipments",
+      "status": "verified",
+      "subject": "全球800G及以上光模块",
+      "statement": "TrendForce预计全球800G及以上光模块出货量2026年接近6300万只。",
+      "source": "MediaTek Ventures into Micro LED Optical Communication"
+    },
+    {
+      "key": "high_speed_optical_transceiver_shipments_growth",
+      "status": "verified",
+      "subject": "全球800G及以上光模块",
+      "statement": "TrendForce预计全球800G及以上光模块出货量2026年约为2025年的2.6倍。",
+      "source": "MediaTek Ventures into Micro LED Optical Communication"
+    },
+    {
+      "key": "high_speed_product_mix",
+      "status": "verified",
+      "subject": "全球800G及以上光模块",
+      "statement": "TrendForce预计全球800G及以上光模块出货量占比将由2024年的19.5%升至2026年超过60%。",
+      "source": "Google’s High-Speed Interconnect Architecture to Push 800G+ Optical Transceiver Share Past 60% by 2026, Says TrendForce"
+    },
+    {
+      "key": "high_speed_product_mix",
+      "status": "verified",
+      "subject": "全球800G及以上光模块",
+      "statement": "TrendForce预计全球800G及以上光模块出货量占比2026年超过60%。",
+      "source": "Google’s High-Speed Interconnect Architecture to Push 800G+ Optical Transceiver Share Past 60% by 2026, Says TrendForce"
+    },
+    {
+      "key": "hyperscale_data_center_demand_growth",
+      "status": "verified",
+      "subject": "北美超大规模数据中心",
+      "statement": "TrendForce称北美超大规模数据中心流量保持超过30%的年增长，并推动Google、Microsoft和Meta扩大GPU及AI服务器部署。该指标是需求驱动输入，不是光模块出货量。",
+      "source": "Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce"
+    },
+    {
+      "key": "industry_customer_scope",
+      "status": "verified",
+      "subject": "全球AI数据中心光互联需求",
+      "statement": "TrendForce公开原文将Google、Microsoft和Meta列为扩大GPU及AI服务器部署的云厂商；这是行业需求边界，不是中际旭创已披露客户清单。",
+      "source": "Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce"
+    },
+    {
+      "key": "supply_bottleneck",
+      "status": "verified",
+      "subject": "全球AI光模块产业链",
+      "statement": "TrendForce指出EML和连续波激光器等关键光电芯片供应偏紧，属于800G及以上光模块扩产的公开供给约束。",
+      "source": "Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce"
+    },
+    {
+      "key": "manufacturing_capacity_constraint",
+      "status": "verified",
+      "subject": "全球AI光模块产业链",
+      "statement": "TrendForce指出光学对准等高精度制造工艺限制规模化生产，属于公开的产能扩张约束。",
+      "source": "Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce"
+    },
+    {
+      "key": "coherent_800g_application_scope",
+      "status": "verified",
+      "subject": "800G ZR/ZR+相干光模块",
+      "statement": "Coherent公开产品原文将800G ZR/ZR+相干光模块的应用边界定义为城域、区域和数据中心互联。",
+      "source": "Coherent Announces General Availability of 800G ZR/ZR+ QSFP-DD Transceiver"
+    },
+    {
+      "key": "coherent_800g_production_migration",
+      "status": "verified",
+      "subject": "800G ZR/ZR+相干光模块",
+      "statement": "Coherent公开原文称800G ZR/ZR+模块采用其400G产品已建立的共同制造工艺，有利于生产扩展和客户向更高容量相干光学产品迁移。",
+      "source": "Coherent Announces General Availability of 800G ZR/ZR+ QSFP-DD Transceiver"
+    },
+    {
+      "key": "industry_800g_asp",
+      "status": "unavailable",
+      "subject": "全球800G及以上光模块",
+      "statement": "本次可访问公开原文展示了市场规模、出货量和产品占比，但未展示按产品速率、地区、客户或应用拆分的实际ASP或公开成交价格。",
+      "source": null
+    },
+    {
+      "key": "industry_inventory",
+      "status": "unavailable",
+      "subject": "全球AI及高速光模块产业链",
+      "statement": "本次可访问公开原文未展示行业库存、渠道库存或按产品速率拆分的库存天数和库存金额。",
+      "source": null
+    },
+    {
+      "key": "company_product_revenue_split",
+      "status": "unavailable",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司公开产品页列出多个速率和应用，但未展示400G、800G、1.6T或相干产品的收入、出货量或ASP拆分。",
+      "source": null
+    },
+    {
+      "key": "company_customer_region_split",
+      "status": "unavailable",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "公司公开产品页说明应用和全球化制造交付能力，但未展示按客户、国家或地区划分的收入、出货量、认证或订单拆分。",
+      "source": null
+    },
+    {
+      "key": "same_caliber_som_input",
+      "status": "unavailable",
+      "subject": "300308.SZ 中际旭创",
+      "statement": "缺少公司与行业同口径的产品速率、地区、客户和期间分子分母，无法形成经验证的公司市场份额或SOM。",
+      "source": null
+    },
+    {
+      "key": "total_optical_transceiver_tam",
+      "status": "unavailable",
+      "subject": "全球全部光模块市场",
+      "statement": "本来源包中已验证的市场规模仅覆盖AI-focused optical transceivers；未找到可访问公开原文同时给出全部光模块市场的产品、客户、地区、收入口径和期间边界，因此不记录为总TAM。",
+      "source": null
+    }
+  ],
+  "modelOutput": "{\"summary\":\"已从中际旭创公开产品页确认其主营边界为面向数据中心、AI互联及云计算基础设施的高速光互连产品，核心产品覆盖100G至1.6T光模块，并具备全球化制造与交付能力。公开行业原文提供了AI光模块市场规模、400G及以上和800G及以上光模块出货量、800G及以上产品出货占比、需求增速及供应瓶颈等输入；不同指标的产品范围、地区和期间不同，未合并为单一TAM或份额。\",\"evidence_records\":[{\"tab_id\":\"market\",\"field_key\":\"company_primary_business\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司公开产品边界为面向数据中心及AI互联的高速光通信解决方案，聚焦高速光模块，覆盖100G、200G、400G、800G及1.6T。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"当前公开产品页\",\"product_scope\":\"高速光模块；100G/200G/400G/800G/1.6T\",\"region_scope\":\"未明确具体销售地区\",\"source_title\":\"产品方案-旭创科技\",\"source_url\":\"https://products.zj-innolight.com/index/goods/products.html?cid=1 ([products.zj-innolight.com](https://products.zj-innolight.com/index/goods/products.html?cid=1))\",\"source_published_at\":\"not stated\",\"quote\":\"公司聚焦高速光模块，产品涵盖100G、200G、400G、800G及1.6T\",\"locator\":\"网页第63-69行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_application_scope\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司公开的云计算与AI基础设施应用边界包括超大规模数据中心、AI训练与推理集群、GPU集群互连和数据中心交换网络。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"当前公开产品页\",\"product_scope\":\"以太网光模块；100G/200G/400G/800G/1.6T\",\"region_scope\":\"全球应用场景未细分\",\"source_title\":\"云计算与AI基础设施-中际旭创\",\"source_url\":\"https://www.zj-innolight.com/cn/cloud_ai_infrastructure.html ([zj-innolight.com](https://www.zj-innolight.com/cn/cloud_ai_infrastructure.html))\",\"source_published_at\":\"not stated\",\"quote\":\"超大规模数据中心 AI训练与推理集群 GPU集群互连 数据中心交换网络\",\"locator\":\"网页第150-168行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_adjacent_product_scope\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司公开产品方案还覆盖相干传输，应用定义为长距离大容量传输。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"当前公开产品页\",\"product_scope\":\"相干光通信模块/传输产品\",\"region_scope\":\"未明确具体销售地区\",\"source_title\":\"产品方案-旭创科技\",\"source_url\":\"https://products.zj-innolight.com/index/goods/products.html?cid=1 ([products.zj-innolight.com](https://products.zj-innolight.com/index/goods/products.html?cid=1))\",\"source_published_at\":\"not stated\",\"quote\":\"相干传输 长距离大容量传输\",\"locator\":\"网页第35-37行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"company_region_scope\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司官网公开表述具备全球化规模制造与交付能力，可作为其公开的地区服务边界输入，但未给出按地区的收入、出货或客户拆分。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"当前公开产品页\",\"product_scope\":\"高速光互连产品\",\"region_scope\":\"全球\",\"source_title\":\"云计算与AI基础设施-中际旭创\",\"source_url\":\"https://www.zj-innolight.com/cn/cloud_ai_infrastructure.html ([zj-innolight.com](https://www.zj-innolight.com/cn/cloud_ai_infrastructure.html))\",\"source_published_at\":\"not stated\",\"quote\":\"具备全球化规模制造与交付能力\",\"locator\":\"网页第201-209行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"ai_optical_transceiver_market_size\",\"subject\":\"全球AI光模块市场\",\"statement\":\"TrendForce公开原文给出的AI-focused optical transceiver市场规模为2025年165亿美元。该口径是全球、AI-focused optical transceivers，不等同于全部光模块市场。\",\"numeric_value\":16.5,\"unit\":\"billion\",\"currency\":\"USD\",\"period\":\"2025\",\"product_scope\":\"AI-focused optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260420-13017.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260420-13017.html))\",\"source_published_at\":\"2026-04-20\",\"quote\":\"expand from US$16.5 billion in 2025\",\"locator\":\"网页第10行\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"ai_optical_transceiver_market_size\",\"subject\":\"全球AI光模块市场\",\"statement\":\"TrendForce公开原文预测AI-focused optical transceiver市场规模2026年达到260亿美元。该口径是全球、AI-focused optical transceivers，不等同于全部光模块市场。\",\"numeric_value\":26,\"unit\":\"billion\",\"currency\":\"USD\",\"period\":\"2026 forecast\",\"product_scope\":\"AI-focused optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260420-13017.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260420-13017.html))\",\"source_published_at\":\"2026-04-20\",\"quote\":\"to $26 billion in 2026\",\"locator\":\"网页第10行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"ai_optical_transceiver_market_growth\",\"subject\":\"全球AI光模块市场\",\"statement\":\"TrendForce公开原文预计AI-focused optical transceiver市场2026年同比增长超过57%。\",\"numeric_value\":57,\"unit\":\"percent\",\"currency\":null,\"period\":\"2026 forecast versus 2025\",\"product_scope\":\"AI-focused optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260420-13017.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260420-13017.html))\",\"source_published_at\":\"2026-04-20\",\"quote\":\"representing over 57% YoY growth\",\"locator\":\"网页第10行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"optical_transceiver_shipments\",\"subject\":\"全球400G及以上光模块\",\"statement\":\"TrendForce报告全球400G及以上光模块出货量2023年为640万只。\",\"numeric_value\":6.4,\"unit\":\"million units\",\"currency\":null,\"period\":\"2023\",\"product_scope\":\"400G及以上 optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"DeepSeek's Low-Cost AI Model to Spur Demand for Optical Communication, with Optical Transceiver Shipments Projected to Grow by 56.5% in 2025, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20250205-12461.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20250205-12461.html))\",\"source_published_at\":\"2025-02-05\",\"quote\":\"reached 6.4 million units in 2023\",\"locator\":\"网页第12行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"optical_transceiver_shipments\",\"subject\":\"全球400G及以上光模块\",\"statement\":\"TrendForce预计全球400G及以上光模块出货量2024年为2040万只。\",\"numeric_value\":20.4,\"unit\":\"million units\",\"currency\":null,\"period\":\"2024 forecast\",\"product_scope\":\"400G及以上 optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"DeepSeek's Low-Cost AI Model to Spur Demand for Optical Communication, with Optical Transceiver Shipments Projected to Grow by 56.5% in 2025, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20250205-12461.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20250205-12461.html))\",\"source_published_at\":\"2025-02-05\",\"quote\":\"grow to 20.4 million units in 2024\",\"locator\":\"网页第12行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"optical_transceiver_shipments\",\"subject\":\"全球400G及以上光模块\",\"statement\":\"TrendForce预计全球400G及以上光模块出货量2025年超过3190万只。\",\"numeric_value\":31.9,\"unit\":\"million units\",\"currency\":null,\"period\":\"2025 forecast\",\"product_scope\":\"400G及以上 optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"DeepSeek's Low-Cost AI Model to Spur Demand for Optical Communication, with Optical Transceiver Shipments Projected to Grow by 56.5% in 2025, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20250205-12461.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20250205-12461.html))\",\"source_published_at\":\"2025-02-05\",\"quote\":\"exceed 31.9 million units in 2025\",\"locator\":\"网页第12行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"optical_transceiver_shipments_growth\",\"subject\":\"全球400G及以上光模块\",\"statement\":\"TrendForce预计全球400G及以上光模块2025年出货量同比增长56.5%。\",\"numeric_value\":56.5,\"unit\":\"percent\",\"currency\":null,\"period\":\"2025 forecast versus 2024\",\"product_scope\":\"400G及以上 optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"DeepSeek's Low-Cost AI Model to Spur Demand for Optical Communication, with Optical Transceiver Shipments Projected to Grow by 56.5% in 2025, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20250205-12461.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20250205-12461.html))\",\"source_published_at\":\"2025-02-05\",\"quote\":\"representing an annual growth rate of 56.5%\",\"locator\":\"网页第12行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"high_speed_optical_transceiver_shipments\",\"subject\":\"全球800G及以上光模块\",\"statement\":\"TrendForce预计全球800G及以上光模块出货量2025年为2400万只。\",\"numeric_value\":24,\"unit\":\"million units\",\"currency\":null,\"period\":\"2025 forecast\",\"product_scope\":\"800G及以上 optical transceiver modules\",\"region_scope\":\"全球\",\"source_title\":\"MediaTek Ventures into Micro LED Optical Communication\",\"source_url\":\"https://www.trendforce.com/news/2026/02/12/news-mediatek-ventures-into-micro-led-optical-communication/ ([trendforce.com](https://www.trendforce.com/news/2026/02/12/news-mediatek-ventures-into-micro-led-optical-communication/))\",\"source_published_at\":\"2026-02-12\",\"quote\":\"reach 24 million units in 2025\",\"locator\":\"网页第20行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"high_speed_optical_transceiver_shipments\",\"subject\":\"全球800G及以上光模块\",\"statement\":\"TrendForce预计全球800G及以上光模块出货量2026年接近6300万只。\",\"numeric_value\":63,\"unit\":\"million units\",\"currency\":null,\"period\":\"2026 forecast\",\"product_scope\":\"800G及以上 optical transceiver modules\",\"region_scope\":\"全球\",\"source_title\":\"MediaTek Ventures into Micro LED Optical Communication\",\"source_url\":\"https://www.trendforce.com/news/2026/02/12/news-mediatek-ventures-into-micro-led-optical-communication/ ([trendforce.com](https://www.trendforce.com/news/2026/02/12/news-mediatek-ventures-into-micro-led-optical-communication/))\",\"source_published_at\":\"2026-02-12\",\"quote\":\"nearly 63 million units by 2026\",\"locator\":\"网页第20行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"high_speed_optical_transceiver_shipments_growth\",\"subject\":\"全球800G及以上光模块\",\"statement\":\"TrendForce预计全球800G及以上光模块出货量2026年约为2025年的2.6倍。\",\"numeric_value\":2.6,\"unit\":\"times\",\"currency\":null,\"period\":\"2026 forecast versus 2025\",\"product_scope\":\"800G及以上 optical transceiver modules\",\"region_scope\":\"全球\",\"source_title\":\"MediaTek Ventures into Micro LED Optical Communication\",\"source_url\":\"https://www.trendforce.com/news/2026/02/12/news-mediatek-ventures-into-micro-led-optical-communication/ ([trendforce.com](https://www.trendforce.com/news/2026/02/12/news-mediatek-ventures-into-micro-led-optical-communication/))\",\"source_published_at\":\"2026-02-12\",\"quote\":\"representing a growth rate of 2.6 times\",\"locator\":\"网页第20行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"high_speed_product_mix\",\"subject\":\"全球800G及以上光模块\",\"statement\":\"TrendForce预计全球800G及以上光模块出货量占比将由2024年的19.5%升至2026年超过60%。\",\"numeric_value\":19.5,\"unit\":\"percent\",\"currency\":null,\"period\":\"2024\",\"product_scope\":\"全球光模块出货量中的800G及以上产品\",\"region_scope\":\"全球\",\"source_title\":\"Google’s High-Speed Interconnect Architecture to Push 800G+ Optical Transceiver Share Past 60% by 2026, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260210-12919.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260210-12919.html))\",\"source_published_at\":\"2026-02-10\",\"quote\":\"from 19.5% in 2024\",\"locator\":\"网页第11行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"high_speed_product_mix\",\"subject\":\"全球800G及以上光模块\",\"statement\":\"TrendForce预计全球800G及以上光模块出货量占比2026年超过60%。\",\"numeric_value\":60,\"unit\":\"percent\",\"currency\":null,\"period\":\"2026 forecast\",\"product_scope\":\"全球光模块出货量中的800G及以上产品\",\"region_scope\":\"全球\",\"source_title\":\"Google’s High-Speed Interconnect Architecture to Push 800G+ Optical Transceiver Share Past 60% by 2026, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260210-12919.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260210-12919.html))\",\"source_published_at\":\"2026-02-10\",\"quote\":\"to over 60% by 2026\",\"locator\":\"网页第11行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"hyperscale_data_center_demand_growth\",\"subject\":\"北美超大规模数据中心\",\"statement\":\"TrendForce称北美超大规模数据中心流量保持超过30%的年增长，并推动Google、Microsoft和Meta扩大GPU及AI服务器部署。该指标是需求驱动输入，不是光模块出货量。\",\"numeric_value\":30,\"unit\":\"percent\",\"currency\":null,\"period\":\"not stated; source published 2026-04-20\",\"product_scope\":\"超大规模数据中心AI互联需求\",\"region_scope\":\"North America\",\"source_title\":\"Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260420-13017.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260420-13017.html))\",\"source_published_at\":\"2026-04-20\",\"quote\":\"Traffic at hyperscale data centers in North America has sustained over 30% annual growth\",\"locator\":\"网页第11行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"industry_customer_scope\",\"subject\":\"全球AI数据中心光互联需求\",\"statement\":\"TrendForce公开原文将Google、Microsoft和Meta列为扩大GPU及AI服务器部署的云厂商；这是行业需求边界，不是中际旭创已披露客户清单。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"not stated; source published 2026-04-20\",\"product_scope\":\"800G及以上AI数据中心光互联\",\"region_scope\":\"North America hyperscale data centers\",\"source_title\":\"Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260420-13017.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260420-13017.html))\",\"source_published_at\":\"2026-04-20\",\"quote\":\"cloud giants such as Google, Microsoft, and Meta\",\"locator\":\"网页第11行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"supply_bottleneck\",\"subject\":\"全球AI光模块产业链\",\"statement\":\"TrendForce指出EML和连续波激光器等关键光电芯片供应偏紧，属于800G及以上光模块扩产的公开供给约束。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026\",\"product_scope\":\"AI-focused optical transceivers；800G及以上\",\"region_scope\":\"全球\",\"source_title\":\"Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260420-13017.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260420-13017.html))\",\"source_published_at\":\"2026-04-20\",\"quote\":\"the supply of critical optoelectronic chips, such as electro-absorption modulated lasers (EMLs) and continuous-wave lasers (CW-LDSs), remains tight\",\"locator\":\"网页第12行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"manufacturing_capacity_constraint\",\"subject\":\"全球AI光模块产业链\",\"statement\":\"TrendForce指出光学对准等高精度制造工艺限制规模化生产，属于公开的产能扩张约束。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2026\",\"product_scope\":\"AI-focused optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"Global AI Optical Transceiver Market to Reach US$26 Billion in 2026; Component Shortages Identified as Primary Capacity Expansion Bottleneck, Says TrendForce\",\"source_url\":\"https://www.trendforce.com/presscenter/news/20260420-13017.html ([trendforce.com](https://www.trendforce.com/presscenter/news/20260420-13017.html))\",\"source_published_at\":\"2026-04-20\",\"quote\":\"high-precision manufacturing processes, including optical alignment, limit scalable production\",\"locator\":\"网页第14行\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"coherent_800g_application_scope\",\"subject\":\"800G ZR/ZR+相干光模块\",\"statement\":\"Coherent公开产品原文将800G ZR/ZR+相干光模块的应用边界定义为城域、区域和数据中心互联。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025\",\"product_scope\":\"800G ZR/ZR+ coherent transceiver；QSFP-DD\",\"region_scope\":\"metro、regional、data center interconnect\",\"source_title\":\"Coherent Announces General Availability of 800G ZR/ZR+ QSFP-DD Transceiver\",\"source_url\":\"https://www.coherent.com/news/press-releases/general-availability-of-800g-zr-zrplus-in-qsfp-dd-form-factor ([coherent.com](https://www.coherent.com/news/press-releases/general-availability-of-800g-zr-zrplus-in-qsfp-dd-form-factor?utm_source=openai))\",\"source_published_at\":\"2025-03-28\",\"quote\":\"metro, regional, and data center interconnect applications\",\"locator\":\"正文第二段\",\"status\":\"verified\"},{\"tab_id\":\"industry\",\"field_key\":\"coherent_800g_production_migration\",\"subject\":\"800G ZR/ZR+相干光模块\",\"statement\":\"Coherent公开原文称800G ZR/ZR+模块采用其400G产品已建立的共同制造工艺，有利于生产扩展和客户向更高容量相干光学产品迁移。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"2025\",\"product_scope\":\"800G ZR/ZR+ coherent transceiver\",\"region_scope\":\"未明确\",\"source_title\":\"Coherent Announces General Availability of 800G ZR/ZR+ QSFP-DD Transceiver\",\"source_url\":\"https://www.coherent.com/news/press-releases/general-availability-of-800g-zr-zrplus-in-qsfp-dd-form-factor ([coherent.com](https://www.coherent.com/news/press-releases/general-availability-of-800g-zr-zrplus-in-qsfp-dd-form-factor?utm_source=openai))\",\"source_published_at\":\"2025-03-28\",\"quote\":\"leverages common manufacturing processes established for the company’s successful 400G products\",\"locator\":\"正文倒数第二段\",\"status\":\"verified\"},{\"tab_id\":\"market\",\"field_key\":\"industry_800g_asp\",\"subject\":\"全球800G及以上光模块\",\"statement\":\"本次可访问公开原文展示了市场规模、出货量和产品占比，但未展示按产品速率、地区、客户或应用拆分的实际ASP或公开成交价格。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"not available\",\"product_scope\":\"800G及以上 optical transceivers\",\"region_scope\":\"全球\",\"source_title\":\"\",\"source_url\":\"\",\"source_published_at\":\"\",\"quote\":\"\",\"locator\":\"\",\"status\":\"unavailable\"},{\"tab_id\":\"industry\",\"field_key\":\"industry_inventory\",\"subject\":\"全球AI及高速光模块产业链\",\"statement\":\"本次可访问公开原文未展示行业库存、渠道库存或按产品速率拆分的库存天数和库存金额。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"not available\",\"product_scope\":\"AI-focused optical transceivers；400G及以上；800G及以上\",\"region_scope\":\"全球\",\"source_title\":\"\",\"source_url\":\"\",\"source_published_at\":\"\",\"quote\":\"\",\"locator\":\"\",\"status\":\"unavailable\"},{\"tab_id\":\"market\",\"field_key\":\"company_product_revenue_split\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司公开产品页列出多个速率和应用，但未展示400G、800G、1.6T或相干产品的收入、出货量或ASP拆分。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"not available\",\"product_scope\":\"公司全部高速光互连产品\",\"region_scope\":\"全球\",\"source_title\":\"\",\"source_url\":\"\",\"source_published_at\":\"\",\"quote\":\"\",\"locator\":\"\",\"status\":\"unavailable\"},{\"tab_id\":\"market\",\"field_key\":\"company_customer_region_split\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"公司公开产品页说明应用和全球化制造交付能力，但未展示按客户、国家或地区划分的收入、出货量、认证或订单拆分。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"not available\",\"product_scope\":\"公司高速光模块及相干产品\",\"region_scope\":\"全球\",\"source_title\":\"\",\"source_url\":\"\",\"source_published_at\":\"\",\"quote\":\"\",\"locator\":\"\",\"status\":\"unavailable\"},{\"tab_id\":\"market\",\"field_key\":\"same_caliber_som_input\",\"subject\":\"300308.SZ 中际旭创\",\"statement\":\"缺少公司与行业同口径的产品速率、地区、客户和期间分子分母，无法形成经验证的公司市场份额或SOM。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"not available\",\"product_scope\":\"400G/800G/1.6T及相干产品\",\"region_scope\":\"未形成统一边界\",\"source_title\":\"\",\"source_url\":\"\",\"source_published_at\":\"\",\"quote\":\"\",\"locator\":\"\",\"status\":\"unavailable\"},{\"tab_id\":\"market\",\"field_key\":\"total_optical_transceiver_tam\",\"subject\":\"全球全部光模块市场\",\"statement\":\"本来源包中已验证的市场规模仅覆盖AI-focused optical transceivers；未找到可访问公开原文同时给出全部光模块市场的产品、客户、地区、收入口径和期间边界，因此不记录为总TAM。\",\"numeric_value\":null,\"unit\":null,\"currency\":null,\"period\":\"not available\",\"product_scope\":\"全部光模块市场\",\"region_scope\":\"全球\",\"source_title\":\"\",\"source_url\":\"\",\"source_published_at\":\"\",\"quote\":\"\",\"locator\":\"\",\"status\":\"unavailable\"}],\"missing_fields\":[\"company_customer_names_and_customer_type_split\",\"company_region_revenue_or_shipment_split\",\"company_400g_800g_1_6t_revenue_split\",\"company_product_level_shipments\",\"company_product_level_asp\",\"industry_800g_1_6t_asp\",\"industry_optical_module_inventory\",\"industry_capacity_by_supplier\",\"industry_total_optical_transceiver_tam_with_same_boundary\",\"same_caliber_company_and_industry_som_inputs\"],\"conflicts\":[\"AI-focused optical transceiver market size、400G及以上光模块出货量、800G及以上光模块出货量和800G及以上出货占比属于不同产品口径，不能直接相加或互换为同一TAM。\",\"中际旭创官网覆盖100G至1.6T高速光模块及相干、无线互联等相邻产品，而TrendForce部分数据仅覆盖AI-focused或800G及以上产品，不能直接用于公司整体市场份额。\",\"TrendForce公开数字包含实际值与预测值，2024至2026年数据必须保留原文的forecast或projected属性。\"],\"refresh_triggers\":[\"出现公司按400G、800G、1.6T及相干产品拆分的公开出货量、ASP或收入数据时，补充SOM分子输入。\",\"出现同一产品、地区、客户和期间边界的行业出货量或市场收入分母时，补充可计算的市场份额输入。\",\"出现公开的行业ASP、库存天数、库存金额或按供应商拆分的产能数据时，更新价格、库存和供给字段。\",\"2026年实际出货数据发布后，复核2026年AI光模块市场规模、800G及以上出货量和产品占比预测。\"]}",
+  "eventTypes": [
+    "response.created",
+    "response.in_progress",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.web_search_call.in_progress",
+    "response.web_search_call.searching",
+    "response.web_search_call.completed",
+    "response.content_part.added",
+    "response.output_text.delta",
+    "response.output_text.annotation.added",
+    "response.output_text.done",
+    "response.content_part.done",
+    "response.completed"
+  ]
+}

@@ -41,13 +41,21 @@ function subnavClass(page: string, href: string): string {
   return `btn btn-sm ${stateClass}`;
 }
 
+function withCurrentSecurityCode(href: string): string {
+  const code = new URLSearchParams(window.location.search).get("code");
+  if (!code) return href;
+  const target = new URL(href, window.location.href);
+  target.searchParams.set("code", code);
+  return `${target.pathname.split("/").pop() || href}${target.search}`;
+}
+
 function renderSubnavLinks(kind: string, page: string) {
   return subnavItems(kind).map((item) =>
     h(
       "a",
       {
         key: item.href,
-        href: item.href,
+        href: kind === "company" ? withCurrentSecurityCode(item.href) : item.href,
         name: "codeSpec",
         class: subnavClass(page, item.href),
         "aria-current": page === item.href ? "true" : undefined,

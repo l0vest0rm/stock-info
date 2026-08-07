@@ -145,6 +145,19 @@ function mapEastmoneyReport(item, reportType) {
       orgSName: text(item.orgSName),
       industryName,
       publishDate: text(item.publishDate),
+      // Eastmoney hosts this PDF but is not asserted to be the research
+      // institution's original carrier.  Preserve that source fact so the
+      // automatic forecast ledger can explicitly exclude it instead of
+      // guessing originality from `orgName`, the title, or the PDF URL.
+      researchForecastEvidence: {
+        schemaVersion: "research-source-forecast.v1",
+        carrierRelation: "republication",
+        carrier: {
+          displayName: "东方财富",
+          evidenceUrl: infoCode ? `https://pdf.dfcfw.com/pdf/H3_${encodeURIComponent(infoCode)}_1.pdf` : "",
+          evidenceTitle: title || "东方财富研报载体",
+        },
+      },
       raw: item,
     },
   };

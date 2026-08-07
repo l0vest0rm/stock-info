@@ -279,6 +279,7 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
     name: security?.name || normalized,
     market: securityMarket(normalized),
     type: inferSecurityType(normalized),
+    marketDate: latest?.date ?? null,
     latestPrice,
     pctChange:
       changeAmount !== null && previousPrice !== null && previousPrice !== 0
@@ -291,6 +292,8 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
       : null,
     peTtm: latest?.peTtm ?? null,
     pb: latest?.pb ?? null,
+    psTtm: latest?.ps ?? null,
+    pcfTtm: latest?.pcf ?? null,
     source: latest?.source ?? "local",
     updatedAt: Date.now(),
   };
@@ -306,6 +309,7 @@ function applyXueqiuKlineOverview(
   }
   return {
     ...eastmoneyOverview,
+    marketDate: latest.date,
     latestPrice: latest.close,
     pctChange: latest.pctChange,
     changeAmount: latest.changeAmount,
@@ -313,6 +317,8 @@ function applyXueqiuKlineOverview(
     marketCapYi: latest.marketCapital !== null ? latest.marketCapital / 100_000_000 : null,
     peTtm: latest.peTtm,
     pb: latest.pb,
+    psTtm: latest.ps,
+    pcfTtm: latest.pcf,
     source: "xueqiu",
     updatedAt: latest.updatedAt,
   };
@@ -915,6 +921,7 @@ export async function extractCompanyReportByLlm(
   title: string,
   content: string,
 ): Promise<CompanyReportForecast[]> {
+  if (c.env.LLM_RUNTIME !== "local") throw new Error("company report LLM extraction is only available in local LLM runtime");
   const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
   if (!trimmed) {
     return [];
@@ -943,6 +950,7 @@ export async function extractCompanyNewsReportByLlm(
   title: string,
   content: string,
 ): Promise<Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt">> {
+  if (c.env.LLM_RUNTIME !== "local") throw new Error("company news report LLM extraction is only available in local LLM runtime");
   const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
   if (!trimmed) {
     return {

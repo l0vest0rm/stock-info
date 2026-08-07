@@ -1,0 +1,31 @@
+type Row = Record<string, unknown>;
+
+export const RESEARCH_WEBQA_RUNNER_LEASE_NAME = "research-operating-analysis-runner";
+export const RESEARCH_WEBQA_RUNNER_LEASE_MS = 20_000;
+
+const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+
+/**
+ * Acquires the local WebQA runner lease when it is free/stale, or renews it
+ * when this is already the owner. A second runner cannot steal a healthy
+ * runner's in-flight ChatGPT conversation.
+ */
+export async function renewResearchWebQaRunnerLease(db: D1Database, ownerId: string) {
+  const owner = ownerId.trim();
+  if (!owner) throw new Error("runner instance id is required");
+  const now = Date.now();
+  const result = await db.prepare(`insert into research_webqa_runner_leases (lease_name, owner_id, heartbeat_at)
+    values (?, ?, ?)
+    on conflict(lease_name) do update set owner_id=excluded.owner_id, heartbeat_at=excluded.heartbeat_at
+    where research_webqa_runner_leases.owner_id=excluded.owner_id
+      or research_webqa_runner_leases.heartbeat_at<?`)
+    .bind(RESEARCH_WEBQA_RUNNER_LEASE_NAME, owner, now, now - RESEARCH_WEBQA_RUNNER_LEASE_MS).run();
+  return result.meta.changes > 0;
+}
+
+export async function ownsResearchWebQaRunnerLease(db: D1Database, ownerId: string, now = Date.now()) {
+  const lease = await db.prepare(`select owner_id as ownerId, heartbeat_at as heartbeatAt
+    from research_webqa_runner_leases where lease_name=?`).bind(RESEARCH_WEBQA_RUNNER_LEASE_NAME).first<Row>();
+  return text(lease?.ownerId) === ownerId.trim()
+    && Number(lease?.heartbeatAt) >= now - RESEARCH_WEBQA_RUNNER_LEASE_MS;
+}

@@ -61,6 +61,16 @@ export type SecRegistrantXbrl = {
   filingsByAccession: Map<string, SecRegistrantFiling>;
 };
 
+export type SecRegistrantDocument = {
+  documentId: string;
+  title: string;
+  publishedAt: string;
+  reportDate: string;
+  documentUrl: string;
+  form: string;
+  sourceLocator: string;
+};
+
 export type SecXbrlDisclosureCollection = {
   provider: "sec";
   securityCode: string;
@@ -161,6 +171,27 @@ export async function loadSecRegistrantXbrl(
     companyFacts,
     filingsByAccession: indexSecFilings(submissions),
   };
+}
+
+/** Official SEC filing pointers for document-level research extraction.
+ * This is deliberately separate from the Yahoo financial primary source. */
+export function secRegistrantDocuments(registrant: SecRegistrantXbrl): SecRegistrantDocument[] {
+  return [...registrant.filingsByAccession.values()]
+    .filter((filing) => /^(10-K|10-Q)(?:\/A)?$/i.test(filing.form))
+    .flatMap((filing) => {
+      const documentUrl = filingDocumentUrl(registrant.cik, filing);
+      if (!documentUrl) return [];
+      return [{
+        documentId: filing.accessionNumber,
+        title: `${registrant.entityName || registrant.ticker} ${filing.form}`,
+        publishedAt: filing.filingDate,
+        reportDate: filing.reportDate,
+        documentUrl,
+        form: filing.form,
+        sourceLocator: `SEC CIK=${registrant.cik}; accession=${filing.accessionNumber}; primaryDocument=${filing.primaryDocument}; reportDate=${filing.reportDate}`,
+      }];
+    })
+    .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt));
 }
 
 /**

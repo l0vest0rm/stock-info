@@ -1,0 +1,15 @@
+{
+  "version": "research-auto-input-refresh.v1",
+  "documentSelection": {
+    "limits": {
+      "annual": 1,
+      "interim": 1,
+      "event": 3
+    },
+    "patterns": {
+      "annual": ["年度报告", "annual report", "\\b10-k\\b", "\\b20-f\\b"],
+      "interim": ["半年度报告", "季度报告", "interim", "\\b10-q\\b", "\\b6-k\\b"],
+      "event": ["业绩预告", "业绩快报", "风险", "诉讼", "监管", "回购", "分红", "融资", "发行", "收购", "重组", "\\b8-k\\b"]
+    }
+  }
+}

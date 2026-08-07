@@ -111,6 +111,7 @@ export type CompanyOverview = {
   name: string;
   market: string;
   type: string;
+  marketDate: string | null;
   latestPrice: number | null;
   pctChange: number | null;
   changeAmount: number | null;
@@ -118,6 +119,8 @@ export type CompanyOverview = {
   marketCapYi: number | null;
   peTtm: number | null;
   pb: number | null;
+  psTtm: number | null;
+  pcfTtm: number | null;
   source: string;
   updatedAt: number;
 };

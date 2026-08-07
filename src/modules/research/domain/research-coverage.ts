@@ -99,7 +99,7 @@ function forecastCoverageModule(forecast: ForecastCoverageReadModel): ResearchCo
   if (forecast.status === "blocked") {
     return {
       moduleId: "forecasts", label: "来源预测与实际校准", status: "blocked", asOf: forecast.asOf,
-      conclusionImpact: `已有 ${counts.candidates} 条来源候选和 ${counts.reviewed} 条人工审核记录，但没有已审核的原始独立来源预测；不生成未来业绩结论。`,
+      conclusionImpact: `已有 ${counts.candidates} 条来源候选和 ${counts.reviewed} 条已保存的自动证据决策，但没有具备原始载体、独立性与可比口径的来源预测；不生成未来业绩结论。`,
       nextEvidence: counts.pending
         ? `审核待处理的 ${counts.pending} 条候选，并为可纳入样本确认原始承载、模型血缘、独立来源组和会计口径。`
         : "补齐原始承载、模型血缘、独立来源组和会计口径；转载、联合署名、共享或未知承载不计入样本。",
@@ -109,7 +109,7 @@ function forecastCoverageModule(forecast: ForecastCoverageReadModel): ResearchCo
   return {
     moduleId: "forecasts", label: "来源预测与实际校准", status: "unavailable", asOf: null,
     conclusionImpact: "没有已审核的 v4 来源预测；普通文档或研报数量不能形成预测覆盖。",
-    nextEvidence: "在授权范围内导入并预处理可使用的来源材料，再进行本地人工身份与独立性审核。",
+    nextEvidence: "在授权范围内导入并预处理可使用的来源材料；自动规则只在原始载体、来源身份、独立性与口径证据全部齐全时入账，否则保持阻断。",
     target: "model",
   };
 }

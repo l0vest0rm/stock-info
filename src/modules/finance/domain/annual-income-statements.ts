@@ -62,12 +62,12 @@ export function isFormalAnnualIncomeStatement(row: FinancialStatement): boolean 
   if (contract === "eastmoney_f10_annual_income.v1") {
     return annualPeriod(payload.FISCAL_PERIOD ?? row.fiscalPeriod);
   }
-  if (contract === "eastmoney_hk_f10_main_indicator.v1") {
+  if (contract === "eastmoney_hk_f10_main_indicator.v1" || contract === "eastmoney_hk_f10_main_indicator.v2") {
     // HK F10 Q1/H1/9M values are cumulative.  DATE_TYPE_CODE=001 is its FY
     // record and is the only row that may be consumed as an annual actual.
     return stringValue(payload.DATE_TYPE_CODE) === "001";
   }
-  if (contract === "yahoo_finance_timeseries.v2") {
+  if (contract === "yahoo_finance_timeseries.v2" || contract === "yahoo_finance_timeseries.v3") {
     return annualPeriod(payload.FISCAL_PERIOD ?? row.fiscalPeriod);
   }
   // Backward-compatible cache support is deliberately narrow: accept only a

@@ -18,7 +18,7 @@ export type FormalActualCalibrationCurrentState =
   | "missing_actual";
 
 export type FormalActualCandidateWorkflowState =
-  | "pending_human_review"
+  | "pending_automatic_evidence"
   | "blocked_by_statutory_verification"
   | "needs_evidence"
   | "rejected"
@@ -52,7 +52,7 @@ export type FormalActualHealth = {
   currentComparableCalibrationCount: number;
   historicalCalibrationAffectedByRestatementCount: number;
   candidateWorkflow: {
-    pendingHumanReviewCount: number;
+    pendingAutomaticEvidenceCount: number;
     blockedByStatutoryVerificationCount: number;
     needsEvidenceCount: number;
     rejectedCount: number;
@@ -110,7 +110,7 @@ export function buildFormalActualHealth(input: {
     currentComparableCalibrationCount,
     historicalCalibrationAffectedByRestatementCount,
     candidateWorkflow: {
-      pendingHumanReviewCount: stateCounts.get("pending_human_review") ?? 0,
+      pendingAutomaticEvidenceCount: stateCounts.get("pending_automatic_evidence") ?? 0,
       blockedByStatutoryVerificationCount: stateCounts.get("blocked_by_statutory_verification") ?? 0,
       needsEvidenceCount: stateCounts.get("needs_evidence") ?? 0,
       rejectedCount: stateCounts.get("rejected") ?? 0,
@@ -166,7 +166,7 @@ function candidateState(
   if (candidate.eligibility === "blocked") {
     return { candidateId: candidate.candidateId, state: "blocked_by_statutory_verification", latestReviewId: review?.reviewId ?? null, actualId: review?.actualId ?? null, reason: candidate.blockingReason, statutoryCurrentness: candidateCurrentness };
   }
-  if (!review) return { candidateId: candidate.candidateId, state: "pending_human_review", latestReviewId: null, actualId: null, reason: null, statutoryCurrentness: candidateCurrentness };
+  if (!review) return { candidateId: candidate.candidateId, state: "pending_automatic_evidence", latestReviewId: null, actualId: null, reason: "等待下一次本地自动法定事实同步；未满足确定性口径的候选不会进入人工队列。", statutoryCurrentness: candidateCurrentness };
   if (review.decision === "needs_evidence") return { candidateId: candidate.candidateId, state: "needs_evidence", latestReviewId: review.reviewId, actualId: null, reason: review.reason, statutoryCurrentness: candidateCurrentness };
   if (review.decision === "rejected") return { candidateId: candidate.candidateId, state: "rejected", latestReviewId: review.reviewId, actualId: null, reason: review.reason, statutoryCurrentness: candidateCurrentness };
   if (!review.actualId || !actualById.has(review.actualId)) {
