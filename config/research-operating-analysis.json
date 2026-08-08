@@ -1,0 +1,19 @@
+{
+  "version": "investment-analysis.llm-client.v1",
+  "model": "gpt-5.6-luna",
+  "reasoningEffort": "high",
+  "maxOutputTokens": 16000,
+  "webSearch": {
+    "searchContextSize": "high",
+    "required": true
+  },
+  "jobTimeoutMs": 1200000,
+  "streamCheckpoint": {
+    "intervalMs": 1500,
+    "minChars": 800
+  },
+  "persistenceRecovery": {
+    "retryIntervalMs": 2000,
+    "maxWaitMs": 60000
+  }
+}

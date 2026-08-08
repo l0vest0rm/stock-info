@@ -1,8 +1,8 @@
-import { RESEARCH_WEBQA_RUNNER_LEASE_MS, RESEARCH_WEBQA_RUNNER_LEASE_NAME, ownsResearchWebQaRunnerLease } from "./research-webqa-runner-lease";
+import { RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_MS, RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_NAME, ownsResearchOperatingAnalysisRunnerLease } from "./research-operating-analysis-runner-lease";
 type Row = Record<string, unknown>;
 
-/** One complete long-form WebQA investment-research document. */
-export const OPERATING_ANALYSIS_PROMPT_VERSION = "investment-analysis.webqa.v7";
+/** One complete long-form investment-research document generated locally by llm-client. */
+export const OPERATING_ANALYSIS_PROMPT_VERSION = "investment-analysis.llm-client.v1";
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const row = (value: unknown): Row => value && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
 
@@ -12,12 +12,15 @@ export async function loadResearchOperatingAnalysis(db: D1Database, securityCode
     const [run, job] = await Promise.all([
       db.prepare(`select run_id as runId, security_code as securityCode, prompt_version as promptVersion,
         input_fingerprint as inputFingerprint, input_as_of as inputAsOf, input_json as inputJson,
-        report_markdown as reportMarkdown, provider, generated_at as generatedAt
+        report_markdown as reportMarkdown, reasoning_markdown as reasoningMarkdown,
+        total_duration_ms as totalDurationMs, provider, generated_at as generatedAt
         from research_operating_analysis_runs where security_code=? and prompt_version=? order by generated_at desc limit 1`)
         .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>(),
       db.prepare(`select security_code as securityCode, prompt_version as promptVersion, status, run_id as runId,
         attempt_count as attemptCount, last_error as lastError, created_at as createdAt, started_at as startedAt,
-        completed_at as completedAt, updated_at as updatedAt, webqa_task_id as webqaTaskId from research_operating_analysis_jobs
+        completed_at as completedAt, updated_at as updatedAt, partial_report_markdown as partialReportMarkdown,
+        partial_reasoning_markdown as partialReasoningMarkdown,
+        partial_updated_at as partialUpdatedAt from research_operating_analysis_jobs
         where security_code=? and prompt_version=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>(),
     ]);
     return {
@@ -37,79 +40,91 @@ export async function enqueueResearchOperatingAnalysis(db: D1Database, securityC
   const existing = await db.prepare(`select status from research_operating_analysis_jobs where security_code=? and prompt_version=?`)
     .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
   if (existing && existing.status !== "failed" && !force) return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: false, deduplicated: true };
-  const webqaConversationId = `${OPERATING_ANALYSIS_PROMPT_VERSION}-${code}-${crypto.randomUUID()}`;
   if (existing) {
     await db.prepare(`update research_operating_analysis_jobs set status='queued', run_id=null, last_error=null,
-      completed_at=null, webqa_conversation_id=?, webqa_task_id=null, start_new_session=1, updated_at=? where security_code=? and prompt_version=?`)
-      .bind(webqaConversationId, now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
+      completed_at=null, partial_report_markdown=null, partial_reasoning_markdown=null, partial_updated_at=null, lease_owner=null, updated_at=? where security_code=? and prompt_version=?`)
+      .bind(now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
   } else {
-    await db.prepare(`insert into research_operating_analysis_jobs (security_code, prompt_version, status, attempt_count, webqa_conversation_id, start_new_session, created_at, updated_at)
-      values (?, ?, 'queued', 0, ?, 1, ?, ?)`)
-      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, webqaConversationId, now, now).run();
+    await db.prepare(`insert into research_operating_analysis_jobs (security_code, prompt_version, status, attempt_count, created_at, updated_at)
+      values (?, ?, 'queued', 0, ?, ?)`)
+      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, now, now).run();
   }
   return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: true, deduplicated: false };
 }
 
 export async function claimResearchOperatingAnalysisJob(db: D1Database, runnerInstanceId: string) {
-  if (!await ownsResearchWebQaRunnerLease(db, runnerInstanceId)) return null;
+  if (!await ownsResearchOperatingAnalysisRunnerLease(db, runnerInstanceId)) return null;
   const now = Date.now();
-  const candidate = await db.prepare(`select security_code as securityCode, webqa_conversation_id as webqaConversationId,
-    webqa_task_id as webqaTaskId, start_new_session as startNewSession from research_operating_analysis_jobs
-    where prompt_version=? and status in ('queued', 'running') order by created_at asc limit 1`).bind(OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
+  // A Responses stream cannot be resumed by a replacement Node process. Once
+  // this runner has acquired the expired lease, make that interruption visible
+  // and leave the saved partial text available for the user to retry.
+  await db.prepare(`update research_operating_analysis_jobs set status='failed',
+    last_error='local llm-client runner restarted before this stream finished; retry the report',
+    completed_at=?, updated_at=? where prompt_version=? and status='running'
+    and (lease_owner is null or lease_owner<>?)`)
+    .bind(now, now, OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).run();
+  const candidate = await db.prepare(`select security_code as securityCode from research_operating_analysis_jobs
+    where prompt_version=? and status='queued' order by created_at asc limit 1`).bind(OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
   const code = text(candidate?.securityCode);
   if (!code) return null;
   const claim = await db.prepare(`update research_operating_analysis_jobs set status='running', attempt_count=attempt_count+1,
-    start_new_session=0, started_at=coalesce(started_at, ?), updated_at=?, lease_owner=? where security_code=? and prompt_version=?
-    and status in ('queued', 'running') and exists (
-      select 1 from research_webqa_runner_leases where lease_name=? and owner_id=? and heartbeat_at>=?
+    started_at=?, updated_at=?, lease_owner=? where security_code=? and prompt_version=?
+    and status='queued' and exists (
+      select 1 from research_operating_analysis_runner_leases where lease_name=? and owner_id=? and heartbeat_at>=?
     )`)
     .bind(now, now, runnerInstanceId.trim(), code, OPERATING_ANALYSIS_PROMPT_VERSION,
-      RESEARCH_WEBQA_RUNNER_LEASE_NAME, runnerInstanceId.trim(), now - RESEARCH_WEBQA_RUNNER_LEASE_MS).run();
+      RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_NAME, runnerInstanceId.trim(), now - RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_MS).run();
   return claim.meta.changes ? {
     securityCode: code,
     promptVersion: OPERATING_ANALYSIS_PROMPT_VERSION,
-    webqaConversationId: text(candidate?.webqaConversationId) || `${OPERATING_ANALYSIS_PROMPT_VERSION}-${code}`,
-    webqaTaskId: text(candidate?.webqaTaskId) || null,
-    startNewSession: candidate?.startNewSession === 1,
   } : null;
 }
 
-export async function checkpointResearchOperatingAnalysisWebQaTask(
+export async function checkpointResearchOperatingAnalysisStream(
   db: D1Database,
   securityCode: string,
-  webqaTaskId: string,
+  partialReportMarkdown: string,
+  partialReasoningMarkdown: string,
   runnerInstanceId: string,
 ) {
-  const taskId = webqaTaskId.trim();
-  if (!taskId) throw new Error("webqa task id is required");
-  const updated = await db.prepare(`update research_operating_analysis_jobs set webqa_task_id=?, updated_at=?
-    where security_code=? and prompt_version=? and status='running' and lease_owner=? and webqa_task_id is null`)
-    .bind(taskId, Date.now(), securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).run();
-  if (!updated.meta.changes) throw new Error("operating-analysis job lease is no longer owned by this runner or already has a WebQA task");
+  const partial = partialReportMarkdown.trim();
+  const reasoning = partialReasoningMarkdown.trim();
+  if (!partial && !reasoning) return await loadResearchOperatingAnalysis(db, securityCode);
+  const now = Date.now();
+  const updated = await db.prepare(`update research_operating_analysis_jobs set partial_report_markdown=?, partial_reasoning_markdown=?, partial_updated_at=?, updated_at=?
+    where security_code=? and prompt_version=? and status='running' and lease_owner=?`)
+    .bind(partial, reasoning, now, now, securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).run();
+  if (!updated.meta.changes) throw new Error("operating-analysis job lease is no longer owned by this runner");
   return await loadResearchOperatingAnalysis(db, securityCode);
 }
 
-export async function completeResearchOperatingAnalysisJob(db: D1Database, securityCode: string, input: unknown, reportMarkdown: string, inputFingerprint: string, runnerInstanceId: string) {
+export async function completeResearchOperatingAnalysisJob(db: D1Database, securityCode: string, input: unknown, reportMarkdown: string, reasoningMarkdown: string, inputFingerprint: string, runnerInstanceId: string) {
   const code = securityCode.trim().toUpperCase();
   const report = reportMarkdown.trim();
+  const reasoning = reasoningMarkdown.trim();
   if (!report) throw new Error("operating analysis report is empty");
   if (!inputFingerprint.trim()) throw new Error("operating analysis input fingerprint is required");
   const now = Date.now();
-  // A recovered WebQA answer has the same deterministic input fingerprint.
-  // Reuse the existing immutable run ID rather than making the job point to a
-  // run which INSERT OR IGNORE deliberately did not create.
-  const existing = await db.prepare(`select run_id as runId from research_operating_analysis_runs
-    where security_code=? and prompt_version=? and input_fingerprint=? limit 1`)
-    .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, inputFingerprint).first<Row>();
+  const [existing, job] = await Promise.all([
+    db.prepare(`select run_id as runId from research_operating_analysis_runs
+      where security_code=? and prompt_version=? and input_fingerprint=? limit 1`)
+      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, inputFingerprint).first<Row>(),
+    db.prepare(`select created_at as createdAt from research_operating_analysis_jobs
+      where security_code=? and prompt_version=? and status='running' and lease_owner=?`)
+      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).first<Row>(),
+  ]);
   const runId = text(existing?.runId) || `operating-analysis:${crypto.randomUUID()}`;
+  const createdAt = Number(job?.createdAt);
+  const totalDurationMs = Number.isFinite(createdAt) ? Math.max(0, now - createdAt) : null;
+  await db.prepare(`insert or ignore into research_operating_analysis_runs (
+      run_id, security_code, prompt_version, input_fingerprint, input_as_of, input_json, report_markdown, reasoning_markdown,
+      total_duration_ms, provider, generated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'llm-client.responses', ?)`)
+    .bind(runId, code, OPERATING_ANALYSIS_PROMPT_VERSION, inputFingerprint, now, JSON.stringify(input), report, reasoning, totalDurationMs, now).run();
   const claimed = await db.prepare(`update research_operating_analysis_jobs set status='completed', run_id=?, last_error=null,
-    completed_at=?, updated_at=? where security_code=? and prompt_version=? and status='running' and lease_owner=?`)
+    partial_report_markdown=null, partial_reasoning_markdown=null, partial_updated_at=null, completed_at=?, updated_at=? where security_code=? and prompt_version=? and status='running' and lease_owner=?`)
     .bind(runId, now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).run();
   if (!claimed.meta.changes) throw new Error("operating-analysis job lease is no longer owned by this runner");
-  await db.prepare(`insert or ignore into research_operating_analysis_runs (
-      run_id, security_code, prompt_version, input_fingerprint, input_as_of, input_json, report_markdown, provider, generated_at
-    ) values (?, ?, ?, ?, ?, ?, ?, 'chatgpt-webqa', ?)`)
-      .bind(runId, code, OPERATING_ANALYSIS_PROMPT_VERSION, inputFingerprint, now, JSON.stringify(input), report, now).run();
   return await loadResearchOperatingAnalysis(db, code);
 }
 

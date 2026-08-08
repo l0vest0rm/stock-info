@@ -123,8 +123,8 @@ import { importIndexedStatutoryDisclosureToKnowledge } from "../application/impo
 import { extractResearchAutoFilingInsights, loadResearchAutoBusinessDriverTree, loadResearchAutoFilingDocumentVersions, loadResearchAutoFilingFactInputs, loadResearchAutoFilingInsights, loadResearchAutoFilingModuleRebuilds, loadResearchAutoForecastInputGate, loadResearchAutoGovernanceCapitalLedger, loadResearchAutoIndustryCompetitionInputs, loadResearchAutoMarketSpaceInputs, loadResearchAutoRiskLedger, loadResearchAutoRiskQuantitativeInputGate, loadResearchAutoRiskSnapshotHistory, loadResearchAutoSecurityStructureCandidates, rebuildResearchAutoFilingReadModels } from "../application/research-auto-filing-insights";
 import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } from "../application/research-industry-source-series";
 import { claimNextResearchWebSearchPackageJob, completeResearchWebSearchPackageJob, enqueueResearchWebSearchPackage, failResearchWebSearchPackageJob, loadResearchWebSearchPackages } from "../application/research-web-search-packages";
-import { checkpointResearchOperatingAnalysisWebQaTask, claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, loadResearchOperatingAnalysis } from "../application/research-operating-analysis";
-import { renewResearchWebQaRunnerLease } from "../application/research-webqa-runner-lease";
+import { checkpointResearchOperatingAnalysisStream, claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, loadResearchOperatingAnalysis } from "../application/research-operating-analysis";
+import { renewResearchOperatingAnalysisRunnerLease } from "../application/research-operating-analysis-runner-lease";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
 import {
   loadResearchOperatingSourceFactBindings,
@@ -770,8 +770,8 @@ researchRoutes.post("/research/web-search-package-jobs/:code/:packageKind/fail",
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
-// The full operating analysis is a separate, long-form WebQA artifact. GET is
-// safe in every runtime; only the local runner can create or update it.
+// The full operating analysis is a local llm-client artifact. GET is safe in
+// every runtime; the Node runner periodically persists streamed text to D1.
 researchRoutes.get("/research/company/:code/operating-analysis", async (c) => {
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
@@ -796,11 +796,11 @@ researchRoutes.post("/research/operating-analysis-jobs/claim-next", async (c) =>
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
-researchRoutes.post("/research/webqa-runner-lease/heartbeat", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "WebQA runner lease is only available in local research runtime");
+researchRoutes.post("/research/operating-analysis-runner-lease/heartbeat", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating-analysis runner lease is only available in local research runtime");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-  try { return ok(c, { active: await renewResearchWebQaRunnerLease(c.env.DB, body.runnerInstanceId) }); }
+  try { return ok(c, { active: await renewResearchOperatingAnalysisRunnerLease(c.env.DB, body.runnerInstanceId) }); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -812,18 +812,19 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/complete", async (c
     const body = await c.req.json<Record<string, unknown>>();
     if (typeof body.reportMarkdown !== "string" || typeof body.inputFingerprint !== "string") return fail(c, 400, "reportMarkdown and inputFingerprint are required");
     if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-    return ok(c, await completeResearchOperatingAnalysisJob(c.env.DB, code, body.input, body.reportMarkdown, body.inputFingerprint, body.runnerInstanceId));
+    return ok(c, await completeResearchOperatingAnalysisJob(c.env.DB, code, body.input, body.reportMarkdown,
+      typeof body.reasoningMarkdown === "string" ? body.reasoningMarkdown : "", body.inputFingerprint, body.runnerInstanceId));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
-researchRoutes.post("/research/operating-analysis-jobs/:code/webqa-task", async (c) => {
+researchRoutes.post("/research/operating-analysis-jobs/:code/checkpoint", async (c) => {
   if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try {
-    if (typeof body.webqaTaskId !== "string" || typeof body.runnerInstanceId !== "string") return fail(c, 400, "webqaTaskId and runnerInstanceId are required");
-    return ok(c, await checkpointResearchOperatingAnalysisWebQaTask(c.env.DB, code, body.webqaTaskId, body.runnerInstanceId));
+    if (typeof body.partialReportMarkdown !== "string" || typeof body.partialReasoningMarkdown !== "string" || typeof body.runnerInstanceId !== "string") return fail(c, 400, "partialReportMarkdown, partialReasoningMarkdown and runnerInstanceId are required");
+    return ok(c, await checkpointResearchOperatingAnalysisStream(c.env.DB, code, body.partialReportMarkdown, body.partialReasoningMarkdown, body.runnerInstanceId));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

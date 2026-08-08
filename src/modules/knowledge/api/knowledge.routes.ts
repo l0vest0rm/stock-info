@@ -400,8 +400,18 @@ knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
 // prepares/persists D1/R2 state; it must never await a remote model stream.
 knowledgeRoutes.post("/knowledge/processing-jobs/claim-next", async (c) => {
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const [job] = await claimInformationJobs(c.env.DB, 1);
-  if (!job) return ok(c, { job: null });
+  let job: { job_id: string; doc_id: string } | undefined;
+  try {
+    [job] = await claimInformationJobs(c.env.DB, 1);
+    if (!job) return ok(c, { job: null });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // This endpoint is polled every two seconds by a local Node process. A D1
+    // failure must remain an explicit retryable boundary response rather than
+    // escape to Hono's global error handler, which can terminate Miniflare's
+    // local ProxyWorker after repeated 500s.
+    return fail(c, 503, `information processing queue unavailable: ${message}`);
+  }
   try {
     const prepared = await prepareInformationDocument(c.env, job.doc_id);
     if (prepared.kind === "complete") {
@@ -415,9 +425,14 @@ knowledgeRoutes.post("/knowledge/processing-jobs/claim-next", async (c) => {
     return ok(c, { job: { jobId: job.job_id, documentId: job.doc_id, status: "processing", request: prepared.request } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await c.env.DB.prepare("update information_processing_jobs set status = 'failed', last_error = ?, updated_at = ? where job_id = ?")
-      .bind(message, Date.now(), job.job_id).run();
-    return ok(c, { job: { jobId: job.job_id, documentId: job.doc_id, status: "failed", error: message } });
+    try {
+      await c.env.DB.prepare("update information_processing_jobs set status = 'failed', last_error = ?, updated_at = ? where job_id = ?")
+        .bind(message, Date.now(), job.job_id).run();
+      return ok(c, { job: { jobId: job.job_id, documentId: job.doc_id, status: "failed", error: message } });
+    } catch (persistenceError) {
+      const persistenceMessage = persistenceError instanceof Error ? persistenceError.message : String(persistenceError);
+      return fail(c, 503, `information processing queue unavailable: ${persistenceMessage}`);
+    }
   }
 });
 

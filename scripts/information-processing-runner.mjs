@@ -2,6 +2,7 @@
 
 import { readFile } from "node:fs/promises";
 import { createResponsesProvider } from "@m2ai/shared-llm-client";
+import { fetchLocalWorker } from "./lib/local-worker-request.mjs";
 
 const baseUrl = String(process.env.INFORMATION_PROCESSING_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const modelBaseUrl = String(process.env.OPENAI_BASE_URL || process.env.LLM_BASE_URL || "https://api.m2ai.cc/api/v1/openai").replace(/\/+$/, "");
@@ -21,7 +22,7 @@ async function resolveApiKey() {
 }
 
 async function request(path, init) {
-  const response = await fetch(`${baseUrl}${path}`, init);
+  const response = await fetchLocalWorker(`${baseUrl}${path}`, init);
   const body = await response.json().catch(() => null);
   if (!response.ok || body?.code !== 200) throw new Error(body?.msg || `information runner endpoint failed: ${response.status}`);
   return body.data;

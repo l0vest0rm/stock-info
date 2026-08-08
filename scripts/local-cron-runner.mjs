@@ -6,6 +6,7 @@ import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { Cron } from 'croner'
 import { parse, printParseErrorCode } from 'jsonc-parser'
+import { fetchLocalWorker } from './lib/local-worker-request.mjs'
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:8000'
 const DEFAULT_CONFIG_PATH = 'wrangler.jsonc'
@@ -45,11 +46,14 @@ export async function dispatchScheduled({
   baseUrl,
   cron,
   scheduledTime = Date.now(),
-  fetchImpl = fetch,
+  fetchImpl,
 }) {
   const url = scheduledUrl(baseUrl, cron, scheduledTime)
   const startedAt = Date.now()
-  const response = await fetchImpl(url, { signal: AbortSignal.timeout(10 * 60 * 1000) })
+  const init = { signal: AbortSignal.timeout(10 * 60 * 1000) }
+  const response = fetchImpl
+    ? await fetchImpl(url, init)
+    : await fetchLocalWorker(url, init)
   const body = await response.text()
   if (!response.ok) {
     throw new Error(`Scheduled request failed with HTTP ${response.status}: ${body.slice(0, 500)}`)

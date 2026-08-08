@@ -16,6 +16,7 @@ const httpDomainConcurrency = process.env.HTTP_DOMAIN_CONCURRENCY || '5'
 const httpRequestTimeoutMs = process.env.HTTP_REQUEST_TIMEOUT_MS || '10000'
 const llmDailyLimit = process.env.LLM_DAILY_LIMIT || '1000000'
 const knowledgeReportConverterUrl = process.env.KNOWLEDGE_REPORT_CONVERTER_URL || 'http://127.0.0.1:8788/__convert-report'
+const informationProcessingRunnerEnabled = process.env.INFORMATION_PROCESSING_RUNNER === '1'
 const passthroughVarNames = [
   'OPENAI_API_KEY',
   'OPENAI_BASE_URL',
@@ -98,10 +99,8 @@ function clearUnfinishedResearchJobs() {
           updated_at=${now}
       where status in ('queued', 'running');
     `, { requiredTable: 'research_web_search_package_jobs' })
-    // WebQA-backed report jobs are intentionally not touched here. Their
-    // browser work is persisted by input-gateway and must recover the same
-    // provider session after a Worker restart rather than being failed or
-    // replayed. Web Search package jobs have their own retry contract.
+    // Operating-analysis and Web Search package streams run in local Node
+    // processes. Their own runners determine whether a task can continue.
     console.log(`Cleared unfinished local Web Search jobs: ${databaseFile}`)
   } catch (error) {
     if (/local Wrangler D1 state directory does not exist|expected one local D1 database/.test(String(error))) return
@@ -152,12 +151,16 @@ try {
     env: { ...workerEnv, OPERATING_ANALYSIS_RUNNER_BASE_URL: `http://127.0.0.1:${workerPort}` },
     stdio: 'inherit',
   })
-  informationProcessingRunnerProcess = spawn(process.execPath, [
-    fileURLToPath(new URL('./information-processing-runner.mjs', import.meta.url)),
-  ], {
-    env: { ...workerEnv, INFORMATION_PROCESSING_RUNNER_BASE_URL: `http://127.0.0.1:${workerPort}` },
-    stdio: 'inherit',
-  })
+  if (informationProcessingRunnerEnabled) {
+    informationProcessingRunnerProcess = spawn(process.execPath, [
+      fileURLToPath(new URL('./information-processing-runner.mjs', import.meta.url)),
+    ], {
+      env: { ...workerEnv, INFORMATION_PROCESSING_RUNNER_BASE_URL: `http://127.0.0.1:${workerPort}` },
+      stdio: 'inherit',
+    })
+  } else {
+    console.log('Local information processing runner is disabled (set INFORMATION_PROCESSING_RUNNER=1 to enable it).')
+  }
 } catch (error) {
   shuttingDown = true
   workerProcess?.kill('SIGTERM')
@@ -206,7 +209,7 @@ const processExitCode = await new Promise((resolve) => {
   cronProcess.on('exit', handleExit('Local cron runner'))
   webSearchRunnerProcess.on('exit', handleExit('Local Web Search package runner'))
   operatingAnalysisRunnerProcess.on('exit', handleExit('Local operating analysis runner'))
-  informationProcessingRunnerProcess.on('exit', handleExit('Local information processing runner'))
+  informationProcessingRunnerProcess?.on('exit', handleExit('Local information processing runner'))
 })
 
 process.exit(processExitCode)

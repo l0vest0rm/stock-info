@@ -2,6 +2,7 @@
 
 import { readFile } from "node:fs/promises";
 import { createResponsesProvider } from "@m2ai/shared-llm-client";
+import { fetchLocalWorker } from "./lib/local-worker-request.mjs";
 
 const baseUrl = String(process.env.WEB_SEARCH_PACKAGE_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const apiKey = await resolveApiKey();
@@ -21,7 +22,7 @@ async function resolveApiKey() {
 }
 
 async function request(path, init) {
-  const response = await fetch(`${baseUrl}${path}`, init);
+  const response = await fetchLocalWorker(`${baseUrl}${path}`, init);
   const body = await response.json().catch(() => null);
   if (!response.ok || body?.code !== 200) throw new Error(body?.msg || `local runner endpoint failed: ${response.status}`);
   return body.data;

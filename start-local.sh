@@ -26,7 +26,8 @@ OPERATING_ANALYSIS_RUNNER_FINGERPRINT_FILE="${LOG_DIR}/stock-info-operating-anal
 INFORMATION_PROCESSING_RUNNER_LOG_FILE="${LOG_DIR}/stock-info-information-processing-runner.log"
 INFORMATION_PROCESSING_RUNNER_PID_FILE="${LOG_DIR}/stock-info-information-processing-runner.pid"
 KNOWLEDGE_INGEST_SCHEDULER="${KNOWLEDGE_INGEST_SCHEDULER:-1}"
-PRESERVE_ACTIVE_WEBQA_RUNNERS="${PRESERVE_ACTIVE_WEBQA_RUNNERS:-1}"
+INFORMATION_PROCESSING_RUNNER="${INFORMATION_PROCESSING_RUNNER:-0}"
+PRESERVE_ACTIVE_LOCAL_RESEARCH_RUNNERS="${PRESERVE_ACTIVE_LOCAL_RESEARCH_RUNNERS:-1}"
 MACRO_FETCH_RELAY_LOG_FILE="${LOG_DIR}/stock-info-macro-fetch-relay.log"
 COOKIE_REFRESH_LOG_FILE="${LOG_DIR}/stock-info-xueqiu-cookie-refresh.log"
 COOKIE_REFRESH_PID_FILE="${LOG_DIR}/stock-info-xueqiu-cookie-refresh.pid"
@@ -87,14 +88,15 @@ mkdir -p "$LOG_DIR"
 
 cd "$PROJECT_ROOT"
 
-# A WebQA runner may safely survive a Worker restart, but it cannot safely
-# survive a prompt/runner-code change: Node has already loaded the old prompt
-# text into memory. Track only the source inputs (not generated output, which
-# is rebuilt later in this script) so a changed template forces one restart.
+# The local llm-client runner may survive a Worker restart, but it cannot
+# safely survive a prompt/runner/config change: Node has already loaded those
+# inputs into memory. Track source inputs (not generated output) so a change
+# forces one restart.
 OPERATING_ANALYSIS_RUNNER_FINGERPRINT=$(shasum -a 256 \
   "$PROJECT_ROOT/scripts/research-operating-analysis-runner.mjs" \
   "$PROJECT_ROOT/scripts/build-prompts.mjs" \
   "$PROJECT_ROOT/prompts/research/operating-analysis.md" \
+  "$PROJECT_ROOT/config/research-operating-analysis.json" \
   | shasum -a 256 | awk '{print $1}')
 
 if [[ "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" != <-> || "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" -lt 300 ]]; then
@@ -107,8 +109,13 @@ if [[ "$WORKER_HEALTH_CHECK_INTERVAL_SECONDS" != <-> || "$WORKER_HEALTH_CHECK_IN
   exit 1
 fi
 
-if [[ "$PRESERVE_ACTIVE_WEBQA_RUNNERS" != "0" && "$PRESERVE_ACTIVE_WEBQA_RUNNERS" != "1" ]]; then
-  echo "PRESERVE_ACTIVE_WEBQA_RUNNERS must be 0 or 1."
+if [[ "$PRESERVE_ACTIVE_LOCAL_RESEARCH_RUNNERS" != "0" && "$PRESERVE_ACTIVE_LOCAL_RESEARCH_RUNNERS" != "1" ]]; then
+  echo "PRESERVE_ACTIVE_LOCAL_RESEARCH_RUNNERS must be 0 or 1."
+  exit 1
+fi
+
+if [[ "$INFORMATION_PROCESSING_RUNNER" != "0" && "$INFORMATION_PROCESSING_RUNNER" != "1" ]]; then
+  echo "INFORMATION_PROCESSING_RUNNER must be 0 or 1."
   exit 1
 fi
 
@@ -176,7 +183,7 @@ if [[ -f "$WEB_SEARCH_RUNNER_PID_FILE" ]]; then
     EXISTING_WEB_SEARCH_RUNNER_COMMAND=$(ps -p "$EXISTING_WEB_SEARCH_RUNNER_PID" -o command= 2>/dev/null || true)
   fi
   if [[ "$EXISTING_WEB_SEARCH_RUNNER_COMMAND" == *"research-web-search-package-runner.mjs"* ]]; then
-    if [[ "$PRESERVE_ACTIVE_WEBQA_RUNNERS" == "1" ]]; then
+    if [[ "$PRESERVE_ACTIVE_LOCAL_RESEARCH_RUNNERS" == "1" ]]; then
       echo "Keeping active local Web Search package runner: ${EXISTING_WEB_SEARCH_RUNNER_PID}"
       WEB_SEARCH_RUNNER_PID="$EXISTING_WEB_SEARCH_RUNNER_PID"
       WEB_SEARCH_RUNNER_REUSED=1
@@ -200,12 +207,12 @@ if [[ -f "$OPERATING_ANALYSIS_RUNNER_PID_FILE" ]]; then
     if [[ -f "$OPERATING_ANALYSIS_RUNNER_FINGERPRINT_FILE" ]]; then
       EXISTING_OPERATING_ANALYSIS_RUNNER_FINGERPRINT=$(<"$OPERATING_ANALYSIS_RUNNER_FINGERPRINT_FILE")
     fi
-    if [[ "$PRESERVE_ACTIVE_WEBQA_RUNNERS" == "1" && -n "$EXISTING_OPERATING_ANALYSIS_RUNNER_FINGERPRINT" && "$EXISTING_OPERATING_ANALYSIS_RUNNER_FINGERPRINT" == "$OPERATING_ANALYSIS_RUNNER_FINGERPRINT" ]]; then
+    if [[ "$PRESERVE_ACTIVE_LOCAL_RESEARCH_RUNNERS" == "1" && -n "$EXISTING_OPERATING_ANALYSIS_RUNNER_FINGERPRINT" && "$EXISTING_OPERATING_ANALYSIS_RUNNER_FINGERPRINT" == "$OPERATING_ANALYSIS_RUNNER_FINGERPRINT" ]]; then
       echo "Keeping active local operating analysis runner: ${EXISTING_OPERATING_ANALYSIS_RUNNER_PID}"
       OPERATING_ANALYSIS_RUNNER_PID="$EXISTING_OPERATING_ANALYSIS_RUNNER_PID"
       OPERATING_ANALYSIS_RUNNER_REUSED=1
     else
-      if [[ "$PRESERVE_ACTIVE_WEBQA_RUNNERS" == "1" ]]; then
+      if [[ "$PRESERVE_ACTIVE_LOCAL_RESEARCH_RUNNERS" == "1" ]]; then
         echo "Restarting local operating analysis runner because its prompt or source changed: ${EXISTING_OPERATING_ANALYSIS_RUNNER_PID}"
       else
         echo "Stopping existing local operating analysis runner: ${EXISTING_OPERATING_ANALYSIS_RUNNER_PID}"
@@ -488,18 +495,23 @@ if [[ "${OPERATING_ANALYSIS_RUNNER_REUSED:-0}" != "1" ]]; then
   fi
 fi
 
-echo "Starting local information processing runner ..."
-: >"$INFORMATION_PROCESSING_RUNNER_LOG_FILE"
-nohup node scripts/information-processing-runner.mjs \
-  </dev/null >"$INFORMATION_PROCESSING_RUNNER_LOG_FILE" 2>&1 &
-INFORMATION_PROCESSING_RUNNER_PID=$!
-echo "$INFORMATION_PROCESSING_RUNNER_PID" >"$INFORMATION_PROCESSING_RUNNER_PID_FILE"
-sleep 1
-if ! kill -0 "$INFORMATION_PROCESSING_RUNNER_PID" >/dev/null 2>&1; then
-  echo "Local information processing runner exited during startup."
-  echo "Check log: $INFORMATION_PROCESSING_RUNNER_LOG_FILE"
-  wait "$INFORMATION_PROCESSING_RUNNER_PID" || true
-  exit 1
+INFORMATION_PROCESSING_RUNNER_PID=""
+if [[ "$INFORMATION_PROCESSING_RUNNER" == "1" ]]; then
+  echo "Starting local information processing runner ..."
+  : >"$INFORMATION_PROCESSING_RUNNER_LOG_FILE"
+  nohup node scripts/information-processing-runner.mjs \
+    </dev/null >"$INFORMATION_PROCESSING_RUNNER_LOG_FILE" 2>&1 &
+  INFORMATION_PROCESSING_RUNNER_PID=$!
+  echo "$INFORMATION_PROCESSING_RUNNER_PID" >"$INFORMATION_PROCESSING_RUNNER_PID_FILE"
+  sleep 1
+  if ! kill -0 "$INFORMATION_PROCESSING_RUNNER_PID" >/dev/null 2>&1; then
+    echo "Local information processing runner exited during startup."
+    echo "Check log: $INFORMATION_PROCESSING_RUNNER_LOG_FILE"
+    wait "$INFORMATION_PROCESSING_RUNNER_PID" || true
+    exit 1
+  fi
+else
+  echo "Local information processing runner is disabled (set INFORMATION_PROCESSING_RUNNER=1 to enable it)."
 fi
 
 echo "Starting local cron runner from wrangler.jsonc ..."
@@ -540,7 +552,7 @@ fi
 # `wrangler dev --local` has a separate ProxyController/workerd process. It
 # can exit after a local runtime disconnect while the independent task runners
 # remain healthy. Watch the actual HTTP boundary and restart only that Worker;
-# D1 task rows, WebQA browser sessions and the runner processes are preserved.
+# D1 task rows and local research-runner processes are preserved.
 echo "Starting local Worker watchdog (every ${WORKER_HEALTH_CHECK_INTERVAL_SECONDS}s) ..."
 {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] watchdog started for ${BASE_URL}"

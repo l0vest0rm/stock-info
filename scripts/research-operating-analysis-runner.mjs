@@ -1,24 +1,41 @@
 #!/usr/bin/env node
 import { createHash, randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { readFile } from "node:fs/promises";
+import { SharedLlmClient, createResponsesProvider } from "@m2ai/shared-llm-client";
 import { RESEARCH_OPERATING_ANALYSIS_PROMPT } from "./generated/prompt-text.mjs";
+import { fetchLocalWorker } from "./lib/local-worker-request.mjs";
 
-const execFileAsync = promisify(execFile);
 const baseUrl = String(process.env.OPERATING_ANALYSIS_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const webctl = process.env.WEBCTL_BIN || "/Users/terry/.local/bin/webctl";
-// A WebQA report is deliberately long-running: ChatGPT may research before it
-// starts writing and then stream a substantial Markdown answer. This bound is
-// only a safety limit for a genuinely stuck provider/session, not a UI wait.
-const WEBQA_COMPLETION_TIMEOUT_MS = 20 * 60_000;
+const config = await loadConfig();
+const apiKey = await resolveApiKey();
+const modelBaseUrl = String(process.env.OPENAI_BASE_URL || process.env.LLM_BASE_URL || "https://api.m2ai.cc/api/v1/openai").replace(/\/+$/, "");
 const runnerInstanceId = `operating-analysis-runner:${randomUUID()}`;
 
 class WorkerUnavailableError extends Error {}
 
+if (!apiKey) throw new Error("local operating-analysis runner requires OPENAI_API_KEY or ~/.codex/auth.json");
+
+async function loadConfig() {
+  const parsed = JSON.parse(await readFile(new URL("../config/research-operating-analysis.json", import.meta.url), "utf8"));
+  if (parsed?.model !== "gpt-5.6-luna" || parsed?.reasoningEffort !== "high" || parsed?.webSearch?.required !== true) {
+    throw new Error("research-operating-analysis config must use gpt-5.6-luna, high reasoning, and required Web Search");
+  }
+  return parsed;
+}
+
+async function resolveApiKey() {
+  if (typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim()) return process.env.OPENAI_API_KEY.trim();
+  if (typeof process.env.LLM_API_KEY === "string" && process.env.LLM_API_KEY.trim()) return process.env.LLM_API_KEY.trim();
+  try {
+    const auth = JSON.parse(await readFile(`${process.env.HOME}/.codex/auth.json`, "utf8"));
+    return typeof auth?.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY.trim() : "";
+  } catch { return ""; }
+}
+
 async function request(path, init = {}) {
   let response;
   try {
-    response = await fetch(`${baseUrl}${path}`, init);
+    response = await fetchLocalWorker(`${baseUrl}${path}`, init);
   } catch (error) {
     throw new WorkerUnavailableError(`local Worker is unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -28,15 +45,14 @@ async function request(path, init = {}) {
   return body.data;
 }
 
-async function buildInput(code, webqaRequestConversationId) {
+async function buildInput(code) {
   const [overview, income] = await Promise.all([
     request(`/api/company/overview?code=${encodeURIComponent(code)}`),
     request(`/api/finance/income?code=${encodeURIComponent(code)}&format=read-model`),
   ]);
   return {
-    schemaVersion: "operating-analysis-prompt-context.v5",
+    schemaVersion: "operating-analysis-prompt-context.v6",
     security: { code, name: overview?.name || "名称未返回" },
-    webqaRequestConversationId,
     reportingStatus: buildReportingStatus(income),
     marketSnapshot: buildMarketSnapshot(overview),
   };
@@ -48,8 +64,6 @@ function numberOrNull(value) {
 
 function buildMarketSnapshot(overview) {
   return {
-    // Every market multiple is a point-in-time observation. It is supplied
-    // to avoid redundant Web search, not an authorization to invent forecasts.
     price: {
       asOf: String(overview?.marketDate || "") || null,
       latestPrice: numberOrNull(overview?.latestPrice),
@@ -180,35 +194,126 @@ function renderPrompt(template, values) {
   );
 }
 
+function createClient() {
+  return new SharedLlmClient({
+    providers: {
+      openai: createResponsesProvider({
+        name: "openai",
+        baseUrl: modelBaseUrl,
+        apiKey,
+        streamIdleTimeoutMs: config.jobTimeoutMs,
+      }),
+    },
+    providerConcurrency: { openai: 1 },
+  });
+}
+
+async function generateReport(claim, input) {
+  let reportMarkdown = "";
+  let reasoningMarkdown = "";
+  let checkpointedLength = 0;
+  let checkpointedAt = 0;
+  let lastCheckpointError = "";
+  const checkpoint = async (force = false) => {
+    const now = Date.now();
+    const enoughText = reportMarkdown.length + reasoningMarkdown.length - checkpointedLength >= config.streamCheckpoint.minChars;
+    const enoughTime = now - checkpointedAt >= config.streamCheckpoint.intervalMs;
+    if ((!reportMarkdown && !reasoningMarkdown) || !force && !enoughText && !enoughTime) return;
+    const reportSnapshot = reportMarkdown;
+    const reasoningSnapshot = reasoningMarkdown;
+    try {
+      await request(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/checkpoint`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ partialReportMarkdown: reportSnapshot, partialReasoningMarkdown: reasoningSnapshot, runnerInstanceId }),
+      });
+      checkpointedLength = reportSnapshot.length + reasoningSnapshot.length;
+      checkpointedAt = Date.now();
+      lastCheckpointError = "";
+    } catch (error) {
+      if (!(error instanceof WorkerUnavailableError)) throw error;
+      const message = error.message;
+      if (message !== lastCheckpointError) {
+        console.warn(`[operating-analysis-runner] checkpoint delayed for ${claim.securityCode}: ${message}`);
+        lastCheckpointError = message;
+      }
+    }
+  };
+  const response = await createClient().streamText({
+    provider: "openai",
+    model: config.model,
+    instructions: "你是严谨的投资研究员。遵守用户给定的报告结构；只陈述可追溯证据支持的事实、计算和判断，不以搜索不到的信息填空。",
+    input: [{ role: "user", content: [{ type: "input_text", text: prompt(input) }] }],
+    allowReasoning: true,
+    reasoningEffort: config.reasoningEffort,
+    tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }],
+    toolChoice: "required",
+    maxOutputTokens: config.maxOutputTokens,
+    cacheEnabled: false,
+    signal: AbortSignal.timeout(config.jobTimeoutMs),
+    onText: async (delta) => {
+      reportMarkdown += delta;
+      await checkpoint();
+    },
+    onReasoning: async (delta) => {
+      reasoningMarkdown += delta;
+      await checkpoint();
+    },
+  });
+  reportMarkdown = response.text.trim();
+  reasoningMarkdown = response.reasoningText.trim();
+  await checkpoint(true);
+  return { reportMarkdown, reasoningMarkdown, webSearch: response.webSearch ?? null };
+}
+
+async function completeWithWorkerRecovery(code, body) {
+  const deadline = Date.now() + config.persistenceRecovery.maxWaitMs;
+  let lastError = null;
+  while (Date.now() <= deadline) {
+    try {
+      await request(`/api/research/operating-analysis-jobs/${encodeURIComponent(code)}/complete`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      return;
+    } catch (error) {
+      if (!(error instanceof WorkerUnavailableError)) throw error;
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, config.persistenceRecovery.retryIntervalMs));
+    }
+  }
+  throw lastError ?? new WorkerUnavailableError("local Worker did not return while persisting the completed report");
+}
+
 async function runOperatingAnalysisOnce() {
   const claim = await request("/api/research/operating-analysis-jobs/claim-next", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runnerInstanceId }),
   });
   if (!claim) return false;
   try {
-    const conversationId = String(claim.webqaConversationId || `${claim.promptVersion}-${claim.securityCode}`);
-    const input = await buildInput(claim.securityCode, conversationId);
+    const input = await buildInput(claim.securityCode);
     const inputFingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex");
-    const result = await completeOperatingAnalysisWebQA(claim, conversationId, prompt(input));
-    const reportMarkdown = String(result.answer_text || "").trim();
-    if (!["completed", "recovered"].includes(String(result.status || ""))) throw new Error(`WebQA did not report completion: ${String(result.status || "missing status")}`);
-    const completedInput = {
-      ...input,
-      webqaSession: {
-        conversationId: String(result.conversation_id || conversationId),
-        requestConversationId: conversationId,
-        sessionUrl: String(result.provider_url || result.session_ref || ""),
-      },
-    };
-    await request(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input: completedInput, inputFingerprint, reportMarkdown, runnerInstanceId }) });
+    const result = await generateReport(claim, input);
+    if (!result.reportMarkdown) throw new Error("llm-client stream completed without output text");
+    await completeWithWorkerRecovery(claim.securityCode, {
+        input: {
+          ...input,
+          modelRun: {
+            client: "llm-client",
+            model: config.model,
+            reasoningEffort: config.reasoningEffort,
+            webSearch: result.webSearch,
+          },
+        },
+        inputFingerprint,
+        reportMarkdown: result.reportMarkdown,
+        reasoningMarkdown: result.reasoningMarkdown,
+        runnerInstanceId,
+    });
+    console.log(`[operating-analysis-runner] completed ${claim.securityCode} chars=${result.reportMarkdown.length}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof WorkerUnavailableError) {
-      console.warn(`[operating-analysis-runner] Worker disconnected while processing ${claim.securityCode}; keeping the job recoverable: ${message}`);
-      return false;
-    }
-    if (/job lease is no longer owned/i.test(message)) {
-      console.warn(`[operating-analysis-runner] ownership moved while processing ${claim.securityCode}; leaving the replacement runner to recover it.`);
+      console.warn(`[operating-analysis-runner] Worker remained unavailable after ${config.persistenceRecovery.maxWaitMs}ms; preserved task state for retry: ${message}`);
       return false;
     }
     console.error(`[operating-analysis-runner] failed ${claim.securityCode}: ${message}`);
@@ -217,80 +322,12 @@ async function runOperatingAnalysisOnce() {
   return true;
 }
 
-async function runWebQATask(args) {
-  const { stdout } = await execFileAsync(webctl, args, { maxBuffer: 2 * 1024 * 1024 });
-  return JSON.parse(stdout);
-}
-
-async function waitForWebQATask(taskId) {
-  const deadline = Date.now() + WEBQA_COMPLETION_TIMEOUT_MS + 30_000;
-  while (Date.now() < deadline) {
-    const task = await runWebQATask(["webqa", "task", "get", taskId]);
-    if (task.status === "completed") return {
-      status: "completed", answer_text: String(task.answer_text || ""),
-      conversation_id: String(task.conversation_id_provider || ""), provider_url: String(task.provider_url || ""),
-    };
-    if (["failed", "cancelled"].includes(String(task.status))) throw new Error(`WebQA task ${task.status}: ${String(task.error || "no detail")}`);
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
-  }
-  throw new Error(`WebQA task ${taskId} exceeded its completion deadline`);
-}
-
-async function submitWebQATask(conversationId, question, { newSession = false, mode = "ask", idempotencyKey = "" } = {}) {
-  const args = ["webqa", "task", "submit", "--platform", "stock-info", "--conversation-id", conversationId,
-    "--mode", mode, "--timeout-ms", String(WEBQA_COMPLETION_TIMEOUT_MS)];
-  if (newSession) args.push("--new-session");
-  if (idempotencyKey) args.push("--idempotency-key", idempotencyKey);
-  if (mode !== "recover_only") args.push(question);
-  const task = await runWebQATask(args);
-  if (!task.task_id) throw new Error("WebQA gateway accepted no task id");
-  return task;
-}
-
-async function completeOperatingAnalysisWebQA(claim, conversationId, question) {
-  let taskId = String(claim.webqaTaskId || "").trim();
-  if (!taskId) {
-    const submitted = await submitWebQATask(conversationId, question, {
-      newSession: claim.startNewSession === true,
-      // Once a WebQA task has been persisted, recovery is gateway-owned and
-      // never resends this business prompt. A non-new claim without a task is
-      // therefore a read-only recovery attempt, not an implicit retry.
-      mode: claim.startNewSession === true ? "ask" : "recover_only",
-      idempotencyKey: `operating:${claim.securityCode}:${claim.promptVersion}:${conversationId}`,
-    });
-    taskId = String(submitted.task_id);
-    await request(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/webqa-task`, {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ webqaTaskId: taskId, runnerInstanceId }),
-    });
-  }
-  const result = await waitForWebQATask(taskId);
-  assertCompleteOperatingAnalysis(String(result.answer_text || ""));
-  return result;
-}
-
 async function persistFailure(path, body) {
   try {
     await request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   } catch (error) {
-    // A Worker restart leaves the job running. Its healthy replacement
-    // runner will reacquire the short runner lease and resume this same
-    // ChatGPT conversation rather than starting another search.
     console.error(`[operating-analysis-runner] could not persist failure: ${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-function assertCompleteOperatingAnalysis(reportMarkdown) {
-  const headings = ["经营与产业研究", "商业模式与赚钱机制", "市场空间、产品边界与收入传导", "行业阶段、供给约束与竞争", "当前增长、驱动与可持续性", "利润质量、现金转换与营运资本", "资本效率与资本配置", "证券定价与反证", "当前价格隐含的经营要求", "关键估值情景与假设", "主报告最可能出错之处与反面证据", "投资逻辑失效路径", "后续跟踪指标与触发阈值"];
-  const missing = headings.filter((heading) => !reportMarkdown.includes(heading));
-  if (reportMarkdown.length < 1_400 || missing.length) {
-    throw new Error(`WebQA returned an incomplete streaming prefix (length=${reportMarkdown.length}; missing_sections=${missing.join("、") || "none"})`);
-  }
-}
-
-async function runOnce() {
-  // This runner creates one complete investment-research document per task.
-  return await runOperatingAnalysisOnce();
 }
 
 let active = false;
@@ -302,11 +339,11 @@ async function heartbeatRunnerLease() {
   if (runnerLeaseHeartbeatInFlight) return runnerLeaseActive;
   runnerLeaseHeartbeatInFlight = true;
   try {
-    const lease = await request("/api/research/webqa-runner-lease/heartbeat", {
+    const lease = await request("/api/research/operating-analysis-runner-lease/heartbeat", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runnerInstanceId }),
     });
     runnerLeaseActive = lease?.active === true;
-    const message = runnerLeaseActive ? "" : "another local WebQA runner still owns the active lease";
+    const message = runnerLeaseActive ? "" : "another local operating-analysis runner still owns the active lease";
     if (message && message !== lastLeaseMessage) console.warn(`[operating-analysis-runner] ${message}`);
     lastLeaseMessage = message;
   } catch (error) {
@@ -325,14 +362,13 @@ async function poll() {
   active = true;
   try {
     if (!await heartbeatRunnerLease()) return;
-    while (await runOnce()) { /* drain queued local work */ }
+    while (await runOperatingAnalysisOnce()) { /* drain queued local work */ }
   } catch (error) {
     console.warn(`[operating-analysis-runner] polling paused: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  finally { active = false; }
+  } finally { active = false; }
 }
 
-console.log(`[operating-analysis-runner] ${runnerInstanceId} polling ${baseUrl} every 5000ms`);
+console.log(`[operating-analysis-runner] ${runnerInstanceId} using llm-client ${config.model} with required Web Search; polling ${baseUrl} every 5000ms`);
 void poll();
 const timer = setInterval(() => { void poll(); }, 5_000);
 const heartbeatTimer = setInterval(() => { void heartbeatRunnerLease(); }, 5_000);

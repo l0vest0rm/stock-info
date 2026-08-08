@@ -31,8 +31,9 @@ test('dispatches a scheduled event and surfaces HTTP failures', async () => {
     baseUrl: 'http://127.0.0.1:8000',
     cron: '*/15 * * * *',
     scheduledTime: 987654321,
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, init) => {
       requestedUrl = String(url)
+      assert.equal(init.headers, undefined)
       return new Response('ok', { status: 200 })
     },
   })
