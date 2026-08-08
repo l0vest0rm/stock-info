@@ -813,7 +813,7 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/complete", async (c
     if (typeof body.reportMarkdown !== "string" || typeof body.inputFingerprint !== "string") return fail(c, 400, "reportMarkdown and inputFingerprint are required");
     if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
     return ok(c, await completeResearchOperatingAnalysisJob(c.env.DB, code, body.input, body.reportMarkdown,
-      typeof body.reasoningMarkdown === "string" ? body.reasoningMarkdown : "", body.inputFingerprint, body.runnerInstanceId));
+      typeof body.reasoningMarkdown === "string" ? body.reasoningMarkdown : "", body.inputFingerprint, body.runnerInstanceId, body.streamStats));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -824,7 +824,7 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/checkpoint", async 
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try {
     if (typeof body.partialReportMarkdown !== "string" || typeof body.partialReasoningMarkdown !== "string" || typeof body.runnerInstanceId !== "string") return fail(c, 400, "partialReportMarkdown, partialReasoningMarkdown and runnerInstanceId are required");
-    return ok(c, await checkpointResearchOperatingAnalysisStream(c.env.DB, code, body.partialReportMarkdown, body.partialReasoningMarkdown, body.runnerInstanceId));
+    return ok(c, await checkpointResearchOperatingAnalysisStream(c.env.DB, code, body.partialReportMarkdown, body.partialReasoningMarkdown, body.runnerInstanceId, body.streamStats));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

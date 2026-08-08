@@ -3,9 +3,10 @@ import { createApp, defineComponent, h, onMounted, onUnmounted, ref, type VNodeC
 const DEFAULT_CODE = "300308.SZ";
 const REQUEST_TIMEOUT_MS = 12_000;
 type Json = Record<string, unknown>;
-type ReportRun = { runId?: string; promptVersion?: string; reportMarkdown?: string; reasoningMarkdown?: string; totalDurationMs?: number | null; provider?: string; generatedAt?: number; input?: Json | null };
+type StreamStats = { webSearch?: { searched?: boolean; queryCount?: number; citedPageCount?: number }; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; reasoningTokens?: number } };
+type ReportRun = { runId?: string; promptVersion?: string; reportMarkdown?: string; reasoningMarkdown?: string; totalDurationMs?: number | null; provider?: string; generatedAt?: number; input?: Json | null; streamStats?: StreamStats | null };
 type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
-type ReportJob = { status?: "queued" | "running" | "completed" | "failed"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; partialReportMarkdown?: string | null; partialReasoningMarkdown?: string | null; partialUpdatedAt?: number | null };
+type ReportJob = { status?: "queued" | "running" | "completed" | "failed"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; partialReportMarkdown?: string | null; partialReasoningMarkdown?: string | null; partialUpdatedAt?: number | null; streamStats?: StreamStats | null };
 type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; run?: ReportRun | null; job?: ReportJob | null };
 const reasoningEffortOptions: Array<{ value: ReasoningEffort; label: string; description: string }> = [
   { value: "none", label: "不主动推理", description: "最低延迟，类似普通快速模型模式" },
@@ -47,6 +48,23 @@ function completedDuration(report: ReportRun | null | undefined, job: ReportJob 
   const startedAt = Number(job?.createdAt) || Number(job?.startedAt);
   const completedAt = Number(job?.completedAt);
   return duration(Number.isFinite(startedAt) && Number.isFinite(completedAt) ? completedAt - startedAt : Number.NaN);
+}
+function streamStatsSummary(stats: StreamStats | null | undefined): string[] {
+  const integer = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
+  const queryCount = integer(stats?.webSearch?.queryCount);
+  const citedPageCount = integer(stats?.webSearch?.citedPageCount);
+  const inputTokens = integer(stats?.usage?.inputTokens);
+  const outputTokens = integer(stats?.usage?.outputTokens);
+  const totalTokens = integer(stats?.usage?.totalTokens);
+  const reasoningTokens = integer(stats?.usage?.reasoningTokens);
+  return [
+    queryCount !== null ? `已检索 ${queryCount} 个关键词` : "",
+    citedPageCount !== null ? `已回链 ${citedPageCount} 个来源页面` : "",
+    totalTokens !== null ? `模型用量 ${totalTokens.toLocaleString("zh-CN")} tokens` : "",
+    inputTokens !== null && totalTokens === null ? `输入 ${inputTokens.toLocaleString("zh-CN")} tokens` : "",
+    outputTokens !== null && totalTokens === null ? `输出 ${outputTokens.toLocaleString("zh-CN")} tokens` : "",
+    reasoningTokens !== null ? `推理 ${reasoningTokens.toLocaleString("zh-CN")} tokens` : "",
+  ].filter(Boolean);
 }
 function reportQualityIssues(markdown: string): string[] {
   const requiredHeadings = ["商业模式与赚钱机制", "市场空间、产品边界与收入传导", "行业阶段、供给约束与竞争", "当前增长、驱动与可持续性", "利润质量、现金转换与营运资本", "资本效率与资本配置", "证券定价与反证", "当前价格隐含的经营要求", "关键估值情景与假设", "主报告最可能出错之处与反面证据", "投资逻辑失效路径", "后续跟踪指标与触发阈值"];
@@ -195,6 +213,7 @@ function reportCard(options: {
   const reasoning = running ? partialReasoning : completedReasoning;
   const qualityIssues = completedMarkdown && !running ? reportQualityIssues(completedMarkdown) : [];
   const elapsed = running ? runningDuration(options.job, options.now) : completedDuration(options.report, options.job);
+  const streamStats = streamStatsSummary(running ? options.job?.streamStats : options.report?.streamStats);
   // A polling transport error only means the local Worker is temporarily
   // unreachable. It must never overwrite an already-persisted queued/running
   // job with a false "generation failed" state.
@@ -206,8 +225,10 @@ function reportCard(options: {
         h("p", options.description),
         running ? h("div", { class: "ia-meta ia-running-meta", role: "status" }, [
           h("span", `任务已运行 ${elapsed}；页面每 5 秒读取一次已保存的思考摘要和正文。`),
+          ...streamStats.map((item) => h("span", item)),
         ]) : completedMarkdown ? h("div", { class: "ia-meta" }, [
           h("span", `生成于 ${date(options.report?.generatedAt)} · 整体耗时 ${elapsed} · ${options.report?.provider || "提供方未记录"} · ${options.report?.promptVersion || "模板未记录"}`),
+          ...streamStats.map((item) => h("span", item)),
         ]) : null,
       ]),
       options.onRefresh && options.buttonLabel ? h("div", { class: "ia-generation-controls" }, [
@@ -240,6 +261,8 @@ function reportCard(options: {
 
 const styles = `
 .ia{--ink:#183a37;--muted:#637c78;--line:#d8e8e4;--paper:#fff;--ground:#f4f8f7;--teal:#08786c;--deep:#075d57;min-height:calc(100vh - 7rem);padding:26px 0 56px;background:var(--ground);color:var(--ink)}.ia *{box-sizing:border-box}.ia-shell{max-width:1180px}.ia-hero{padding:28px;border-radius:20px;background:linear-gradient(125deg,#143c47,#08786c);color:#fff;box-shadow:0 16px 38px #143d3926}.ia-kicker{font-size:11px;font-weight:850;letter-spacing:.12em;color:#c0e8df}.ia-hero h1{margin:9px 0 7px;font-size:30px;letter-spacing:-.025em}.ia-hero p{max-width:760px;margin:0;color:#d2ebe5;font-size:14px;line-height:1.65}.ia-document{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}.ia-document-empty{display:block}.ia-outline{position:sticky;top:16px;padding:16px 13px;border:1px solid var(--line);border-radius:15px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-outline h2{margin:0 0 9px;padding:0;border:0;color:#315b55;font-size:13px}.ia-outline button{display:block;width:100%;border:0;border-radius:6px;background:transparent;padding:6px 7px;color:#476762;font:600 12px/1.45 inherit;text-align:left;cursor:pointer}.ia-outline button:hover{background:#edf8f4;color:var(--deep)}.ia-outline .l1{font-weight:850;color:#1c4d46}.ia-outline .l2{padding-left:16px}.ia-outline .l3{padding-left:27px}.ia-outline .l4{padding-left:38px}.ia-report{padding:23px 25px;border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-report-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.ia-report h2{margin:0;font-size:20px;letter-spacing:-.01em}.ia-report-head p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.ia-generation-controls{display:flex;align-items:end;gap:9px}.ia-reasoning-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800}.ia-reasoning-control select{max-width:220px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-reasoning-control select:disabled{opacity:.58}.ia-refresh{flex:none;border:1px solid #b6dcd3;border-radius:9px;background:#fff;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-refresh:disabled{opacity:.58;cursor:wait}.ia-message{margin-top:17px;border:1px dashed #c7dad5;border-radius:12px;padding:15px;color:#58716d;font-size:13px;line-height:1.65}.ia-message.error{border-style:solid;border-color:#edc8c2;background:#fff5f3;color:#983e34}.ia-message strong,.ia-message span{display:block}.ia-message span{margin-top:5px}.ia-connection-warning{color:#9c6500}.ia-streaming-notice{margin-top:17px;border:1px solid #b6dcd3;border-radius:10px;background:#f1faf7;padding:9px 12px;color:#315b55;font-size:12px;line-height:1.6}.ia-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:9px;color:#738783;font-size:11px;line-height:1.5}.ia-running-meta{color:#076b60;font-weight:750}.ia-reasoning{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:14px 16px}.ia-reasoning h3{margin:0;color:#174b45;font-size:14px}.ia-reasoning-markdown{margin-top:10px;font-size:13px;line-height:1.7}.ia-reasoning-markdown h1,.ia-reasoning-markdown h2{font-size:17px}.ia-reasoning-empty{margin:8px 0 0;color:#637c78;font-size:12px;line-height:1.6}.ia-markdown{margin-top:22px;color:#203d39;font-size:15px;line-height:1.8}.ia-markdown h1,.ia-markdown h2{scroll-margin-top:18px;margin:31px 0 11px;padding-top:21px;border-top:1px solid #dceae6;color:var(--deep);font-size:22px}.ia-markdown h1:first-child,.ia-markdown h2:first-child{margin-top:0;padding-top:0;border-top:0}.ia-markdown h3{scroll-margin-top:18px;margin:22px 0 8px;color:#174b45;font-size:17px}.ia-markdown h4{scroll-margin-top:18px;margin:17px 0 7px;color:#285852;font-size:15px}.ia-markdown p{margin:11px 0}.ia-markdown ul,.ia-markdown ol{margin:10px 0;padding-left:24px}.ia-markdown li{margin:5px 0}.ia-markdown blockquote{margin:14px 0;padding:10px 15px;border-left:3px solid #8bc8bb;background:#f1faf7;color:#315951}.ia-markdown strong{font-weight:800;color:#123f3a}.ia-markdown code{padding:1px 4px;border-radius:4px;background:#eaf4f1;color:#08645a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.ia-markdown a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}.ia-table-wrap{overflow-x:auto;margin:14px 0}.ia-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.55}.ia-table th,.ia-table td{border:1px solid #dce9e6;padding:8px 9px;text-align:left;vertical-align:top}.ia-table th{background:#eff8f5;color:#305b55;font-weight:850}@media(max-width:800px){.ia-document{display:block}.ia-outline{position:static;margin-bottom:16px}.ia-outline button{display:inline-block;width:auto;margin-right:3px}.ia-outline .l2,.ia-outline .l3,.ia-outline .l4{padding-left:7px}}@media(max-width:650px){.ia{padding:13px 0 34px}.ia-hero,.ia-report{padding:18px;border-radius:15px}.ia-hero h1{font-size:25px}.ia-report-head{flex-direction:column}.ia-generation-controls{align-items:start}.ia-markdown{font-size:14px}.ia-markdown h1,.ia-markdown h2{font-size:20px}}
+.ia-outline{max-height:calc(100vh - 32px);overflow-y:auto;overscroll-behavior:contain}
+@media(max-width:800px){.ia-outline{max-height:none;overflow:visible}}
 `;
 
 const App = defineComponent({

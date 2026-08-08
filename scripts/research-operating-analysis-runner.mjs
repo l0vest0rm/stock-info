@@ -211,24 +211,29 @@ function createClient() {
 async function generateReport(claim, input) {
   let reportMarkdown = "";
   let reasoningMarkdown = "";
+  let streamStats = null;
   let checkpointedLength = 0;
   let checkpointedAt = 0;
+  let checkpointedStats = "";
   let lastCheckpointError = "";
   const checkpoint = async (force = false) => {
     const now = Date.now();
     const enoughText = reportMarkdown.length + reasoningMarkdown.length - checkpointedLength >= config.streamCheckpoint.minChars;
     const enoughTime = now - checkpointedAt >= config.streamCheckpoint.intervalMs;
-    if ((!reportMarkdown && !reasoningMarkdown) || !force && !enoughText && !enoughTime) return;
+    const statsSnapshot = streamStats ? JSON.stringify(streamStats) : "";
+    const statsChanged = statsSnapshot !== checkpointedStats;
+    if ((!reportMarkdown && !reasoningMarkdown && !streamStats) || !force && !enoughText && !enoughTime && !statsChanged) return;
     const reportSnapshot = reportMarkdown;
     const reasoningSnapshot = reasoningMarkdown;
     try {
       await request(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/checkpoint`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ partialReportMarkdown: reportSnapshot, partialReasoningMarkdown: reasoningSnapshot, runnerInstanceId }),
+        body: JSON.stringify({ partialReportMarkdown: reportSnapshot, partialReasoningMarkdown: reasoningSnapshot, streamStats, runnerInstanceId }),
       });
       checkpointedLength = reportSnapshot.length + reasoningSnapshot.length;
       checkpointedAt = Date.now();
+      checkpointedStats = statsSnapshot;
       lastCheckpointError = "";
     } catch (error) {
       if (!(error instanceof WorkerUnavailableError)) throw error;
@@ -251,6 +256,10 @@ async function generateReport(claim, input) {
     maxOutputTokens: config.maxOutputTokens,
     cacheEnabled: false,
     signal: AbortSignal.timeout(config.jobTimeoutMs),
+    onWebSearch: async (webSearch) => {
+      streamStats = buildStreamStats(webSearch);
+      await checkpoint();
+    },
     onText: async (delta) => {
       reportMarkdown += delta;
       await checkpoint();
@@ -262,8 +271,27 @@ async function generateReport(claim, input) {
   });
   reportMarkdown = response.text.trim();
   reasoningMarkdown = response.reasoningText.trim();
+  streamStats = buildStreamStats(response.webSearch, response.raw);
   await checkpoint(true);
-  return { reportMarkdown, reasoningMarkdown, webSearch: response.webSearch ?? null };
+  return { reportMarkdown, reasoningMarkdown, webSearch: response.webSearch ?? null, streamStats };
+}
+
+function buildStreamStats(webSearch, rawResponse) {
+  const queries = Array.isArray(webSearch?.queries) ? webSearch.queries.filter((item) => typeof item === "string" && item.trim()) : [];
+  const citationUrls = new Set((Array.isArray(webSearch?.citations) ? webSearch.citations : [])
+    .map((item) => typeof item?.url === "string" ? item.url.trim() : "").filter(Boolean));
+  const webSearchStats = webSearch?.searched || queries.length || citationUrls.size
+    ? { searched: webSearch?.searched === true, queryCount: new Set(queries).size, citedPageCount: citationUrls.size } : null;
+  const usageSource = rawResponse && typeof rawResponse === "object" && !Array.isArray(rawResponse) ? rawResponse.usage : null;
+  const usageRecord = usageSource && typeof usageSource === "object" && !Array.isArray(usageSource) ? usageSource : {};
+  const integer = (value) => Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+  const usage = Object.fromEntries([
+    ["inputTokens", integer(usageRecord.input_tokens ?? usageRecord.inputTokens)],
+    ["outputTokens", integer(usageRecord.output_tokens ?? usageRecord.outputTokens)],
+    ["totalTokens", integer(usageRecord.total_tokens ?? usageRecord.totalTokens)],
+    ["reasoningTokens", integer(usageRecord.reasoning_tokens ?? usageRecord.reasoningTokens)],
+  ].filter(([, value]) => value !== undefined));
+  return webSearchStats || Object.keys(usage).length ? { ...(webSearchStats ? { webSearch: webSearchStats } : {}), ...(Object.keys(usage).length ? { usage } : {}) } : null;
 }
 
 async function completeWithWorkerRecovery(code, body) {
@@ -307,6 +335,7 @@ async function runOperatingAnalysisOnce() {
         inputFingerprint,
         reportMarkdown: result.reportMarkdown,
         reasoningMarkdown: result.reasoningMarkdown,
+        streamStats: result.streamStats,
         runnerInstanceId,
     });
     console.log(`[operating-analysis-runner] completed ${claim.securityCode} chars=${result.reportMarkdown.length}`);

@@ -1,5 +1,5 @@
 {
-  "version": "investment-analysis.llm-client.v1",
+  "version": "investment-analysis.llm-client.v2",
   "model": "gpt-5.6-luna",
   "reasoningEffort": "high",
   "maxOutputTokens": 16000,
