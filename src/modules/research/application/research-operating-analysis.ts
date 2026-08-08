@@ -3,8 +3,16 @@ type Row = Record<string, unknown>;
 
 /** One complete long-form investment-research document generated locally by llm-client. */
 export const OPERATING_ANALYSIS_PROMPT_VERSION = "investment-analysis.llm-client.v1";
+export const OPERATING_ANALYSIS_DEFAULT_REASONING_EFFORT = "high";
+const reasoningEfforts = new Set(["none", "low", "medium", "high", "xhigh", "max"]);
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const row = (value: unknown): Row => value && typeof value === "object" && !Array.isArray(value) ? value as Row : {};
+
+function reasoningEffort(value: unknown) {
+  const effort = text(value) || OPERATING_ANALYSIS_DEFAULT_REASONING_EFFORT;
+  if (!reasoningEfforts.has(effort)) throw new Error("unsupported operating-analysis reasoning effort");
+  return effort;
+}
 
 export async function loadResearchOperatingAnalysis(db: D1Database, securityCode: string) {
   const code = securityCode.trim().toUpperCase();
@@ -17,7 +25,7 @@ export async function loadResearchOperatingAnalysis(db: D1Database, securityCode
         from research_operating_analysis_runs where security_code=? and prompt_version=? order by generated_at desc limit 1`)
         .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>(),
       db.prepare(`select security_code as securityCode, prompt_version as promptVersion, status, run_id as runId,
-        attempt_count as attemptCount, last_error as lastError, created_at as createdAt, started_at as startedAt,
+        attempt_count as attemptCount, reasoning_effort as reasoningEffort, last_error as lastError, created_at as createdAt, started_at as startedAt,
         completed_at as completedAt, updated_at as updatedAt, partial_report_markdown as partialReportMarkdown,
         partial_reasoning_markdown as partialReasoningMarkdown,
         partial_updated_at as partialUpdatedAt from research_operating_analysis_jobs
@@ -34,20 +42,21 @@ export async function loadResearchOperatingAnalysis(db: D1Database, securityCode
   }
 }
 
-export async function enqueueResearchOperatingAnalysis(db: D1Database, securityCode: string, force = false) {
+export async function enqueueResearchOperatingAnalysis(db: D1Database, securityCode: string, force = false, requestedReasoningEffort: unknown = OPERATING_ANALYSIS_DEFAULT_REASONING_EFFORT) {
   const code = securityCode.trim().toUpperCase();
+  const effort = reasoningEffort(requestedReasoningEffort);
   const now = Date.now();
   const existing = await db.prepare(`select status from research_operating_analysis_jobs where security_code=? and prompt_version=?`)
     .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
   if (existing && existing.status !== "failed" && !force) return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: false, deduplicated: true };
   if (existing) {
-    await db.prepare(`update research_operating_analysis_jobs set status='queued', run_id=null, last_error=null,
+    await db.prepare(`update research_operating_analysis_jobs set status='queued', run_id=null, reasoning_effort=?, last_error=null,
       completed_at=null, partial_report_markdown=null, partial_reasoning_markdown=null, partial_updated_at=null, lease_owner=null, updated_at=? where security_code=? and prompt_version=?`)
-      .bind(now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
+      .bind(effort, now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
   } else {
-    await db.prepare(`insert into research_operating_analysis_jobs (security_code, prompt_version, status, attempt_count, created_at, updated_at)
-      values (?, ?, 'queued', 0, ?, ?)`)
-      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, now, now).run();
+    await db.prepare(`insert into research_operating_analysis_jobs (security_code, prompt_version, status, reasoning_effort, attempt_count, created_at, updated_at)
+      values (?, ?, 'queued', ?, 0, ?, ?)`)
+      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, effort, now, now).run();
   }
   return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: true, deduplicated: false };
 }
@@ -63,7 +72,7 @@ export async function claimResearchOperatingAnalysisJob(db: D1Database, runnerIn
     completed_at=?, updated_at=? where prompt_version=? and status='running'
     and (lease_owner is null or lease_owner<>?)`)
     .bind(now, now, OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).run();
-  const candidate = await db.prepare(`select security_code as securityCode from research_operating_analysis_jobs
+  const candidate = await db.prepare(`select security_code as securityCode, reasoning_effort as reasoningEffort from research_operating_analysis_jobs
     where prompt_version=? and status='queued' order by created_at asc limit 1`).bind(OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
   const code = text(candidate?.securityCode);
   if (!code) return null;
@@ -77,6 +86,7 @@ export async function claimResearchOperatingAnalysisJob(db: D1Database, runnerIn
   return claim.meta.changes ? {
     securityCode: code,
     promptVersion: OPERATING_ANALYSIS_PROMPT_VERSION,
+    reasoningEffort: reasoningEffort(candidate?.reasoningEffort),
   } : null;
 }
 

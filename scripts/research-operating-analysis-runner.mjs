@@ -18,7 +18,7 @@ if (!apiKey) throw new Error("local operating-analysis runner requires OPENAI_AP
 async function loadConfig() {
   const parsed = JSON.parse(await readFile(new URL("../config/research-operating-analysis.json", import.meta.url), "utf8"));
   if (parsed?.model !== "gpt-5.6-luna" || parsed?.reasoningEffort !== "high" || parsed?.webSearch?.required !== true) {
-    throw new Error("research-operating-analysis config must use gpt-5.6-luna, high reasoning, and required Web Search");
+    throw new Error("research-operating-analysis config must use gpt-5.6-luna, default high reasoning, and required Web Search");
   }
   return parsed;
 }
@@ -245,7 +245,7 @@ async function generateReport(claim, input) {
     instructions: "你是严谨的投资研究员。遵守用户给定的报告结构；只陈述可追溯证据支持的事实、计算和判断，不以搜索不到的信息填空。",
     input: [{ role: "user", content: [{ type: "input_text", text: prompt(input) }] }],
     allowReasoning: true,
-    reasoningEffort: config.reasoningEffort,
+    reasoningEffort: claim.reasoningEffort,
     tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }],
     toolChoice: "required",
     maxOutputTokens: config.maxOutputTokens,
@@ -300,7 +300,7 @@ async function runOperatingAnalysisOnce() {
           modelRun: {
             client: "llm-client",
             model: config.model,
-            reasoningEffort: config.reasoningEffort,
+            reasoningEffort: claim.reasoningEffort,
             webSearch: result.webSearch,
           },
         },

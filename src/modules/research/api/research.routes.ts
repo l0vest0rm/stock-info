@@ -784,7 +784,7 @@ researchRoutes.post("/research/company/:code/operating-analysis/refresh", async 
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  try { return ok(c, await enqueueResearchOperatingAnalysis(c.env.DB, code, body.force === true)); }
+  try { return ok(c, await enqueueResearchOperatingAnalysis(c.env.DB, code, body.force === true, body.reasoningEffort)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

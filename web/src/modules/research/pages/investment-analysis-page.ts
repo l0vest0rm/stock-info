@@ -4,8 +4,17 @@ const DEFAULT_CODE = "300308.SZ";
 const REQUEST_TIMEOUT_MS = 12_000;
 type Json = Record<string, unknown>;
 type ReportRun = { runId?: string; promptVersion?: string; reportMarkdown?: string; reasoningMarkdown?: string; totalDurationMs?: number | null; provider?: string; generatedAt?: number; input?: Json | null };
-type ReportJob = { status?: "queued" | "running" | "completed" | "failed"; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; partialReportMarkdown?: string | null; partialReasoningMarkdown?: string | null; partialUpdatedAt?: number | null };
+type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
+type ReportJob = { status?: "queued" | "running" | "completed" | "failed"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; partialReportMarkdown?: string | null; partialReasoningMarkdown?: string | null; partialUpdatedAt?: number | null };
 type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; run?: ReportRun | null; job?: ReportJob | null };
+const reasoningEffortOptions: Array<{ value: ReasoningEffort; label: string; description: string }> = [
+  { value: "none", label: "不主动推理", description: "最低延迟，类似普通快速模型模式" },
+  { value: "low", label: "低", description: "简单分析、轻量代码" },
+  { value: "medium", label: "中", description: "日常复杂任务" },
+  { value: "high", label: "高", description: "深度分析、多步骤推理" },
+  { value: "xhigh", label: "超高", description: "长链推理、复杂工程、研究任务" },
+  { value: "max", label: "极限", description: "GPT-5.6 的最高推理档位" },
+];
 
 function securityCodeFromUrl(): string {
   const code = new URLSearchParams(window.location.search).get("code")?.trim().toUpperCase() || DEFAULT_CODE;
@@ -170,6 +179,8 @@ function reportCard(options: {
   requestError: string | null;
   emptyMessage: string;
   now: number;
+  reasoningEffort: ReasoningEffort;
+  onReasoningEffortChange?: (value: ReasoningEffort) => void;
   buttonLabel?: string;
   onRefresh?: () => void;
   disabled?: boolean;
@@ -199,7 +210,18 @@ function reportCard(options: {
           h("span", `生成于 ${date(options.report?.generatedAt)} · 整体耗时 ${elapsed} · ${options.report?.provider || "提供方未记录"} · ${options.report?.promptVersion || "模板未记录"}`),
         ]) : null,
       ]),
-      options.onRefresh && options.buttonLabel ? h("button", { class: "ia-refresh", disabled: Boolean(options.disabled || running), onClick: options.onRefresh }, running ? (options.job?.status === "queued" ? `已排队（${elapsed}）` : `正在生成（${elapsed}）`) : options.buttonLabel) : null,
+      options.onRefresh && options.buttonLabel ? h("div", { class: "ia-generation-controls" }, [
+        h("label", { class: "ia-reasoning-control" }, [
+          h("span", "推理深度"),
+          h("select", {
+            value: options.reasoningEffort,
+            disabled: running,
+            title: reasoningEffortOptions.find((item) => item.value === options.reasoningEffort)?.description,
+            onChange: (event: Event) => options.onReasoningEffortChange?.((event.target as HTMLSelectElement).value as ReasoningEffort),
+          }, reasoningEffortOptions.map((item) => h("option", { value: item.value, title: item.description }, `${item.label} · ${item.description}`))),
+        ]),
+        h("button", { class: "ia-refresh", disabled: Boolean(options.disabled || running), onClick: options.onRefresh }, running ? (options.job?.status === "queued" ? `已排队（${elapsed}）` : `正在生成（${elapsed}）`) : options.buttonLabel),
+      ]) : null,
     ]),
     markdown || reasoning ? [
       failure ? h("div", { class: "ia-message error", role: "status" }, [h("strong", "生成未完成"), h("span", failure)]) : null,
@@ -217,7 +239,7 @@ function reportCard(options: {
 }
 
 const styles = `
-.ia{--ink:#183a37;--muted:#637c78;--line:#d8e8e4;--paper:#fff;--ground:#f4f8f7;--teal:#08786c;--deep:#075d57;min-height:calc(100vh - 7rem);padding:26px 0 56px;background:var(--ground);color:var(--ink)}.ia *{box-sizing:border-box}.ia-shell{max-width:1180px}.ia-hero{padding:28px;border-radius:20px;background:linear-gradient(125deg,#143c47,#08786c);color:#fff;box-shadow:0 16px 38px #143d3926}.ia-kicker{font-size:11px;font-weight:850;letter-spacing:.12em;color:#c0e8df}.ia-hero h1{margin:9px 0 7px;font-size:30px;letter-spacing:-.025em}.ia-hero p{max-width:760px;margin:0;color:#d2ebe5;font-size:14px;line-height:1.65}.ia-document{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}.ia-document-empty{display:block}.ia-outline{position:sticky;top:16px;padding:16px 13px;border:1px solid var(--line);border-radius:15px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-outline h2{margin:0 0 9px;padding:0;border:0;color:#315b55;font-size:13px}.ia-outline button{display:block;width:100%;border:0;border-radius:6px;background:transparent;padding:6px 7px;color:#476762;font:600 12px/1.45 inherit;text-align:left;cursor:pointer}.ia-outline button:hover{background:#edf8f4;color:var(--deep)}.ia-outline .l1{font-weight:850;color:#1c4d46}.ia-outline .l2{padding-left:16px}.ia-outline .l3{padding-left:27px}.ia-outline .l4{padding-left:38px}.ia-report{padding:23px 25px;border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-report-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.ia-report h2{margin:0;font-size:20px;letter-spacing:-.01em}.ia-report-head p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.ia-refresh{flex:none;border:1px solid #b6dcd3;border-radius:9px;background:#fff;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-refresh:disabled{opacity:.58;cursor:wait}.ia-message{margin-top:17px;border:1px dashed #c7dad5;border-radius:12px;padding:15px;color:#58716d;font-size:13px;line-height:1.65}.ia-message.error{border-style:solid;border-color:#edc8c2;background:#fff5f3;color:#983e34}.ia-message strong,.ia-message span{display:block}.ia-message span{margin-top:5px}.ia-connection-warning{color:#9c6500}.ia-streaming-notice{margin-top:17px;border:1px solid #b6dcd3;border-radius:10px;background:#f1faf7;padding:9px 12px;color:#315b55;font-size:12px;line-height:1.6}.ia-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:9px;color:#738783;font-size:11px;line-height:1.5}.ia-running-meta{color:#076b60;font-weight:750}.ia-reasoning{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:14px 16px}.ia-reasoning h3{margin:0;color:#174b45;font-size:14px}.ia-reasoning-markdown{margin-top:10px;font-size:13px;line-height:1.7}.ia-reasoning-markdown h1,.ia-reasoning-markdown h2{font-size:17px}.ia-reasoning-empty{margin:8px 0 0;color:#637c78;font-size:12px;line-height:1.6}.ia-markdown{margin-top:22px;color:#203d39;font-size:15px;line-height:1.8}.ia-markdown h1,.ia-markdown h2{scroll-margin-top:18px;margin:31px 0 11px;padding-top:21px;border-top:1px solid #dceae6;color:var(--deep);font-size:22px}.ia-markdown h1:first-child,.ia-markdown h2:first-child{margin-top:0;padding-top:0;border-top:0}.ia-markdown h3{scroll-margin-top:18px;margin:22px 0 8px;color:#174b45;font-size:17px}.ia-markdown h4{scroll-margin-top:18px;margin:17px 0 7px;color:#285852;font-size:15px}.ia-markdown p{margin:11px 0}.ia-markdown ul,.ia-markdown ol{margin:10px 0;padding-left:24px}.ia-markdown li{margin:5px 0}.ia-markdown blockquote{margin:14px 0;padding:10px 15px;border-left:3px solid #8bc8bb;background:#f1faf7;color:#315951}.ia-markdown strong{font-weight:800;color:#123f3a}.ia-markdown code{padding:1px 4px;border-radius:4px;background:#eaf4f1;color:#08645a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.ia-markdown a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}.ia-table-wrap{overflow-x:auto;margin:14px 0}.ia-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.55}.ia-table th,.ia-table td{border:1px solid #dce9e6;padding:8px 9px;text-align:left;vertical-align:top}.ia-table th{background:#eff8f5;color:#305b55;font-weight:850}@media(max-width:800px){.ia-document{display:block}.ia-outline{position:static;margin-bottom:16px}.ia-outline button{display:inline-block;width:auto;margin-right:3px}.ia-outline .l2,.ia-outline .l3,.ia-outline .l4{padding-left:7px}}@media(max-width:650px){.ia{padding:13px 0 34px}.ia-hero,.ia-report{padding:18px;border-radius:15px}.ia-hero h1{font-size:25px}.ia-report-head{flex-direction:column}.ia-markdown{font-size:14px}.ia-markdown h1,.ia-markdown h2{font-size:20px}}
+.ia{--ink:#183a37;--muted:#637c78;--line:#d8e8e4;--paper:#fff;--ground:#f4f8f7;--teal:#08786c;--deep:#075d57;min-height:calc(100vh - 7rem);padding:26px 0 56px;background:var(--ground);color:var(--ink)}.ia *{box-sizing:border-box}.ia-shell{max-width:1180px}.ia-hero{padding:28px;border-radius:20px;background:linear-gradient(125deg,#143c47,#08786c);color:#fff;box-shadow:0 16px 38px #143d3926}.ia-kicker{font-size:11px;font-weight:850;letter-spacing:.12em;color:#c0e8df}.ia-hero h1{margin:9px 0 7px;font-size:30px;letter-spacing:-.025em}.ia-hero p{max-width:760px;margin:0;color:#d2ebe5;font-size:14px;line-height:1.65}.ia-document{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}.ia-document-empty{display:block}.ia-outline{position:sticky;top:16px;padding:16px 13px;border:1px solid var(--line);border-radius:15px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-outline h2{margin:0 0 9px;padding:0;border:0;color:#315b55;font-size:13px}.ia-outline button{display:block;width:100%;border:0;border-radius:6px;background:transparent;padding:6px 7px;color:#476762;font:600 12px/1.45 inherit;text-align:left;cursor:pointer}.ia-outline button:hover{background:#edf8f4;color:var(--deep)}.ia-outline .l1{font-weight:850;color:#1c4d46}.ia-outline .l2{padding-left:16px}.ia-outline .l3{padding-left:27px}.ia-outline .l4{padding-left:38px}.ia-report{padding:23px 25px;border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-report-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.ia-report h2{margin:0;font-size:20px;letter-spacing:-.01em}.ia-report-head p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.ia-generation-controls{display:flex;align-items:end;gap:9px}.ia-reasoning-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800}.ia-reasoning-control select{max-width:220px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-reasoning-control select:disabled{opacity:.58}.ia-refresh{flex:none;border:1px solid #b6dcd3;border-radius:9px;background:#fff;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-refresh:disabled{opacity:.58;cursor:wait}.ia-message{margin-top:17px;border:1px dashed #c7dad5;border-radius:12px;padding:15px;color:#58716d;font-size:13px;line-height:1.65}.ia-message.error{border-style:solid;border-color:#edc8c2;background:#fff5f3;color:#983e34}.ia-message strong,.ia-message span{display:block}.ia-message span{margin-top:5px}.ia-connection-warning{color:#9c6500}.ia-streaming-notice{margin-top:17px;border:1px solid #b6dcd3;border-radius:10px;background:#f1faf7;padding:9px 12px;color:#315b55;font-size:12px;line-height:1.6}.ia-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:9px;color:#738783;font-size:11px;line-height:1.5}.ia-running-meta{color:#076b60;font-weight:750}.ia-reasoning{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:14px 16px}.ia-reasoning h3{margin:0;color:#174b45;font-size:14px}.ia-reasoning-markdown{margin-top:10px;font-size:13px;line-height:1.7}.ia-reasoning-markdown h1,.ia-reasoning-markdown h2{font-size:17px}.ia-reasoning-empty{margin:8px 0 0;color:#637c78;font-size:12px;line-height:1.6}.ia-markdown{margin-top:22px;color:#203d39;font-size:15px;line-height:1.8}.ia-markdown h1,.ia-markdown h2{scroll-margin-top:18px;margin:31px 0 11px;padding-top:21px;border-top:1px solid #dceae6;color:var(--deep);font-size:22px}.ia-markdown h1:first-child,.ia-markdown h2:first-child{margin-top:0;padding-top:0;border-top:0}.ia-markdown h3{scroll-margin-top:18px;margin:22px 0 8px;color:#174b45;font-size:17px}.ia-markdown h4{scroll-margin-top:18px;margin:17px 0 7px;color:#285852;font-size:15px}.ia-markdown p{margin:11px 0}.ia-markdown ul,.ia-markdown ol{margin:10px 0;padding-left:24px}.ia-markdown li{margin:5px 0}.ia-markdown blockquote{margin:14px 0;padding:10px 15px;border-left:3px solid #8bc8bb;background:#f1faf7;color:#315951}.ia-markdown strong{font-weight:800;color:#123f3a}.ia-markdown code{padding:1px 4px;border-radius:4px;background:#eaf4f1;color:#08645a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.ia-markdown a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}.ia-table-wrap{overflow-x:auto;margin:14px 0}.ia-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.55}.ia-table th,.ia-table td{border:1px solid #dce9e6;padding:8px 9px;text-align:left;vertical-align:top}.ia-table th{background:#eff8f5;color:#305b55;font-weight:850}@media(max-width:800px){.ia-document{display:block}.ia-outline{position:static;margin-bottom:16px}.ia-outline button{display:inline-block;width:auto;margin-right:3px}.ia-outline .l2,.ia-outline .l3,.ia-outline .l4{padding-left:7px}}@media(max-width:650px){.ia{padding:13px 0 34px}.ia-hero,.ia-report{padding:18px;border-radius:15px}.ia-hero h1{font-size:25px}.ia-report-head{flex-direction:column}.ia-generation-controls{align-items:start}.ia-markdown{font-size:14px}.ia-markdown h1,.ia-markdown h2{font-size:20px}}
 `;
 
 const App = defineComponent({
@@ -227,6 +249,7 @@ const App = defineComponent({
     const loading = ref(true);
     const operatingError = ref<string | null>(null);
     const elapsedNow = ref(Date.now());
+    const selectedReasoningEffort = ref<ReasoningEffort>("high");
     let pollTimer: number | null = null;
     let elapsedTimer: number | null = null;
 
@@ -240,7 +263,7 @@ const App = defineComponent({
     const refreshOperatingAnalysis = async () => {
       operatingError.value = null;
       try {
-        await request(`/api/research/company/${encodeURIComponent(code)}/operating-analysis/refresh`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: true }) });
+        await request(`/api/research/company/${encodeURIComponent(code)}/operating-analysis/refresh`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: true, reasoningEffort: selectedReasoningEffort.value }) });
         await load();
       } catch (reason) { operatingError.value = reason instanceof Error ? reason.message : String(reason); }
     };
@@ -268,7 +291,7 @@ const App = defineComponent({
             h("h2", "报告目录"),
               ...documentOutline(markdown).map((item) => h("button", { class: `l${item.level}`, onClick: () => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth", block: "start" }) }, item.text)),
             ]) : null,
-            reportCard({ title: "完整投资研究", description: "一次提问完成经营、产业、定价与反证；模型通过本地 llm-client 调用，生成期间持续保存思考摘要与正文。页面加载不会触发生成。", report: operating.value?.run, job: operating.value?.job, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地模型会启用 Web Search 完成完整投资研究。`, now: elapsedNow.value, buttonLabel: operating.value?.run ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); } }),
+            reportCard({ title: "完整投资研究", description: "一次提问完成经营、产业、定价与反证；模型通过本地 llm-client 调用，生成期间持续保存思考摘要与正文。页面加载不会触发生成。", report: operating.value?.run, job: operating.value?.job, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地模型会启用 Web Search 完成完整投资研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.run ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); } }),
           ]),
         ]),
       ]);
