@@ -19,11 +19,14 @@ test("keeps the current fund detail page and only changes code", () => {
   );
 });
 
-test("uses the matching detail homepage when the current page cannot accept the result", () => {
+test("keeps any current page that already has a code parameter", () => {
   assert.equal(
     routeForSecuritySearch(fund, "http://127.0.0.1:8000/company-report.html?code=300308.SZ"),
-    "fund.html?code=005827.OF",
+    "/company-report.html?code=005827.OF",
   );
+});
+
+test("uses the matching detail homepage when the current page has no code parameter", () => {
   assert.equal(
     routeForSecuritySearch(company, "http://127.0.0.1:8000/funds.html"),
     "company.html?code=300502.SZ",

@@ -25,6 +25,7 @@ export function mountLayout(): void {
 
   document.querySelectorAll<HTMLElement>("[data-layout-company-info]").forEach((element) => {
     createApp(CompanyInfoBar).mount(element);
+    window.dispatchEvent(new Event("stock-info:company-info-mounted"));
   });
 
   document.querySelectorAll<HTMLElement>("[data-layout-fund-info]").forEach((element) => {

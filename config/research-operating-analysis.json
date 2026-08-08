@@ -1,7 +1,7 @@
 {
   "version": "investment-analysis.llm-client.v2",
   "model": "gpt-5.6-luna",
-  "reasoningEffort": "high",
+  "reasoningEffort": "max",
   "maxOutputTokens": 16000,
   "webSearch": {
     "searchContextSize": "high",

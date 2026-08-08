@@ -1,4 +1,4 @@
-import { defineComponent, h, onBeforeUnmount, ref, watch } from "vue";
+import { defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   loadSecuritySearchHistory,
   rememberSecuritySearch,
@@ -34,6 +34,7 @@ export const AppTopNav = defineComponent({
     const open = ref(false);
     const showingHistory = ref(false);
     const history = ref<SearchResult[]>(loadSecuritySearchHistory());
+    const searchForm = ref<HTMLElement | null>(null);
     let currentRequestId = 0;
     let searchTimer = 0;
 
@@ -79,8 +80,19 @@ export const AppTopNav = defineComponent({
       }, 220);
     });
 
+    const closeSearchOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Node && !searchForm.value?.contains(event.target)) {
+        open.value = false;
+      }
+    };
+
+    onMounted(() => {
+      document.addEventListener("click", closeSearchOnOutsideClick);
+    });
+
     onBeforeUnmount(() => {
       window.clearTimeout(searchTimer);
+      document.removeEventListener("click", closeSearchOnOutsideClick);
     });
 
     const rememberResult = (item: SearchResult) => {
@@ -129,6 +141,7 @@ export const AppTopNav = defineComponent({
               )
             ),
             h("form", {
+              ref: searchForm,
               class: "col-12 col-lg-auto mb-3 mb-lg-0 me-lg-3 position-relative",
               style: "width: min(18rem, 100%);",
               onSubmit,

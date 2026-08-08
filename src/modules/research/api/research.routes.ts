@@ -123,7 +123,7 @@ import { importIndexedStatutoryDisclosureToKnowledge } from "../application/impo
 import { extractResearchAutoFilingInsights, loadResearchAutoBusinessDriverTree, loadResearchAutoFilingDocumentVersions, loadResearchAutoFilingFactInputs, loadResearchAutoFilingInsights, loadResearchAutoFilingModuleRebuilds, loadResearchAutoForecastInputGate, loadResearchAutoGovernanceCapitalLedger, loadResearchAutoIndustryCompetitionInputs, loadResearchAutoMarketSpaceInputs, loadResearchAutoRiskLedger, loadResearchAutoRiskQuantitativeInputGate, loadResearchAutoRiskSnapshotHistory, loadResearchAutoSecurityStructureCandidates, rebuildResearchAutoFilingReadModels } from "../application/research-auto-filing-insights";
 import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } from "../application/research-industry-source-series";
 import { claimNextResearchWebSearchPackageJob, completeResearchWebSearchPackageJob, enqueueResearchWebSearchPackage, failResearchWebSearchPackageJob, loadResearchWebSearchPackages } from "../application/research-web-search-packages";
-import { checkpointResearchOperatingAnalysisStream, claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, loadResearchOperatingAnalysis } from "../application/research-operating-analysis";
+import { checkpointResearchOperatingAnalysisStream, claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, loadResearchOperatingAnalysis, loadResearchOperatingAnalysisRun, saveResearchOperatingAnalysisPrompt } from "../application/research-operating-analysis";
 import { renewResearchOperatingAnalysisRunnerLease } from "../application/research-operating-analysis-runner-lease";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
 import {
@@ -779,6 +779,15 @@ researchRoutes.get("/research/company/:code/operating-analysis", async (c) => {
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
+researchRoutes.get("/research/company/:code/operating-analysis/runs/:runId", async (c) => {
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    const run = await loadResearchOperatingAnalysisRun(c.env.DB, code, c.req.param("runId"));
+    return run ? ok(c, run) : fail(c, 404, "operating analysis version not found");
+  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
 researchRoutes.post("/research/company/:code/operating-analysis/refresh", async (c) => {
   if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis refresh is only available in local research runtime");
   const code = normalizeSecurityCode(c.req.param("code"));
@@ -812,8 +821,20 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/complete", async (c
     const body = await c.req.json<Record<string, unknown>>();
     if (typeof body.reportMarkdown !== "string" || typeof body.inputFingerprint !== "string") return fail(c, 400, "reportMarkdown and inputFingerprint are required");
     if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-    return ok(c, await completeResearchOperatingAnalysisJob(c.env.DB, code, body.input, body.reportMarkdown,
+    return ok(c, await completeResearchOperatingAnalysisJob(c.env.DB, code, body.input, body.prompt, body.reportMarkdown,
       typeof body.reasoningMarkdown === "string" ? body.reasoningMarkdown : "", body.inputFingerprint, body.runnerInstanceId, body.streamStats));
+  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/operating-analysis-jobs/:code/prompt", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body || typeof body.prompt !== "object" || !body.prompt || Array.isArray(body.prompt)) return fail(c, 400, "prompt is required");
+    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
+    return ok(c, await saveResearchOperatingAnalysisPrompt(c.env.DB, code, body.prompt, body.runnerInstanceId));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

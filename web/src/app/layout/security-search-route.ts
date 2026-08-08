@@ -14,13 +14,6 @@ function codeForResult(result: SecuritySearchHistoryItem, kind: SecurityKind): s
   return kind === "fund" && !code.endsWith(".OF") ? `${code}.OF` : code;
 }
 
-function kindForCurrentPage(pathname: string): SecurityKind | null {
-  const page = pathname.split("/").pop() || "";
-  if (page === "company.html" || page.startsWith("company-")) return "company";
-  if (page === "fund.html" || page.startsWith("fund-")) return "fund";
-  return null;
-}
-
 function relativeHref(url: URL): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
@@ -34,7 +27,7 @@ export function routeForSecuritySearch(
   if (!code) return "#";
 
   const currentUrl = new URL(currentHref);
-  if (kindForCurrentPage(currentUrl.pathname) === kind && currentUrl.searchParams.has("code")) {
+  if (currentUrl.searchParams.has("code")) {
     currentUrl.searchParams.set("code", code);
     return relativeHref(currentUrl);
   }

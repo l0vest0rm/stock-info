@@ -84,6 +84,11 @@ const pageEntries = [
     fileName: 'js/investment-analysis-page.js',
   },
   {
+    entry: 'src/modules/research/pages/investment-analysis-compare-page.ts',
+    globalName: 'LicaiInvestmentAnalysisComparePage',
+    fileName: 'js/investment-analysis-compare-page.js',
+  },
+  {
     entry: 'src/modules/research/pages/industry-research-page.ts',
     globalName: 'LicaiIndustryResearchPage',
     fileName: 'js/industry-research-page.js',

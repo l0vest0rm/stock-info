@@ -92,11 +92,14 @@ cd "$PROJECT_ROOT"
 # safely survive a prompt/runner/config change: Node has already loaded those
 # inputs into memory. Track source inputs (not generated output) so a change
 # forces one restart.
+LLM_CLIENT_RUNTIME_DIR="$PROJECT_ROOT/node_modules/@m2ai/shared-llm-client/dist"
 OPERATING_ANALYSIS_RUNNER_FINGERPRINT=$(shasum -a 256 \
   "$PROJECT_ROOT/scripts/research-operating-analysis-runner.mjs" \
   "$PROJECT_ROOT/scripts/build-prompts.mjs" \
   "$PROJECT_ROOT/prompts/research/operating-analysis.md" \
   "$PROJECT_ROOT/config/research-operating-analysis.json" \
+  "$LLM_CLIENT_RUNTIME_DIR/index.js" \
+  "$LLM_CLIENT_RUNTIME_DIR/providers/responses-provider.js" \
   | shasum -a 256 | awk '{print $1}')
 
 if [[ "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" != <-> || "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" -lt 300 ]]; then

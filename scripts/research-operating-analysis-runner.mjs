@@ -10,6 +10,7 @@ const config = await loadConfig();
 const apiKey = await resolveApiKey();
 const modelBaseUrl = String(process.env.OPENAI_BASE_URL || process.env.LLM_BASE_URL || "https://api.m2ai.cc/api/v1/openai").replace(/\/+$/, "");
 const runnerInstanceId = `operating-analysis-runner:${randomUUID()}`;
+const OPERATING_ANALYSIS_INSTRUCTIONS = "你是严谨的投资研究员。遵守用户给定的报告结构；只陈述可追溯证据支持的事实、计算和判断，不以搜索不到的信息填空。";
 
 class WorkerUnavailableError extends Error {}
 
@@ -17,8 +18,8 @@ if (!apiKey) throw new Error("local operating-analysis runner requires OPENAI_AP
 
 async function loadConfig() {
   const parsed = JSON.parse(await readFile(new URL("../config/research-operating-analysis.json", import.meta.url), "utf8"));
-  if (parsed?.model !== "gpt-5.6-luna" || parsed?.reasoningEffort !== "high" || parsed?.webSearch?.required !== true) {
-    throw new Error("research-operating-analysis config must use gpt-5.6-luna, default high reasoning, and required Web Search");
+  if (parsed?.model !== "gpt-5.6-luna" || parsed?.reasoningEffort !== "max" || parsed?.webSearch?.required !== true) {
+    throw new Error("research-operating-analysis config must use gpt-5.6-luna, default max reasoning, and required Web Search");
   }
   return parsed;
 }
@@ -244,11 +245,15 @@ async function generateReport(claim, input) {
       }
     }
   };
+  const modelPrompt = { model: config.model, instructions: OPERATING_ANALYSIS_INSTRUCTIONS, userPrompt: prompt(input) };
+  await request(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/prompt`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: modelPrompt, runnerInstanceId }),
+  });
   const response = await createClient().streamText({
     provider: "openai",
     model: config.model,
-    instructions: "你是严谨的投资研究员。遵守用户给定的报告结构；只陈述可追溯证据支持的事实、计算和判断，不以搜索不到的信息填空。",
-    input: [{ role: "user", content: [{ type: "input_text", text: prompt(input) }] }],
+    instructions: modelPrompt.instructions,
+    input: [{ role: "user", content: [{ type: "input_text", text: modelPrompt.userPrompt }] }],
     allowReasoning: true,
     reasoningEffort: claim.reasoningEffort,
     tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }],
@@ -273,7 +278,7 @@ async function generateReport(claim, input) {
   reasoningMarkdown = response.reasoningText.trim();
   streamStats = buildStreamStats(response.webSearch, response.raw);
   await checkpoint(true);
-  return { reportMarkdown, reasoningMarkdown, webSearch: response.webSearch ?? null, streamStats };
+  return { reportMarkdown, reasoningMarkdown, webSearch: response.webSearch ?? null, streamStats, prompt: modelPrompt };
 }
 
 function buildStreamStats(webSearch, rawResponse) {
@@ -332,6 +337,7 @@ async function runOperatingAnalysisOnce() {
             webSearch: result.webSearch,
           },
         },
+        prompt: result.prompt,
         inputFingerprint,
         reportMarkdown: result.reportMarkdown,
         reasoningMarkdown: result.reasoningMarkdown,
