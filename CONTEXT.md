@@ -337,6 +337,26 @@ _Avoid_: LLM as a data source, available without provenance, mixing acquisition 
 A dated, versioned entry for one research domain that uses domain-specific fields and declares its epistemic type and source references where required. It is not a free-form JSON blob or an overwrite of historical analysis.
 _Avoid_: Generic note, raw JSON editor, mutable current-state field
 
+**Research context**:
+A dated, immutable common input envelope for one investment-analysis snapshot. It fixes the operating company, listed security, `asOf`, reporting boundary, structured-data snapshot, market snapshot, source registry and known scope gaps before domain research begins. It is input context, not a company fact, judgement, forecast or valuation result.
+_Avoid_: Model-generated research conclusion, mutable global profile, market price treated as operating fact
+
+**Research domain artifact**:
+A terminal, versioned result owned by one research domain. It preserves that domain's detailed evidence or analysis, status, blocking gaps, source/claim references and completion metadata so a downstream module can reuse it without copying another domain's prose.
+_Avoid_: Prompt cache, token fragment, duplicate cross-domain conclusion, untraceable summary
+
+**Synthesis artifact**:
+A dated, source-linked analysis that connects claims from multiple research domain artifacts into a falsifiable judgement, scenario or conclusion. It may derive relationships and alternatives, but it cannot create a source fact or silently replace an upstream domain result.
+_Avoid_: New evidence, source forecast, deterministic calculation, rewritten full report
+
+**Evidence manifest**:
+A compact provenance index linking stable source, evidence, claim, judgement, assumption, risk and calculation identifiers to their versions, URLs, periods, scopes and limitations. It is the machine-readable trace at the point of use, not a detached bibliography that users must interpret separately.
+_Avoid_: Search-result dump, source list without claim linkage, unsupported evidence ID
+
+**Artifact projection**:
+A validated, queryable read result that references one or more terminal artifacts and their input versions while applying the owning module's schema and quality gates. It is separate from the execution ledger and cannot silently rewrite the artifacts that produced it.
+_Avoid_: Queue status, cache entry, mutable overview summary, projection without source or version lineage
+
 **Valuation model version**:
 An immutable, security-specific calculation record containing its declared operating inputs, calculation rule version, source references, FX/share-rights assumptions, outputs, and sensitivity axes at one as-of time. It is distinct from a narrative valuation case and may not silently refresh from later facts.
 _Avoid_: Editable calculator state, timeless target price, company-level value reused across securities

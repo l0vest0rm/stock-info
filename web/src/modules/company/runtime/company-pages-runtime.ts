@@ -516,7 +516,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
 
   function companyReportLoadingStatus(page: number): string {
     if (page <= 1) {
-      return '正在加载公司研报；如果有新研报，系统会先补齐预测数据，可能需要等待几十秒'
+      return '正在搜索并加载公司研报；如果有新研报，系统会补齐预测数据，可能需要等待几十秒'
     }
     return `正在加载第 ${page} 页公司研报...`
   }
@@ -600,6 +600,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         rank: index + 1,
         publishDate: toDateString(ts),
         title: String(item.title || ''),
+        provenance: String(item.provenance || '').trim().toLowerCase() === 'web_search' ? '搜索发现' : '既有来源',
         reportHref,
         reportInfoCode,
         docId: item.knowledgeNewsReport ? String(item.knowledgeDocId || '') : '',

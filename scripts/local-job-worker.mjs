@@ -4,11 +4,13 @@ import { pathToFileURL } from "node:url";
 import { startInformationProcessingRunner } from "./information-processing-runner.mjs";
 import { startResearchOperatingAnalysisRunner } from "./research-operating-analysis-runner.mjs";
 import { startResearchWebSearchPackageRunner } from "./research-web-search-package-runner.mjs";
+import { startCompanyReportDiscoveryRunner } from "./company-report-discovery-runner.mjs";
 import { localRuntimeLog } from "./lib/local-runtime-log.mjs";
 
 /** One process owns all local LLM handlers; DB leases still fence every job. */
 export function startLocalJobWorker() {
   const controllers = [
+    startCompanyReportDiscoveryRunner(),
     startResearchWebSearchPackageRunner(),
     startResearchOperatingAnalysisRunner(),
     startInformationProcessingRunner(),

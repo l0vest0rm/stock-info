@@ -99,6 +99,17 @@ function finite(value) { const n = Number(value); return Number.isFinite(n) ? n 
 function latestAnnualPeriod(income) { const row = (income?.rows || []).find((item) => /12M|FY|annual|年度/i.test(String(item.fiscalPeriod || item?.payload?.FISCAL_PERIOD || ""))); return row?.reportDate || null; }
 function provisionalUpdates(income) { return (income?.rows || []).filter((item) => /forecast|performance/i.test(String(item.source || item?.payload?.dataSource || ""))).map((item) => ({ period: item.reportDate, source: item.source })); }
 function prompt(template, input) { return template.replace("{{INPUT_DATA}}", JSON.stringify(input, null, 2)); }
+function rawResponseSummary(response) {
+  const raw = response?.raw;
+  return {
+    id: typeof raw?.id === "string" ? raw.id : null,
+    status: typeof raw?.status === "string" ? raw.status : null,
+    output_item_count: Array.isArray(raw?.output) ? raw.output.length : 0,
+  };
+}
+function jsonOutputParseError(stageKey, output, response) {
+  return new Error(`${stageKey} returned no valid json output; stage_key=${stageKey}; text_length=${output.length}; output_preview=${JSON.stringify(output.slice(0, 600))}; raw_response_summary=${JSON.stringify(rawResponseSummary(response))}`);
+}
 function terminal(status) { return ["complete", "partial", "blocked", "not_applicable"].includes(status); }
 function stageState(task, key) { return (task?.job?.stages || []).find((item) => item.stageKey === key); }
 function artifact(task, key) { const item = stageState(task, key); return item?.output ?? null; }
@@ -114,16 +125,14 @@ async function runStage(claim, baseInput, task, definition) {
   const modelPrompt = { model: selectedModel, instructions: INSTRUCTIONS, userPrompt: prompt(template, input) };
   localRuntimeLog("research-operating-analysis", "stage_started", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, stage_key: key });
   await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/start`, { input, prompt: modelPrompt, runnerInstanceId, attempt: claim.attempt });
-  let output = ""; let checkpointed = 0; let checkpointAt = 0;
-  const checkpoint = async (force = false) => {
-    if (!output || (!force && output.length - checkpointed < config.streamCheckpoint.minChars && Date.now() - checkpointAt < config.streamCheckpoint.intervalMs)) return;
-    await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/checkpoint`, { partialOutput: output, runnerInstanceId, attempt: claim.attempt }); checkpointed = output.length; checkpointAt = Date.now();
-  };
-  const llmRequest = { provider: "openai", model: selectedModel, instructions: modelPrompt.instructions, input: [{ role: "user", content: [{ type: "input_text", text: modelPrompt.userPrompt }] }], allowReasoning: true, reasoningEffort: claim.reasoningEffort, ...(webSearch ? { tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }], toolChoice: "required" } : {}), maxOutputTokens: config.maxOutputTokens, cacheEnabled: false, signal: AbortSignal.timeout(webSearch ? config.webSearchJobTimeoutMs : config.jobTimeoutMs), ...(webSearch ? {} : { onText: async (delta) => { output += delta; await checkpoint(); } }) };
+  let output = "";
+  const llmRequest = { provider: "openai", requestId: `operating-analysis:${claim.securityCode}:attempt-${claim.attempt}:${key}`, model: selectedModel, instructions: modelPrompt.instructions, input: [{ role: "user", content: [{ type: "input_text", text: modelPrompt.userPrompt }] }], allowReasoning: true, reasoningEffort: claim.reasoningEffort, ...(webSearch ? { tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }], toolChoice: "required" } : {}), maxOutputTokens: config.maxOutputTokens, cacheEnabled: false, signal: AbortSignal.timeout(webSearch ? config.webSearchJobTimeoutMs : config.jobTimeoutMs), ...(webSearch ? {} : { onText: async (delta) => { output += delta; } }) };
   const response = webSearch ? await client.generateText(llmRequest) : await client.streamText(llmRequest);
-  output = text(response.text); await checkpoint(true);
+  output = text(response.text);
   const parsed = format === "json" ? json(output) : output;
-  if (!parsed) throw new Error(`${key} returned no valid ${format} output`);
+  if (!parsed) throw format === "json"
+    ? jsonOutputParseError(key, output, response)
+    : new Error(`${key} returned no valid ${format} output`);
   const status = format === "json" && terminal(parsed.status) ? parsed.status : "complete";
   const finalOutput = key === "valuation_inputs" ? { ...parsed, deterministicValuation: calculateValuation(parsed) } : parsed;
   await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/complete`, { output: finalOutput, status, runnerInstanceId, attempt: claim.attempt });

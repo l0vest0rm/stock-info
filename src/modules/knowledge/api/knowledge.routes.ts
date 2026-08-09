@@ -3,6 +3,7 @@ import { fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { getAppKv, putAppKv } from "../../../db/queries";
 import { fail, ok } from '../../../shared/http';
 import { externalHttpOptions } from '../../../shared/http';
+import { loadGenericLlmRun, loadGenericLlmRunArtifacts, loadGenericLlmTask } from "../../../shared/local-job-protocol";
 import { normalizeSupportedCompanyCode } from "../../../shared/codes";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
 import { extractCompanyReportByLlm, type CompanyReportForecast } from "../../company/api/company.routes";
@@ -19,8 +20,11 @@ import { listKnowledgeCompanyCodeMappings, refreshKnowledgeCompanyCodeMappings }
 import {
   claimAndPrepareInformationProcessingJob,
   completeClaimedInformationProcessingJob,
+  enqueueInformationProcessingTasks,
   failClaimedInformationProcessingJob,
   heartbeatInformationProcessingJob,
+  INFORMATION_PROCESSING_TARGET_TYPE,
+  INFORMATION_PROCESSING_TASK_TYPE,
 } from "../application/information-processing-jobs";
 import type { AppEnv } from '../../../types';
 
@@ -362,6 +366,22 @@ knowledgeRoutes.get("/knowledge/processing-runs/:id", async (c) => {
   return ok(c, mapInformationRow(run));
 });
 
+// Generic task/run read model. It exposes only terminal artifacts and the
+// active/latest run metadata; streaming text is never read from the queue.
+knowledgeRoutes.get("/knowledge/processing-tasks/:id", async (c) => {
+  const task = await loadGenericLlmTask(c.env.DB, c.req.param("id"));
+  if (!task || task.taskType !== INFORMATION_PROCESSING_TASK_TYPE || task.targetType !== INFORMATION_PROCESSING_TARGET_TYPE) {
+    return fail(c, 404, "information processing task not found");
+  }
+  let run = task.lastRunId ? await loadGenericLlmRun(c.env.DB, task.lastRunId) : null;
+  if (!run) {
+    const latest = await c.env.DB.prepare("select run_id as runId from llm_runs where task_id=? order by attempt desc limit 1")
+      .bind(task.taskId).first<{ runId: string }>();
+    run = latest?.runId ? await loadGenericLlmRun(c.env.DB, latest.runId) : null;
+  }
+  return ok(c, { task, run, artifacts: run ? await loadGenericLlmRunArtifacts(c.env.DB, run.runId) : [] });
+});
+
 knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
   const body = await c.req.json().catch(() => ({})) as {
@@ -379,17 +399,20 @@ knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
   const triggerSource = normalizeInformationTriggerSource(body.triggerSource);
   const titleKeywords = (Array.isArray(body.titleKeywords) ? body.titleKeywords : [])
     .map((keyword) => String(keyword || "").trim()).filter(Boolean).slice(0, 100);
-  if (requestedIds.length > 0) await enqueueInformationDocuments(c.env.DB, [...new Set(requestedIds)], triggerSource);
+  const requestedTasks = requestedIds.length > 0
+    ? await enqueueInformationDocuments(c.env.DB, [...new Set(requestedIds)], triggerSource)
+    : [];
   if (requestedIds.length === 0 && !body.auto) return fail(c, 400, "missing documentId");
   const maxDocuments = Math.min(200, Math.max(1, Number(body.maxDocuments) || Number(body.concurrency) || 1));
   const maxAgeDays = Math.min(365, Math.max(1, Number(body.maxAgeDays) || 30));
-  const automaticallyEnqueuedIds = body.auto
+  const automatic = body.auto
     ? await enqueueUnprocessedInformationDocuments(c.env.DB, maxAgeDays, maxDocuments, titleKeywords, triggerSource)
-    : [];
+    : { documentIds: [], tasks: [] };
   return ok(c, {
     automatic: Boolean(body.auto),
     enqueued: requestedIds.length,
-    auto_enqueued: automaticallyEnqueuedIds.length,
+    auto_enqueued: automatic.documentIds.length,
+    tasks: [...requestedTasks, ...automatic.tasks],
     max_documents: maxDocuments,
     max_age_days: body.auto ? maxAgeDays : null,
     status: "queued",
@@ -414,13 +437,14 @@ knowledgeRoutes.post("/knowledge/processing-jobs/claim-next", async (c) => {
 
 knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/complete", async (c) => {
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; text?: unknown; raw?: unknown; cached?: unknown; runnerInstanceId?: unknown; attempt?: unknown } | null;
+  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; text?: unknown; raw?: unknown; cached?: unknown; runnerInstanceId?: unknown; attempt?: unknown; runId?: unknown } | null;
   const request = body?.request;
   const runnerInstanceId = typeof body?.runnerInstanceId === "string" ? body.runnerInstanceId : "";
   const attempt = Number(body?.attempt);
+  const runId = typeof body?.runId === "string" ? body.runId.trim() : "";
   if (!request || typeof body?.text !== "string" || !runnerInstanceId || !Number.isInteger(attempt)) return fail(c, 400, "invalid information processing completion");
   try {
-    return ok(c, await completeClaimedInformationProcessingJob(c.env, c.req.param("jobId"), { request, text: body.text, raw: body.raw, cached: body.cached === true, runnerInstanceId, attempt }));
+    return ok(c, await completeClaimedInformationProcessingJob(c.env, c.req.param("jobId"), { request, text: body.text, raw: body.raw, cached: body.cached === true, runnerInstanceId, attempt, runId: runId || undefined }));
   } catch (error) {
     return fail(c, /lease is no longer owned/.test(error instanceof Error ? error.message : String(error)) ? 409 : 400, error instanceof Error ? error.message : String(error));
   }
@@ -428,13 +452,14 @@ knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/complete", async (c) => 
 
 knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/fail", async (c) => {
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; error?: unknown; runnerInstanceId?: unknown; attempt?: unknown } | null;
+  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; error?: unknown; runnerInstanceId?: unknown; attempt?: unknown; runId?: unknown } | null;
   const request = body?.request;
   const runnerInstanceId = typeof body?.runnerInstanceId === "string" ? body.runnerInstanceId : "";
   const attempt = Number(body?.attempt);
+  const runId = typeof body?.runId === "string" ? body.runId.trim() : "";
   if (!request || !runnerInstanceId || !Number.isInteger(attempt)) return fail(c, 400, "invalid information processing failure");
   const message = typeof body?.error === "string" && body.error.trim() ? body.error.trim() : "local information processing runner failed";
-  try { await failClaimedInformationProcessingJob(c.env, c.req.param("jobId"), { request, error: message, runnerInstanceId, attempt }); return ok(c, { status: "failed" }); }
+  try { await failClaimedInformationProcessingJob(c.env, c.req.param("jobId"), { request, error: message, runnerInstanceId, attempt, runId: runId || undefined }); return ok(c, { status: "failed" }); }
   catch (error) { return fail(c, /lease is no longer owned/.test(error instanceof Error ? error.message : String(error)) ? 409 : 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -442,10 +467,11 @@ knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/heartbeat", async (c) =>
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   const runnerInstanceId = typeof body.runnerInstanceId === "string" ? body.runnerInstanceId : "";
+  const runId = typeof body.runId === "string" ? body.runId.trim() : "";
   const attempt = Number(body.attempt);
-  if (!runnerInstanceId.trim() || !Number.isInteger(attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+  if (!runnerInstanceId.trim() || !runId || !Number.isInteger(attempt)) return fail(c, 400, "runnerInstanceId, runId and attempt are required");
   try {
-    return ok(c, { active: await heartbeatInformationProcessingJob(c.env.DB, c.req.param("jobId"), runnerInstanceId, attempt) });
+    return ok(c, { active: await heartbeatInformationProcessingJob(c.env.DB, c.req.param("jobId"), runId, runnerInstanceId, attempt) });
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -454,8 +480,8 @@ knowledgeRoutes.post("/knowledge/processing-jobs/:id/retry", async (c) => {
   const row = await c.env.DB.prepare("select v.doc_id from knowledge_processing_runs r join knowledge_document_versions v on v.version_id = r.version_id where r.run_id = ?")
     .bind(c.req.param("id")).first<{ doc_id: string }>();
   if (!row) return fail(c, 404, "knowledge processing run not found");
-  await enqueueInformationDocuments(c.env.DB, [row.doc_id], "manual");
-  return ok(c, { documentId: row.doc_id, status: "queued" });
+  const [task] = await enqueueInformationDocuments(c.env.DB, [row.doc_id], "manual");
+  return ok(c, { documentId: row.doc_id, taskId: task?.taskId || null, status: "queued" });
 });
 
 knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
@@ -2327,13 +2353,8 @@ async function enqueueInformationDocuments(
   db: AppEnv["Bindings"]["DB"],
   documentIds: string[],
   triggerSource: "automatic" | "cli" | "manual",
-): Promise<void> {
-  const now = Date.now();
-  await db.batch(documentIds.map((docId) => db.prepare(
-    `insert into information_processing_jobs (job_id, doc_id, status, attempt_count, trigger_source, created_at, updated_at)
-     values (?, ?, 'queued', 0, ?, ?, ?)
-     on conflict(doc_id) do update set status = 'queued', attempt_count = 0, trigger_source = excluded.trigger_source, last_run_id = null, last_error = null, updated_at = excluded.updated_at`,
-  ).bind(`information-job:${crypto.randomUUID()}`, docId, triggerSource, now, now)));
+): Promise<Array<{ taskId: string; docId: string; status: string; created: boolean; deduplicated: boolean }>> {
+  return enqueueInformationProcessingTasks(db, documentIds, triggerSource, { force: true });
 }
 
 async function enqueueUnprocessedInformationDocuments(
@@ -2342,7 +2363,7 @@ async function enqueueUnprocessedInformationDocuments(
   limit: number,
   titleKeywords: string[],
   triggerSource: "automatic" | "cli" | "manual",
-): Promise<string[]> {
+): Promise<{ documentIds: string[]; tasks: Array<{ taskId: string; docId: string; status: string; created: boolean; deduplicated: boolean }> }> {
   const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
   const activeProcessingCutoff = Date.now() - 2 * 60 * 1000;
   const titleClause = titleKeywords.length > 0
@@ -2354,8 +2375,9 @@ async function enqueueUnprocessedInformationDocuments(
       where d.sort_time >= ?
         ${titleClause}
         and not exists (
-          select 1 from information_processing_jobs j
-           where j.doc_id = d.doc_id
+          select 1 from llm_tasks j
+           where j.task_type = ? and j.target_type = ? and j.target_id = d.doc_id
+             and j.prompt_version = ?
              and (j.status = 'queued' or (j.status = 'running' and j.updated_at >= ?))
         )
         and coalesce((
@@ -2378,10 +2400,10 @@ async function enqueueUnprocessedInformationDocuments(
         )
       order by d.sort_time desc, d.doc_id desc
       limit ?`,
-  ).bind(cutoff, ...titleKeywords.map((keyword) => `%${escapeLike(keyword)}%`), activeProcessingCutoff, INFORMATION_PROCESSING_PROMPT_VERSION, limit).all<{ doc_id: string }>();
+  ).bind(cutoff, ...titleKeywords.map((keyword) => `%${escapeLike(keyword)}%`), INFORMATION_PROCESSING_TASK_TYPE, INFORMATION_PROCESSING_TARGET_TYPE, INFORMATION_PROCESSING_PROMPT_VERSION, activeProcessingCutoff, INFORMATION_PROCESSING_PROMPT_VERSION, limit).all<{ doc_id: string }>();
   const documentIds = candidates.results.map((row) => row.doc_id);
-  if (documentIds.length > 0) await enqueueInformationDocuments(db, documentIds, triggerSource);
-  return documentIds;
+  const tasks = documentIds.length > 0 ? await enqueueInformationDocuments(db, documentIds, triggerSource) : [];
+  return { documentIds, tasks };
 }
 
 function normalizeInformationTriggerSource(value: unknown): "automatic" | "cli" | "manual" {

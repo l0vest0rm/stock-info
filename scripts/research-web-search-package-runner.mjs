@@ -27,18 +27,18 @@ function positiveInteger(value, fallback) { const parsed = Number(value); return
 
 async function runJob(job) {
   const startedAt = Date.now();
-  const heartbeat = setInterval(() => { void post(`/api/research/web-search-package-jobs/${encodeURIComponent(job.securityCode)}/${encodeURIComponent(job.packageKind)}/heartbeat`, { runnerInstanceId, attempt: job.attempt }).catch(() => {}); }, 10_000);
-  localRuntimeLog("research-web-search", "started", { job_id: job.jobId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind });
+  const heartbeat = setInterval(() => { void post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/heartbeat`, { taskId: job.taskId, runnerInstanceId, attempt: job.attempt }).catch(() => {}); }, 10_000);
+  localRuntimeLog("research-web-search", "started", { task_id: job.taskId, run_id: job.runId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind });
   try {
     const provider = createLocalJobProvider(apiKey);
     const response = await provider.generate({ model: job.model, instructions: job.instructions, input: [{ role: "user", content: [{ type: "input_text", text: job.input }] }], reasoningEffort: job.reasoningEffort, tools: [{ type: "web_search", searchContextSize: "high" }], toolChoice: "required", maxOutputTokens: job.maxOutputTokens, signal: AbortSignal.timeout(job.jobTimeoutMs) });
-    await post(`/api/research/web-search-package-jobs/${encodeURIComponent(job.securityCode)}/${encodeURIComponent(job.packageKind)}/complete`, { model: job.model, text: response.text, webSearch: response.webSearch, runnerInstanceId, attempt: job.attempt });
-    localRuntimeLog("research-web-search", "completed", { job_id: job.jobId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind, duration_ms: Date.now() - startedAt });
+    await post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/complete`, { taskId: job.taskId, model: job.model, text: response.text, webSearch: response.webSearch, runnerInstanceId, attempt: job.attempt });
+    localRuntimeLog("research-web-search", "completed", { task_id: job.taskId, run_id: job.runId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind, duration_ms: Date.now() - startedAt });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    try { await post(`/api/research/web-search-package-jobs/${encodeURIComponent(job.securityCode)}/${encodeURIComponent(job.packageKind)}/fail`, { error: message, runnerInstanceId, attempt: job.attempt }); }
-    catch (failure) { localRuntimeError("research-web-search", "failure_persist_failed", failure, { job_id: job.jobId, attempt: job.attempt }); }
-    localRuntimeLog("research-web-search", "failed", { job_id: job.jobId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind, duration_ms: Date.now() - startedAt, error: message });
+    try { await post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/fail`, { taskId: job.taskId, error: message, runnerInstanceId, attempt: job.attempt }); }
+    catch (failure) { localRuntimeError("research-web-search", "failure_persist_failed", failure, { task_id: job.taskId, run_id: job.runId, attempt: job.attempt }); }
+    localRuntimeLog("research-web-search", "failed", { task_id: job.taskId, run_id: job.runId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind, duration_ms: Date.now() - startedAt, error: message });
   } finally { clearInterval(heartbeat); }
 }
 
@@ -48,7 +48,7 @@ export function startResearchWebSearchPackageRunner() {
     if (!accepting || polling) return; polling = true;
     try {
       while (accepting && active.size < concurrency) {
-        const claimed = await post("/api/research/web-search-package-jobs/claim-next", { runnerInstanceId });
+        const claimed = await post("/api/research/web-search-tasks/claim-next", { runnerInstanceId });
         if (!claimed?.request?.securityCode || !claimed?.request?.packageKind) break;
         let work; work = runJob(claimed.request).finally(() => { active.delete(work); void poll(); }); active.add(work);
       }

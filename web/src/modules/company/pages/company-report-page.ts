@@ -9,6 +9,7 @@ type CompanyReportRow = {
   rank: number
   publishDate: string
   title: string
+  provenance: string
   reportHref: string
   reportInfoCode: string
   docId: string
@@ -43,6 +44,10 @@ type CompanyReportRow = {
   valuation: string
   orgName: string
   pages: string
+}
+
+function companyReportProvenanceLabel(value: unknown): string {
+  return String(value || '').trim().toLowerCase() === 'web_search' ? '搜索发现' : '既有来源'
 }
 
 type CompanyReportStateEvent = CustomEvent<{
@@ -209,6 +214,7 @@ const CompanyReportPage = defineComponent({
               h('th', { scope: 'col' }, '编号'),
               h('th', { scope: 'col' }, '日期'),
               h('th', { scope: 'col' }, '报告名称'),
+              h('th', { scope: 'col' }, '来源'),
               h('th', { scope: 'col' }, '2025营收'),
               h('th', { scope: 'col' }, '2025净利润'),
               h('th', { scope: 'col' }, '2025PE'),
@@ -251,6 +257,7 @@ const CompanyReportPage = defineComponent({
                       },
                     }, row.title)
                   : h('span', row.title)),
+              h('td', companyReportProvenanceLabel(row.provenance)),
               h('td', { title: growthTitle('营收', row.revenueGrowth2025) }, growthCell(row.revenue2025, row.revenueGrowth2025)),
               h('td', { title: profitTitle(row.growth2025, row.profitMargin2025, row.profitEstimated2025) }, growthCell(row.profit2025, row.growth2025)),
               h('td', row.pe2025),
@@ -270,7 +277,7 @@ const CompanyReportPage = defineComponent({
             : [
               h('tr', { key: 'company-report-empty' }, [
                 h('td', {
-                  colSpan: 18,
+                  colSpan: 19,
                   class: `text-center ${statusDanger.value ? 'text-danger' : 'text-muted'}`,
                 }, statusText.value || '暂无公司研报'),
               ]),

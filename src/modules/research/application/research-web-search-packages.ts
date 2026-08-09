@@ -1,5 +1,19 @@
 import packageConfig from "../../../../config/research-web-search-packages.json";
-import { localJobLeaseUntil, reconcileLocalJobProviderSlots, releaseLocalJobProviderSlot, renewLocalJobLease, reserveLocalJobProviderSlot } from "../../../shared/local-job-protocol";
+import {
+  claimGenericLlmTaskRun,
+  completeGenericLlmRun,
+  createGenericLlmTask,
+  failGenericLlmRun,
+  heartbeatGenericLlmRun,
+  loadGenericLlmRun,
+  loadGenericLlmRunArtifacts,
+  loadGenericLlmTask,
+  LOCAL_JOB_PROVIDER_ID,
+  requeueGenericLlmTask,
+  writeGenericLlmRunArtifact,
+  type GenericLlmRun,
+  type GenericLlmTask,
+} from "../../../shared/local-job-protocol";
 import {
   RESEARCH_WEB_SEARCH_EVENT_RISK_PROMPT,
   RESEARCH_WEB_SEARCH_FORECAST_CONSENSUS_PROMPT,
@@ -18,9 +32,13 @@ type Citation = { title: string; url: string; start?: number; end?: number };
 type EvidenceStatus = "verified" | "unavailable" | "uncited" | "citation_unquoted" | "format_incomplete";
 type Evidence = { tabId: TabId; fieldKey: string; subject: string; statement: string; numericValue: number | null; unit: string | null; currency: string | null; period: string | null; productScope: string | null; regionScope: string | null; sourceTitle: string | null; sourceUrl: string | null; sourcePublishedAt: string | null; quote: string | null; locator: string | null; status: EvidenceStatus };
 type FinancialDisclosureBoundary = { reportPeriod: string; publishedAt: string; title: string; url: string; source: "statutory_verification" | "auto_filing_version" | "statutory_index" };
-export type ResearchWebSearchPackageExecutionRequest = { jobId: string; attempt: number; runnerInstanceId: string; securityCode: string; packageKind: string; promptVersion: string; model: "gpt-5.6-luna"; reasoningEffort: "high"; maxOutputTokens: number; jobTimeoutMs: number; instructions: string; input: string };
-type PreparedResearchWebSearchPackageExecution = Omit<ResearchWebSearchPackageExecutionRequest, "jobId" | "attempt" | "runnerInstanceId">;
+type ResearchWebSearchTaskMetadata = { securityCode: string; packageKind: PackageKind; label: string; tabs: TabId[] };
+export type ResearchWebSearchPackageExecutionRequest = { taskId: string; runId: string; attempt: number; runnerInstanceId: string; securityCode: string; packageKind: PackageKind; promptVersion: string; model: "gpt-5.6-luna"; reasoningEffort: "high"; maxOutputTokens: number; jobTimeoutMs: number; instructions: string; input: string };
+type PreparedResearchWebSearchPackageExecution = Omit<ResearchWebSearchPackageExecutionRequest, "taskId" | "runId" | "attempt" | "runnerInstanceId">;
 export type ResearchWebSearchPackageExecutionResult = { model: string; text: string; webSearch?: { searched?: boolean; queries?: Array<string>; citations?: Citation[] } };
+type ResearchWebSearchPackageRunInput = { taskId: string; runId: string; attempt: number; runnerInstanceId: string; response: ResearchWebSearchPackageExecutionResult };
+type ResearchWebSearchPackageRunFailureInput = { taskId: string; runId: string; attempt: number; runnerInstanceId: string; error: unknown };
+type ResearchWebSearchPackageRunLeaseInput = { taskId: string; runId: string; attempt: number; runnerInstanceId: string };
 
 const config = packageConfig as {
   version: string; model: "gpt-5.6-luna"; reasoningEffort: "high"; maxOutputTokens: number; jobTimeoutMs: number;
@@ -43,120 +61,81 @@ export async function enqueueResearchWebSearchPackage(db: D1Database, securityCo
   const code = required(securityCode, "securityCode").toUpperCase();
   if (!kinds.has(packageKind as PackageKind)) throw new Error("unsupported web search package");
   const kind = packageKind as PackageKind;
-  const existing = await jobByIdentity(db, code, kind);
-  if (existing) {
-    const status = text(existing.status);
-    if (status === "failed") {
-      // The condition makes a concurrent retry a no-op: only the caller that
-      // actually moves the job back to queued schedules a Worker execution.
-      const reset = await db.prepare(`update research_web_search_package_jobs
-        set status='queued', last_error=null, completed_at=null, updated_at=?
-        where security_code=? and package_kind=? and prompt_version=? and status='failed'`)
-        .bind(now, code, kind, promptVersion(kind)).run();
-      const job = await jobByIdentity(db, code, kind);
-      return { job, shouldStart: Boolean(reset.meta.changes), deduplicated: !reset.meta.changes };
-    }
-    return { job: existing, shouldStart: false, deduplicated: true };
+  const result = await createGenericLlmTask(db, {
+    taskType: "research_web_search", targetType: "security", targetId: code,
+    idempotencyKey: `web-search-package:${kind}`, promptVersion: promptVersion(kind), model: config.model,
+    reasoningEffort: config.reasoningEffort,
+    metadata: { securityCode: code, packageKind: kind, label: config.packages[kind].label, tabs: config.packages[kind].tabs } satisfies ResearchWebSearchTaskMetadata,
+    now,
+  });
+  if (result.task.status === "failed") {
+    const reset = await requeueGenericLlmTask(db, result.task.taskId, now);
+    const task = await loadGenericLlmTask(db, result.task.taskId);
+    if (!task) throw new Error("generic Web Search task disappeared while retrying");
+    return { task, shouldStart: reset, deduplicated: !reset };
   }
-  // INSERT OR IGNORE closes the read-then-insert race between simultaneous
-  // clicks/reloads for the same security, package and prompt template.
-  const inserted = await db.prepare(`insert or ignore into research_web_search_package_jobs (
-    job_id, job_type, security_code, package_kind, prompt_version, status, attempt_count, attempt, created_at, updated_at
-  ) values (?, 'research_web_search', ?, ?, ?, 'queued', 0, 0, ?, ?)`)
-    .bind(`research-web-search:${code}:${kind}:${promptVersion(kind)}`, code, kind, promptVersion(kind), now, now).run();
-  const job = await jobByIdentity(db, code, kind);
-  return { job, shouldStart: Boolean(inserted.meta.changes), deduplicated: !inserted.meta.changes };
+  return { task: result.task, shouldStart: result.created, deduplicated: result.deduplicated };
 }
 
-/**
- * The local Node runner claims jobs before opening a long-lived model stream.
- * The local-job-worker owns this connection so a lost upstream SSE socket
- * cannot terminate local-http before it persists a terminal job state.
- */
-export async function claimNextResearchWebSearchPackageJob(db: D1Database, runnerInstanceId: string) {
-  const runner = required(runnerInstanceId, "runnerInstanceId");
-  const now = Date.now();
-  await reconcileLocalJobProviderSlots(db, now);
-  await db.prepare(`update research_web_search_package_jobs set status='queued', lease_owner=null, lease_until=null,
-    last_error='local runner lease expired; retrying with a new attempt', updated_at=?
-    where status='running' and lease_until<?`).bind(now, now).run();
-  const queued = await db.prepare(`select security_code as securityCode, package_kind as packageKind, prompt_version as promptVersion,
-    job_id as jobId, attempt from research_web_search_package_jobs where status='queued' order by created_at asc limit 1`).first<Row>();
-  if (!queued) return null;
-  const code = required(queued.securityCode, "securityCode").toUpperCase();
-  const kind = required(queued.packageKind, "packageKind") as PackageKind;
-  if (!kinds.has(kind)) throw new Error("unsupported web search package");
-  const jobId = required(queued.jobId, "jobId");
-  const nextAttempt = Number(queued.attempt) + 1;
-  if (!Number.isInteger(nextAttempt) || nextAttempt < 1) throw new Error("invalid web search package attempt");
-  if (!await reserveLocalJobProviderSlot(db, jobId, "research_web_search", nextAttempt, runner, now)) return null;
-  const claim = await db.prepare(`update research_web_search_package_jobs
-    set status='running', attempt_count=attempt_count+1, attempt=?, lease_owner=?, lease_until=?, heartbeat_at=?, started_at=coalesce(started_at, ?), updated_at=?
-    where security_code=? and package_kind=? and prompt_version=? and status='queued' and attempt=?`)
-    .bind(nextAttempt, runner, localJobLeaseUntil(now), now, now, now, code, kind, promptVersion(kind), nextAttempt - 1).run();
-  if (!claim.meta.changes) { await releaseLocalJobProviderSlot(db, jobId, nextAttempt, runner, now); return null; }
+/** The local Node runner claims a generic task run before opening a long-lived model stream. */
+export async function claimNextResearchWebSearchPackageTaskRun(db: D1Database, runnerInstanceId: string) {
+  const claimed = await claimGenericLlmTaskRun(db, runnerInstanceId, { taskType: "research_web_search", provider: LOCAL_JOB_PROVIDER_ID, model: config.model, reasoningEffort: config.reasoningEffort });
+  if (!claimed) return null;
   try {
-    return { job: await jobByIdentity(db, code, kind), request: { ...(await prepareResearchWebSearchPackageExecution(db, code, kind)), jobId, attempt: nextAttempt, runnerInstanceId: runner } };
+    const identity = packageIdentity(claimed.task);
+    const prepared = await prepareResearchWebSearchPackageExecution(db, identity.securityCode, identity.packageKind);
+    return { task: claimed.task, run: claimed.run, request: { ...prepared, taskId: claimed.task.taskId, runId: claimed.run.runId, attempt: claimed.run.attempt, runnerInstanceId: required(runnerInstanceId, "runnerInstanceId") } };
   } catch (error) {
-    await failResearchWebSearchPackageJob(db, code, kind, error, runner, nextAttempt);
+    await writeWebSearchFailureArtifact(db, claimed.task, claimed.run, required(runnerInstanceId, "runnerInstanceId"), error, "prepare_failed").catch(() => {});
+    await failGenericLlmRun(db, { taskId: claimed.task.taskId, runId: claimed.run.runId, attempt: claimed.run.attempt, leaseOwner: required(runnerInstanceId, "runnerInstanceId"), errorCode: "prepare_failed", errorMessage: error instanceof Error ? error.message : String(error) }).catch(() => {});
     throw error;
   }
 }
 
-export async function completeResearchWebSearchPackageJob(db: D1Database, securityCode: string, packageKind: string, response: ResearchWebSearchPackageExecutionResult, runnerInstanceId: string, attempt: number) {
-  const code = required(securityCode, "securityCode").toUpperCase();
-  const kind = required(packageKind, "packageKind") as PackageKind;
-  if (!kinds.has(kind)) throw new Error("unsupported web search package");
-  if (response.model !== config.model) throw new Error("web search package response model mismatch");
+export async function completeResearchWebSearchPackageRun(db: D1Database, input: ResearchWebSearchPackageRunInput) {
+  const runner = required(input.runnerInstanceId, "runnerInstanceId");
+  const taskId = required(input.taskId, "taskId");
+  const runId = required(input.runId, "runId");
+  const task = await loadGenericLlmTask(db, taskId);
+  if (!task) throw new Error("generic Web Search task was not found");
+  const identity = packageIdentity(task);
+  const run = await activeGenericRun(db, task, runId, input.attempt, runner);
+  if (input.response.model !== config.model) throw new Error("web search package response model mismatch");
   try {
-    const runner = required(runnerInstanceId, "runnerInstanceId");
-    if (!Number.isInteger(attempt) || attempt < 1) throw new Error("web search package attempt is required");
-    const active = await jobByIdentity(db, code, kind);
-    if (active?.status !== "running" || Number(active.attempt) !== attempt || text(active.leaseOwner) !== runner || Number(active.leaseUntil) < Date.now()) throw new Error("web search package job lease is no longer owned by this runner");
-    const result = await persistResearchWebSearchPackageResult(db, code, kind, response, Date.now());
     const completedAt = Date.now();
-    const update = await db.prepare(`update research_web_search_package_jobs
-      set status='completed', package_id=?, last_error=null, completed_at=?, updated_at=?, lease_until=null
-      where security_code=? and package_kind=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`)
-      .bind(text(result.packageId), completedAt, completedAt, code, kind, promptVersion(kind), attempt, runner, completedAt).run();
-    if (!update.meta.changes) throw new Error("web search package job was no longer running when completion arrived");
-    await releaseLocalJobProviderSlot(db, required(active.jobId, "jobId"), attempt, runner, completedAt);
-    return await jobByIdentity(db, code, kind);
+    const result = await persistResearchWebSearchPackageResult(db, identity.securityCode, identity.packageKind, input.response, completedAt, `web-search-package:${runId}`);
+    const artifacts = await loadGenericLlmRunArtifacts(db, runId);
+    if (!artifacts.some((artifact) => artifact.stepKey === "web_search_package")) {
+      await writeGenericLlmRunArtifact(db, { runId, taskId, attempt: input.attempt, leaseOwner: runner, stepKey: "web_search_package", outputType: "json", status: "complete", structureValid: true, output: { packageId: result.packageId, securityCode: identity.securityCode, packageKind: identity.packageKind, response: input.response, projection: result }, terminalMetadata: { projection: "research_web_search_source_packages", packageId: result.packageId }, completedAt });
+    }
+    const terminal = await completeGenericLlmRun(db, { runId, taskId, attempt: input.attempt, leaseOwner: runner, status: "completed", terminalMetadata: { packageId: result.packageId, packageKind: identity.packageKind }, completedAt });
+    return { ...terminal, package: result };
   } catch (error) {
-    await failResearchWebSearchPackageJob(db, code, kind, error, runnerInstanceId, attempt);
+    await writeWebSearchFailureArtifact(db, task, run, runner, error, "projection_failed").catch(() => {});
+    await failGenericLlmRun(db, { runId, taskId, attempt: input.attempt, leaseOwner: runner, errorCode: "projection_failed", errorMessage: error instanceof Error ? error.message : String(error) }).catch(() => {});
     throw error;
   }
 }
 
-export async function failResearchWebSearchPackageJob(db: D1Database, securityCode: string, packageKind: string, error: unknown, runnerInstanceId: string, attempt: number) {
-  const code = required(securityCode, "securityCode").toUpperCase();
-  const kind = required(packageKind, "packageKind") as PackageKind;
-  if (!kinds.has(kind)) throw new Error("unsupported web search package");
-  const now = Date.now();
-  const message = error instanceof Error ? error.message : String(error);
-  const runner = required(runnerInstanceId, "runnerInstanceId");
-  const existing = await jobByIdentity(db, code, kind);
-  const updated = await db.prepare(`update research_web_search_package_jobs set status='failed', last_error=?, completed_at=?, updated_at=?, lease_until=null
-    where security_code=? and package_kind=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`)
-    .bind(message.slice(0, 1600), now, now, code, kind, promptVersion(kind), attempt, runner, now).run();
-  if (!updated.meta.changes) throw new Error("web search package job lease is no longer owned by this runner");
-  await releaseLocalJobProviderSlot(db, required(existing?.jobId, "jobId"), attempt, runner, now);
-  return await jobByIdentity(db, code, kind);
+export async function failResearchWebSearchPackageRun(db: D1Database, input: ResearchWebSearchPackageRunFailureInput) {
+  const runner = required(input.runnerInstanceId, "runnerInstanceId");
+  const taskId = required(input.taskId, "taskId");
+  const runId = required(input.runId, "runId");
+  const task = await loadGenericLlmTask(db, taskId);
+  if (!task) throw new Error("generic Web Search task was not found");
+  packageIdentity(task);
+  await activeGenericRun(db, task, runId, input.attempt, runner);
+  const run = await loadGenericLlmRun(db, runId);
+  if (!run) throw new Error("generic Web Search run was not found");
+  await writeWebSearchFailureArtifact(db, task, run, runner, input.error).catch(() => {});
+  return await failGenericLlmRun(db, { runId, taskId, attempt: input.attempt, leaseOwner: runner, errorCode: "provider_failed", errorMessage: String(input.error).slice(0, 1600), terminalMetadata: { package: "research_web_search" } });
 }
 
-export async function heartbeatResearchWebSearchPackageJob(db: D1Database, securityCode: string, packageKind: string, runnerInstanceId: string, attempt: number) {
-  const code = required(securityCode, "securityCode").toUpperCase(); const kind = required(packageKind, "packageKind") as PackageKind;
-  return renewLocalJobLease(db, "research_web_search_package_jobs", "security_code=? and package_kind=? and prompt_version=?", [code, kind, promptVersion(kind)], attempt, required(runnerInstanceId, "runnerInstanceId"));
-}
-
-/** A local Node runtime restart interrupts in-flight work without a final status write.
- * Treat an untouched queued/running row past the same bounded request window
- * as retryable rather than leaving the page in a permanent processing state. */
-export function webSearchPackageJobTimedOut(job: { status?: unknown; createdAt?: unknown; startedAt?: unknown; updatedAt?: unknown }, now = Date.now()) {
-  const status = text(job.status);
-  if (status !== "queued" && status !== "running") return false;
-  const activityAt = Number(job.updatedAt) || Number(job.startedAt) || Number(job.createdAt);
-  return Number.isFinite(activityAt) && activityAt <= now - jobTimeoutMs;
+export async function heartbeatResearchWebSearchPackageRun(db: D1Database, input: ResearchWebSearchPackageRunLeaseInput) {
+  const task = await loadGenericLlmTask(db, required(input.taskId, "taskId"));
+  if (!task) throw new Error("generic Web Search task was not found");
+  packageIdentity(task);
+  return { active: await heartbeatGenericLlmRun(db, required(input.runId, "runId"), task.taskId, input.attempt, required(input.runnerInstanceId, "runnerInstanceId")) };
 }
 
 export async function prepareResearchWebSearchPackageExecution(db: D1Database, securityCode: string, packageKind: string): Promise<PreparedResearchWebSearchPackageExecution> {
@@ -189,7 +168,7 @@ export async function prepareResearchWebSearchPackageExecution(db: D1Database, s
   };
 }
 
-async function persistResearchWebSearchPackageResult(db: D1Database, securityCode: string, packageKind: PackageKind, response: ResearchWebSearchPackageExecutionResult, now: number) {
+async function persistResearchWebSearchPackageResult(db: D1Database, securityCode: string, packageKind: PackageKind, response: ResearchWebSearchPackageExecutionResult, now: number, requestedPackageId?: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   const kind = packageKind;
   const cached = await loadPackage(db, code, kind);
@@ -198,7 +177,7 @@ async function persistResearchWebSearchPackageResult(db: D1Database, securityCod
   const citations = compactSourceCitations(webSearch?.citations || []);
   if (!webSearch?.searched || !citations.length) throw new Error("web search did not return source citations; no package was persisted");
   const parsed = parseResearchWebSearchPackage(response.text, config.packages[kind].tabs, citations);
-  const packageId = `web-search-package:${crypto.randomUUID()}`;
+  const packageId = requestedPackageId || `web-search-package:${crypto.randomUUID()}`;
   const statements: D1PreparedStatement[] = [db.prepare(`insert into research_web_search_source_packages (
     package_id, security_code, package_kind, prompt_version, model, reasoning_effort, status, search_queries_json,
     source_citations_json, summary, missing_fields_json, conflicts_json, refresh_triggers_json, requested_at, completed_at
@@ -214,7 +193,18 @@ async function persistResearchWebSearchPackageResult(db: D1Database, securityCod
         item.unit, item.currency, item.period, item.productScope, item.regionScope, item.sourceTitle, item.sourceUrl, item.sourcePublishedAt,
         item.quote, item.locator, item.status, now));
   }
-  await db.batch(statements);
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    // A late fenced attempt can race the winning projection insert. The
+    // natural package key is the business deduplication boundary; reuse the
+    // winner rather than turning an otherwise completed task into a failure.
+    if (/unique constraint|constraint failed/i.test(String(error))) {
+      const winner = await loadPackage(db, code, kind);
+      if (winner) return { ...winner, cached: true };
+    }
+    throw error;
+  }
   const completed = await loadPackage(db, code, kind);
   if (!completed) throw new Error("web search package was persisted but cannot be reloaded");
   return { ...completed, cached: false };
@@ -235,24 +225,23 @@ export async function loadResearchWebSearchPackages(db: D1Database, securityCode
       order by created_at desc`).bind(code).all<Row>();
     const byPackage = new Map<string, Row[]>();
     for (const item of evidence.results) { const id = text(item.packageId); byPackage.set(id, [...(byPackage.get(id) || []), item]); }
-    const jobs = await db.prepare(`select job_id as jobId, job_type as jobType, package_kind as packageKind, prompt_version as promptVersion, status,
-      attempt_count as attemptCount, attempt, lease_owner as leaseOwner, lease_until as leaseUntil, heartbeat_at as heartbeatAt, package_id as packageId, last_error as lastError, created_at as createdAt, started_at as startedAt,
-      completed_at as completedAt, updated_at as updatedAt from research_web_search_package_jobs where security_code=? order by updated_at desc`).bind(code).all<Row>();
-    return { availability: packages.results.length || jobs.results.length ? "available" as const : "empty" as const, packages: packages.results.map((item) => ({ ...item,
+    const taskRows = await db.prepare(`select task_id as taskId from llm_tasks
+      where task_type='research_web_search' and target_type='security' and target_id=? order by updated_at desc`).bind(code).all<Row>();
+    const tasks = (await Promise.all(taskRows.results.map(async (row) => {
+      const taskId = text(row.taskId); if (!taskId) return null;
+      const task = await loadGenericLlmTask(db, taskId); if (!task) return null;
+      const run = task.lastRunId ? await loadGenericLlmRun(db, task.lastRunId) : null;
+      const artifacts = run ? await loadGenericLlmRunArtifacts(db, run.runId) : [];
+      return { task, run, artifacts };
+    }))).filter((item): item is { task: GenericLlmTask; run: GenericLlmRun | null; artifacts: Awaited<ReturnType<typeof loadGenericLlmRunArtifacts>> } => Boolean(item));
+    return { availability: packages.results.length || tasks.length ? "available" as const : "empty" as const, packages: packages.results.map((item) => ({ ...item,
       searchQueries: jsonArray(item.searchQueriesJson), sourceCitations: jsonArray(item.sourceCitationsJson), missingFields: jsonArray(item.missingFieldsJson),
       conflicts: jsonArray(item.conflictsJson), refreshTriggers: jsonArray(item.refreshTriggersJson), evidence: byPackage.get(text(item.packageId)) || [],
-    })), jobs: jobs.results };
+    })), tasks };
   } catch (error) {
-    if (/no such table/i.test(String(error))) return { availability: "unavailable" as const, packages: [] as Row[], jobs: [] as Row[] };
+    if (/no such table/i.test(String(error))) return { availability: "unavailable" as const, packages: [] as Row[], tasks: [] as Array<{ task: GenericLlmTask; run: GenericLlmRun | null; artifacts: Awaited<ReturnType<typeof loadGenericLlmRunArtifacts>> }> };
     throw error;
   }
-}
-
-async function jobByIdentity(db: D1Database, code: string, kind: PackageKind) {
-  return await db.prepare(`select job_id as jobId, job_type as jobType, security_code as securityCode, package_kind as packageKind, prompt_version as promptVersion,
-    status, attempt_count as attemptCount, attempt, lease_owner as leaseOwner, lease_until as leaseUntil, heartbeat_at as heartbeatAt, package_id as packageId, last_error as lastError, created_at as createdAt, started_at as startedAt,
-    completed_at as completedAt, updated_at as updatedAt from research_web_search_package_jobs
-    where security_code=? and package_kind=? and prompt_version=?`).bind(code, kind, promptVersion(kind)).first<Row>();
 }
 
 async function loadPackage(db: D1Database, code: string, kind: PackageKind): Promise<StoredPackage | null> {
@@ -356,6 +345,36 @@ export function parseResearchWebSearchPackage(raw: string, allowedTabs: TabId[],
     throw new Error(`web search returned no source-bound evidence records (${details})`);
   }
   return { summary, items, missingFields: stringArray(data.missing_fields), conflicts: stringArray(data.conflicts), refreshTriggers: stringArray(data.refresh_triggers) };
+}
+
+function packageIdentity(task: GenericLlmTask): { securityCode: string; packageKind: PackageKind } {
+  if (task.taskType !== "research_web_search" || task.targetType !== "security") throw new Error("generic task is not a Web Search package task");
+  const metadata = task.metadata && typeof task.metadata === "object" && !Array.isArray(task.metadata) ? task.metadata as Record<string, unknown> : {};
+  const code = required(task.targetId || metadata.securityCode, "securityCode").toUpperCase();
+  const kind = text(metadata.packageKind) as PackageKind;
+  if (!kinds.has(kind) || task.promptVersion !== promptVersion(kind)) throw new Error("generic task has an unsupported Web Search package identity");
+  return { securityCode: code, packageKind: kind };
+}
+
+async function activeGenericRun(db: D1Database, task: GenericLlmTask, runId: string, attempt: number, runner: string): Promise<GenericLlmRun> {
+  if (!Number.isInteger(attempt) || attempt < 1) throw new Error("Web Search package run attempt is required");
+  const run = await loadGenericLlmRun(db, runId);
+  if (!run || run.taskId !== task.taskId || run.status !== "running" || run.attempt !== attempt || run.leaseOwner !== runner || !run.leaseUntil || run.leaseUntil < Date.now()) {
+    throw new Error("generic Web Search run lease is no longer owned by this runner");
+  }
+  return run;
+}
+
+async function writeWebSearchFailureArtifact(db: D1Database, task: GenericLlmTask, run: GenericLlmRun, runner: string, error: unknown, errorCode = "provider_failed") {
+  const existing = await loadGenericLlmRunArtifacts(db, run.runId);
+  if (existing.some((artifact) => artifact.stepKey === "web_search_package")) return existing[0];
+  const message = (error instanceof Error ? error.message : String(error)).slice(0, 1600);
+  return writeGenericLlmRunArtifact(db, {
+    runId: run.runId, taskId: task.taskId, attempt: run.attempt, leaseOwner: runner,
+    stepKey: "web_search_package", outputType: "json", status: "failed", output: null,
+    structureValid: null, errorCode, errorMessage: message,
+    terminalMetadata: { consumer: "research_web_search", packageKind: packageIdentity(task).packageKind }, completedAt: Date.now(),
+  });
 }
 
 function canonicalUrl(value: string) { try { const url = new URL(value); url.hash = ""; url.searchParams.sort(); return url.toString().replace(/\/$/, ""); } catch { return ""; } }

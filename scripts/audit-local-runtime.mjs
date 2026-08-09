@@ -21,7 +21,10 @@ const scopes = [
   ["securities", "securities"],
   ["kline", "kline_bars"],
   ["knowledge documents", "knowledge_docs"],
-  ["knowledge processing", "information_processing_jobs"],
+  ["knowledge processing tasks", "llm_tasks"],
+  ["knowledge processing runs", "llm_runs"],
+  ["knowledge processing artifacts", "llm_run_artifacts"],
+  ["legacy knowledge processing jobs", "information_processing_jobs"],
   ["research web search", "research_web_search_package_jobs"],
   ["research operating analysis", "research_operating_analysis_jobs"],
   ["macro", "macro_series"],
@@ -140,7 +143,7 @@ function inspectRuntime() {
 }
 
 function taskStates(db) {
-  const tables = tableNames(db).filter((table) => /(?:jobs|processing_runs)$/.test(table));
+  const tables = tableNames(db).filter((table) => /(?:jobs|processing_runs|llm_tasks|llm_runs|llm_run_artifacts)$/.test(table));
   return Object.fromEntries(tables.flatMap((table) => columnsFor(db, table).some((column) => column.name === "status")
     ? [[table, db.prepare(`select status, count(*) as count from ${identifier(table)} group by status order by status`).all()]]
     : []));

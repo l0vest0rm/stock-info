@@ -1,5 +1,21 @@
 import { RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_MS, RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_NAME, ownsResearchOperatingAnalysisRunnerLease } from "./research-operating-analysis-runner-lease";
-import { localJobLeaseUntil, reconcileLocalJobProviderSlots, releaseLocalJobProviderSlot, renewLocalJobLease, reserveLocalJobProviderSlot } from "../../../shared/local-job-protocol";
+import {
+  claimGenericLlmTaskRun,
+  completeGenericLlmRun,
+  createGenericLlmTask,
+  failGenericLlmRun,
+  heartbeatGenericLlmRun,
+  loadGenericLlmRun,
+  loadGenericLlmRunArtifacts,
+  loadGenericLlmTaskByIdentity,
+  recordGenericLlmRunProgress,
+  requeueExpiredGenericLlmRun,
+  requeueGenericLlmTask,
+  writeGenericLlmRunArtifact,
+  type GenericLlmArtifact,
+  type GenericLlmRun,
+  type GenericLlmTask,
+} from "../../../shared/local-job-protocol";
 
 type Row = Record<string, unknown>;
 type ModelPrompt = { model?: string; instructions: string; userPrompt: string };
@@ -24,6 +40,9 @@ export const OPERATING_ANALYSIS_REQUIRED_HEADINGS = [
   "# 9. 估值与市场隐含经营要求", "# 10. 核心风险与反面证据", "# 11. 后续跟踪仪表盘", "# 12. 最终结论",
 ] as const;
 
+const GENERIC_TASK_TYPE = "research_operating_analysis";
+const GENERIC_TARGET_TYPE = "security";
+const GENERIC_IDEMPOTENCY_PREFIX = "research-operating-analysis:";
 const reasoningEfforts = new Set(["none", "low", "medium", "high", "xhigh", "max"]);
 const operatingAnalysisModels = new Set(["gpt-5.4-mini", "gpt-5.6-luna"]);
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
@@ -41,28 +60,50 @@ function reasoningEffort(value: unknown) {
   return effort;
 }
 
+function taskIdentity(code: string) {
+  return {
+    taskType: GENERIC_TASK_TYPE,
+    targetType: GENERIC_TARGET_TYPE,
+    targetId: code,
+    idempotencyKey: `${GENERIC_IDEMPOTENCY_PREFIX}${code}`,
+    promptVersion: OPERATING_ANALYSIS_PROMPT_VERSION,
+  } as const;
+}
+
+async function operatingTask(db: D1Database, securityCode: string): Promise<GenericLlmTask | null> {
+  const code = securityCode.trim().toUpperCase();
+  return loadGenericLlmTaskByIdentity(db, taskIdentity(code));
+}
+
+async function currentRun(db: D1Database, securityCode: string, attempt?: number, runnerInstanceId?: string): Promise<{ task: GenericLlmTask; run: GenericLlmRun }> {
+  const task = await operatingTask(db, securityCode);
+  if (!task || !task.lastRunId) throw new Error("operating-analysis generic task run not found");
+  const run = await loadGenericLlmRun(db, task.lastRunId);
+  if (!run || run.taskId !== task.taskId) throw new Error("operating-analysis generic task run not found");
+  if (attempt !== undefined && (run.attempt !== attempt || run.status !== "running" || run.leaseOwner !== text(runnerInstanceId) || (run.leaseUntil ?? 0) < Date.now())) {
+    throw new Error("operating-analysis generic run lease is no longer owned by this runner");
+  }
+  return { task, run };
+}
+
 export async function loadResearchOperatingAnalysis(db: D1Database, securityCode: string) {
   const code = securityCode.trim().toUpperCase();
   try {
-    const [run, job, versions, stages] = await Promise.all([
+    const task = await operatingTask(db, code);
+    const activeRun = task?.lastRunId ? await loadGenericLlmRun(db, task.lastRunId) : null;
+    const artifacts = activeRun ? await loadGenericLlmRunArtifacts(db, activeRun.runId) : [];
+    const [run, versions] = await Promise.all([
       findResearchOperatingAnalysisRun(db, code),
-      db.prepare(`select job_id as jobId, job_type as jobType, security_code as securityCode, prompt_version as promptVersion, status, run_id as runId, attempt_count as attemptCount, attempt, lease_owner as leaseOwner, lease_until as leaseUntil, heartbeat_at as heartbeatAt,
-        model, reasoning_effort as reasoningEffort, last_error as lastError, created_at as createdAt, started_at as startedAt, completed_at as completedAt,
-        updated_at as updatedAt, prompt_json as promptJson from research_operating_analysis_jobs where security_code=? and prompt_version=?`)
-        .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>(),
       db.prepare(`select run_id as runId, prompt_version as promptVersion, provider, generated_at as generatedAt, total_duration_ms as totalDurationMs
         from research_operating_analysis_runs where security_code=? and prompt_version=? order by generated_at desc`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).all<Row>(),
-      db.prepare(`select stage_key as stageKey, status, attempt_count as attemptCount, attempt, lease_owner as leaseOwner, output_json as outputJson, output_markdown as outputMarkdown,
-        partial_output as partialOutput, prompt_json as promptJson, input_json as inputJson, last_error as lastError, blocked_json as blockedJson,
-        started_at as startedAt, completed_at as completedAt, updated_at as updatedAt from research_operating_analysis_stage_artifacts
-        where security_code=? and prompt_version=? order by stage_key`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).all<Row>(),
     ]);
-    const stageMap = new Map(stages.results.map((item) => [text(item.stageKey), normalizeStage(item)]));
-    const stageReadModel = OPERATING_ANALYSIS_STAGES.map((definition) => stageMap.get(definition.key) || { stageKey: definition.key, status: "queued", label: definition.label, outputKind: definition.output });
+    const stageMap = new Map(artifacts.map((item) => [item.stepKey, normalizeGenericStage(item, activeRun)]));
+    const stageReadModel = OPERATING_ANALYSIS_STAGES.map((definition) => stageMap.get(definition.key) || normalizeQueuedStage(definition, activeRun));
+    const job = task ? normalizeGenericJob(task, activeRun, stageReadModel) : null;
     return {
-      availability: run || job || stages.results.length ? "available" as const : "empty" as const,
+      availability: run || task || artifacts.length ? "available" as const : "empty" as const,
       run: normalizeResearchOperatingAnalysisRun(run),
-      job: job ? { ...job, prompt: normalizeModelPrompt(parseJson(text(job.promptJson))), stages: stageReadModel } : null,
+      job,
       versions: versions.results,
     };
   } catch (error) {
@@ -71,14 +112,46 @@ export async function loadResearchOperatingAnalysis(db: D1Database, securityCode
   }
 }
 
-function normalizeStage(source: Row) {
-  const key = text(source.stageKey) as OperatingAnalysisStageKey;
-  const definition = OPERATING_ANALYSIS_STAGES.find((item) => item.key === key);
+function normalizeQueuedStage(definition: typeof OPERATING_ANALYSIS_STAGES[number], activeRun: GenericLlmRun | null) {
+  const current = activeRun?.currentStepKey === definition.key;
+  const status: OperatingAnalysisStageStatus = current ? (activeRun?.status === "failed" ? "failed" : "running") : "queued";
+  const progress = row(activeRun?.progress);
+  const metadata = row(progress);
   return {
-    ...source, stageKey: key, label: definition?.label || key, outputKind: definition?.output || "json",
-    output: parseJson(text(source.outputJson)) ?? (text(source.outputMarkdown) || null), partialOutput: text(source.partialOutput) || null,
-    prompt: normalizeModelPrompt(parseJson(text(source.promptJson))), input: parseJson(text(source.inputJson)),
-    blocked: parseJson(text(source.blockedJson)),
+    stageKey: definition.key, status, label: definition.label, outputKind: definition.output,
+    attemptCount: current ? activeRun?.attempt || 0 : 0, attempt: current ? activeRun?.attempt || 0 : 0,
+    startedAt: current ? finiteTimestamp(metadata.startedAt) : null,
+    completedAt: null, updatedAt: current ? activeRun?.progressUpdatedAt : null,
+    lastError: current && activeRun?.status === "failed" ? activeRun.errorMessage : null,
+    output: null, prompt: normalizeModelPrompt(metadata.prompt), input: metadata.input ?? null, blocked: null,
+  };
+}
+
+function normalizeGenericStage(source: GenericLlmArtifact, activeRun: GenericLlmRun | null) {
+  const definition = OPERATING_ANALYSIS_STAGES.find((item) => item.key === source.stepKey);
+  const metadata = row(source.terminalMetadata);
+  return {
+    stageKey: source.stepKey, status: source.status as OperatingAnalysisStageStatus, label: definition?.label || source.stepKey,
+    outputKind: definition?.output || source.outputType, attemptCount: finiteTimestamp(metadata.attemptCount) ?? activeRun?.attempt ?? 0,
+    attempt: activeRun?.attempt ?? 0, leaseOwner: activeRun?.leaseOwner ?? null, leaseUntil: activeRun?.leaseUntil ?? null,
+    startedAt: finiteTimestamp(metadata.startedAt), completedAt: source.completedAt, updatedAt: source.completedAt,
+    lastError: source.errorMessage, output: source.output, prompt: normalizeModelPrompt(metadata.prompt), input: metadata.input ?? null,
+    blocked: source.blocked,
+  };
+}
+
+function normalizeGenericJob(task: GenericLlmTask, run: GenericLlmRun | null, stages: unknown[]) {
+  const progress = row(run?.progress);
+  const terminalMetadata = row(run?.terminalMetadata);
+  return {
+    jobId: task.taskId, taskId: task.taskId, jobType: task.taskType, securityCode: task.targetId, promptVersion: task.promptVersion,
+    status: task.status, runId: task.lastRunId, attemptCount: run?.attempt ?? 0, attempt: run?.attempt ?? 0,
+    leaseOwner: run?.leaseOwner ?? null, leaseUntil: run?.leaseUntil ?? null, heartbeatAt: run?.heartbeatAt ?? null,
+    model: run?.model || task.requestedModel, reasoningEffort: run?.reasoningEffort || task.requestedReasoningEffort,
+    lastError: task.lastErrorMessage || run?.errorMessage || null, createdAt: task.createdAt, startedAt: run?.startedAt ?? task.startedAt,
+    completedAt: task.completedAt, updatedAt: Math.max(task.updatedAt, run?.updatedAt || 0),
+    prompt: normalizeModelPrompt(run?.prompt || progress.prompt), progress: run?.progress ?? null, currentStepKey: run?.currentStepKey ?? null,
+    streamStats: terminalMetadata.streamStats ?? null, stages,
   };
 }
 
@@ -100,134 +173,145 @@ function normalizeResearchOperatingAnalysisRun(run: Row | null) {
 }
 
 export async function enqueueResearchOperatingAnalysis(db: D1Database, securityCode: string, force = false, requestedReasoningEffort: unknown = OPERATING_ANALYSIS_DEFAULT_REASONING_EFFORT, requestedModel: unknown = OPERATING_ANALYSIS_DEFAULT_MODEL) {
-  const code = securityCode.trim().toUpperCase(); const effort = reasoningEffort(requestedReasoningEffort); const selectedModel = model(requestedModel); const now = Date.now();
-  const existing = await db.prepare(`select status from research_operating_analysis_jobs where security_code=? and prompt_version=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
-  if (existing?.status === "completed" && !force) return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: false, deduplicated: true };
-  if (existing) {
-    await db.prepare(`update research_operating_analysis_jobs set status='queued', run_id=null, model=?, reasoning_effort=?, last_error=null, started_at=null,
-      completed_at=null, prompt_json=null, lease_owner=null, lease_until=null, updated_at=? where security_code=? and prompt_version=?`).bind(selectedModel, effort, now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
-    if (force) await db.prepare(`delete from research_operating_analysis_stage_artifacts where security_code=? and prompt_version=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
-    else await db.prepare(`update research_operating_analysis_stage_artifacts set status='queued', last_error=null, completed_at=null, updated_at=? where security_code=? and prompt_version=? and status in ('blocked','failed')`).bind(now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
-  } else {
-    await db.prepare(`insert into research_operating_analysis_jobs (job_id, job_type, security_code, prompt_version, status, model, reasoning_effort, attempt_count, attempt, created_at, updated_at)
-      values (?, 'research_operating_analysis', ?, ?, 'queued', ?, ?, 0, 0, ?, ?)`).bind(`research-operating-analysis:${code}:${OPERATING_ANALYSIS_PROMPT_VERSION}`, code, OPERATING_ANALYSIS_PROMPT_VERSION, selectedModel, effort, now, now).run();
+  const code = securityCode.trim().toUpperCase();
+  const effort = reasoningEffort(requestedReasoningEffort);
+  const selectedModel = model(requestedModel);
+  const now = Date.now();
+  const created = await createGenericLlmTask(db, {
+    ...taskIdentity(code), model: selectedModel, reasoningEffort: effort,
+    metadata: { securityCode: code, output: "staged_operating_analysis" }, now,
+  });
+  let task = created.task;
+  if (task.status === "completed" && !force) return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: false, deduplicated: true };
+  if (task.status === "running") return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: false, deduplicated: true };
+  if (task.status === "failed" || task.status === "blocked" || (task.status === "completed" && force)) {
+    await requeueGenericLlmTask(db, task.taskId, now);
+    task = (await operatingTask(db, code)) || task;
   }
-  return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: true, deduplicated: false };
+  if (task.status !== "queued") return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: false, deduplicated: true };
+  await db.prepare(`update llm_tasks set requested_model=?, requested_reasoning_effort=?, updated_at=? where task_id=? and status='queued'`)
+    .bind(selectedModel, effort, now, task.taskId).run();
+  return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: true, deduplicated: !created.created };
 }
 
-/** Recover only an interrupted stage. Completed artifacts are never discarded. */
+/** Claim the generic task/run while retaining the runner lease as a local safety gate. */
 export async function claimResearchOperatingAnalysisJob(db: D1Database, runnerInstanceId: string) {
   if (!await ownsResearchOperatingAnalysisRunnerLease(db, runnerInstanceId)) return null;
-  const now = Date.now(); const runner = runnerInstanceId.trim();
-  await reconcileLocalJobProviderSlots(db, now);
-  await db.prepare(`update research_operating_analysis_jobs set status='queued', last_error='local runner lease expired; continuing from the last completed stage',
-    updated_at=?, lease_owner=null, lease_until=null where prompt_version=? and status='running' and lease_until<?`).bind(now, OPERATING_ANALYSIS_PROMPT_VERSION, now).run();
-  const candidate = await db.prepare(`select security_code as securityCode, model, reasoning_effort as reasoningEffort, job_id as jobId, attempt from research_operating_analysis_jobs where prompt_version=? and status='queued' order by created_at asc limit 1`).bind(OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
-  const code = text(candidate?.securityCode); if (!code) return null;
-  const jobId = text(candidate?.jobId); const nextAttempt = Number(candidate?.attempt) + 1;
-  if (!jobId || !Number.isInteger(nextAttempt) || nextAttempt < 1) throw new Error("invalid operating-analysis job attempt");
-  if (!await reserveLocalJobProviderSlot(db, jobId, "research_operating_analysis", nextAttempt, runner, now)) return null;
-  const result = await db.prepare(`update research_operating_analysis_jobs set status='running', attempt_count=attempt_count+1, started_at=coalesce(started_at, ?),
-    updated_at=?, attempt=?, lease_owner=?, lease_until=?, heartbeat_at=? where security_code=? and prompt_version=? and status='queued' and attempt=? and exists (select 1 from research_operating_analysis_runner_leases where lease_name=? and owner_id=? and heartbeat_at>=?)`)
-    .bind(now, now, nextAttempt, runner, localJobLeaseUntil(now), now, code, OPERATING_ANALYSIS_PROMPT_VERSION, nextAttempt - 1, RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_NAME, runner, now - RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_MS).run();
-  if (!result.meta.changes) { await releaseLocalJobProviderSlot(db, jobId, nextAttempt, runner, now); return null; }
-  return { jobId, securityCode: code, model: model(candidate?.model), reasoningEffort: reasoningEffort(candidate?.reasoningEffort), promptVersion: OPERATING_ANALYSIS_PROMPT_VERSION, attempt: nextAttempt };
+  const claim = await claimGenericLlmTaskRun(db, runnerInstanceId.trim(), { taskType: GENERIC_TASK_TYPE });
+  if (!claim || claim.task.targetType !== GENERIC_TARGET_TYPE) return null;
+  const code = claim.task.targetId;
+  return {
+    jobId: claim.task.taskId, taskId: claim.task.taskId, runId: claim.run.runId, securityCode: code,
+    model: model(claim.run.model), reasoningEffort: reasoningEffort(claim.run.reasoningEffort),
+    promptVersion: claim.task.promptVersion, attempt: claim.run.attempt,
+  };
 }
 
 export async function startResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, input: unknown, prompt: unknown, runnerInstanceId: string, attempt: number) {
-  assertStage(stageKey); const modelPrompt = normalizeModelPrompt(prompt); if (!modelPrompt) throw new Error("operating analysis stage prompt is required");
-  const now = Date.now(); const code = securityCode.trim().toUpperCase(); const runner = runnerInstanceId.trim();
-  const owned = await db.prepare(`select job_id as jobId from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).first<Row>();
-  if (!owned) throw new Error("operating-analysis job lease is no longer owned by this runner");
-  const existing = await db.prepare(`select status from research_operating_analysis_stage_artifacts where security_code=? and prompt_version=? and stage_key=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey).first<Row>();
-  if (["complete", "partial", "blocked", "not_applicable"].includes(text(existing?.status))) return existing;
-  if (existing) {
-    await db.prepare(`update research_operating_analysis_stage_artifacts set status='running', attempt_count=attempt_count+1, attempt=?, lease_owner=?, input_json=?, prompt_json=?, partial_output=null, last_error=null, started_at=?, completed_at=null, updated_at=? where security_code=? and prompt_version=? and stage_key=?`)
-      .bind(attempt, runner, JSON.stringify(input), JSON.stringify(modelPrompt), now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey).run();
-  } else {
-    await db.prepare(`insert into research_operating_analysis_stage_artifacts (security_code,prompt_version,stage_key,status,attempt_count,attempt,lease_owner,input_json,prompt_json,started_at,updated_at) values (?,?,?,'running',1,?,?,?, ?,?,?)`)
-      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey, attempt, runner, JSON.stringify(input), JSON.stringify(modelPrompt), now, now).run();
-  }
-  await db.prepare(`update research_operating_analysis_jobs set prompt_json=?, updated_at=? where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(JSON.stringify(modelPrompt), now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
-}
-
-export async function checkpointResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, partialOutput: string, runnerInstanceId: string, attempt: number) {
-  assertStage(stageKey); const now = Date.now(); const result = await db.prepare(`update research_operating_analysis_stage_artifacts set partial_output=?, updated_at=? where security_code=? and prompt_version=? and stage_key=? and status='running' and attempt=? and lease_owner=? and exists (select 1 from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?)`)
-    .bind(partialOutput.trim(), now, securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION, stageKey, attempt, runnerInstanceId.trim(), securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runnerInstanceId.trim(), now).run();
-  if (!result.meta.changes) throw new Error("operating-analysis stage is no longer running");
+  assertStage(stageKey);
+  const modelPrompt = normalizeModelPrompt(prompt);
+  if (!modelPrompt) throw new Error("operating analysis stage prompt is required");
+  const { task, run } = await currentRun(db, securityCode, attempt, runnerInstanceId);
+  const artifacts = await loadGenericLlmRunArtifacts(db, run.runId);
+  const existing = artifacts.find((artifact) => artifact.stepKey === stageKey);
+  if (existing && ["complete", "partial", "blocked", "not_applicable", "failed"].includes(existing.status)) return normalizeGenericStage(existing, run);
+  const now = Date.now();
+  const progress = row(run.progress);
+  const startedAt = run.currentStepKey === stageKey && finiteTimestamp(progress.startedAt) !== null ? finiteTimestamp(progress.startedAt)! : now;
+  const recorded = await recordGenericLlmRunProgress(db, {
+    runId: run.runId, taskId: task.taskId, attempt, leaseOwner: runnerInstanceId.trim(), stepKey: stageKey,
+    metadata: { input, prompt: modelPrompt, startedAt, attemptCount: attempt, outputType: OPERATING_ANALYSIS_STAGES.find((item) => item.key === stageKey)?.output }, updatedAt: now,
+  });
+  if (!recorded) throw new Error("operating-analysis generic run lease is no longer owned by this runner");
+  return normalizeQueuedStage(OPERATING_ANALYSIS_STAGES.find((item) => item.key === stageKey)!, await loadGenericLlmRun(db, run.runId));
 }
 
 export async function completeResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, output: unknown, status: OperatingAnalysisStageStatus, runnerInstanceId: string, attempt: number) {
-  assertStage(stageKey); if (!["complete", "partial", "blocked", "not_applicable"].includes(status)) throw new Error("invalid terminal operating-analysis stage status");
-  const definition = OPERATING_ANALYSIS_STAGES.find((item) => item.key === stageKey)!; const value = definition.output === "json" ? JSON.stringify(output) : null;
+  assertStage(stageKey);
+  if (!["complete", "partial", "blocked", "not_applicable"].includes(status)) throw new Error("invalid terminal operating-analysis stage status");
+  const definition = OPERATING_ANALYSIS_STAGES.find((item) => item.key === stageKey)!;
   const markdown = definition.output === "markdown" ? text(output) : null;
+  if (definition.output === "markdown" && !markdown) throw new Error("operating-analysis Markdown stage output is empty");
+  if (definition.output === "json" && (!output || typeof output !== "object" || Array.isArray(output))) throw new Error("operating-analysis JSON stage output is invalid");
+  const { task, run } = await currentRun(db, securityCode, attempt, runnerInstanceId);
+  const artifacts = await loadGenericLlmRunArtifacts(db, run.runId);
+  const existing = artifacts.find((artifact) => artifact.stepKey === stageKey);
+  if (existing && ["complete", "partial", "blocked", "not_applicable", "failed"].includes(existing.status)) return normalizeGenericStage(existing, run);
+  const progress = row(run.progress);
   const blocked = definition.output === "json" && output && typeof output === "object" && !Array.isArray(output)
     ? (row(output).blockedValuationItems ?? row(output).blockedItems ?? row(output).unknowns ?? null) : null;
-  if (definition.output === "markdown" && !markdown) throw new Error("operating-analysis Markdown stage output is empty");
-  if (definition.output === "json" && (!output || typeof output !== "object")) throw new Error("operating-analysis JSON stage output is invalid");
-  const now = Date.now(); const code = securityCode.trim().toUpperCase();
-  const result = await db.prepare(`update research_operating_analysis_stage_artifacts set status=?, output_json=?, output_markdown=?, blocked_json=?, partial_output=null, completed_at=?, updated_at=? where security_code=? and prompt_version=? and stage_key=? and status='running' and attempt=? and lease_owner=? and exists (select 1 from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?)`)
-    .bind(status, value, markdown, blocked ? JSON.stringify(blocked) : null, now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey, attempt, runnerInstanceId.trim(), code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runnerInstanceId.trim(), now).run();
-  if (!result.meta.changes) throw new Error("operating-analysis stage is no longer owned by this runner");
+  const artifact = await writeGenericLlmRunArtifact(db, {
+    runId: run.runId, taskId: task.taskId, attempt, leaseOwner: runnerInstanceId.trim(), stepKey: stageKey,
+    outputType: definition.output, status: status as "complete" | "partial" | "blocked" | "not_applicable", output, structureValid: status === "complete", blocked,
+    terminalMetadata: { input: progress.input, prompt: progress.prompt, startedAt: progress.startedAt, attemptCount: attempt }, completedAt: Date.now(),
+  });
+  return normalizeGenericStage(artifact, run);
 }
 
 export async function completeResearchOperatingAnalysisJob(db: D1Database, securityCode: string, input: unknown, prompt: unknown, reportMarkdown: string, reasoningMarkdown: string, inputFingerprint: string, runnerInstanceId: string, attempt: number, streamStats?: unknown) {
-  const code = securityCode.trim().toUpperCase(); const report = reportMarkdown.trim(); const modelPrompt = normalizeModelPrompt(prompt);
+  const code = securityCode.trim().toUpperCase();
+  const report = reportMarkdown.trim();
+  const modelPrompt = normalizeModelPrompt(prompt);
   const missing = OPERATING_ANALYSIS_REQUIRED_HEADINGS.filter((heading) => !report.includes(heading));
   if (!report || missing.length) throw new Error(`operating analysis report is incomplete; missing sections: ${missing.join(", ")}`);
   if (!modelPrompt || !inputFingerprint.trim()) throw new Error("operating analysis completion is missing prompt or fingerprint");
-  const now = Date.now(); const runner = runnerInstanceId.trim(); const job = await db.prepare(`select job_id as jobId, started_at as startedAt from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).first<Row>();
-  if (!job) throw new Error("operating-analysis job lease is no longer owned by this runner");
-  const totalDurationMs = Number.isFinite(Number(job?.startedAt)) ? Math.max(0, now - Number(job?.startedAt)) : null; const runId = `operating-analysis:${crypto.randomUUID()}`;
-  await db.prepare(`insert into research_operating_analysis_runs (run_id,security_code,prompt_version,input_fingerprint,input_as_of,input_json,report_markdown,reasoning_markdown,total_duration_ms,stream_stats_json,prompt_json,provider,generated_at) values (?,?,?,?,?,?,?,?,?,?,?,'llm-client.responses',?)`)
-    .bind(runId, code, OPERATING_ANALYSIS_PROMPT_VERSION, inputFingerprint, now, JSON.stringify(input), report, reasoningMarkdown.trim(), totalDurationMs, streamStats ? JSON.stringify(streamStats) : null, JSON.stringify(modelPrompt), now).run();
-  const claimed = await db.prepare(`update research_operating_analysis_jobs set status='completed', run_id=?, last_error=null, completed_at=?, updated_at=?, lease_until=null where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(runId, now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
-  if (!claimed.meta.changes) throw new Error("operating-analysis job lease is no longer owned by this runner");
-  await releaseLocalJobProviderSlot(db, text(job.jobId), attempt, runner, now);
+  const { task, run } = await currentRun(db, code, attempt, runnerInstanceId);
+  const now = Date.now();
+  const totalDurationMs = Math.max(0, now - run.startedAt);
+  await db.prepare(`insert or ignore into research_operating_analysis_runs (run_id,security_code,prompt_version,input_fingerprint,input_as_of,input_json,report_markdown,reasoning_markdown,total_duration_ms,stream_stats_json,prompt_json,provider,generated_at) values (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .bind(run.runId, code, OPERATING_ANALYSIS_PROMPT_VERSION, inputFingerprint, now, JSON.stringify(input), report, reasoningMarkdown.trim(), totalDurationMs, streamStats ? JSON.stringify(streamStats) : null, JSON.stringify(modelPrompt), run.provider, now).run();
+  await completeGenericLlmRun(db, {
+    runId: run.runId, taskId: task.taskId, attempt, leaseOwner: runnerInstanceId.trim(), status: "completed",
+    terminalMetadata: { reportProjection: "research_operating_analysis_runs", streamStats: streamStats ?? null }, completedAt: now,
+  });
   return await loadResearchOperatingAnalysis(db, code);
 }
 
 export async function failResearchOperatingAnalysisJob(db: D1Database, securityCode: string, error: unknown, runnerInstanceId: string, attempt: number) {
-  const now = Date.now(); const message = error instanceof Error ? error.message : String(error);
-  const code = securityCode.trim().toUpperCase(); const runner = runnerInstanceId.trim();
-  const job = await db.prepare(`select job_id as jobId from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).first<Row>();
-  if (!job) throw new Error("operating-analysis job lease is no longer owned by this runner");
-  await db.prepare(`update research_operating_analysis_stage_artifacts set status='failed', last_error=?, updated_at=? where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=?`).bind(message.slice(0, 1600), now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner).run();
-  const updated = await db.prepare(`update research_operating_analysis_jobs set status='failed', last_error=?, completed_at=?, updated_at=?, lease_until=null where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(message.slice(0, 1600), now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
-  if (!updated.meta.changes) throw new Error("operating-analysis job lease is no longer owned by this runner");
-  await releaseLocalJobProviderSlot(db, text(job.jobId), attempt, runner, now);
+  const message = (error instanceof Error ? error.message : String(error)).slice(0, 1600);
+  const { task, run } = await currentRun(db, securityCode, attempt, runnerInstanceId);
+  const currentStageKey = run.currentStepKey;
+  if (currentStageKey && OPERATING_ANALYSIS_STAGES.some((item) => item.key === currentStageKey)) {
+    const artifacts = await loadGenericLlmRunArtifacts(db, run.runId);
+    if (!artifacts.some((artifact) => artifact.stepKey === currentStageKey)) {
+      const progress = row(run.progress);
+      await writeGenericLlmRunArtifact(db, {
+        runId: run.runId, taskId: task.taskId, attempt, leaseOwner: runnerInstanceId.trim(), stepKey: currentStageKey,
+        outputType: OPERATING_ANALYSIS_STAGES.find((item) => item.key === currentStageKey)!.output, status: "failed",
+        errorCode: "operating_analysis_failed", errorMessage: message,
+        terminalMetadata: { input: progress.input, prompt: progress.prompt, startedAt: progress.startedAt, attemptCount: attempt }, completedAt: Date.now(),
+      });
+    }
+  }
+  await failGenericLlmRun(db, {
+    runId: run.runId, taskId: task.taskId, attempt, leaseOwner: runnerInstanceId.trim(), errorCode: "operating_analysis_failed", errorMessage: message,
+    terminalMetadata: { currentStepKey: currentStageKey }, completedAt: Date.now(),
+  });
   return await loadResearchOperatingAnalysis(db, securityCode);
 }
 
-/**
- * A local Node runtime restart can interrupt a runner while its model stream is
- * still alive. Return only that runner's non-terminal work to the queue so a
- * later claim resumes from the last terminal stage instead of stranding it.
- */
-export async function requeueInterruptedResearchOperatingAnalysisJob(db: D1Database, securityCode: string, error: unknown, runnerInstanceId: string, attempt: number) {
-  const code = securityCode.trim().toUpperCase(); const runner = runnerInstanceId.trim(); const now = Date.now();
-  const job = await db.prepare(`select job_id as jobId, status, lease_owner as leaseOwner, lease_until as leaseUntil, attempt from research_operating_analysis_jobs where security_code=? and prompt_version=?`)
-    .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
-  // A runner that lost its transport cannot revoke its own still-valid lease.
-  // Recovery is deliberately delayed until the lease expires, fencing any
-  // late stream output from the abandoned attempt.
-  if (text(job?.status) !== "running" || text(job?.leaseOwner) !== runner || Number(job?.attempt) !== attempt || Number(job?.leaseUntil) >= now) return false;
-  const message = `local Node runtime interrupted this runner; continuing from the last completed stage: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1600);
-  await db.prepare(`update research_operating_analysis_stage_artifacts set status='queued', last_error=?, completed_at=null, updated_at=?
-    where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until<?`)
-    .bind(message, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
-  const result = await db.prepare(`update research_operating_analysis_jobs set status='queued', last_error=?, lease_owner=null, lease_until=null, updated_at=?
-    where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until<?`)
-    .bind(message, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
-  if (result.meta.changes) await releaseLocalJobProviderSlot(db, text(job?.jobId), attempt, runner, now);
-  return result.meta.changes > 0;
+/** A transport outage can only be requeued after the generic run lease expires. */
+export async function requeueInterruptedResearchOperatingAnalysisJob(db: D1Database, securityCode: string, _error: unknown, runnerInstanceId: string, attempt: number) {
+  const context = await currentRun(db, securityCode).catch(() => null);
+  const now = Date.now();
+  if (!context || context.run.status !== "running" || context.run.attempt !== attempt || context.run.leaseOwner !== text(runnerInstanceId) || (context.run.leaseUntil ?? 0) >= now) return false;
+  return requeueExpiredGenericLlmRun(db, {
+    runId: context.run.runId,
+    taskId: context.task.taskId,
+    attempt,
+    leaseOwner: text(runnerInstanceId),
+    errorMessage: `local Node runtime interrupted this runner; continuing from the last completed stage: ${_error instanceof Error ? _error.message : String(_error)}`.slice(0, 1600),
+    now,
+  });
 }
 
 export async function heartbeatResearchOperatingAnalysisJob(db: D1Database, securityCode: string, runnerInstanceId: string, attempt: number) {
-  const code = securityCode.trim().toUpperCase();
-  return renewLocalJobLease(db, "research_operating_analysis_jobs", "security_code=? and prompt_version=?", [code, OPERATING_ANALYSIS_PROMPT_VERSION], attempt, runnerInstanceId.trim());
+  const context = await currentRun(db, securityCode).catch(() => null);
+  if (!context) return false;
+  return heartbeatGenericLlmRun(db, context.run.runId, context.task.taskId, attempt, runnerInstanceId.trim());
 }
 
 function assertStage(value: string): asserts value is OperatingAnalysisStageKey { if (!OPERATING_ANALYSIS_STAGES.some((stage) => stage.key === value)) throw new Error("unsupported operating-analysis stage"); }
 function parseJson(value: string): unknown { try { return JSON.parse(value); } catch { return null; } }
 function normalizeModelPrompt(value: unknown): ModelPrompt | null { const source = row(value); const instructions = text(source.instructions); const userPrompt = text(source.userPrompt); const model = text(source.model); return instructions && userPrompt ? { ...(model ? { model } : {}), instructions, userPrompt } : null; }
+function finiteTimestamp(value: unknown): number | null { const number = Number(value); return Number.isFinite(number) && number >= 0 ? number : null; }

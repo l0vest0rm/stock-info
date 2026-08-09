@@ -9,8 +9,8 @@ type ModelPrompt = { model?: string; instructions?: string; userPrompt?: string 
 type ReportRun = { runId?: string; promptVersion?: string; reportMarkdown?: string; reasoningMarkdown?: string; totalDurationMs?: number | null; provider?: string; generatedAt?: number; input?: Json | null; prompt?: ModelPrompt | null; streamStats?: StreamStats | null };
 type ReportVersion = Pick<ReportRun, "runId" | "promptVersion" | "provider" | "generatedAt" | "totalDurationMs">;
 type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
-type AnalysisStage = { stageKey: string; label?: string; status?: "queued" | "running" | "complete" | "partial" | "blocked" | "not_applicable" | "failed"; attemptCount?: number; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; lastError?: string | null; partialOutput?: string | null; blocked?: unknown; outputKind?: "json" | "markdown" };
-type ReportJob = { status?: "queued" | "running" | "completed" | "failed"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; stages?: AnalysisStage[] };
+type AnalysisStage = { stageKey: string; label?: string; status?: "queued" | "running" | "complete" | "partial" | "blocked" | "not_applicable" | "failed"; attemptCount?: number; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; lastError?: string | null; blocked?: unknown; outputKind?: "json" | "markdown" };
+type ReportJob = { status?: "queued" | "running" | "completed" | "failed" | "blocked"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; stages?: AnalysisStage[] };
 type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; run?: ReportRun | null; job?: ReportJob | null; versions?: ReportVersion[] };
 type CompanyOverview = { name?: string; latestPrice?: number | null; pctChange?: number | null; marketCapYi?: number | null; peTtm?: number | null };
 type KlineBar = { date?: string; close?: number | null };
@@ -33,6 +33,12 @@ function securityCodeFromUrl(): string {
 
 function asRecord(value: unknown): Json { return value && typeof value === "object" && !Array.isArray(value) ? value as Json : {}; }
 function text(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
+function httpsUrl(value: unknown): string {
+  try {
+    const url = new URL(text(value));
+    return url.protocol === "https:" ? url.href : "";
+  } catch { return ""; }
+}
 function finiteNumber(value: unknown): number | null { const number = Number(value); return Number.isFinite(number) ? number : null; }
 function formatMarketNumber(value: unknown): string { const number = finiteNumber(value); return number === null ? "—" : number.toFixed(2); }
 function formatPercentage(value: unknown): string { const number = finiteNumber(value); return number === null ? "—" : `${number.toFixed(2)}%`; }
@@ -69,8 +75,6 @@ function date(value: unknown): string {
 }
 function isRunning(job: ReportJob | null | undefined): boolean { return job?.status === "queued" || job?.status === "running"; }
 function stageStatusLabel(status: AnalysisStage["status"]): string { return ({ queued: "等待", running: "处理中", complete: "已完成", partial: "部分完成", blocked: "已阻断", not_applicable: "不适用", failed: "失败" } as Record<string, string>)[status || "queued"] || "等待"; }
-function currentStage(job: ReportJob | null | undefined): AnalysisStage | null { return job?.stages?.find((stage) => stage.status === "running") || job?.stages?.find((stage) => stage.status === "queued") || null; }
-function stagePartialMarkdown(job: ReportJob | null | undefined): string { const stage = currentStage(job); return stage?.outputKind === "markdown" ? text(stage.partialOutput) : ""; }
 function duration(ms: unknown): string {
   const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1_000));
   if (!Number.isFinite(totalSeconds)) return "—";
@@ -265,8 +269,8 @@ function reportCard(options: {
 }): VNodeChild {
   const running = isRunning(options.job);
   const completedMarkdown = text(options.report?.reportMarkdown);
-  const partialMarkdown = stagePartialMarkdown(options.job);
   const prompt = options.report?.prompt || options.job?.prompt;
+  const sessionUrl = httpsUrl(asRecord(asRecord(options.report?.input).webqaSession).sessionUrl);
   const recordedModelRun = asRecord(asRecord(options.report?.input).modelRun);
   const model = running ? text(prompt?.model) || text(recordedModelRun.model) : text(recordedModelRun.model) || text(prompt?.model);
   const effort = running ? text(options.job?.reasoningEffort) || text(recordedModelRun.reasoningEffort) : text(recordedModelRun.reasoningEffort) || text(options.job?.reasoningEffort);
@@ -275,28 +279,29 @@ function reportCard(options: {
     `使用模型 ${model || "未记录"}`,
     `思考深度 ${reasoningEffortLabel(effort)}`,
   ] : [];
-  const partial = running && Boolean(partialMarkdown);
-  const markdown = running && partialMarkdown ? partialMarkdown : completedMarkdown || partialMarkdown;
+  const markdown = completedMarkdown;
   const qualityIssues = completedMarkdown && !running ? reportQualityIssues(completedMarkdown) : [];
   const elapsed = running ? runningDuration(options.job, options.now) : completedDuration(options.report, options.job);
   const streamStats = streamStatsSummary(running ? options.job?.streamStats : options.report?.streamStats);
   // A polling transport error only means the local Node runtime is temporarily
   // unreachable. It must never overwrite an already-persisted queued/running
   // job with a false "generation failed" state.
-  const failure = options.job?.status === "failed" ? text(options.job.lastError) : (!running ? options.requestError : null);
+  const failure = options.job?.status === "failed" || options.job?.status === "blocked" ? text(options.job.lastError) : (!running ? options.requestError : null);
   return h("section", { class: "ia-report" }, [
     h("div", { class: "ia-report-head" }, [
       h("div", [
         h("h2", options.title),
         h("p", options.description),
         running ? h("div", { class: "ia-meta ia-running-meta", role: "status" }, [
-          h("span", `任务已运行 ${elapsed}；页面每 5 秒读取一次已保存的正文。`),
+          h("span", `任务已运行 ${elapsed}；页面每 5 秒读取一次阶段状态。`),
           ...executionMetadata.map((item) => h("span", item)),
           ...streamStats.map((item) => h("span", item)),
+          sessionUrl ? h("a", { href: sessionUrl, target: "_blank", rel: "noopener noreferrer" }, "打开 ChatGPT 会话") : null,
         ]) : showExecutionMetadata ? h("div", { class: "ia-meta" }, [
           h("span", `生成于 ${date(options.report?.generatedAt)} · 整体耗时 ${elapsed} · ${options.report?.provider || "提供方未记录"} · ${options.report?.promptVersion || "模板未记录"}`),
           ...executionMetadata.map((item) => h("span", item)),
           ...streamStats.map((item) => h("span", item)),
+          sessionUrl ? h("a", { href: sessionUrl, target: "_blank", rel: "noopener noreferrer" }, "打开 ChatGPT 会话") : null,
         ]) : null,
       ]),
       options.onRefresh && options.buttonLabel ? h("div", { class: "ia-generation-controls" }, [
@@ -323,7 +328,6 @@ function reportCard(options: {
       stageProgress(options.job, options.now),
       failure ? h("div", { class: "ia-message error", role: "status" }, [h("strong", "生成未完成"), h("span", failure)]) : null,
       qualityIssues.length ? h("div", { class: "ia-quality-warning", role: "status", style: "margin-top:17px;border:1px solid #e6cb82;border-radius:10px;background:#fff9e7;padding:10px 12px;color:#745300;font-size:12px;line-height:1.6" }, [h("strong", "报告已生成，但需注意："), h("span", qualityIssues.join("；"))]) : null,
-      partial ? h("div", { class: "ia-streaming-notice", role: "status" }, `当前阶段正在生成，以下为该阶段已保存的正文（已运行 ${elapsed}）。`) : null,
       prompt ? h("details", { class: "ia-prompt" }, [
         h("summary", "查看实际发送给大模型的 Prompt"),
         h("div", { class: "ia-prompt-body" }, [
@@ -333,7 +337,7 @@ function reportCard(options: {
           h("pre", prompt.userPrompt || "未记录"),
         ]),
       ]) : null,
-      markdown ? h("article", { class: "ia-markdown", "aria-live": partial ? "polite" : undefined }, renderMarkdown(markdown)) : h("div", { class: "ia-message" }, "模型尚未返回正文；页面会继续读取已保存的输出。"),
+      markdown ? h("article", { class: "ia-markdown" }, renderMarkdown(markdown)) : h("div", { class: "ia-message" }, "阶段终态完成并通过报告门禁后，正文才会显示。"),
     ]
       : h("div", { class: failure ? "ia-message error" : "ia-message" }, failure ? [h("strong", "生成失败"), h("span", failure), stageProgress(options.job, options.now)] : running ? [`任务已运行 ${elapsed}；页面会每 5 秒读取一次阶段状态。可以离开或刷新页面。`, stageProgress(options.job, options.now), options.requestError ? h("span", { class: "ia-connection-warning" }, `本地 Worker 暂时无法连接（${options.requestError}）；恢复后将继续读取任务状态。`) : null] : options.emptyMessage),
   ]);
@@ -354,7 +358,7 @@ function stageProgress(job: ReportJob | null | undefined, now: number): VNodeChi
 }
 
 const styles = `
-.ia{--ink:#183a37;--muted:#637c78;--line:#d8e8e4;--paper:#fff;--ground:#f4f8f7;--teal:#08786c;--deep:#075d57;min-height:calc(100vh - 7rem);padding:26px 0 56px;background:var(--ground);color:var(--ink)}.ia *{box-sizing:border-box}.ia-shell{max-width:1180px}.ia-hero{padding:28px;border-radius:20px;background:linear-gradient(125deg,#143c47,#08786c);color:#fff;box-shadow:0 16px 38px #143d3926}.ia-kicker{font-size:11px;font-weight:850;letter-spacing:.12em;color:#c0e8df}.ia-hero h1{margin:9px 0 7px;font-size:30px;letter-spacing:-.025em}.ia-hero p{max-width:760px;margin:0;color:#d2ebe5;font-size:14px;line-height:1.65}.ia-document{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}.ia-document-empty{display:block}.ia-outline{position:sticky;top:16px;padding:16px 13px;border:1px solid var(--line);border-radius:15px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-outline h2{margin:0 0 9px;padding:0;border:0;color:#315b55;font-size:13px}.ia-outline button{display:block;width:100%;border:0;border-radius:6px;background:transparent;padding:6px 7px;color:#476762;font:600 12px/1.45 inherit;text-align:left;cursor:pointer}.ia-outline button:hover{background:#edf8f4;color:var(--deep)}.ia-outline .l1{font-weight:850;color:#1c4d46}.ia-outline .l2{padding-left:16px}.ia-outline .l3{padding-left:27px}.ia-outline .l4{padding-left:38px}.ia-report{padding:23px 25px;border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-report-head{display:block}.ia-report h2{margin:0;font-size:20px;letter-spacing:-.01em}.ia-report-head p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.ia-generation-controls{display:flex;align-items:end;gap:9px;flex-wrap:nowrap;justify-content:flex-end;width:100%;margin-top:16px}.ia-reasoning-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800}.ia-reasoning-control select{max-width:220px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-reasoning-control select:disabled{opacity:.58}.ia-refresh{flex:none;border:1px solid #b6dcd3;border-radius:9px;background:#fff;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-refresh:disabled{opacity:.58;cursor:wait}.ia-message{margin-top:17px;border:1px dashed #c7dad5;border-radius:12px;padding:15px;color:#58716d;font-size:13px;line-height:1.65}.ia-message.error{border-style:solid;border-color:#edc8c2;background:#fff5f3;color:#983e34}.ia-message strong,.ia-message span{display:block}.ia-message span{margin-top:5px}.ia-connection-warning{color:#9c6500}.ia-streaming-notice{margin-top:17px;border:1px solid #b6dcd3;border-radius:10px;background:#f1faf7;padding:9px 12px;color:#315b55;font-size:12px;line-height:1.6}.ia-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:9px;color:#738783;font-size:11px;line-height:1.5}.ia-running-meta{color:#076b60;font-weight:750}.ia-reasoning{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:14px 16px}.ia-reasoning h3{margin:0;color:#174b45;font-size:14px}.ia-reasoning-markdown{margin-top:10px;font-size:13px;line-height:1.7}.ia-reasoning-markdown h1,.ia-reasoning-markdown h2{font-size:17px}.ia-reasoning-empty{margin:8px 0 0;color:#637c78;font-size:12px;line-height:1.6}.ia-markdown{margin-top:22px;color:#203d39;font-size:15px;line-height:1.8}.ia-markdown h1,.ia-markdown h2{scroll-margin-top:18px;margin:31px 0 11px;padding-top:21px;border-top:1px solid #dceae6;color:var(--deep);font-size:22px}.ia-markdown h1:first-child,.ia-markdown h2:first-child{margin-top:0;padding-top:0;border-top:0}.ia-markdown h3{scroll-margin-top:18px;margin:22px 0 8px;color:#174b45;font-size:17px}.ia-markdown h4{scroll-margin-top:18px;margin:17px 0 7px;color:#285852;font-size:15px}.ia-markdown p{margin:11px 0}.ia-markdown ul,.ia-markdown ol{margin:10px 0;padding-left:24px}.ia-markdown li{margin:5px 0}.ia-markdown blockquote{margin:14px 0;padding:10px 15px;border-left:3px solid #8bc8bb;background:#f1faf7;color:#315951}.ia-markdown strong{font-weight:800;color:#123f3a}.ia-markdown code{padding:1px 4px;border-radius:4px;background:#eaf4f1;color:#08645a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.ia-markdown a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}.ia-table-wrap{overflow-x:auto;margin:14px 0}.ia-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.55}.ia-table th,.ia-table td{border:1px solid #dce9e6;padding:8px 9px;text-align:left;vertical-align:top}.ia-table th{background:#eff8f5;color:#305b55;font-weight:850}@media(max-width:800px){.ia-document{display:block}.ia-outline{position:static;margin-bottom:16px}.ia-outline button{display:inline-block;width:auto;margin-right:3px}.ia-outline .l2,.ia-outline .l3,.ia-outline .l4{padding-left:7px}}@media(max-width:650px){.ia{padding:13px 0 34px}.ia-hero,.ia-report{padding:18px;border-radius:15px}.ia-hero h1{font-size:25px}.ia-report-head{flex-direction:column}.ia-generation-controls{align-items:start;flex-wrap:wrap;flex:0 1 auto;width:100%}.ia-markdown{font-size:14px}.ia-markdown h1,.ia-markdown h2{font-size:20px}}
+.ia{--ink:#183a37;--muted:#637c78;--line:#d8e8e4;--paper:#fff;--ground:#f4f8f7;--teal:#08786c;--deep:#075d57;min-height:calc(100vh - 7rem);padding:26px 0 56px;background:var(--ground);color:var(--ink)}.ia *{box-sizing:border-box}.ia-shell{max-width:1180px}.ia-hero{padding:28px;border-radius:20px;background:linear-gradient(125deg,#143c47,#08786c);color:#fff;box-shadow:0 16px 38px #143d3926}.ia-kicker{font-size:11px;font-weight:850;letter-spacing:.12em;color:#c0e8df}.ia-hero h1{margin:9px 0 7px;font-size:30px;letter-spacing:-.025em}.ia-hero p{max-width:760px;margin:0;color:#d2ebe5;font-size:14px;line-height:1.65}.ia-document{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}.ia-document-empty{display:block}.ia-outline{position:sticky;top:16px;padding:16px 13px;border:1px solid var(--line);border-radius:15px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-outline h2{margin:0 0 9px;padding:0;border:0;color:#315b55;font-size:13px}.ia-outline button{display:block;width:100%;border:0;border-radius:6px;background:transparent;padding:6px 7px;color:#476762;font:600 12px/1.45 inherit;text-align:left;cursor:pointer}.ia-outline button:hover{background:#edf8f4;color:var(--deep)}.ia-outline .l1{font-weight:850;color:#1c4d46}.ia-outline .l2{padding-left:16px}.ia-outline .l3{padding-left:27px}.ia-outline .l4{padding-left:38px}.ia-report{padding:23px 25px;border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-report-head{display:block}.ia-report h2{margin:0;font-size:20px;letter-spacing:-.01em}.ia-report-head p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.ia-generation-controls{display:flex;align-items:end;gap:9px;flex-wrap:nowrap;justify-content:flex-end;width:100%;margin-top:16px}.ia-reasoning-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800}.ia-reasoning-control select{max-width:220px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-reasoning-control select:disabled{opacity:.58}.ia-refresh{flex:none;border:1px solid #b6dcd3;border-radius:9px;background:#fff;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-refresh:disabled{opacity:.58;cursor:wait}.ia-message{margin-top:17px;border:1px dashed #c7dad5;border-radius:12px;padding:15px;color:#58716d;font-size:13px;line-height:1.65}.ia-message.error{border-style:solid;border-color:#edc8c2;background:#fff5f3;color:#983e34}.ia-message strong,.ia-message span{display:block}.ia-message span{margin-top:5px}.ia-connection-warning{color:#9c6500}.ia-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:9px;color:#738783;font-size:11px;line-height:1.5}.ia-running-meta{color:#076b60;font-weight:750}.ia-reasoning{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:14px 16px}.ia-reasoning h3{margin:0;color:#174b45;font-size:14px}.ia-reasoning-markdown{margin-top:10px;font-size:13px;line-height:1.7}.ia-reasoning-markdown h1,.ia-reasoning-markdown h2{font-size:17px}.ia-reasoning-empty{margin:8px 0 0;color:#637c78;font-size:12px;line-height:1.6}.ia-markdown{margin-top:22px;color:#203d39;font-size:15px;line-height:1.8}.ia-markdown h1,.ia-markdown h2{scroll-margin-top:18px;margin:31px 0 11px;padding-top:21px;border-top:1px solid #dceae6;color:var(--deep);font-size:22px}.ia-markdown h1:first-child,.ia-markdown h2:first-child{margin-top:0;padding-top:0;border-top:0}.ia-markdown h3{scroll-margin-top:18px;margin:22px 0 8px;color:#174b45;font-size:17px}.ia-markdown h4{scroll-margin-top:18px;margin:17px 0 7px;color:#285852;font-size:15px}.ia-markdown p{margin:11px 0}.ia-markdown ul,.ia-markdown ol{margin:10px 0;padding-left:24px}.ia-markdown li{margin:5px 0}.ia-markdown blockquote{margin:14px 0;padding:10px 15px;border-left:3px solid #8bc8bb;background:#f1faf7;color:#315951}.ia-markdown strong{font-weight:800;color:#123f3a}.ia-markdown code{padding:1px 4px;border-radius:4px;background:#eaf4f1;color:#08645a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.ia-markdown a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}.ia-table-wrap{overflow-x:auto;margin:14px 0}.ia-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.55}.ia-table th,.ia-table td{border:1px solid #dce9e6;padding:8px 9px;text-align:left;vertical-align:top}.ia-table th{background:#eff8f5;color:#305b55;font-weight:850}@media(max-width:800px){.ia-document{display:block}.ia-outline{position:static;margin-bottom:16px}.ia-outline button{display:inline-block;width:auto;margin-right:3px}.ia-outline .l2,.ia-outline .l3,.ia-outline .l4{padding-left:7px}}@media(max-width:650px){.ia{padding:13px 0 34px}.ia-hero,.ia-report{padding:18px;border-radius:15px}.ia-hero h1{font-size:25px}.ia-report-head{flex-direction:column}.ia-generation-controls{align-items:start;flex-wrap:wrap;flex:0 1 auto;width:100%}.ia-markdown{font-size:14px}.ia-markdown h1,.ia-markdown h2{font-size:20px}}
 .ia-outline{max-height:calc(100vh - 32px);overflow-y:auto;overscroll-behavior:contain}
 @media(max-width:800px){.ia-outline{max-height:none;overflow:visible}}
 .ia-prompt{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#fff;padding:12px 15px}.ia-prompt summary{cursor:pointer;color:#174b45;font-size:13px;font-weight:800}.ia-prompt-body{margin-top:12px}.ia-prompt-body h4{margin:13px 0 6px;color:#476762;font-size:12px}.ia-prompt-body h4:first-child{margin-top:0}.ia-prompt-body pre{max-height:420px;overflow:auto;margin:0;padding:11px;border:1px solid #dce9e6;border-radius:8px;background:#f6faf9;color:#234640;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -476,10 +480,7 @@ const App = defineComponent({
       const activeReport = selectedReport.value || operating.value?.run;
       const showJob = !selectedRunId.value || selectedRunId.value === operating.value?.run?.runId;
       const displayJob = showJob ? operating.value?.job : null;
-      const partialMarkdown = stagePartialMarkdown(displayJob);
-      const markdown = isRunning(displayJob) && partialMarkdown
-        ? partialMarkdown
-        : text(activeReport?.reportMarkdown) || partialMarkdown;
+      const markdown = text(activeReport?.reportMarkdown);
       return h("main", { class: "ia" }, [
         h("style", styles),
         h("div", { class: "container ia-shell" }, [
@@ -488,7 +489,7 @@ const App = defineComponent({
             h("h2", "报告目录"),
               ...documentOutline(markdown).map((item) => h("button", { class: `l${item.level}`, onClick: () => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth", block: "start" }) }, item.text)),
             ]) : null,
-            reportCard({ title: "完整投资研究", description: "一次提问完成经营、产业、定价与反证；模型通过本地 llm-client 调用，生成期间持续保存正文。页面加载不会触发生成。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地模型会启用 Web Search 完成完整投资研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.run ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, disabled: isRunning(operating.value?.job), versions: operating.value?.versions || [], selectedRunId: selectedRunId.value, onVersionChange: (runId) => { void selectVersion(runId); }, onCompare: openComparison }),
+            reportCard({ title: "完整投资研究", description: "一次提问完成经营、产业、定价与反证；模型通过本地 llm-client 调用，阶段终态和完整报告通过门禁后才会显示。页面加载不会触发生成。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地模型会启用 Web Search 完成完整投资研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.run ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, disabled: isRunning(operating.value?.job), versions: operating.value?.versions || [], selectedRunId: selectedRunId.value, onVersionChange: (runId) => { void selectVersion(runId); }, onCompare: openComparison }),
           ]),
         ]),
       ]);

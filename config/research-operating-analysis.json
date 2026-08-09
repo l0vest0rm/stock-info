@@ -10,10 +10,6 @@
   "jobTimeoutMs": 1200000,
   "webSearchJobTimeoutMs": 3600000,
   "streamIdleTimeoutMs": 90000,
-  "streamCheckpoint": {
-    "intervalMs": 1500,
-    "minChars": 800
-  },
   "persistenceRecovery": {
     "retryIntervalMs": 2000,
     "maxWaitMs": 60000

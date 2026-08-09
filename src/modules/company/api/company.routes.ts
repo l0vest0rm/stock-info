@@ -8,12 +8,14 @@ import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
 import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
-import { requestLlmText, type SupportedLlmModel } from "../../../shared/llm-client";
+import { requestLlmText, type LlmWebSearchMetadata, type SupportedLlmModel } from "../../../shared/llm-client";
 import {
   NEWS_REPORT_ANALYZE_SYSTEM_PROMPT,
   NEWS_REPORT_ANALYZE_USER_PROMPT,
   REPORT_ANALYZE_SYSTEM_PROMPT,
   REPORT_ANALYZE_USER_PROMPT,
+  REPORT_DISCOVERY_SYSTEM_PROMPT,
+  REPORT_DISCOVERY_USER_PROMPT,
 } from "../../../generated/prompt-text";
 import type { AppEnv, CompanyOverview, KlineBar } from "../../../types";
 import {
@@ -22,6 +24,17 @@ import {
   runSharedReportAnalysisTask,
   sharedReportAnalysisCacheKey,
 } from "../application/report-analysis-cache";
+import {
+  claimGenericLlmTaskRun,
+  completeGenericLlmRun,
+  createGenericLlmTask,
+  failGenericLlmRun,
+  heartbeatGenericLlmRun,
+  loadGenericLlmRun,
+  loadGenericLlmTask,
+  requeueGenericLlmTask,
+  writeGenericLlmRunArtifact,
+} from "../../../shared/local-job-protocol";
 
 export const companyRoutes = new Hono<AppEnv>();
 
@@ -84,6 +97,27 @@ type ReportForecastStreamEvent = {
   items?: Array<Record<string, unknown>>;
 };
 
+export type CompanyReportDiscoveryCandidate = {
+  title: string;
+  institution: string;
+  publishedAt: string;
+  url: string;
+  forecasts: CompanyReportForecast[];
+  valuation?: CompanyReportValuation;
+};
+
+type CompanyReportDiscoveryRunInput = {
+  taskId: string;
+  runId: string;
+  attempt: number;
+  runnerInstanceId: string;
+  response: {
+    model: string;
+    text: string;
+    webSearch?: LlmWebSearchMetadata;
+  };
+};
+
 type SinaCompanyReport = {
   title: string;
   url: string;
@@ -93,7 +127,7 @@ type SinaCompanyReport = {
 };
 
 const REPORT_SOURCE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-const REPORT_SOURCE_CACHE_VERSION = "v4";
+const REPORT_SOURCE_CACHE_VERSION = "v5";
 const REPORT_PAGE_SIZE = 10;
 const REPORT_SOURCE_POOL_SIZE = 100;
 const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -103,6 +137,10 @@ const NEWS_REPORT_CANDIDATE_LIMIT = 40;
 const NEWS_REPORT_ANALYSIS_MAX_CALLS = 5;
 const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v1";
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
+const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v1";
+const REPORT_DISCOVERY_TASK_TYPE = "company_report_discovery";
+const REPORT_DISCOVERY_MAX_REPORTS = 20;
+const REPORT_DISCOVERY_JOB_TIMEOUT_MS = 60 * 60 * 1000;
 
 companyRoutes.get("/company/overview", async (c) => {
   const code = requireQuery(c, "code");
@@ -210,6 +248,121 @@ companyRoutes.get("/company/reports/stream", async (c) => {
       "Content-Type": "text/event-stream; charset=utf-8",
     },
   });
+});
+
+// Web Search report discovery is an explicit local job. A normal report page
+// GET/SSE remains read-only and only serves the materialized source pool.
+companyRoutes.post("/company/reports/discover", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") {
+    return fail(c, 404, "company report discovery is only available in local LLM runtime");
+  }
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) {
+    return code;
+  }
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  try {
+    return ok(c, await enqueueCompanyReportDiscovery(c.env.DB, code, body.force === true));
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+// Local Node runner boundary. The Worker prepares/claims/completes the job;
+// the runner, not this request handler, owns the long remote model call.
+companyRoutes.post("/company/report-discovery-tasks/claim-next", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") {
+    return fail(c, 404, "company report discovery is only available in local LLM runtime");
+  }
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) {
+    return fail(c, 400, "runnerInstanceId is required");
+  }
+  try {
+    return ok(c, await claimNextCompanyReportDiscoveryTaskRun(c.env.DB, body.runnerInstanceId));
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+companyRoutes.post("/company/report-discovery-runs/:runId/complete", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") {
+    return fail(c, 404, "company report discovery is only available in local LLM runtime");
+  }
+  try {
+    const body = await c.req.json<unknown>();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return fail(c, 400, "company report discovery result is required");
+    }
+    const payload = body as {
+      taskId?: unknown;
+      model?: unknown;
+      text?: unknown;
+      runnerInstanceId?: unknown;
+      attempt?: unknown;
+      webSearch?: LlmWebSearchMetadata;
+    };
+    if (typeof payload.taskId !== "string" || !payload.taskId.trim()
+      || typeof payload.runnerInstanceId !== "string" || !payload.runnerInstanceId.trim()
+      || !Number.isInteger(payload.attempt) || typeof payload.model !== "string" || typeof payload.text !== "string") {
+      return fail(c, 400, "taskId, model, text, runnerInstanceId and attempt are required");
+    }
+    return ok(c, await completeCompanyReportDiscoveryRun(c, {
+      taskId: payload.taskId,
+      runId: c.req.param("runId"),
+      attempt: payload.attempt as number,
+      runnerInstanceId: payload.runnerInstanceId,
+      response: { model: payload.model, text: payload.text, webSearch: payload.webSearch },
+    }));
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+companyRoutes.post("/company/report-discovery-runs/:runId/fail", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") {
+    return fail(c, 404, "company report discovery is only available in local LLM runtime");
+  }
+  try {
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    if (typeof body.taskId !== "string" || !body.taskId.trim()
+      || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()
+      || !Number.isInteger(body.attempt)) {
+      return fail(c, 400, "taskId, runnerInstanceId and attempt are required");
+    }
+    const task = await loadGenericLlmTask(c.env.DB, body.taskId);
+    if (!task || task.taskType !== REPORT_DISCOVERY_TASK_TYPE) return fail(c, 400, "company report discovery task was not found");
+    const result = await failGenericLlmRun(c.env.DB, {
+      taskId: body.taskId,
+      runId: c.req.param("runId"),
+      attempt: body.attempt as number,
+      leaseOwner: body.runnerInstanceId,
+      errorCode: "provider_failed",
+      errorMessage: String(body.error || "local company report discovery runner failed").slice(0, 1600),
+      terminalMetadata: { taskType: REPORT_DISCOVERY_TASK_TYPE },
+    });
+    return ok(c, result);
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+companyRoutes.post("/company/report-discovery-runs/:runId/heartbeat", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") {
+    return fail(c, 404, "company report discovery is only available in local LLM runtime");
+  }
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (typeof body.taskId !== "string" || !body.taskId.trim()
+    || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()
+    || !Number.isInteger(body.attempt)) {
+    return fail(c, 400, "taskId, runnerInstanceId and attempt are required");
+  }
+  try {
+    const active = await heartbeatGenericLlmRun(c.env.DB, c.req.param("runId"), body.taskId, body.attempt as number, body.runnerInstanceId);
+    return ok(c, { active });
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
 });
 
 companyRoutes.get("/report/forecast", async (c) => {
@@ -537,21 +690,230 @@ async function getCompanyReportsSource(
   const cacheKey = `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${normalized}`;
   const cached = await readAppJson<Array<Record<string, unknown>>>(c.env.DB, cacheKey);
   if (Array.isArray(cached)) {
-    return paginateCompanyReports(cached, page);
+    return paginateCompanyReports(cached.map(normalizeCompanyReportProvenance), page);
   }
-  const [eastmoneyItems, sinaItems, newsReportCandidates] = await Promise.all([
-    fetchEastmoneyCompanyReports(c, normalized, 1, REPORT_SOURCE_POOL_SIZE),
-    fetchSinaCompanyReportsLite(c, normalized, 1).catch(() => []),
-    fetchKnowledgeNewsReportCandidates(c, normalized),
-  ]);
-  const merged = filterRecentCompanyReports(
-    mergeCompanyReportsPreferPrimary(
-      mergeCompanyReportsPreferPrimary(eastmoneyItems, sinaItems),
-      newsReportCandidates,
-    ),
-  );
+  console.info("company report Web Search discovery is not started by read-only report GET", {
+    code: normalized,
+    llmRuntime: c.env.LLM_RUNTIME || "unset",
+  });
+  const merged = await loadCompanyReportSourcePool(c, normalized);
   await writeAppJson(c.env.DB, cacheKey, merged, REPORT_SOURCE_CACHE_TTL_MS);
   return paginateCompanyReports(merged, page);
+}
+
+async function loadCompanyReportSourcePool(
+  c: Context<AppEnv>,
+  code: string,
+  discovered: Array<Record<string, unknown>> = [],
+): Promise<Array<Record<string, unknown>>> {
+  const normalized = normalizeSecurityCode(code);
+  const [eastmoneyItems, sinaItems, newsReportCandidates] = await Promise.all([
+    fetchEastmoneyCompanyReports(c, normalized, 1, REPORT_SOURCE_POOL_SIZE),
+    fetchSinaCompanyReportsLite(c, normalized, 1).catch((error) => {
+      console.warn("company report Sina source unavailable", { code: normalized, error: error instanceof Error ? error.message : String(error) });
+      return [] as Array<Record<string, unknown>>;
+    }),
+    fetchKnowledgeNewsReportCandidates(c, normalized).catch((error) => {
+      console.warn("company report knowledge source unavailable", { code: normalized, error: error instanceof Error ? error.message : String(error) });
+      return [] as Array<Record<string, unknown>>;
+    }),
+  ]);
+  return filterRecentCompanyReports(
+    mergeCompanyReportsPreferPrimary(
+      mergeCompanyReportsPreferPrimary(
+        mergeCompanyReportsPreferPrimary(eastmoneyItems.map(normalizeCompanyReportProvenance), sinaItems.map(normalizeCompanyReportProvenance)),
+        newsReportCandidates.map(normalizeCompanyReportProvenance),
+      ),
+      discovered.map((item) => ({ ...item, provenance: "web_search" })),
+    ),
+  );
+}
+
+export async function enqueueCompanyReportDiscovery(
+  db: D1Database,
+  securityCode: string,
+  force = false,
+  now = Date.now(),
+) {
+  const code = normalizeSecurityCode(securityCode);
+  if (!isCnCode(code)) throw new Error("company report discovery only supports mainland company codes");
+  const recentSince = reportDiscoveryRecentSince(now);
+  const created = await createGenericLlmTask(db, {
+    taskType: REPORT_DISCOVERY_TASK_TYPE,
+    targetType: "security",
+    targetId: code,
+    idempotencyKey: `company-report-discovery:${recentSince}`,
+    promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
+    model: REPORT_LLM_MODEL,
+    reasoningEffort: null,
+    metadata: { securityCode: code, recentSince, maxReports: REPORT_DISCOVERY_MAX_REPORTS },
+    now,
+  });
+  let task = created.task;
+  let requeued = false;
+  if (force && (task.status === "completed" || task.status === "failed" || task.status === "blocked")) {
+    requeued = await requeueGenericLlmTask(db, task.taskId, now);
+    task = await loadGenericLlmTask(db, task.taskId) || task;
+  }
+  return { accepted: true, task, deduplicated: created.deduplicated && !requeued, requeued };
+}
+
+export async function claimNextCompanyReportDiscoveryTaskRun(
+  db: D1Database,
+  runnerInstanceId: string,
+) {
+  const claimed = await claimGenericLlmTaskRun(db, runnerInstanceId, {
+    taskType: REPORT_DISCOVERY_TASK_TYPE,
+    provider: "openai",
+    model: REPORT_LLM_MODEL,
+    reasoningEffort: null,
+  });
+  if (!claimed) return null;
+  try {
+    const prepared = await prepareCompanyReportDiscoveryExecution(db, claimed.task.targetId, claimed.task.taskId);
+    return {
+      task: claimed.task,
+      run: claimed.run,
+      request: {
+        ...prepared,
+        taskId: claimed.task.taskId,
+        runId: claimed.run.runId,
+        attempt: claimed.run.attempt,
+        runnerInstanceId,
+      },
+    };
+  } catch (error) {
+    await failGenericLlmRun(db, {
+      taskId: claimed.task.taskId,
+      runId: claimed.run.runId,
+      attempt: claimed.run.attempt,
+      leaseOwner: runnerInstanceId,
+      errorCode: "prepare_failed",
+      errorMessage: error instanceof Error ? error.message : String(error),
+    }).catch(() => {});
+    throw error;
+  }
+}
+
+async function prepareCompanyReportDiscoveryExecution(
+  db: D1Database,
+  securityCode: string,
+  _taskId: string,
+) {
+  const code = normalizeSecurityCode(securityCode);
+  const security = await db.prepare("select name from securities where code=?").bind(code).first<{ name?: unknown }>();
+  const recentSince = reportDiscoveryRecentSince();
+  return {
+    securityCode: code,
+    model: REPORT_LLM_MODEL,
+    reasoningEffort: null,
+    maxOutputTokens: 8192,
+    jobTimeoutMs: REPORT_DISCOVERY_JOB_TIMEOUT_MS,
+    promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
+    instructions: REPORT_DISCOVERY_SYSTEM_PROMPT,
+    input: renderCompanyReportDiscoveryPrompt(REPORT_DISCOVERY_USER_PROMPT, {
+      SECURITY_CODE: code,
+      COMPANY_NAME: text(security?.name) || code,
+      RECENT_SINCE: recentSince,
+      MAX_REPORTS: String(REPORT_DISCOVERY_MAX_REPORTS),
+    }),
+  };
+}
+
+async function completeCompanyReportDiscoveryRun(
+  c: Context<AppEnv>,
+  input: CompanyReportDiscoveryRunInput,
+) {
+  const task = await loadGenericLlmTask(c.env.DB, input.taskId);
+  if (!task || task.taskType !== REPORT_DISCOVERY_TASK_TYPE || task.targetType !== "security") {
+    throw new Error("company report discovery task was not found");
+  }
+  const run = await loadGenericLlmRun(c.env.DB, input.runId);
+  assertActiveCompanyReportDiscoveryRun(run, input, task.taskId);
+  if (input.response.model !== REPORT_LLM_MODEL) throw new Error("company report discovery response model mismatch");
+  try {
+    const webSearch = input.response.webSearch;
+    const citations = compactCompanyReportCitations(webSearch?.citations || []);
+    if (!webSearch?.searched || citations.length === 0) {
+      throw new Error("company report discovery did not return source citations");
+    }
+    const parsed = parseCompanyReportDiscoveryWithDiagnostics(input.response.text, task.targetId, citations);
+    if (parsed.rejected > 0) {
+      console.warn("company report discovery rejected candidates", { code: task.targetId, rejected: parsed.rejected });
+    }
+    const discoveredRows = parsed.reports.map((item) => mapCompanyReportDiscoveryCandidate(item, task.targetId));
+    const sourceRows = await loadCompanyReportSourcePool(c, task.targetId, discoveredRows);
+    const cacheKey = `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${normalizeSecurityCode(task.targetId)}`;
+    await writeAppJson(c.env.DB, cacheKey, sourceRows, REPORT_SOURCE_CACHE_TTL_MS);
+    const projection = {
+      securityCode: normalizeSecurityCode(task.targetId),
+      reportsFound: parsed.reports.length,
+      reportsRejected: parsed.rejected,
+      sourceRows: sourceRows.length,
+      cachedAt: Date.now(),
+    };
+    await writeGenericLlmRunArtifact(c.env.DB, {
+      runId: input.runId,
+      taskId: input.taskId,
+      attempt: input.attempt,
+      leaseOwner: input.runnerInstanceId,
+      stepKey: "company_report_discovery",
+      outputType: "json",
+      status: "complete",
+      structureValid: true,
+      output: { response: input.response, projection },
+      terminalMetadata: projection,
+    });
+    const terminal = await completeGenericLlmRun(c.env.DB, {
+      runId: input.runId,
+      taskId: input.taskId,
+      attempt: input.attempt,
+      leaseOwner: input.runnerInstanceId,
+      status: "completed",
+      terminalMetadata: projection,
+    });
+    return { ...terminal, projection };
+  } catch (error) {
+    await failGenericLlmRun(c.env.DB, {
+      runId: input.runId,
+      taskId: input.taskId,
+      attempt: input.attempt,
+      leaseOwner: input.runnerInstanceId,
+      errorCode: "projection_failed",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      terminalMetadata: { taskType: REPORT_DISCOVERY_TASK_TYPE },
+    }).catch(() => {});
+    throw error;
+  }
+}
+
+function assertActiveCompanyReportDiscoveryRun(
+  run: Awaited<ReturnType<typeof loadGenericLlmRun>>,
+  input: CompanyReportDiscoveryRunInput,
+  taskId: string,
+): asserts run is NonNullable<Awaited<ReturnType<typeof loadGenericLlmRun>>> {
+  if (!run || run.taskId !== taskId || run.status !== "running" || run.attempt !== input.attempt
+    || run.leaseOwner !== input.runnerInstanceId || !run.leaseUntil || run.leaseUntil < Date.now()) {
+    throw new Error("company report discovery run lease is no longer owned by this runner");
+  }
+}
+
+function mapCompanyReportDiscoveryCandidate(
+  candidate: CompanyReportDiscoveryCandidate,
+  securityCode: string,
+): Record<string, unknown> {
+  return {
+    code: normalizeSecurityCode(securityCode),
+    title: candidate.title,
+    orgName: candidate.institution,
+    orgSName: candidate.institution,
+    publishDate: candidate.publishedAt,
+    url: candidate.url,
+    pages: 0,
+    forecasts: candidate.forecasts,
+    ...(candidate.valuation && Object.keys(candidate.valuation).length > 0 ? { valuation: candidate.valuation } : {}),
+    provenance: "web_search",
+  };
 }
 
 function paginateCompanyReports(items: Array<Record<string, unknown>>, page: number): Array<Record<string, unknown>> {
@@ -996,6 +1358,102 @@ export function parseCompanyReportForecasts(textBody: string): CompanyReportFore
   return parseCompanyReportForecastRows(parsed.forecasts);
 }
 
+export function parseCompanyReportDiscovery(
+  textBody: string,
+  securityCode: string,
+  citations: Array<{ title: string; url: string }>,
+): CompanyReportDiscoveryCandidate[] {
+  return parseCompanyReportDiscoveryWithDiagnostics(textBody, securityCode, citations).reports;
+}
+
+function parseCompanyReportDiscoveryWithDiagnostics(
+  textBody: string,
+  _securityCode: string,
+  citations: Array<{ title: string; url: string }>,
+): { reports: CompanyReportDiscoveryCandidate[]; rejected: number } {
+  const parsed = parseJsonObjectFromText(textBody);
+  if (!parsed || !Array.isArray(parsed.reports)) {
+    throw new Error("company report discovery response did not contain a reports array");
+  }
+  const cited = new Set(compactCompanyReportCitations(citations).map((item) => canonicalCompanyReportUrl(item.url)).filter(Boolean));
+  let rejected = 0;
+  const reports = parsed.reports.flatMap((value): CompanyReportDiscoveryCandidate[] => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      rejected += 1;
+      return [];
+    }
+    const row = value as Record<string, unknown>;
+    const title = nonEmptyTextOrUndefined(row.title);
+    const institution = nonEmptyTextOrUndefined(row.institution);
+    const publishedAt = normalizeCompanyReportDate(text(row.publishedAt));
+    const url = canonicalCompanyReportUrl(text(row.url));
+    if (!title || !institution || !publishedAt || !url || !cited.has(url) || !Array.isArray(row.forecasts)) {
+      rejected += 1;
+      return [];
+    }
+    if (row.valuation !== undefined && (!row.valuation || typeof row.valuation !== "object" || Array.isArray(row.valuation))) {
+      rejected += 1;
+      return [];
+    }
+    const forecasts = parseCompanyReportForecastRows(row.forecasts);
+    const valuation = row.valuation && typeof row.valuation === "object" && !Array.isArray(row.valuation)
+      ? parseCompanyReportValuation(row.valuation as Record<string, unknown>)
+      : {};
+    return [{
+      title,
+      institution,
+      publishedAt,
+      url,
+      forecasts,
+      ...(Object.keys(valuation).length > 0 ? { valuation } : {}),
+    }];
+  });
+  return { reports, rejected };
+}
+
+function parseCompanyReportValuation(value: Record<string, unknown>): CompanyReportValuation {
+  return {
+    ...(nonEmptyTextOrUndefined(value.rating) ? { rating: nonEmptyTextOrUndefined(value.rating) } : {}),
+    ...(positiveNumberOrUndefined(value.targetPrice) !== undefined ? { targetPrice: positiveNumberOrUndefined(value.targetPrice) } : {}),
+    ...(nonEmptyTextOrUndefined(value.targetPriceCurrency) ? { targetPriceCurrency: nonEmptyTextOrUndefined(value.targetPriceCurrency) } : {}),
+    ...(positiveNumberOrUndefined(value.targetPe) !== undefined ? { targetPe: positiveNumberOrUndefined(value.targetPe) } : {}),
+    ...(nonEmptyTextOrUndefined(value.valuationMethod) ? { valuationMethod: nonEmptyTextOrUndefined(value.valuationMethod) } : {}),
+  };
+}
+
+function compactCompanyReportCitations(
+  citations: Array<{ title: string; url: string }>,
+): Array<{ title: string; url: string }> {
+  const seen = new Set<string>();
+  return citations.flatMap((citation) => {
+    const url = canonicalCompanyReportUrl(text(citation?.url));
+    if (!url || seen.has(url)) return [];
+    seen.add(url);
+    return [{ title: text(citation?.title) || url, url }];
+  });
+}
+
+function renderCompanyReportDiscoveryPrompt(template: string, values: Record<string, string>): string {
+  return Object.entries(values).reduce((result, [key, value]) => result.replaceAll(`{{${key}}}`, value), template);
+}
+
+function reportDiscoveryRecentSince(now = Date.now()): string {
+  return new Date(now - REPORT_RECENT_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function normalizeCompanyReportDate(value: string): string {
+  const raw = value.trim();
+  const match = raw.match(/^(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})/);
+  if (match) {
+    const month = match[2].padStart(2, "0");
+    const day = match[3].padStart(2, "0");
+    const iso = `${match[1]}-${month}-${day}`;
+    return Number.isFinite(Date.parse(iso)) ? iso : "";
+  }
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : "";
+}
+
 export function parseCompanyNewsReportAnalysis(textBody: string): Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt"> {
   const parsed = parseJsonObjectFromText(textBody);
   if (!parsed || typeof parsed.isCompanyReport !== "boolean" || !Array.isArray(parsed.forecasts)) {
@@ -1142,41 +1600,27 @@ async function writeSharedReportAnalysis(
   } satisfies SharedReportAnalysis, REPORT_FORECAST_CACHE_TTL_MS);
 }
 
-function mergeCompanyReportsPreferPrimary(
+export function mergeCompanyReportsPreferPrimary(
   primary: Array<Record<string, unknown>>,
   supplements: Array<Record<string, unknown>>
 ): Array<Record<string, unknown>> {
   const merged: Array<Record<string, unknown>> = [];
   const seen = new Set<string>();
-  const supplementsByKey = new Map<string, Array<Record<string, unknown>>>();
-  for (const item of supplements) {
-    const key = companyReportMergeKey(item);
-    if (!key) {
+  for (const item of [...primary, ...supplements]) {
+    const normalized = normalizeCompanyReportProvenance(item);
+    const dedupKeys = companyReportDedupKeys(normalized);
+    if (!dedupKeys.length) continue;
+    const priorIndex = merged.findIndex((candidate) => {
+      const candidateKeys = new Set(companyReportDedupKeys(candidate));
+      return dedupKeys.some((key) => candidateKeys.has(key));
+    });
+    if (priorIndex >= 0) {
+      merged[priorIndex] = mergePrimaryReportWithSupplement(merged[priorIndex], normalized);
       continue;
     }
-    if (!supplementsByKey.has(key)) {
-      supplementsByKey.set(key, []);
-    }
-    supplementsByKey.get(key)!.push(item);
-  }
-  for (const item of primary) {
-    const key = companyReportMergeKey(item);
-    const supplement = key ? supplementsByKey.get(key)?.shift() : undefined;
-    const mergedItem = supplement ? mergePrimaryReportWithSupplement(item, supplement) : item;
-    const dedupKey = companyReportDedupKey(mergedItem);
-    if (!dedupKey || seen.has(dedupKey)) {
-      continue;
-    }
-    seen.add(dedupKey);
-    merged.push(mergedItem);
-  }
-  for (const item of supplements) {
-    const dedupKey = companyReportDedupKey(item);
-    if (!dedupKey || seen.has(dedupKey)) {
-      continue;
-    }
-    seen.add(dedupKey);
-    merged.push(item);
+    if (dedupKeys.some((key) => seen.has(key))) continue;
+    dedupKeys.forEach((key) => seen.add(key));
+    merged.push(normalized);
   }
   merged.sort((left, right) => companyReportSortTime(right) - companyReportSortTime(left));
   return merged;
@@ -1192,17 +1636,52 @@ function companyReportSortTime(item: Record<string, unknown>): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function companyReportDedupKey(item: Record<string, unknown>): string {
-  return `${normalizeReportTitleCore(text(item.title))}|${normalizeReportOrgName(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org)]))}`;
+export function companyReportDedupKey(item: Record<string, unknown>): string {
+  return companyReportDedupKeys(item)[0] || "";
 }
 
-function companyReportMergeKey(item: Record<string, unknown>): string {
-  const org = normalizeReportOrgName(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org)]));
+export function companyReportDedupKeys(item: Record<string, unknown>): string[] {
+  const keys: string[] = [];
+  const url = canonicalCompanyReportUrl(firstNonEmpty([text(item.url), text(item.detailUrl)]));
+  if (url) keys.push(`url:${url}`);
+  const nativeId = companyReportNativeId(item);
+  if (nativeId) keys.push(`native:${nativeId}`);
+  const code = normalizeSecurityCode(text(item.code));
   const title = normalizeReportTitleCore(text(item.title));
-  if (!org || !title) {
+  const org = normalizeReportOrgName(firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org), text(item.institution)]));
+  if (!code || !title || !org) return keys;
+  const date = normalizeCompanyReportDate(firstNonEmpty([text(item.publishDate), text(item.publishedAt)]));
+  keys.push(date
+    ? `identity:${code}|date:${date}|title:${title}|org:${org}`
+    : `identity-no-date:${code}|title:${title}|org:${org}`);
+  return keys;
+}
+
+function companyReportNativeId(item: Record<string, unknown>): string {
+  const infoCode = text(item.infoCode);
+  if (infoCode) return `eastmoney:${infoCode.toLowerCase()}`;
+  const docId = text(item.knowledgeDocId) || text(item.doc_id);
+  if (docId) return `knowledge:${docId}`;
+  return "";
+}
+
+export function canonicalCompanyReportUrl(value: string): string {
+  try {
+    const url = new URL(value.trim());
+    if (!/^https?:$/.test(url.protocol)) return "";
+    url.protocol = url.protocol.toLowerCase();
+    url.hostname = url.hostname.toLowerCase();
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(?:utm_|spm|from|source|ref|referrer|share|clickid|sessionid)/i.test(key)) {
+        url.searchParams.delete(key);
+      }
+    }
+    url.searchParams.sort();
+    return url.toString().replace(/\/+$/, "");
+  } catch {
     return "";
   }
-  return `${org}|${title}`;
 }
 
 function companyReportId(item: Record<string, unknown>): string {
@@ -1554,10 +2033,34 @@ function mergePrimaryReportWithSupplement(
   primary: Record<string, unknown>,
   supplement: Record<string, unknown>
 ): Record<string, unknown> {
+  const primaryForecasts = Array.isArray(primary.forecasts) ? primary.forecasts as CompanyReportForecast[] : [];
+  const supplementForecasts = Array.isArray(supplement.forecasts) ? supplement.forecasts as CompanyReportForecast[] : [];
+  const primaryValuation = primary.valuation && typeof primary.valuation === "object" && !Array.isArray(primary.valuation)
+    ? primary.valuation as Record<string, unknown>
+    : {};
+  const supplementValuation = supplement.valuation && typeof supplement.valuation === "object" && !Array.isArray(supplement.valuation)
+    ? supplement.valuation as Record<string, unknown>
+    : {};
   return {
     ...supplement,
     ...primary,
     ...(text(supplement.url) ? { detailUrl: text(supplement.url) } : {}),
+    ...(primaryForecasts.length || supplementForecasts.length
+      ? { forecasts: mergeForecastRows(primaryForecasts, supplementForecasts) }
+      : {}),
+    ...(Object.keys(primaryValuation).length || Object.keys(supplementValuation).length
+      ? { valuation: { ...supplementValuation, ...primaryValuation } }
+      : {}),
+    provenance: text(primary.provenance) === "web_search" && text(supplement.provenance) !== "web_search"
+      ? "existing"
+      : (text(primary.provenance) || text(supplement.provenance) || "existing"),
+  };
+}
+
+function normalizeCompanyReportProvenance(item: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...item,
+    provenance: text(item.provenance) === "web_search" ? "web_search" : "existing",
   };
 }
 
