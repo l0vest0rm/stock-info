@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
+import { queryLocalD1Sql, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const args = parseArgs(process.argv.slice(2));
@@ -103,7 +102,7 @@ function loadDocuments(database, promptVersion, retryStaleProcessingMinutes, max
       exists (
         select 1 from information_processing_jobs j
         where j.doc_id = d.doc_id
-          and (j.status = 'queued' or (j.status = 'processing' and j.updated_at >= ${activeProcessingCutoff}))
+          and (j.status = 'queued' or (j.status = 'running' and j.updated_at >= ${activeProcessingCutoff}))
       ) as has_active_job,
       coalesce((
         select p.action
@@ -118,8 +117,7 @@ function loadDocuments(database, promptVersion, retryStaleProcessingMinutes, max
     where d.sort_time >= ${sqlString(documentCutoff)}
       and trim(coalesce(d.title, '')) != ''
   `;
-  const output = execFileSync("sqlite3", ["-readonly", "-json", database, sql], { encoding: "utf8", maxBuffer: 50 * 1024 * 1024 });
-  return JSON.parse(output || "[]").map((row) => ({
+  return queryLocalD1Sql(sql, { path: database, requiredTable: "knowledge_docs", maxBuffer: 50 * 1024 * 1024 }).map((row) => ({
     docId: String(row.doc_id || ""), title: String(row.title || ""), sortTime: String(row.sort_time || ""),
     processed: Number(row.is_processed) === 1, activeJob: Number(row.has_active_job) === 1,
     preprocessedSkip: isTerminalPreprocessingAction(row.preprocessing_action),

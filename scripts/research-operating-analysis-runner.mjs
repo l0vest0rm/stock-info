@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { SharedLlmClient, createResponsesProvider } from "@m2ai/shared-llm-client";
+import { pathToFileURL } from "node:url";
+import { SharedLlmClient } from "@m2ai/shared-llm-client";
 import {
   RESEARCH_OPERATING_ANALYSIS_COMPANY_BASELINE_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_FINANCIAL_STAGE_PROMPT,
@@ -10,13 +11,16 @@ import {
   RESEARCH_OPERATING_ANALYSIS_VALUATION_CONCLUSION_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_VALUATION_INPUTS_PROMPT,
 } from "./generated/prompt-text.mjs";
-import { fetchLocalWorker } from "./lib/local-worker-request.mjs";
+import { fetchLocalRuntime } from "./lib/local-runtime-request.mjs";
 import { buildOperatingAnalysisFinancialContext, financialSnapshotForStage } from "./lib/operating-analysis-financial-snapshot.mjs";
+import { createLocalJobProvider, loadLocalJobRuntimeConfig, resolveLocalJobApiKey } from "./lib/local-job-provider-registry.mjs";
+import { localRuntimeError, localRuntimeLog } from "./lib/local-runtime-log.mjs";
 
 const baseUrl = String(process.env.OPERATING_ANALYSIS_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const config = await loadConfig();
-const apiKey = await resolveApiKey();
-const modelBaseUrl = String(process.env.OPENAI_BASE_URL || process.env.LLM_BASE_URL || "https://api.m2ai.cc/api/v1/openai").replace(/\/+$/, "");
+const runtimeConfig = await loadLocalJobRuntimeConfig();
+const runtimeHandler = runtimeConfig?.handlers?.researchOperatingAnalysis;
+const apiKey = await resolveLocalJobApiKey();
 const runnerInstanceId = `operating-analysis-runner:${randomUUID()}`;
 const INSTRUCTIONS = "你是严谨的投资研究员。只使用本阶段允许的证据；不以模型记忆填补缺口；严格按输出格式返回。";
 const stages = [
@@ -32,29 +36,32 @@ if (!apiKey) throw new Error("local operating-analysis runner requires OPENAI_AP
 
 async function loadConfig() {
   const parsed = JSON.parse(await readFile(new URL("../config/research-operating-analysis.json", import.meta.url), "utf8"));
-  if (parsed?.model !== "gpt-5.6-luna" || !Number.isInteger(parsed?.concurrency) || parsed.concurrency < 1 || parsed.concurrency > 20 || !Number.isInteger(parsed?.streamIdleTimeoutMs) || parsed.streamIdleTimeoutMs < 30_000 || parsed.streamIdleTimeoutMs >= parsed.jobTimeoutMs || parsed?.reasoningEffort !== "max" || parsed?.webSearch?.required !== true) throw new Error("research-operating-analysis config must use gpt-5.6-luna, concurrency 1-20, a bounded stream idle timeout, default max reasoning, and required Web Search");
+  if (parsed?.model !== "gpt-5.6-luna" || !Number.isInteger(parsed?.jobTimeoutMs) || parsed.jobTimeoutMs < 600_000 || !Number.isInteger(parsed?.webSearchJobTimeoutMs) || parsed.webSearchJobTimeoutMs < 1_800_000 || !Number.isInteger(parsed?.streamIdleTimeoutMs) || parsed.streamIdleTimeoutMs < 30_000 || parsed.streamIdleTimeoutMs >= parsed.jobTimeoutMs || parsed?.reasoningEffort !== "max" || parsed?.webSearch?.required !== true) throw new Error("research-operating-analysis config must use gpt-5.6-luna, long general and Web Search job timeouts, a bounded general stream idle timeout, default max reasoning, and required Web Search");
   return parsed;
-}
-async function resolveApiKey() {
-  if (String(process.env.OPENAI_API_KEY || "").trim()) return process.env.OPENAI_API_KEY.trim();
-  if (String(process.env.LLM_API_KEY || "").trim()) return process.env.LLM_API_KEY.trim();
-  try { const auth = JSON.parse(await readFile(`${process.env.HOME}/.codex/auth.json`, "utf8")); return String(auth?.OPENAI_API_KEY || "").trim(); } catch { return ""; }
 }
 async function request(path, init = {}) {
   let response;
-  try { response = await fetchLocalWorker(`${baseUrl}${path}`, init); } catch (error) { throw new WorkerUnavailableError(`local Worker is unavailable: ${error instanceof Error ? error.message : String(error)}`); }
+  try { response = await fetchLocalRuntime(`${baseUrl}${path}`, init); } catch (error) { throw new WorkerUnavailableError(`local Node runtime is unavailable: ${error instanceof Error ? error.message : String(error)}`); }
   const body = await response.json().catch(() => null);
   // A reachable Worker can return 5xx for upstream business failures (for
   // example an expired Xueqiu cookie). Only transport failures above are
   // resumable Worker interruptions; application failures must stop the job.
-  if (response.status >= 500) throw new Error(body?.msg || `local Worker endpoint failed: ${response.status}`);
+  if (response.status >= 500) throw new Error(body?.msg || `local Node runtime endpoint failed: ${response.status}`);
   if (!response.ok || body?.code !== 200) throw new Error(body?.msg || `operating-analysis endpoint failed: ${response.status}`);
   return body.data;
 }
-const client = new SharedLlmClient({ providers: { openai: createResponsesProvider({ name: "openai", baseUrl: modelBaseUrl, apiKey, streamIdleTimeoutMs: config.streamIdleTimeoutMs }) }, providerConcurrency: { openai: config.concurrency } });
+const concurrency = positiveInteger(process.env.OPERATING_ANALYSIS_RUNNER_CONCURRENCY, runtimeHandler?.concurrency || 1);
+const pollIntervalMs = positiveInteger(process.env.OPERATING_ANALYSIS_RUNNER_POLL_INTERVAL_MS, runtimeHandler?.pollIntervalMs || 5_000);
+const client = new SharedLlmClient({
+  providers: {
+    openai: createLocalJobProvider(apiKey, { streamIdleTimeoutMs: config.streamIdleTimeoutMs }),
+  },
+  providerConcurrency: { openai: concurrency },
+});
 const post = (path, body) => request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 const text = (value) => typeof value === "string" ? value.trim() : "";
 const json = (value) => { try { return JSON.parse(text(value).replace(/^```json\s*|\s*```$/g, "")); } catch { return null; } };
+function positiveInteger(value, fallback) { const parsed = Number(value); return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback; }
 
 async function buildInput(code) {
   const [overview, income, balance, cashflow] = await Promise.all([
@@ -94,19 +101,22 @@ async function runStage(claim, baseInput, task, definition) {
   const { financialContext, ...sharedInput } = baseInput;
   const input = { ...sharedInput, financialDataSnapshot: financialSnapshotForStage(baseInput.financialDataSnapshot, financialContext, key), stage: { key, label, outputFormat: format }, upstreamArtifacts: upstream };
   const modelPrompt = { model: config.model, instructions: INSTRUCTIONS, userPrompt: prompt(template, input) };
-  await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/start`, { input, prompt: modelPrompt, runnerInstanceId });
+  localRuntimeLog("research-operating-analysis", "stage_started", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, stage_key: key });
+  await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/start`, { input, prompt: modelPrompt, runnerInstanceId, attempt: claim.attempt });
   let output = ""; let checkpointed = 0; let checkpointAt = 0;
   const checkpoint = async (force = false) => {
     if (!output || (!force && output.length - checkpointed < config.streamCheckpoint.minChars && Date.now() - checkpointAt < config.streamCheckpoint.intervalMs)) return;
-    await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/checkpoint`, { partialOutput: output, runnerInstanceId }); checkpointed = output.length; checkpointAt = Date.now();
+    await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/checkpoint`, { partialOutput: output, runnerInstanceId, attempt: claim.attempt }); checkpointed = output.length; checkpointAt = Date.now();
   };
-  const response = await client.streamText({ provider: "openai", model: config.model, instructions: modelPrompt.instructions, input: [{ role: "user", content: [{ type: "input_text", text: modelPrompt.userPrompt }] }], allowReasoning: true, reasoningEffort: claim.reasoningEffort, ...(webSearch ? { tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }], toolChoice: "required" } : {}), maxOutputTokens: config.maxOutputTokens, cacheEnabled: false, signal: AbortSignal.timeout(config.jobTimeoutMs), onText: async (delta) => { output += delta; await checkpoint(); } });
+  const llmRequest = { provider: "openai", model: config.model, instructions: modelPrompt.instructions, input: [{ role: "user", content: [{ type: "input_text", text: modelPrompt.userPrompt }] }], allowReasoning: true, reasoningEffort: claim.reasoningEffort, ...(webSearch ? { tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }], toolChoice: "required" } : {}), maxOutputTokens: config.maxOutputTokens, cacheEnabled: false, signal: AbortSignal.timeout(webSearch ? config.webSearchJobTimeoutMs : config.jobTimeoutMs), ...(webSearch ? {} : { onText: async (delta) => { output += delta; await checkpoint(); } }) };
+  const response = webSearch ? await client.generateText(llmRequest) : await client.streamText(llmRequest);
   output = text(response.text); await checkpoint(true);
   const parsed = format === "json" ? json(output) : output;
   if (!parsed) throw new Error(`${key} returned no valid ${format} output`);
   const status = format === "json" && terminal(parsed.status) ? parsed.status : "complete";
   const finalOutput = key === "valuation_inputs" ? { ...parsed, deterministicValuation: calculateValuation(parsed) } : parsed;
-  await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/complete`, { output: finalOutput, status, runnerInstanceId });
+  await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/complete`, { output: finalOutput, status, runnerInstanceId, attempt: claim.attempt });
+  localRuntimeLog("research-operating-analysis", "stage_completed", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, stage_key: key, stage_status: status });
   task.job.stages = (task.job.stages || []).map((item) => item.stageKey === key ? { ...item, status, output: finalOutput } : item);
   return finalOutput;
 }
@@ -138,36 +148,50 @@ function sourceIndex(task) {
 }
 
 async function runJob(claim) {
+  const startedAt = Date.now();
+  localRuntimeLog("research-operating-analysis", "started", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode });
+  const heartbeatTimer = setInterval(() => {
+    void post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/heartbeat`, { runnerInstanceId, attempt: claim.attempt }).catch(() => {});
+  }, 10_000);
   try {
     const input = await buildInput(claim.securityCode); const task = await request(`/api/research/company/${encodeURIComponent(claim.securityCode)}/operating-analysis`);
     for (const definition of stages) { const result = await runStage(claim, input, task, definition); if (result?.status === "blocked") throw new Error(`${definition[1]} 被阻断：请补充其列出的证据或数据缺口`); }
     const report = assembleReport(input, task); const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex"); const finalPrompt = stageState(task, "valuation_conclusion")?.prompt || { model: config.model, instructions: INSTRUCTIONS, userPrompt: "六阶段任务由系统确定性组装" };
-    await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/complete`, { input: { ...input, stageArtifacts: task.job.stages }, prompt: finalPrompt, reportMarkdown: report, reasoningMarkdown: "", inputFingerprint: fingerprint, streamStats: { staged: true }, runnerInstanceId });
-    console.log(`[operating-analysis-runner] completed ${claim.securityCode}`);
+    await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/complete`, { input: { ...input, stageArtifacts: task.job.stages }, prompt: finalPrompt, reportMarkdown: report, reasoningMarkdown: "", inputFingerprint: fingerprint, streamStats: { staged: true }, runnerInstanceId, attempt: claim.attempt });
+    localRuntimeLog("research-operating-analysis", "completed", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, duration_ms: Date.now() - startedAt });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error); console.error(`[operating-analysis-runner] failed ${claim.securityCode}: ${message}`);
-    if (error instanceof WorkerUnavailableError) interruptedJobs.set(claim.securityCode, message);
-    else await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/fail`, { error: message, runnerInstanceId }).catch(() => {});
-  }
+    const message = error instanceof Error ? error.message : String(error);
+    localRuntimeLog("research-operating-analysis", "failed", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, duration_ms: Date.now() - startedAt, error: message });
+    if (error instanceof WorkerUnavailableError) interruptedJobs.set(claim.securityCode, { message, attempt: claim.attempt });
+    else await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/fail`, { error: message, runnerInstanceId, attempt: claim.attempt }).catch(() => {});
+  } finally { clearInterval(heartbeatTimer); }
 }
 async function claim() { return post("/api/research/operating-analysis-jobs/claim-next", { runnerInstanceId }); }
 const interruptedJobs = new Map();
 async function recoverInterruptedJobs() {
-  for (const [securityCode, error] of interruptedJobs) {
+  for (const [securityCode, interrupted] of interruptedJobs) {
     try {
-      await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(securityCode)}/requeue`, { error, runnerInstanceId });
+      await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(securityCode)}/requeue`, { error: interrupted.message, runnerInstanceId, attempt: interrupted.attempt });
       interruptedJobs.delete(securityCode);
-      console.warn(`[operating-analysis-runner] requeued interrupted ${securityCode}; resuming from its last terminal stage`);
+      localRuntimeLog("research-operating-analysis", "requeued", { security_code: securityCode, attempt: interrupted.attempt });
     } catch (recoveryError) {
-      if (!(recoveryError instanceof WorkerUnavailableError)) console.warn(`[operating-analysis-runner] could not requeue ${securityCode}: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+      if (!(recoveryError instanceof WorkerUnavailableError)) localRuntimeError("research-operating-analysis", "requeue_failed", recoveryError, { security_code: securityCode, attempt: interrupted.attempt });
     }
   }
 }
-let polling = false; let requested = false; const active = new Set(); let leaseActive = false;
+let polling = false; let requested = false; const active = new Set(); let leaseActive = false; let accepting = true;
 async function heartbeat() { try { leaseActive = (await post("/api/research/operating-analysis-runner-lease/heartbeat", { runnerInstanceId }))?.active === true; } catch { leaseActive = false; } return leaseActive; }
-async function poll() { if (polling) { requested = true; return; } polling = true; try { if (!await heartbeat()) return; await recoverInterruptedJobs(); while (active.size < config.concurrency) { const item = await claim(); if (!item) break; let work; work = runJob(item).finally(() => { active.delete(work); void poll(); }); active.add(work); } } catch (error) { console.warn(`[operating-analysis-runner] polling paused: ${error instanceof Error ? error.message : String(error)}`); } finally { polling = false; if (requested) { requested = false; void poll(); } } }
-console.log(`[operating-analysis-runner] ${runnerInstanceId} staged research, concurrency=${config.concurrency}; polling ${baseUrl} every 5000ms`);
-// `poll()` renews the lease before claiming work. A second heartbeat interval
-// sent concurrent requests to Miniflare at the same five-second boundary.
-void poll(); const timer = setInterval(() => void poll(), 5000);
-process.once("SIGINT", () => { clearInterval(timer); process.exit(0); }); process.once("SIGTERM", () => { clearInterval(timer); process.exit(0); });
+async function poll() { if (!accepting) return; if (polling) { requested = true; return; } polling = true; try { if (!await heartbeat()) return; await recoverInterruptedJobs(); while (accepting && active.size < concurrency) { const item = await claim(); if (!item) break; let work; work = runJob(item).finally(() => { active.delete(work); void poll(); }); active.add(work); } } catch (error) { localRuntimeError("research-operating-analysis", "polling_paused", error); } finally { polling = false; if (requested && accepting) { requested = false; void poll(); } } }
+
+export function startResearchOperatingAnalysisRunner() {
+  accepting = true;
+  localRuntimeLog("research-operating-analysis", "polling_started", { runner_instance_id: runnerInstanceId, concurrency, base_url: baseUrl, poll_interval_ms: pollIntervalMs });
+  void poll(); const timer = setInterval(() => void poll(), pollIntervalMs);
+  return { async stop({ gracefulTimeoutMs = runtimeConfig?.lease?.gracefulShutdownMs || 30_000 } = {}) { accepting = false; clearInterval(timer); await Promise.race([Promise.allSettled([...active]), new Promise((resolve) => setTimeout(resolve, gracefulTimeoutMs))]); } };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const controller = startResearchOperatingAnalysisRunner();
+  const stop = () => { void controller.stop().finally(() => process.exit(0)); };
+  process.once("SIGINT", stop); process.once("SIGTERM", stop);
+}

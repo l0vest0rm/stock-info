@@ -261,7 +261,7 @@ ECOS、KOSIS等必须使用密钥的来源在未配置时记录为 `disabled`；
 - `*/15 * * * *`：原有财务同步；
 - `17 * * * *`：宏观数据同步。
 
-`src/app/scheduled.ts` 按 cron 表达式分发任务，新增宏观 cron 不会重复触发财务同步。本地标准启动仍使用 `./start-local.sh`；本地可通过 `POST /api/macro/sync` 手工同步。由于Wrangler本地Worker访问FRED域名会超时，启动脚本同时运行仅允许FRED/BLS官方域名的 `local-macro-fetch-relay.mjs`，绑定为 `MACRO_FETCH_RELAY_URL`；生产Worker未配置该变量时仍直接访问官方源。生产环境需先执行远程 D1 migration，再部署Worker，不能以本地Wrangler验证替代生产验证。
+`src/app/scheduled.ts` 按 cron 表达式分发任务，新增宏观 cron 不会重复触发财务同步。本地标准启动仍使用 `./start-local.sh`；本地可通过 `POST /api/macro/sync` 手工同步。local-http 与生产 Cloudflare Worker 都使用 native fetch 直接访问 allowlist 中的 FRED、BLS、HKMA 与 NY Fed 官方域名；不再运行本地 macro relay。生产环境需先执行远程 D1 migration，再部署 Worker，不能以本地 Node 验证替代生产验证。
 
 ### 14.3 本地验证
 

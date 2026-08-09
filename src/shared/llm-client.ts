@@ -82,7 +82,7 @@ export function isLocalLlmRuntime(env: Pick<Bindings, "LLM_RUNTIME">): boolean {
 
 function assertLocalLlmRuntime(env: Pick<Bindings, "LLM_RUNTIME">): void {
   if (!isLocalLlmRuntime(env)) {
-    throw new Error("LLM calls are disabled outside local Wrangler development");
+    throw new Error("LLM calls are disabled outside local Node development");
   }
 }
 

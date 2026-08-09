@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { applyEdits, modify } from "jsonc-parser";
-import { cookieHeaderFromCdp } from "./lib/xueqiu-cookie.mjs";
+import { createHash } from "node:crypto";
+import { cookieHeaderFromCdp, validateXueqiuKlineCookie } from "./lib/xueqiu-cookie.mjs";
 
 const XUEQIU_URL = "https://xueqiu.com/S/SH600519";
 const XUEQIU_ACCEPT_LANGUAGE = "zh-CN,zh;q=0.9,en;q=0.8";
@@ -14,6 +15,7 @@ const XUEQIU_SETTLE_DELAY_MS = 3_000;
 const args = new Set(process.argv.slice(2));
 const writeDevVars = args.has("--write-dev-vars");
 const writeWranglerVars = args.has("--write-wrangler-vars");
+const writeLocalCredentialStore = args.has("--write-local-credential-store");
 const jsonOutput = args.has("--json");
 const cdpUrl = process.env.XUEQIU_CDP_URL?.trim() || "http://127.0.0.1:9222";
 
@@ -196,6 +198,15 @@ async function updateWranglerVars(cookie) {
   await writeFile(path, applyEdits(text, edits));
 }
 
+async function updateLocalCredentialStore(cookie) {
+  const path = resolve(process.env.LOCAL_XUEQIU_CREDENTIAL_STORE || "data/local/runtime/xueqiu-credential.json");
+  await mkdir(resolve(path, ".."), { recursive: true });
+  const temporary = `${path}.tmp-${process.pid}`;
+  await writeFile(temporary, `${JSON.stringify({ cookie, updatedAt: Date.now() })}\n`, { encoding: "utf8", mode: 0o600 });
+  await rename(temporary, path);
+  return path;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -218,24 +229,40 @@ async function main() {
     if (!cookie) {
       throw new Error("CDP returned no Xueqiu cookies; sign in to Xueqiu or check the configured Chrome session");
     }
+    const validation = await validateXueqiuKlineCookie(cookie);
+    let localCredentialStore = null;
     if (writeDevVars) {
       await updateDevVars(cookie);
     }
     if (writeWranglerVars) {
       await updateWranglerVars(cookie);
     }
+    if (writeLocalCredentialStore) {
+      localCredentialStore = await updateLocalCredentialStore(cookie);
+    }
     if (jsonOutput) {
       process.stdout.write(`${JSON.stringify({
         source: "cdp",
+        cookieFingerprint: cookieFingerprint(cookie),
+        validation: { endpoint: "xueqiu-kline", rowCount: validation.rowCount },
         writtenToDevVars: writeDevVars,
         writtenToWranglerVars: writeWranglerVars,
+        localCredentialStore,
       })}\n`);
-    } else if (!writeDevVars && !writeWranglerVars) {
-      process.stdout.write("Xueqiu cookie retrieved from CDP. Re-run with --write-dev-vars and/or --write-wrangler-vars to persist it.\n");
+    } else {
+      process.stdout.write(
+        `Xueqiu cookie validated against K-line (rows=${validation.rowCount}, fingerprint=${cookieFingerprint(cookie)}).${
+          !writeDevVars && !writeWranglerVars && !writeLocalCredentialStore ? " Re-run with --write-local-credential-store for local Node, and/or --write-dev-vars / --write-wrangler-vars to stage configuration." : ""
+        }\n`,
+      );
     }
   } finally {
     await session.close();
   }
+}
+
+function cookieFingerprint(cookie) {
+  return createHash("sha256").update(cookie).digest("hex").slice(0, 16);
 }
 
 await main();

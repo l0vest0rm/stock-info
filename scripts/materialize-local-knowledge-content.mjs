@@ -4,9 +4,10 @@ import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
+import { LOCAL_SQLITE_BUSY_TIMEOUT_MS, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
 const args = parseArgs(process.argv.slice(2));
-const dbFile = resolve(args.dbFile || findLocalDatabaseFile());
+const dbFile = resolveLocalD1Database({ path: args.dbFile || undefined, requiredTable: "knowledge_local_content_cache" });
 const contentDir = resolve(args.contentDir || process.env.KNOWLEDGE_CONTENT_LOCAL_DIR || "/Users/terry/git/data/stock-info/knowledge/content-cache");
 
 const [contentCount] = queryJson(dbFile, `
@@ -46,26 +47,8 @@ function requireValue(argv, index, flag) {
   return value;
 }
 
-function findLocalDatabaseFile() {
-  const candidates = execFileSync("find", [".wrangler/state/v3/d1/miniflare-D1DatabaseObject", "-name", "*.sqlite"], {
-    encoding: "utf8",
-    stdio: "pipe",
-  })
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((file) => !file.endsWith("/metadata.sqlite"));
-  for (const file of candidates) {
-    const tables = execFileSync("sqlite3", [file, ".tables"], { encoding: "utf8", stdio: "pipe" });
-    if (tables.includes("knowledge_local_content_cache") && tables.includes("knowledge_docs")) {
-      return file;
-    }
-  }
-  throw new Error("failed to locate local stock_info D1 sqlite database");
-}
-
 function queryJson(dbFile, sql) {
-  const result = execFileSync("sqlite3", ["-json", dbFile, sql], {
+  const result = execFileSync("sqlite3", ["-json", "-cmd", `.timeout ${LOCAL_SQLITE_BUSY_TIMEOUT_MS}`, dbFile, sql], {
     encoding: "utf8",
     stdio: "pipe",
     maxBuffer: 50 * 1024 * 1024,
@@ -85,7 +68,7 @@ async function materializeChunkRows(dbFile, contentDir) {
     where content.content_key like 'knowledge-content/%'
     order by chunks.content_key asc, chunks.chunk_index asc
   `;
-  const child = spawn("sqlite3", ["-batch", "-noheader", dbFile, sql], {
+  const child = spawn("sqlite3", ["-batch", "-noheader", "-cmd", `.timeout ${LOCAL_SQLITE_BUSY_TIMEOUT_MS}`, dbFile, sql], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stderr.setEncoding("utf8");

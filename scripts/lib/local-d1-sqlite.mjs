@@ -1,6 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+
+export const LOCAL_SQLITE_BUSY_TIMEOUT_MS = 30000;
+
+// Keep command-line maintenance tools on the same locking contract as the Node
+// HTTP runtime. A batch owns the write lock for exactly one SQL input file.
+export const LOCAL_SQLITE_CONNECTION_PRAGMAS = [
+  "PRAGMA journal_mode=WAL;",
+  "PRAGMA foreign_keys=ON;",
+  `PRAGMA busy_timeout=${LOCAL_SQLITE_BUSY_TIMEOUT_MS};`,
+];
 
 export function executeLocalD1SqlFile(sqlFile, options = {}) {
   const sql = readFileSync(sqlFile, "utf8");
@@ -10,8 +20,7 @@ export function executeLocalD1SqlFile(sqlFile, options = {}) {
 export function executeLocalD1Sql(sql, options = {}) {
   const databaseFile = resolveLocalD1Database(options);
   const transaction = [
-    "PRAGMA foreign_keys=ON;",
-    "PRAGMA busy_timeout=30000;",
+    ...LOCAL_SQLITE_CONNECTION_PRAGMAS,
     "BEGIN IMMEDIATE;",
     sql,
     "COMMIT;",
@@ -35,45 +44,52 @@ export function executeLocalD1Sql(sql, options = {}) {
   return databaseFile;
 }
 
+export function queryLocalD1Sql(sql, options = {}) {
+  const databaseFile = resolveLocalD1Database(options);
+  const output = execFileSync(
+    "sqlite3",
+    ["-json", "-readonly", databaseFile],
+    {
+      input: [`.timeout ${LOCAL_SQLITE_BUSY_TIMEOUT_MS}`, sql, ""].join("\n"),
+      stdio: ["pipe", "pipe", "pipe"],
+      encoding: "utf8",
+      maxBuffer: options.maxBuffer || 50 * 1024 * 1024,
+    }
+  ).trim();
+  return output ? JSON.parse(output) : [];
+}
+
+export function resolveLocalD1Path(options = {}) {
+  const root = resolve(options.root || process.cwd());
+  const env = options.env || process.env;
+  const configured = text(options.path || env.LOCAL_DB_PATH);
+  if (configured) return resolve(root, configured);
+  const dataDir = text(env.LOCAL_DATA_DIR);
+  return resolve(root, dataDir || "data/local", "stock-info.sqlite");
+}
+
+export function prepareLocalD1DatabasePath(options = {}) {
+  const file = resolveLocalD1Path(options);
+  mkdirSync(dirname(file), { recursive: true });
+  return file;
+}
+
 export function resolveLocalD1Database(options = {}) {
   const requiredTable = text(options.requiredTable);
   if (!requiredTable) {
     throw new Error("requiredTable is required to resolve the local D1 database");
   }
-  const configured = text(process.env.KNOWLEDGE_IMPORT_LOCAL_D1_FILE);
-  if (configured) {
-    const file = resolve(configured);
-    assertDatabase(file, requiredTable);
-    return file;
-  }
-  const stateDir = resolve(
-    options.root || process.cwd(),
-    text(process.env.WRANGLER_PERSIST_TO) || ".wrangler/state/v3",
-    "d1/miniflare-D1DatabaseObject"
-  );
-  if (!existsSync(stateDir)) {
-    throw new Error(`local Wrangler D1 state directory does not exist: ${stateDir}; run local migrations first`);
-  }
-  const candidates = readdirSync(stateDir)
-    .filter((name) => name.endsWith(".sqlite") && name !== "metadata.sqlite")
-    .map((name) => resolve(stateDir, name))
-    .filter((file) => statSync(file).isFile())
-    .filter((file) => hasTable(file, requiredTable));
-  if (candidates.length !== 1) {
-    throw new Error(
-      `expected one local D1 database containing ${requiredTable}, found ${candidates.length} in ${stateDir}; `
-      + "set KNOWLEDGE_IMPORT_LOCAL_D1_FILE explicitly"
-    );
-  }
-  return candidates[0];
+  const file = resolveLocalD1Path(options);
+  assertDatabase(file, requiredTable);
+  return file;
 }
 
 function assertDatabase(file, requiredTable) {
   if (!existsSync(file) || !statSync(file).isFile()) {
-    throw new Error(`configured local D1 database does not exist: ${file}`);
+    throw new Error(`configured local SQLite database does not exist: ${file}`);
   }
   if (!hasTable(file, requiredTable)) {
-    throw new Error(`configured local D1 database is missing table ${requiredTable}: ${file}`);
+    throw new Error(`configured local SQLite database is missing table ${requiredTable}: ${file}`);
   }
 }
 

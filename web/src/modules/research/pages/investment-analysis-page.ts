@@ -280,7 +280,7 @@ function reportCard(options: {
   const qualityIssues = completedMarkdown && !running ? reportQualityIssues(completedMarkdown) : [];
   const elapsed = running ? runningDuration(options.job, options.now) : completedDuration(options.report, options.job);
   const streamStats = streamStatsSummary(running ? options.job?.streamStats : options.report?.streamStats);
-  // A polling transport error only means the local Worker is temporarily
+  // A polling transport error only means the local Node runtime is temporarily
   // unreachable. It must never overwrite an already-persisted queued/running
   // job with a false "generation failed" state.
   const failure = options.job?.status === "failed" ? text(options.job.lastError) : (!running ? options.requestError : null);

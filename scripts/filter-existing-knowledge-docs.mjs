@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { executeLocalD1SqlFile, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
+import { executeLocalD1SqlFile, queryLocalD1Sql, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 import { topicFilterBypassDecision, topicFilterKeywordDecision } from "./lib/knowledge-topic-filter.mjs";
 
 const args = parseArgs(process.argv.slice(2));
@@ -134,11 +133,7 @@ function summarize(documents, filtered, context) {
 }
 
 function queryJson(databaseFile, sql) {
-  const output = execFileSync("sqlite3", ["-readonly", "-json", databaseFile, sql], {
-    encoding: "utf8",
-    maxBuffer: 100 * 1024 * 1024,
-  });
-  return JSON.parse(output || "[]");
+  return queryLocalD1Sql(sql, { path: databaseFile, requiredTable: "knowledge_docs", maxBuffer: 100 * 1024 * 1024 });
 }
 
 function countBy(rows, keyOf) {

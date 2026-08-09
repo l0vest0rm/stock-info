@@ -194,7 +194,7 @@ export function financialSourcePolicyForMarket(market: ResearchMarket): Financia
     primaryProvider: "yahoo",
     verificationProvider: "sec",
     expectedTradingCurrency: "USD",
-    // The local Worker reaches Yahoo through the unified HTTP client, whose
+    // The local Node runtime reaches Yahoo through the unified HTTP client, whose
     // configured domain proxy routes yahoo.com and its subdomains through the
     // local relay.  This is an implemented primary-source path, not a future
     // provider placeholder; an unavailable request is reported as a source

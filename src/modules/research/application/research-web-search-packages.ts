@@ -1,4 +1,5 @@
 import packageConfig from "../../../../config/research-web-search-packages.json";
+import { localJobLeaseUntil, reconcileLocalJobProviderSlots, releaseLocalJobProviderSlot, renewLocalJobLease, reserveLocalJobProviderSlot } from "../../../shared/local-job-protocol";
 import {
   RESEARCH_WEB_SEARCH_EVENT_RISK_PROMPT,
   RESEARCH_WEB_SEARCH_FORECAST_CONSENSUS_PROMPT,
@@ -17,7 +18,8 @@ type Citation = { title: string; url: string; start?: number; end?: number };
 type EvidenceStatus = "verified" | "unavailable" | "uncited" | "citation_unquoted" | "format_incomplete";
 type Evidence = { tabId: TabId; fieldKey: string; subject: string; statement: string; numericValue: number | null; unit: string | null; currency: string | null; period: string | null; productScope: string | null; regionScope: string | null; sourceTitle: string | null; sourceUrl: string | null; sourcePublishedAt: string | null; quote: string | null; locator: string | null; status: EvidenceStatus };
 type FinancialDisclosureBoundary = { reportPeriod: string; publishedAt: string; title: string; url: string; source: "statutory_verification" | "auto_filing_version" | "statutory_index" };
-export type ResearchWebSearchPackageExecutionRequest = { securityCode: string; packageKind: string; promptVersion: string; model: "gpt-5.6-luna"; reasoningEffort: "high"; maxOutputTokens: number; jobTimeoutMs: number; instructions: string; input: string };
+export type ResearchWebSearchPackageExecutionRequest = { jobId: string; attempt: number; runnerInstanceId: string; securityCode: string; packageKind: string; promptVersion: string; model: "gpt-5.6-luna"; reasoningEffort: "high"; maxOutputTokens: number; jobTimeoutMs: number; instructions: string; input: string };
+type PreparedResearchWebSearchPackageExecution = Omit<ResearchWebSearchPackageExecutionRequest, "jobId" | "attempt" | "runnerInstanceId">;
 export type ResearchWebSearchPackageExecutionResult = { model: string; text: string; webSearch?: { searched?: boolean; queries?: Array<string>; citations?: Citation[] } };
 
 const config = packageConfig as {
@@ -44,14 +46,13 @@ export async function enqueueResearchWebSearchPackage(db: D1Database, securityCo
   const existing = await jobByIdentity(db, code, kind);
   if (existing) {
     const status = text(existing.status);
-    const staleActive = (status === "queued" || status === "running") && webSearchPackageJobTimedOut(existing, now);
-    if (status === "failed" || staleActive) {
+    if (status === "failed") {
       // The condition makes a concurrent retry a no-op: only the caller that
       // actually moves the job back to queued schedules a Worker execution.
       const reset = await db.prepare(`update research_web_search_package_jobs
         set status='queued', last_error=null, completed_at=null, updated_at=?
-        where security_code=? and package_kind=? and prompt_version=? and (status='failed' or (status in ('queued', 'running') and updated_at<?))`)
-        .bind(now, code, kind, promptVersion(kind), now - jobTimeoutMs).run();
+        where security_code=? and package_kind=? and prompt_version=? and status='failed'`)
+        .bind(now, code, kind, promptVersion(kind)).run();
       const job = await jobByIdentity(db, code, kind);
       return { job, shouldStart: Boolean(reset.meta.changes), deduplicated: !reset.meta.changes };
     }
@@ -60,72 +61,95 @@ export async function enqueueResearchWebSearchPackage(db: D1Database, securityCo
   // INSERT OR IGNORE closes the read-then-insert race between simultaneous
   // clicks/reloads for the same security, package and prompt template.
   const inserted = await db.prepare(`insert or ignore into research_web_search_package_jobs (
-    security_code, package_kind, prompt_version, status, attempt_count, created_at, updated_at
-  ) values (?, ?, ?, 'queued', 0, ?, ?)`)
-    .bind(code, kind, promptVersion(kind), now, now).run();
+    job_id, job_type, security_code, package_kind, prompt_version, status, attempt_count, attempt, created_at, updated_at
+  ) values (?, 'research_web_search', ?, ?, ?, 'queued', 0, 0, ?, ?)`)
+    .bind(`research-web-search:${code}:${kind}:${promptVersion(kind)}`, code, kind, promptVersion(kind), now, now).run();
   const job = await jobByIdentity(db, code, kind);
   return { job, shouldStart: Boolean(inserted.meta.changes), deduplicated: !inserted.meta.changes };
 }
 
 /**
  * The local Node runner claims jobs before opening a long-lived model stream.
- * Keeping that connection outside Miniflare avoids a lost upstream SSE socket
- * terminating the local Worker before it can persist a terminal job state.
+ * The local-job-worker owns this connection so a lost upstream SSE socket
+ * cannot terminate local-http before it persists a terminal job state.
  */
-export async function claimNextResearchWebSearchPackageJob(db: D1Database) {
-  const queued = await db.prepare(`select security_code as securityCode, package_kind as packageKind, prompt_version as promptVersion
-    from research_web_search_package_jobs where status='queued' order by created_at asc limit 1`).first<Row>();
+export async function claimNextResearchWebSearchPackageJob(db: D1Database, runnerInstanceId: string) {
+  const runner = required(runnerInstanceId, "runnerInstanceId");
+  const now = Date.now();
+  await reconcileLocalJobProviderSlots(db, now);
+  await db.prepare(`update research_web_search_package_jobs set status='queued', lease_owner=null, lease_until=null,
+    last_error='local runner lease expired; retrying with a new attempt', updated_at=?
+    where status='running' and lease_until<?`).bind(now, now).run();
+  const queued = await db.prepare(`select security_code as securityCode, package_kind as packageKind, prompt_version as promptVersion,
+    job_id as jobId, attempt from research_web_search_package_jobs where status='queued' order by created_at asc limit 1`).first<Row>();
   if (!queued) return null;
   const code = required(queued.securityCode, "securityCode").toUpperCase();
   const kind = required(queued.packageKind, "packageKind") as PackageKind;
   if (!kinds.has(kind)) throw new Error("unsupported web search package");
-  const now = Date.now();
+  const jobId = required(queued.jobId, "jobId");
+  const nextAttempt = Number(queued.attempt) + 1;
+  if (!Number.isInteger(nextAttempt) || nextAttempt < 1) throw new Error("invalid web search package attempt");
+  if (!await reserveLocalJobProviderSlot(db, jobId, "research_web_search", nextAttempt, runner, now)) return null;
   const claim = await db.prepare(`update research_web_search_package_jobs
-    set status='running', attempt_count=attempt_count+1, started_at=?, updated_at=?
-    where security_code=? and package_kind=? and prompt_version=? and status='queued'`)
-    .bind(now, now, code, kind, promptVersion(kind)).run();
-  if (!claim.meta.changes) return null;
+    set status='running', attempt_count=attempt_count+1, attempt=?, lease_owner=?, lease_until=?, heartbeat_at=?, started_at=coalesce(started_at, ?), updated_at=?
+    where security_code=? and package_kind=? and prompt_version=? and status='queued' and attempt=?`)
+    .bind(nextAttempt, runner, localJobLeaseUntil(now), now, now, now, code, kind, promptVersion(kind), nextAttempt - 1).run();
+  if (!claim.meta.changes) { await releaseLocalJobProviderSlot(db, jobId, nextAttempt, runner, now); return null; }
   try {
-    return { job: await jobByIdentity(db, code, kind), request: await prepareResearchWebSearchPackageExecution(db, code, kind) };
+    return { job: await jobByIdentity(db, code, kind), request: { ...(await prepareResearchWebSearchPackageExecution(db, code, kind)), jobId, attempt: nextAttempt, runnerInstanceId: runner } };
   } catch (error) {
-    await failResearchWebSearchPackageJob(db, code, kind, error);
+    await failResearchWebSearchPackageJob(db, code, kind, error, runner, nextAttempt);
     throw error;
   }
 }
 
-export async function completeResearchWebSearchPackageJob(db: D1Database, securityCode: string, packageKind: string, response: ResearchWebSearchPackageExecutionResult) {
+export async function completeResearchWebSearchPackageJob(db: D1Database, securityCode: string, packageKind: string, response: ResearchWebSearchPackageExecutionResult, runnerInstanceId: string, attempt: number) {
   const code = required(securityCode, "securityCode").toUpperCase();
   const kind = required(packageKind, "packageKind") as PackageKind;
   if (!kinds.has(kind)) throw new Error("unsupported web search package");
   if (response.model !== config.model) throw new Error("web search package response model mismatch");
   try {
+    const runner = required(runnerInstanceId, "runnerInstanceId");
+    if (!Number.isInteger(attempt) || attempt < 1) throw new Error("web search package attempt is required");
+    const active = await jobByIdentity(db, code, kind);
+    if (active?.status !== "running" || Number(active.attempt) !== attempt || text(active.leaseOwner) !== runner || Number(active.leaseUntil) < Date.now()) throw new Error("web search package job lease is no longer owned by this runner");
     const result = await persistResearchWebSearchPackageResult(db, code, kind, response, Date.now());
     const completedAt = Date.now();
     const update = await db.prepare(`update research_web_search_package_jobs
-      set status='completed', package_id=?, last_error=null, completed_at=?, updated_at=?
-      where security_code=? and package_kind=? and prompt_version=? and status='running'`)
-      .bind(text(result.packageId), completedAt, completedAt, code, kind, promptVersion(kind)).run();
+      set status='completed', package_id=?, last_error=null, completed_at=?, updated_at=?, lease_until=null
+      where security_code=? and package_kind=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`)
+      .bind(text(result.packageId), completedAt, completedAt, code, kind, promptVersion(kind), attempt, runner, completedAt).run();
     if (!update.meta.changes) throw new Error("web search package job was no longer running when completion arrived");
+    await releaseLocalJobProviderSlot(db, required(active.jobId, "jobId"), attempt, runner, completedAt);
     return await jobByIdentity(db, code, kind);
   } catch (error) {
-    await failResearchWebSearchPackageJob(db, code, kind, error);
+    await failResearchWebSearchPackageJob(db, code, kind, error, runnerInstanceId, attempt);
     throw error;
   }
 }
 
-export async function failResearchWebSearchPackageJob(db: D1Database, securityCode: string, packageKind: string, error: unknown) {
+export async function failResearchWebSearchPackageJob(db: D1Database, securityCode: string, packageKind: string, error: unknown, runnerInstanceId: string, attempt: number) {
   const code = required(securityCode, "securityCode").toUpperCase();
   const kind = required(packageKind, "packageKind") as PackageKind;
   if (!kinds.has(kind)) throw new Error("unsupported web search package");
   const now = Date.now();
   const message = error instanceof Error ? error.message : String(error);
-  await db.prepare(`update research_web_search_package_jobs set status='failed', last_error=?, completed_at=?, updated_at=?
-    where security_code=? and package_kind=? and prompt_version=? and status='running'`)
-    .bind(message.slice(0, 1600), now, now, code, kind, promptVersion(kind)).run();
+  const runner = required(runnerInstanceId, "runnerInstanceId");
+  const existing = await jobByIdentity(db, code, kind);
+  const updated = await db.prepare(`update research_web_search_package_jobs set status='failed', last_error=?, completed_at=?, updated_at=?, lease_until=null
+    where security_code=? and package_kind=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`)
+    .bind(message.slice(0, 1600), now, now, code, kind, promptVersion(kind), attempt, runner, now).run();
+  if (!updated.meta.changes) throw new Error("web search package job lease is no longer owned by this runner");
+  await releaseLocalJobProviderSlot(db, required(existing?.jobId, "jobId"), attempt, runner, now);
   return await jobByIdentity(db, code, kind);
 }
 
-/** A local Worker restart ends waitUntil work without a final status write.
+export async function heartbeatResearchWebSearchPackageJob(db: D1Database, securityCode: string, packageKind: string, runnerInstanceId: string, attempt: number) {
+  const code = required(securityCode, "securityCode").toUpperCase(); const kind = required(packageKind, "packageKind") as PackageKind;
+  return renewLocalJobLease(db, "research_web_search_package_jobs", "security_code=? and package_kind=? and prompt_version=?", [code, kind, promptVersion(kind)], attempt, required(runnerInstanceId, "runnerInstanceId"));
+}
+
+/** A local Node runtime restart interrupts in-flight work without a final status write.
  * Treat an untouched queued/running row past the same bounded request window
  * as retryable rather than leaving the page in a permanent processing state. */
 export function webSearchPackageJobTimedOut(job: { status?: unknown; createdAt?: unknown; startedAt?: unknown; updatedAt?: unknown }, now = Date.now()) {
@@ -135,7 +159,7 @@ export function webSearchPackageJobTimedOut(job: { status?: unknown; createdAt?:
   return Number.isFinite(activityAt) && activityAt <= now - jobTimeoutMs;
 }
 
-export async function prepareResearchWebSearchPackageExecution(db: D1Database, securityCode: string, packageKind: string): Promise<ResearchWebSearchPackageExecutionRequest> {
+export async function prepareResearchWebSearchPackageExecution(db: D1Database, securityCode: string, packageKind: string): Promise<PreparedResearchWebSearchPackageExecution> {
   const code = required(securityCode, "securityCode").toUpperCase();
   if (!kinds.has(packageKind as PackageKind)) throw new Error("unsupported web search package");
   const kind = packageKind as PackageKind;
@@ -211,8 +235,8 @@ export async function loadResearchWebSearchPackages(db: D1Database, securityCode
       order by created_at desc`).bind(code).all<Row>();
     const byPackage = new Map<string, Row[]>();
     for (const item of evidence.results) { const id = text(item.packageId); byPackage.set(id, [...(byPackage.get(id) || []), item]); }
-    const jobs = await db.prepare(`select package_kind as packageKind, prompt_version as promptVersion, status,
-      attempt_count as attemptCount, package_id as packageId, last_error as lastError, created_at as createdAt, started_at as startedAt,
+    const jobs = await db.prepare(`select job_id as jobId, job_type as jobType, package_kind as packageKind, prompt_version as promptVersion, status,
+      attempt_count as attemptCount, attempt, lease_owner as leaseOwner, lease_until as leaseUntil, heartbeat_at as heartbeatAt, package_id as packageId, last_error as lastError, created_at as createdAt, started_at as startedAt,
       completed_at as completedAt, updated_at as updatedAt from research_web_search_package_jobs where security_code=? order by updated_at desc`).bind(code).all<Row>();
     return { availability: packages.results.length || jobs.results.length ? "available" as const : "empty" as const, packages: packages.results.map((item) => ({ ...item,
       searchQueries: jsonArray(item.searchQueriesJson), sourceCitations: jsonArray(item.sourceCitationsJson), missingFields: jsonArray(item.missingFieldsJson),
@@ -225,8 +249,8 @@ export async function loadResearchWebSearchPackages(db: D1Database, securityCode
 }
 
 async function jobByIdentity(db: D1Database, code: string, kind: PackageKind) {
-  return await db.prepare(`select security_code as securityCode, package_kind as packageKind, prompt_version as promptVersion,
-    status, attempt_count as attemptCount, package_id as packageId, last_error as lastError, created_at as createdAt, started_at as startedAt,
+  return await db.prepare(`select job_id as jobId, job_type as jobType, security_code as securityCode, package_kind as packageKind, prompt_version as promptVersion,
+    status, attempt_count as attemptCount, attempt, lease_owner as leaseOwner, lease_until as leaseUntil, heartbeat_at as heartbeatAt, package_id as packageId, last_error as lastError, created_at as createdAt, started_at as startedAt,
     completed_at as completedAt, updated_at as updatedAt from research_web_search_package_jobs
     where security_code=? and package_kind=? and prompt_version=?`).bind(code, kind, promptVersion(kind)).first<Row>();
 }

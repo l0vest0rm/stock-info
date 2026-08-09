@@ -3,6 +3,28 @@
   "purpose": "Explicit local-only import samples for the research market-structure ledger. Each observation is copied from a named official source and remains independently reviewable; this file is not a market-data feed or a claim that a security has complete coverage.",
   "identities": [
     {
+      "code": "300308.SZ",
+      "companyId": "operating:zhongji-innolight",
+      "request": {
+        "shareClass": "A shares / RMB ordinary shares",
+        "metadata": { "sampleSource": "official-market-structure.v1" },
+        "operatingCompany": {
+          "companyId": "operating:zhongji-innolight",
+          "canonicalName": "中际旭创股份有限公司",
+          "reportingCurrency": "CNY",
+          "fiscalYearEnd": "12-31",
+          "identityStatus": "confirmed"
+        },
+        "relationship": {
+          "relationshipId": "official-sample:zhongji-innolight:300308-listed-equity",
+          "relationshipType": "primary_listing",
+          "relationshipStatus": "confirmed",
+          "sourceUrl": "https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF",
+          "sourceNote": "The issuer's 2025 annual report identifies 中际旭创股份有限公司 and its 300308 A-share capital; this sample records the source-bound listed-security identity required by the attached period-end share fact."
+        }
+      }
+    },
+    {
       "code": "601939.SH",
       "companyId": "operating:ccb",
       "request": {

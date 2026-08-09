@@ -328,7 +328,7 @@ src/shared/llm/
 - 浏览器 UA
 - `Cookie: nid18=1`
 
-本地 `wrangler dev --local` 已验证这组参数能返回 `300308.SZ` K 线并写入 D1。
+本地 Node 运行时已验证这组参数能返回 `300308.SZ` K 线并写入 SQLite。
 
 如果线上 Worker 仍被 Eastmoney 拒绝，再切 Xueqiu，但不是在 Worker 里跑 CDP。
 Xueqiu 方案：
@@ -428,7 +428,7 @@ PDF 策略：
    cd /Users/terry/git/stock-info
    npm run build
    npm run db:migrate:local
-   npm run dev:worker
+   npm run dev:local
 
 3. 打开对照页面
    licai:      http://127.0.0.1:8080/company.html?code=300308.SZ&from=1735689600000

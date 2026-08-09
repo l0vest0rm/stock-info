@@ -1,4 +1,6 @@
 export type Bindings = {
+  /** Explicit platform identity. Never infer the local runtime from nodejs_compat. */
+  APP_RUNTIME?: "node" | "cloudflare";
   ASSETS: Fetcher;
   DB: D1Database;
   MARKET_DATA_BUCKET: R2Bucket;
@@ -27,7 +29,6 @@ export type Bindings = {
   BLS_API_KEY?: string;
   BOK_ECOS_API_KEY?: string;
   KOSIS_API_KEY?: string;
-  MACRO_FETCH_RELAY_URL?: string;
 };
 
 export type AppEnv = {

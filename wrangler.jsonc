@@ -8,6 +8,7 @@
     "enabled": true,
   },
   "vars": {
+    "APP_RUNTIME": "cloudflare",
     "APP_VERSION": "0.1.0",
     "MARKET_DATA_PUBLIC_BASE_URL": "https://market-data.tinfo.cc",
     "LLM_RUNTIME": "production",

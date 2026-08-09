@@ -7,7 +7,7 @@ import type { AppEnv } from "../../../types";
 export const optionsRoutes = new Hono<AppEnv>();
 
 optionsRoutes.get("/options/us", async (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "options API is only available in local development");
   }
   const code = requireQuery(c, "code");
@@ -23,7 +23,7 @@ optionsRoutes.get("/options/us", async (c) => {
 });
 
 optionsRoutes.get("/options/us/summary", async (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "options API is only available in local development");
   }
   const code = requireQuery(c, "code");
@@ -39,7 +39,7 @@ optionsRoutes.get("/options/us/summary", async (c) => {
 });
 
 optionsRoutes.get("/options/us/contracts", async (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "options API is only available in local development");
   }
   const code = requireQuery(c, "code");

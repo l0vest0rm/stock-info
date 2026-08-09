@@ -1,84 +1,67 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
-import { createResponsesProvider } from "@m2ai/shared-llm-client";
-import { fetchLocalWorker } from "./lib/local-worker-request.mjs";
+import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
+import { fetchLocalRuntime } from "./lib/local-runtime-request.mjs";
+import { createLocalJobProvider, loadLocalJobRuntimeConfig, resolveLocalJobApiKey } from "./lib/local-job-provider-registry.mjs";
+import { localRuntimeError, localRuntimeLog } from "./lib/local-runtime-log.mjs";
 
 const baseUrl = String(process.env.WEB_SEARCH_PACKAGE_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
-const apiKey = await resolveApiKey();
-const modelBaseUrl = String(process.env.OPENAI_BASE_URL || process.env.LLM_BASE_URL || "https://api.m2ai.cc/api/v1/openai").replace(/\/+$/, "");
-const pollIntervalMs = positiveInteger(process.env.WEB_SEARCH_PACKAGE_RUNNER_POLL_INTERVAL_MS, 5_000);
-let active = false;
+const apiKey = await resolveLocalJobApiKey();
+const runtimeConfig = await loadLocalJobRuntimeConfig();
+const handlerConfig = runtimeConfig?.handlers?.researchWebSearch;
+const pollIntervalMs = positiveInteger(process.env.WEB_SEARCH_PACKAGE_RUNNER_POLL_INTERVAL_MS, handlerConfig?.pollIntervalMs || 2_000);
+const concurrency = positiveInteger(process.env.WEB_SEARCH_PACKAGE_RUNNER_CONCURRENCY, handlerConfig?.concurrency || 2);
+const runnerInstanceId = `web-search-package-runner:${randomUUID()}`;
 
 if (!apiKey) throw new Error("local Web Search runner requires OPENAI_API_KEY or ~/.codex/auth.json");
 
-async function resolveApiKey() {
-  if (typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim()) return process.env.OPENAI_API_KEY.trim();
-  if (typeof process.env.LLM_API_KEY === "string" && process.env.LLM_API_KEY.trim()) return process.env.LLM_API_KEY.trim();
-  try {
-    const auth = JSON.parse(await readFile(`${process.env.HOME}/.codex/auth.json`, "utf8"));
-    return typeof auth?.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY.trim() : "";
-  } catch { return ""; }
-}
-
 async function request(path, init) {
-  const response = await fetchLocalWorker(`${baseUrl}${path}`, init);
+  const response = await fetchLocalRuntime(`${baseUrl}${path}`, init);
   const body = await response.json().catch(() => null);
   if (!response.ok || body?.code !== 200) throw new Error(body?.msg || `local runner endpoint failed: ${response.status}`);
   return body.data;
 }
+function post(path, body) { return request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); }
+function positiveInteger(value, fallback) { const parsed = Number(value); return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback; }
 
-async function poll() {
-  if (active) return;
-  active = true;
+async function runJob(job) {
+  const startedAt = Date.now();
+  const heartbeat = setInterval(() => { void post(`/api/research/web-search-package-jobs/${encodeURIComponent(job.securityCode)}/${encodeURIComponent(job.packageKind)}/heartbeat`, { runnerInstanceId, attempt: job.attempt }).catch(() => {}); }, 10_000);
+  localRuntimeLog("research-web-search", "started", { job_id: job.jobId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind });
   try {
-    const claimed = await request("/api/research/web-search-package-jobs/claim-next", { method: "POST" });
-    if (!claimed?.request?.securityCode || !claimed?.request?.packageKind) return;
-    const job = claimed.request;
-    const startedAt = Date.now();
-    console.log(`[web-search-runner] started ${job.securityCode} ${job.packageKind}`);
-    try {
-      const provider = createResponsesProvider({ name: "openai", baseUrl: modelBaseUrl, apiKey });
-      const response = await provider.generate({
-        model: job.model,
-        instructions: job.instructions,
-        input: [{ role: "user", content: [{ type: "input_text", text: job.input }] }],
-        reasoningEffort: job.reasoningEffort,
-        tools: [{ type: "web_search", searchContextSize: "high" }],
-        toolChoice: "required",
-        maxOutputTokens: job.maxOutputTokens,
-        signal: AbortSignal.timeout(job.jobTimeoutMs),
-      });
-      await request(`/api/research/web-search-package-jobs/${encodeURIComponent(job.securityCode)}/${encodeURIComponent(job.packageKind)}/complete`, {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: job.model, text: response.text, webSearch: response.webSearch }),
-      });
-      console.log(`[web-search-runner] completed ${job.securityCode} ${job.packageKind} duration_ms=${Date.now() - startedAt}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      try {
-        await request(`/api/research/web-search-package-jobs/${encodeURIComponent(job.securityCode)}/${encodeURIComponent(job.packageKind)}/fail`, {
-          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ error: message }),
-        });
-      } catch (failure) {
-        console.error(`[web-search-runner] could not persist failure for ${job.securityCode} ${job.packageKind}`, failure);
-      }
-      console.error(`[web-search-runner] failed ${job.securityCode} ${job.packageKind} duration_ms=${Date.now() - startedAt}: ${message}`);
-    }
+    const provider = createLocalJobProvider(apiKey);
+    const response = await provider.generate({ model: job.model, instructions: job.instructions, input: [{ role: "user", content: [{ type: "input_text", text: job.input }] }], reasoningEffort: job.reasoningEffort, tools: [{ type: "web_search", searchContextSize: "high" }], toolChoice: "required", maxOutputTokens: job.maxOutputTokens, signal: AbortSignal.timeout(job.jobTimeoutMs) });
+    await post(`/api/research/web-search-package-jobs/${encodeURIComponent(job.securityCode)}/${encodeURIComponent(job.packageKind)}/complete`, { model: job.model, text: response.text, webSearch: response.webSearch, runnerInstanceId, attempt: job.attempt });
+    localRuntimeLog("research-web-search", "completed", { job_id: job.jobId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind, duration_ms: Date.now() - startedAt });
   } catch (error) {
-    console.error("[web-search-runner] claim failed", error);
-  } finally {
-    active = false;
-  }
+    const message = error instanceof Error ? error.message : String(error);
+    try { await post(`/api/research/web-search-package-jobs/${encodeURIComponent(job.securityCode)}/${encodeURIComponent(job.packageKind)}/fail`, { error: message, runnerInstanceId, attempt: job.attempt }); }
+    catch (failure) { localRuntimeError("research-web-search", "failure_persist_failed", failure, { job_id: job.jobId, attempt: job.attempt }); }
+    localRuntimeLog("research-web-search", "failed", { job_id: job.jobId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind, duration_ms: Date.now() - startedAt, error: message });
+  } finally { clearInterval(heartbeat); }
 }
 
-function positiveInteger(value, fallback) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= 250 ? parsed : fallback;
+export function startResearchWebSearchPackageRunner() {
+  let accepting = true; let polling = false; const active = new Set();
+  const poll = async () => {
+    if (!accepting || polling) return; polling = true;
+    try {
+      while (accepting && active.size < concurrency) {
+        const claimed = await post("/api/research/web-search-package-jobs/claim-next", { runnerInstanceId });
+        if (!claimed?.request?.securityCode || !claimed?.request?.packageKind) break;
+        let work; work = runJob(claimed.request).finally(() => { active.delete(work); void poll(); }); active.add(work);
+      }
+    } catch (error) { localRuntimeError("research-web-search", "claim_failed", error); }
+    finally { polling = false; }
+  };
+  localRuntimeLog("research-web-search", "polling_started", { runner_instance_id: runnerInstanceId, concurrency, base_url: baseUrl, poll_interval_ms: pollIntervalMs });
+  void poll(); const timer = setInterval(() => void poll(), pollIntervalMs);
+  return { async stop({ gracefulTimeoutMs = runtimeConfig?.lease?.gracefulShutdownMs || 30_000 } = {}) { accepting = false; clearInterval(timer); await Promise.race([Promise.allSettled([...active]), new Promise((resolve) => setTimeout(resolve, gracefulTimeoutMs))]); } };
 }
 
-console.log(`[web-search-runner] polling ${baseUrl} every ${pollIntervalMs}ms`);
-void poll();
-const timer = setInterval(() => { void poll(); }, pollIntervalMs);
-process.once("SIGINT", () => { clearInterval(timer); process.exit(0); });
-process.once("SIGTERM", () => { clearInterval(timer); process.exit(0); });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const controller = startResearchWebSearchPackageRunner();
+  const stop = () => { void controller.stop().finally(() => process.exit(0)); };
+  process.once("SIGINT", stop); process.once("SIGTERM", stop);
+}

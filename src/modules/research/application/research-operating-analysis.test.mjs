@@ -9,7 +9,7 @@ import {
   RESEARCH_OPERATING_ANALYSIS_VALUATION_CONCLUSION_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_VALUATION_INPUTS_PROMPT,
 } from "../../../generated/prompt-text.ts";
-import { OPERATING_ANALYSIS_PROMPT_VERSION, OPERATING_ANALYSIS_REQUIRED_HEADINGS, OPERATING_ANALYSIS_STAGES, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage } from "./research-operating-analysis.ts";
+import { OPERATING_ANALYSIS_PROMPT_VERSION, OPERATING_ANALYSIS_REQUIRED_HEADINGS, OPERATING_ANALYSIS_STAGES, checkpointResearchOperatingAnalysisStage, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage } from "./research-operating-analysis.ts";
 
 test("six prompts, six stage contracts, and the staged version stay aligned", () => {
   assert.equal(config.version, OPERATING_ANALYSIS_PROMPT_VERSION);
@@ -25,10 +25,11 @@ test("six prompts, six stage contracts, and the staged version stay aligned", ()
 test("a stage start stores its actual input and prompt separately from the stream", async () => {
   const statements = [];
   const db = { prepare(sql) { statements.push(sql); return { bind() {
+    if (/select job_id as jobId from research_operating_analysis_jobs/.test(sql)) return { first: async () => ({ jobId: "operating-job" }) };
     if (/select status from research_operating_analysis_stage_artifacts/.test(sql)) return { first: async () => null };
     return { run: async () => ({ meta: { changes: 1 } }) };
   } }; } };
-  await startResearchOperatingAnalysisStage(db, "300308.SZ", "company_baseline", { researchTaskId: "task" }, { model: "gpt-5.6-luna", instructions: "system", userPrompt: "user" }, "runner");
+  await startResearchOperatingAnalysisStage(db, "300308.SZ", "company_baseline", { researchTaskId: "task" }, { model: "gpt-5.6-luna", instructions: "system", userPrompt: "user" }, "runner", 2);
   assert(statements.some((sql) => /insert into research_operating_analysis_stage_artifacts/.test(sql)));
   assert(statements.some((sql) => /update research_operating_analysis_jobs set prompt_json/.test(sql)));
 });
@@ -36,20 +37,25 @@ test("a stage start stores its actual input and prompt separately from the strea
 test("terminal Markdown stage output is persisted independently", async () => {
   let update = "";
   const db = { prepare(sql) { return { bind() { return { run: async () => { update = sql; return { meta: { changes: 1 } }; } }; } }; } };
-  await completeResearchOperatingAnalysisStage(db, "300308.SZ", "operating_analysis", "# 2. 公司概况与商业模式", "partial", "runner");
+  await completeResearchOperatingAnalysisStage(db, "300308.SZ", "operating_analysis", "# 2. 公司概况与商业模式", "partial", "runner", 2);
   assert.match(update, /output_markdown/);
-  await assert.rejects(() => completeResearchOperatingAnalysisStage(db, "300308.SZ", "company_baseline", "not JSON", "complete", "runner"), /JSON stage output is invalid/);
+  await assert.rejects(() => completeResearchOperatingAnalysisStage(db, "300308.SZ", "company_baseline", "not JSON", "complete", "runner", 2), /JSON stage output is invalid/);
 });
 
-test("a Worker interruption requeues only its own running job and keeps completed artifacts", async () => {
+test("only an expired attempt can requeue its own running job", async () => {
   const statements = [];
   const db = { prepare(sql) { statements.push(sql); return { bind() {
-    if (/select status, lease_owner/.test(sql)) return { first: async () => ({ status: "running", leaseOwner: "runner" }) };
+    if (/select job_id as jobId, status, lease_owner/.test(sql)) return { first: async () => ({ jobId: "operating-job", status: "running", leaseOwner: "runner", leaseUntil: 0, attempt: 2 }) };
     return { run: async () => ({ meta: { changes: 1 } }) };
   } }; } };
-  assert.equal(await requeueInterruptedResearchOperatingAnalysisJob(db, "300308.SZ", "connection lost", "runner"), true);
+  assert.equal(await requeueInterruptedResearchOperatingAnalysisJob(db, "300308.SZ", "connection lost", "runner", 2), true);
   assert(statements.some((sql) => /stage_artifacts set status='queued'/.test(sql)));
   assert(statements.some((sql) => /jobs set status='queued'.*lease_owner=null/.test(sql)));
+});
+
+test("a stale operating stage checkpoint is fenced by its attempt and owner", async () => {
+  const db = { prepare() { return { bind() { return { run: async () => ({ meta: { changes: 0 } }) }; } }; } };
+  await assert.rejects(() => checkpointResearchOperatingAnalysisStage(db, "300308.SZ", "operating_analysis", "late output", "runner-a", 1), /no longer running/);
 });
 
 test("final assembly cannot mark a run complete without all fixed chapters", async () => {

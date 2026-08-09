@@ -2,14 +2,23 @@
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { buildContentOptions } from "./knowledge-content-r2.mjs";
+import { executeLocalD1Sql, queryLocalD1Sql, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
 const args = parseArgs(process.argv.slice(2));
+if (args.help) {
+  printHelp();
+  process.exit(0);
+}
+if (!args.remote) args.databasePath = resolveLocalD1Database({ requiredTable: "knowledge_doc_content_refs" });
 const options = buildContentOptions({
   remote: args.remote,
   contentBucket: args.contentBucket,
   contentPublicBaseUrl: args.contentPublicBaseUrl,
-  uploadContentRemote: true,
+  localContentDir: args.contentDir,
+  uploadContentRemote: args.remote,
 });
 const run = {
   runId: `knowledge-content-cleanup:${randomUUID()}`,
@@ -19,13 +28,15 @@ const run = {
 
 try {
   const refs = loadReferencedKeys(args.database, args.remote, args.prefix);
-  const objects = listBucketObjects({
-    bucket: options.bucket,
-    endpoint: options.s3Endpoint,
-    accessKeyId: options.s3AccessKeyId,
-    secretAccessKey: options.s3SecretAccessKey,
-    prefix: args.prefix,
-  });
+  const objects = args.remote
+    ? listBucketObjects({
+      bucket: options.bucket,
+      endpoint: options.s3Endpoint,
+      accessKeyId: options.s3AccessKeyId,
+      secretAccessKey: options.s3SecretAccessKey,
+      prefix: args.prefix,
+    })
+    : listLocalContentObjects(options.localContentDir, args.prefix);
   const now = Date.now();
   const referenced = new Set(refs);
   const bucketByKey = new Map(objects.map((item) => [item.key, item]));
@@ -37,18 +48,21 @@ try {
 
   let deleted = [];
   if (args.apply && orphans.length > 0) {
-    deleted = deleteBucketObjects({
-      bucket: options.bucket,
-      endpoint: options.s3Endpoint,
-      accessKeyId: options.s3AccessKeyId,
-      secretAccessKey: options.s3SecretAccessKey,
-      keys: orphans.map((item) => item.key),
-    });
+    deleted = args.remote
+      ? deleteBucketObjects({
+        bucket: options.bucket,
+        endpoint: options.s3Endpoint,
+        accessKeyId: options.s3AccessKeyId,
+        secretAccessKey: options.s3SecretAccessKey,
+        keys: orphans.map((item) => item.key),
+      })
+      : deleteLocalContentObjects(options.localContentDir, orphans.map((item) => item.key));
   }
 
   const summary = {
     dryRun: !args.apply,
-    database: args.database,
+    database: args.remote ? args.database : args.databasePath,
+    databasePath: args.remote ? null : args.databasePath,
     remote: args.remote,
     bucket: options.bucket,
     prefix: args.prefix,
@@ -108,11 +122,14 @@ function parseArgs(argv) {
     writeRun: true,
     contentBucket: "",
     contentPublicBaseUrl: "",
+    contentDir: "",
+    help: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--remote") parsed.remote = true;
     else if (arg === "--local") parsed.remote = false;
+    else if (arg === "--help" || arg === "-h") parsed.help = true;
     else if (arg === "--apply") parsed.apply = true;
     else if (arg === "--dry-run") parsed.apply = false;
     else if (arg === "--database") parsed.database = requireValue(argv, ++i, arg);
@@ -120,6 +137,7 @@ function parseArgs(argv) {
     else if (arg === "--min-age-days") parsed.minAgeDays = positiveInteger(requireValue(argv, ++i, arg), 7);
     else if (arg === "--content-bucket") parsed.contentBucket = requireValue(argv, ++i, arg);
     else if (arg === "--content-public-base-url") parsed.contentPublicBaseUrl = requireValue(argv, ++i, arg);
+    else if (arg === "--content-dir") parsed.contentDir = requireValue(argv, ++i, arg);
     else if (arg === "--skip-run-record") parsed.writeRun = false;
     else throw new Error(`unknown argument: ${arg}`);
   }
@@ -149,9 +167,15 @@ function loadReferencedKeys(database, remote, prefix) {
     from knowledge_filtered_doc_content_refs
     where coalesce(content_key, '') like ${sqlString(`${prefix}%`)}
   `;
+  if (!remote) {
+    return queryLocalD1Sql(sql, { requiredTable: "knowledge_doc_content_refs" })
+      .map((row) => String(row.content_key || "").trim())
+      .filter(Boolean)
+      .sort();
+  }
   const output = execFileSync(
     "npx",
-    ["wrangler", "d1", "execute", database, remote ? "--remote" : "--local", "--json", "--command", sql],
+    ["wrangler", "d1", "execute", database, "--remote", "--json", "--command", sql],
     { encoding: "utf8", stdio: "pipe", maxBuffer: 20 * 1024 * 1024 }
   );
   const payload = JSON.parse(output);
@@ -159,6 +183,31 @@ function loadReferencedKeys(database, remote, prefix) {
     .map((row) => String(row.content_key || "").trim())
     .filter(Boolean)
     .sort();
+}
+
+function listLocalContentObjects(contentDir, prefix) {
+  const root = resolve(contentDir);
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const file = resolve(root, entry.parentPath || entry.path, entry.name);
+      const relativeKey = relative(root, file).split("\\\\").join("/");
+      const key = `knowledge-content/${relativeKey}`;
+      const metadata = statSync(file);
+      return { key, size: metadata.size, lastModifiedMs: metadata.mtimeMs };
+    })
+    .filter((item) => item.key.startsWith(prefix));
+}
+
+function deleteLocalContentObjects(contentDir, keys) {
+  const root = resolve(contentDir);
+  for (const key of keys) {
+    const relativeKey = String(key).replace(/^knowledge-content\//, "");
+    const file = resolve(root, relativeKey);
+    if (file !== root && file.startsWith(`${root}/`) && existsSync(file)) rmSync(file);
+  }
+  return keys;
 }
 
 function listBucketObjects({ bucket, endpoint, accessKeyId, secretAccessKey, prefix }) {
@@ -285,13 +334,23 @@ function recordRun({ database, remote, runId, source, startedAt, finishedAt, sta
       ${sqlString(error)}
     );
   `;
+  if (!remote) {
+    executeLocalD1Sql(sql, { requiredTable: "knowledge_ingest_runs" });
+    return;
+  }
   execFileSync(
     "npx",
-    ["wrangler", "d1", "execute", database, remote ? "--remote" : "--local", "--command", sql],
+    ["wrangler", "d1", "execute", database, "--remote", "--command", sql],
     { encoding: "utf8", stdio: "pipe", maxBuffer: 20 * 1024 * 1024 }
   );
 }
 
 function sqlString(value) {
   return `'${String(value ?? "").replaceAll("'", "''")}'`;
+}
+
+function printHelp() {
+  console.log(`Usage: node scripts/cleanup-knowledge-content.mjs [--local|--remote] [--dry-run|--apply]
+
+Local mode reads Node SQLite at LOCAL_DB_PATH and cleans KNOWLEDGE_CONTENT_LOCAL_DIR. Remote mode explicitly uses Cloudflare D1 and R2 credentials.`);
 }

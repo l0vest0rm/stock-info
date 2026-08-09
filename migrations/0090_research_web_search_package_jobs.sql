@@ -1,4 +1,4 @@
--- The browser only enqueues a task. A local Worker waitUntil execution owns
+-- The browser only enqueues a task. A local Node runner owns
 -- the model request, so navigation/reload cannot cancel a claimed job.
 create table research_web_search_package_jobs (
   security_code text not null,

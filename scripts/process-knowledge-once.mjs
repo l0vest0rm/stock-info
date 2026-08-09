@@ -27,6 +27,7 @@ import {
   TOPIC_BATCH_USER_PROMPT,
 } from "./generated/prompt-text.mjs";
 import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
+import { executeLocalD1Sql } from "./lib/local-d1-sqlite.mjs";
 import { shouldKeepOriginalReportPdf, topicFilterBypassDecision, topicFilterKeywordDecision } from "./lib/knowledge-topic-filter.mjs";
 import {
   downloadPdfBytes,
@@ -879,7 +880,7 @@ async function enrichWithLlmIfEnabled(doc, cfg) {
     return doc;
   }
   throw new Error(
-    "direct CLI knowledge LLM enrichment has been retired; import documents first and use the local Worker knowledge processing job"
+    "direct CLI knowledge LLM enrichment has been retired; import documents first and use the local Node knowledge processing job"
   );
 }
 
@@ -1278,7 +1279,7 @@ function pruneKnowledgeStorage(cfg) {
   if (statements.length === 0) {
     return cleanup;
   }
-  executeWranglerSql(statements.join("\n"), cfg);
+  executeKnowledgeDatabaseSql(statements.join("\n"), cfg);
   return cleanup;
 }
 
@@ -1423,7 +1424,10 @@ function saveScanState(file, patch) {
   writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`);
 }
 
-function executeWranglerSql(sql, cfg, options = {}) {
+function executeKnowledgeDatabaseSql(sql, cfg, options = {}) {
+  if (!dbTarget) {
+    return executeLocalD1Sql(sql, { root, requiredTable: "knowledge_docs" });
+  }
   return execFileSync(
     "npx",
     [
@@ -1431,7 +1435,7 @@ function executeWranglerSql(sql, cfg, options = {}) {
       "d1",
       "execute",
       cfg.database || "stock_info",
-      dbTarget ? "--remote" : "--local",
+      "--remote",
       "--command",
       sql,
       ...(options.json ? ["--json"] : []),

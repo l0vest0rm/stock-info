@@ -5,19 +5,29 @@ import { readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildContentOptions, planKnowledgeContent, prepareKnowledgeContentAsync } from "./knowledge-content-r2.mjs";
+import { executeLocalD1Sql, queryLocalD1Sql, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
 const args = parseArgs(process.argv.slice(2));
+if (args.help) {
+  printHelp();
+  process.exit(0);
+}
+const localDatabaseFile = args.remote ? "" : resolveLocalD1Database({ requiredTable: "knowledge_docs" });
 const contentOptions = buildContentOptions(args);
 const maxSqlBatchBytes = positiveInteger(process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES, 700000);
-
-assertLocalWranglerStopped(args);
 
 const docRows = queryTable("knowledge_docs", "knowledge_doc_content_refs", args.database, args.remote);
 const filteredRows = queryFilteredTable(args.database, args.remote);
 const rows = [...docRows, ...filteredRows];
 
 if (rows.length === 0) {
-  console.log(JSON.stringify({ updated: 0, scopeCounts: { knowledge_docs: 0, knowledge_filtered_docs: 0 } }, null, 2));
+  console.log(JSON.stringify({
+    dryRun: args.dryRun,
+    database: args.remote ? args.database : localDatabaseFile,
+    databasePath: args.remote ? null : localDatabaseFile,
+    updated: 0,
+    scopeCounts: { knowledge_docs: 0, knowledge_filtered_docs: 0 },
+  }, null, 2));
   process.exit(0);
 }
 
@@ -61,6 +71,8 @@ if (!args.dryRun) {
 
 console.log(JSON.stringify({
   dryRun: args.dryRun,
+  database: args.remote ? args.database : localDatabaseFile,
+  databasePath: args.remote ? null : localDatabaseFile,
   updated: updates.length,
   scopeCounts: {
     knowledge_docs: updates.filter((item) => item.scope === "knowledge_docs").length,
@@ -76,11 +88,13 @@ function parseArgs(argv) {
     uploadContentRemote: false,
     skipContentUpload: false,
     dryRun: true,
+    help: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--remote") parsed.remote = true;
     else if (arg === "--local") parsed.remote = false;
+    else if (arg === "--help" || arg === "-h") parsed.help = true;
     else if (arg === "--upload-content-remote") parsed.uploadContentRemote = true;
     else if (arg === "--skip-content-upload") parsed.skipContentUpload = true;
     else if (arg === "--apply") parsed.dryRun = false;
@@ -88,6 +102,7 @@ function parseArgs(argv) {
     else if (arg === "--database") parsed.database = requireValue(argv, ++i, arg);
     else if (arg === "--content-bucket") parsed.contentBucket = requireValue(argv, ++i, arg);
     else if (arg === "--content-public-base-url") parsed.contentPublicBaseUrl = requireValue(argv, ++i, arg);
+    else if (arg === "--content-dir") parsed.localContentDir = requireValue(argv, ++i, arg);
     else throw new Error(`unknown argument: ${arg}`);
   }
   return parsed;
@@ -128,6 +143,9 @@ function queryFilteredTable(database, remote) {
 }
 
 function executeSql(sql, database, remote) {
+  if (!remote) {
+    return [{ results: queryLocalD1Sql(sql, { requiredTable: "knowledge_docs" }) }];
+  }
   const result = execFileSync(
     "npx",
     [
@@ -135,7 +153,7 @@ function executeSql(sql, database, remote) {
       "d1",
       "execute",
       database,
-      remote ? "--remote" : "--local",
+      "--remote",
       "--command",
       sql,
       "--json",
@@ -150,6 +168,10 @@ function executeSql(sql, database, remote) {
 }
 
 function executeSqlFile(sql, database, remote) {
+  if (!remote) {
+    executeLocalD1Sql(sql, { requiredTable: "knowledge_docs" });
+    return;
+  }
   const dir = mkdtempSync(join(tmpdir(), "stock-info-knowledge-migrate-"));
   const sqlFile = join(dir, "update.sql");
   try {
@@ -161,7 +183,7 @@ function executeSqlFile(sql, database, remote) {
         "d1",
         "execute",
         database,
-        remote ? "--remote" : "--local",
+        "--remote",
         "--file",
         sqlFile,
       ],
@@ -247,25 +269,8 @@ async function mapWithConcurrency(items, concurrency, mapper) {
   return results;
 }
 
-function assertLocalWranglerStopped(args) {
-  if (args.remote || args.dryRun) {
-    return;
-  }
-  const output = execFileSync("pgrep", ["-af", "wrangler dev"], {
-    encoding: "utf8",
-    stdio: "pipe",
-  }).trim();
-  if (!output) {
-    return;
-  }
-  const stockInfoWrangler = output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .find((line) => line.includes("/Users/terry/git/stock-info"));
-  if (stockInfoWrangler) {
-    throw new Error(
-      `local knowledge migration requires stock-info wrangler dev to be stopped first: ${stockInfoWrangler}`,
-    );
-  }
+function printHelp() {
+  console.log(`Usage: node scripts/migrate-localfs-knowledge-content.mjs [--local|--remote] [--dry-run|--apply]
+
+Local mode reads and updates Node SQLite at LOCAL_DB_PATH in transactional batches. Remote mode explicitly updates Cloudflare D1. --upload-content-remote controls only R2 content upload.`);
 }

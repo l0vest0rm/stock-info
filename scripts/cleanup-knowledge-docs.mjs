@@ -3,9 +3,15 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { loadKnowledgeDefaults } from "./knowledge-defaults.mjs";
+import { executeLocalD1Sql, queryLocalD1Sql, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
 const defaults = loadKnowledgeDefaults();
 const args = parseArgs(process.argv.slice(2), defaults);
+if (args.help) {
+  printHelp();
+  process.exit(0);
+}
+if (!args.remote) args.databasePath = resolveLocalD1Database({ requiredTable: "knowledge_docs" });
 const run = {
   runId: `knowledge-docs-cleanup:${randomUUID()}`,
   startedAt: Date.now(),
@@ -53,7 +59,8 @@ function cleanupKnowledgeDocs(options) {
   if (!options.enabled || options.maxAgeDays <= 0) {
     return {
       dryRun: !options.apply,
-      database: options.database,
+      database: options.remote ? options.database : options.databasePath,
+      databasePath: options.databasePath || null,
       remote: options.remote,
       retentionEnabled: options.enabled,
       maxAgeDays: options.maxAgeDays,
@@ -90,7 +97,8 @@ function cleanupKnowledgeDocs(options) {
 
   return {
     dryRun: !options.apply,
-    database: options.database,
+    database: options.remote ? options.database : options.databasePath,
+    databasePath: options.databasePath || null,
     remote: options.remote,
     retentionEnabled: options.enabled,
     maxAgeDays: options.maxAgeDays,
@@ -114,6 +122,7 @@ function parseArgs(argv, defaults) {
     const arg = argv[i];
     if (arg === "--remote") parsed.remote = true;
     else if (arg === "--local") parsed.remote = false;
+    else if (arg === "--help" || arg === "-h") parsed.help = true;
     else if (arg === "--apply") parsed.apply = true;
     else if (arg === "--dry-run") parsed.apply = false;
     else if (arg === "--database") parsed.database = requireValue(argv, ++i, arg);
@@ -126,9 +135,12 @@ function parseArgs(argv, defaults) {
 }
 
 function querySingleInteger(sql, options) {
+  if (!options.remote) {
+    return integer(queryLocalD1Sql(sql, { requiredTable: "knowledge_docs" })[0]?.count, 0);
+  }
   const output = execFileSync(
     "npx",
-    ["wrangler", "d1", "execute", options.database, options.remote ? "--remote" : "--local", "--json", "--command", sql],
+    ["wrangler", "d1", "execute", options.database, "--remote", "--json", "--command", sql],
     { encoding: "utf8", stdio: "pipe", maxBuffer: 20 * 1024 * 1024 }
   );
   const payload = JSON.parse(output);
@@ -136,9 +148,13 @@ function querySingleInteger(sql, options) {
 }
 
 function executeSql(sql, options) {
+  if (!options.remote) {
+    executeLocalD1Sql(sql, { requiredTable: "knowledge_docs" });
+    return;
+  }
   execFileSync(
     "npx",
-    ["wrangler", "d1", "execute", options.database, options.remote ? "--remote" : "--local", "--command", sql],
+    ["wrangler", "d1", "execute", options.database, "--remote", "--command", sql],
     { encoding: "utf8", stdio: "pipe", maxBuffer: 20 * 1024 * 1024 }
   );
 }
@@ -179,4 +195,10 @@ function positiveInteger(value, fallback) {
 function integer(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : fallback;
+}
+
+function printHelp() {
+  console.log(`Usage: node scripts/cleanup-knowledge-docs.mjs [--local|--remote] [--dry-run|--apply]
+
+Local mode reads and writes Node SQLite at LOCAL_DB_PATH (default data/local/stock-info.sqlite). Remote mode explicitly uses Cloudflare D1.`);
 }

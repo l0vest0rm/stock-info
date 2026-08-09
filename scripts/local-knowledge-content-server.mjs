@@ -5,6 +5,7 @@ import { createReadStream, existsSync, mkdirSync, statSync } from "node:fs";
 import { open, readFile, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   downloadPdfBytes,
@@ -39,15 +40,17 @@ const execFileAsync = promisify(execFile);
 mkdirSync(reportPdfDir, { recursive: true });
 mkdirSync(reportMarkdownDir, { recursive: true });
 
-const server = createServer((req, res) => {
-  void handleRequest(req, res).catch((error) => {
-    console.error("knowledge content request failed", error);
-    if (!res.headersSent) {
-      res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
-    }
-    res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+export function createKnowledgeContentServer() {
+  return createServer((req, res) => {
+    void handleRequest(req, res).catch((error) => {
+      console.error("knowledge content request failed", error);
+      if (!res.headersSent) {
+        res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+      }
+      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+    });
   });
-});
+}
 
 async function handleRequest(req, res) {
   const method = String(req.method || "GET").toUpperCase();
@@ -129,15 +132,18 @@ async function handleRequest(req, res) {
   }
 }
 
-server.listen(port, host, () => {
-  console.log(JSON.stringify({
-    host,
-    port,
-    contentDir,
-    reportWorkDir,
-    reportConversionConcurrency,
-  }, null, 2));
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const server = createKnowledgeContentServer();
+  server.listen(port, host, () => {
+    console.log(JSON.stringify({
+      host,
+      port,
+      contentDir,
+      reportWorkDir,
+      reportConversionConcurrency,
+    }, null, 2));
+  });
+}
 
 async function convertReportCached(docId, url) {
   const existing = reportConversionsInFlight.get(docId);

@@ -1,4 +1,5 @@
 import { RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_MS, RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_NAME, ownsResearchOperatingAnalysisRunnerLease } from "./research-operating-analysis-runner-lease";
+import { localJobLeaseUntil, reconcileLocalJobProviderSlots, releaseLocalJobProviderSlot, renewLocalJobLease, reserveLocalJobProviderSlot } from "../../../shared/local-job-protocol";
 
 type Row = Record<string, unknown>;
 type ModelPrompt = { model?: string; instructions: string; userPrompt: string };
@@ -37,13 +38,13 @@ export async function loadResearchOperatingAnalysis(db: D1Database, securityCode
   try {
     const [run, job, versions, stages] = await Promise.all([
       findResearchOperatingAnalysisRun(db, code),
-      db.prepare(`select security_code as securityCode, prompt_version as promptVersion, status, run_id as runId, attempt_count as attemptCount,
+      db.prepare(`select job_id as jobId, job_type as jobType, security_code as securityCode, prompt_version as promptVersion, status, run_id as runId, attempt_count as attemptCount, attempt, lease_owner as leaseOwner, lease_until as leaseUntil, heartbeat_at as heartbeatAt,
         reasoning_effort as reasoningEffort, last_error as lastError, created_at as createdAt, started_at as startedAt, completed_at as completedAt,
         updated_at as updatedAt, prompt_json as promptJson from research_operating_analysis_jobs where security_code=? and prompt_version=?`)
         .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>(),
       db.prepare(`select run_id as runId, prompt_version as promptVersion, provider, generated_at as generatedAt, total_duration_ms as totalDurationMs
         from research_operating_analysis_runs where security_code=? and prompt_version=? order by generated_at desc`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).all<Row>(),
-      db.prepare(`select stage_key as stageKey, status, attempt_count as attemptCount, output_json as outputJson, output_markdown as outputMarkdown,
+      db.prepare(`select stage_key as stageKey, status, attempt_count as attemptCount, attempt, lease_owner as leaseOwner, output_json as outputJson, output_markdown as outputMarkdown,
         partial_output as partialOutput, prompt_json as promptJson, input_json as inputJson, last_error as lastError, blocked_json as blockedJson,
         started_at as startedAt, completed_at as completedAt, updated_at as updatedAt from research_operating_analysis_stage_artifacts
         where security_code=? and prompt_version=? order by stage_key`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).all<Row>(),
@@ -96,12 +97,12 @@ export async function enqueueResearchOperatingAnalysis(db: D1Database, securityC
   if (existing?.status === "completed" && !force) return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: false, deduplicated: true };
   if (existing) {
     await db.prepare(`update research_operating_analysis_jobs set status='queued', run_id=null, reasoning_effort=?, last_error=null, started_at=null,
-      completed_at=null, prompt_json=null, lease_owner=null, updated_at=? where security_code=? and prompt_version=?`).bind(effort, now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
+      completed_at=null, prompt_json=null, lease_owner=null, lease_until=null, updated_at=? where security_code=? and prompt_version=?`).bind(effort, now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
     if (force) await db.prepare(`delete from research_operating_analysis_stage_artifacts where security_code=? and prompt_version=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
     else await db.prepare(`update research_operating_analysis_stage_artifacts set status='queued', last_error=null, completed_at=null, updated_at=? where security_code=? and prompt_version=? and status in ('blocked','failed')`).bind(now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
   } else {
-    await db.prepare(`insert into research_operating_analysis_jobs (security_code, prompt_version, status, reasoning_effort, attempt_count, created_at, updated_at)
-      values (?, ?, 'queued', ?, 0, ?, ?)`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, effort, now, now).run();
+    await db.prepare(`insert into research_operating_analysis_jobs (job_id, job_type, security_code, prompt_version, status, reasoning_effort, attempt_count, attempt, created_at, updated_at)
+      values (?, 'research_operating_analysis', ?, ?, 'queued', ?, 0, 0, ?, ?)`).bind(`research-operating-analysis:${code}:${OPERATING_ANALYSIS_PROMPT_VERSION}`, code, OPERATING_ANALYSIS_PROMPT_VERSION, effort, now, now).run();
   }
   return { ...(await loadResearchOperatingAnalysis(db, code)), shouldStart: true, deduplicated: false };
 }
@@ -110,38 +111,45 @@ export async function enqueueResearchOperatingAnalysis(db: D1Database, securityC
 export async function claimResearchOperatingAnalysisJob(db: D1Database, runnerInstanceId: string) {
   if (!await ownsResearchOperatingAnalysisRunnerLease(db, runnerInstanceId)) return null;
   const now = Date.now(); const runner = runnerInstanceId.trim();
-  await db.prepare(`update research_operating_analysis_jobs set status='queued', last_error='local runner restarted; continuing from the last completed stage',
-    updated_at=?, lease_owner=null where prompt_version=? and status='running' and (lease_owner is null or lease_owner<>?)`).bind(now, OPERATING_ANALYSIS_PROMPT_VERSION, runner).run();
-  const candidate = await db.prepare(`select security_code as securityCode, reasoning_effort as reasoningEffort from research_operating_analysis_jobs where prompt_version=? and status='queued' order by created_at asc limit 1`).bind(OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
+  await reconcileLocalJobProviderSlots(db, now);
+  await db.prepare(`update research_operating_analysis_jobs set status='queued', last_error='local runner lease expired; continuing from the last completed stage',
+    updated_at=?, lease_owner=null, lease_until=null where prompt_version=? and status='running' and lease_until<?`).bind(now, OPERATING_ANALYSIS_PROMPT_VERSION, now).run();
+  const candidate = await db.prepare(`select security_code as securityCode, reasoning_effort as reasoningEffort, job_id as jobId, attempt from research_operating_analysis_jobs where prompt_version=? and status='queued' order by created_at asc limit 1`).bind(OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
   const code = text(candidate?.securityCode); if (!code) return null;
+  const jobId = text(candidate?.jobId); const nextAttempt = Number(candidate?.attempt) + 1;
+  if (!jobId || !Number.isInteger(nextAttempt) || nextAttempt < 1) throw new Error("invalid operating-analysis job attempt");
+  if (!await reserveLocalJobProviderSlot(db, jobId, "research_operating_analysis", nextAttempt, runner, now)) return null;
   const result = await db.prepare(`update research_operating_analysis_jobs set status='running', attempt_count=attempt_count+1, started_at=coalesce(started_at, ?),
-    updated_at=?, lease_owner=? where security_code=? and prompt_version=? and status='queued' and exists (select 1 from research_operating_analysis_runner_leases where lease_name=? and owner_id=? and heartbeat_at>=?)`)
-    .bind(now, now, runner, code, OPERATING_ANALYSIS_PROMPT_VERSION, RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_NAME, runner, now - RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_MS).run();
-  return result.meta.changes ? { securityCode: code, reasoningEffort: reasoningEffort(candidate?.reasoningEffort), promptVersion: OPERATING_ANALYSIS_PROMPT_VERSION } : null;
+    updated_at=?, attempt=?, lease_owner=?, lease_until=?, heartbeat_at=? where security_code=? and prompt_version=? and status='queued' and attempt=? and exists (select 1 from research_operating_analysis_runner_leases where lease_name=? and owner_id=? and heartbeat_at>=?)`)
+    .bind(now, now, nextAttempt, runner, localJobLeaseUntil(now), now, code, OPERATING_ANALYSIS_PROMPT_VERSION, nextAttempt - 1, RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_NAME, runner, now - RESEARCH_OPERATING_ANALYSIS_RUNNER_LEASE_MS).run();
+  if (!result.meta.changes) { await releaseLocalJobProviderSlot(db, jobId, nextAttempt, runner, now); return null; }
+  return { jobId, securityCode: code, reasoningEffort: reasoningEffort(candidate?.reasoningEffort), promptVersion: OPERATING_ANALYSIS_PROMPT_VERSION, attempt: nextAttempt };
 }
 
-export async function startResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, input: unknown, prompt: unknown, runnerInstanceId: string) {
+export async function startResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, input: unknown, prompt: unknown, runnerInstanceId: string, attempt: number) {
   assertStage(stageKey); const modelPrompt = normalizeModelPrompt(prompt); if (!modelPrompt) throw new Error("operating analysis stage prompt is required");
-  const now = Date.now(); const code = securityCode.trim().toUpperCase();
+  const now = Date.now(); const code = securityCode.trim().toUpperCase(); const runner = runnerInstanceId.trim();
+  const owned = await db.prepare(`select job_id as jobId from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).first<Row>();
+  if (!owned) throw new Error("operating-analysis job lease is no longer owned by this runner");
   const existing = await db.prepare(`select status from research_operating_analysis_stage_artifacts where security_code=? and prompt_version=? and stage_key=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey).first<Row>();
   if (["complete", "partial", "blocked", "not_applicable"].includes(text(existing?.status))) return existing;
   if (existing) {
-    await db.prepare(`update research_operating_analysis_stage_artifacts set status='running', attempt_count=attempt_count+1, input_json=?, prompt_json=?, partial_output=null, last_error=null, started_at=?, completed_at=null, updated_at=? where security_code=? and prompt_version=? and stage_key=?`)
-      .bind(JSON.stringify(input), JSON.stringify(modelPrompt), now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey).run();
+    await db.prepare(`update research_operating_analysis_stage_artifacts set status='running', attempt_count=attempt_count+1, attempt=?, lease_owner=?, input_json=?, prompt_json=?, partial_output=null, last_error=null, started_at=?, completed_at=null, updated_at=? where security_code=? and prompt_version=? and stage_key=?`)
+      .bind(attempt, runner, JSON.stringify(input), JSON.stringify(modelPrompt), now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey).run();
   } else {
-    await db.prepare(`insert into research_operating_analysis_stage_artifacts (security_code,prompt_version,stage_key,status,attempt_count,input_json,prompt_json,started_at,updated_at) values (?,?,?,'running',1,?,?,?,?)`)
-      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey, JSON.stringify(input), JSON.stringify(modelPrompt), now, now).run();
+    await db.prepare(`insert into research_operating_analysis_stage_artifacts (security_code,prompt_version,stage_key,status,attempt_count,attempt,lease_owner,input_json,prompt_json,started_at,updated_at) values (?,?,?,'running',1,?,?,?, ?,?,?)`)
+      .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey, attempt, runner, JSON.stringify(input), JSON.stringify(modelPrompt), now, now).run();
   }
-  await db.prepare(`update research_operating_analysis_jobs set prompt_json=?, updated_at=? where security_code=? and prompt_version=? and status='running' and lease_owner=?`).bind(JSON.stringify(modelPrompt), now, code, OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).run();
+  await db.prepare(`update research_operating_analysis_jobs set prompt_json=?, updated_at=? where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(JSON.stringify(modelPrompt), now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
 }
 
-export async function checkpointResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, partialOutput: string, runnerInstanceId: string) {
-  assertStage(stageKey); const result = await db.prepare(`update research_operating_analysis_stage_artifacts set partial_output=?, updated_at=? where security_code=? and prompt_version=? and stage_key=? and status='running'`)
-    .bind(partialOutput.trim(), Date.now(), securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION, stageKey).run();
+export async function checkpointResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, partialOutput: string, runnerInstanceId: string, attempt: number) {
+  assertStage(stageKey); const now = Date.now(); const result = await db.prepare(`update research_operating_analysis_stage_artifacts set partial_output=?, updated_at=? where security_code=? and prompt_version=? and stage_key=? and status='running' and attempt=? and lease_owner=? and exists (select 1 from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?)`)
+    .bind(partialOutput.trim(), now, securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION, stageKey, attempt, runnerInstanceId.trim(), securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runnerInstanceId.trim(), now).run();
   if (!result.meta.changes) throw new Error("operating-analysis stage is no longer running");
 }
 
-export async function completeResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, output: unknown, status: OperatingAnalysisStageStatus, runnerInstanceId: string) {
+export async function completeResearchOperatingAnalysisStage(db: D1Database, securityCode: string, stageKey: OperatingAnalysisStageKey, output: unknown, status: OperatingAnalysisStageStatus, runnerInstanceId: string, attempt: number) {
   assertStage(stageKey); if (!["complete", "partial", "blocked", "not_applicable"].includes(status)) throw new Error("invalid terminal operating-analysis stage status");
   const definition = OPERATING_ANALYSIS_STAGES.find((item) => item.key === stageKey)!; const value = definition.output === "json" ? JSON.stringify(output) : null;
   const markdown = definition.output === "markdown" ? text(output) : null;
@@ -150,50 +158,66 @@ export async function completeResearchOperatingAnalysisStage(db: D1Database, sec
   if (definition.output === "markdown" && !markdown) throw new Error("operating-analysis Markdown stage output is empty");
   if (definition.output === "json" && (!output || typeof output !== "object")) throw new Error("operating-analysis JSON stage output is invalid");
   const now = Date.now(); const code = securityCode.trim().toUpperCase();
-  const result = await db.prepare(`update research_operating_analysis_stage_artifacts set status=?, output_json=?, output_markdown=?, blocked_json=?, partial_output=null, completed_at=?, updated_at=? where security_code=? and prompt_version=? and stage_key=? and status='running'`)
-    .bind(status, value, markdown, blocked ? JSON.stringify(blocked) : null, now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey).run();
+  const result = await db.prepare(`update research_operating_analysis_stage_artifacts set status=?, output_json=?, output_markdown=?, blocked_json=?, partial_output=null, completed_at=?, updated_at=? where security_code=? and prompt_version=? and stage_key=? and status='running' and attempt=? and lease_owner=? and exists (select 1 from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?)`)
+    .bind(status, value, markdown, blocked ? JSON.stringify(blocked) : null, now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, stageKey, attempt, runnerInstanceId.trim(), code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runnerInstanceId.trim(), now).run();
   if (!result.meta.changes) throw new Error("operating-analysis stage is no longer owned by this runner");
 }
 
-export async function completeResearchOperatingAnalysisJob(db: D1Database, securityCode: string, input: unknown, prompt: unknown, reportMarkdown: string, reasoningMarkdown: string, inputFingerprint: string, runnerInstanceId: string, streamStats?: unknown) {
+export async function completeResearchOperatingAnalysisJob(db: D1Database, securityCode: string, input: unknown, prompt: unknown, reportMarkdown: string, reasoningMarkdown: string, inputFingerprint: string, runnerInstanceId: string, attempt: number, streamStats?: unknown) {
   const code = securityCode.trim().toUpperCase(); const report = reportMarkdown.trim(); const modelPrompt = normalizeModelPrompt(prompt);
   const missing = OPERATING_ANALYSIS_REQUIRED_HEADINGS.filter((heading) => !report.includes(heading));
   if (!report || missing.length) throw new Error(`operating analysis report is incomplete; missing sections: ${missing.join(", ")}`);
   if (!modelPrompt || !inputFingerprint.trim()) throw new Error("operating analysis completion is missing prompt or fingerprint");
-  const now = Date.now(); const job = await db.prepare(`select started_at as startedAt from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and lease_owner=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).first<Row>();
+  const now = Date.now(); const runner = runnerInstanceId.trim(); const job = await db.prepare(`select job_id as jobId, started_at as startedAt from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).first<Row>();
+  if (!job) throw new Error("operating-analysis job lease is no longer owned by this runner");
   const totalDurationMs = Number.isFinite(Number(job?.startedAt)) ? Math.max(0, now - Number(job?.startedAt)) : null; const runId = `operating-analysis:${crypto.randomUUID()}`;
   await db.prepare(`insert into research_operating_analysis_runs (run_id,security_code,prompt_version,input_fingerprint,input_as_of,input_json,report_markdown,reasoning_markdown,total_duration_ms,stream_stats_json,prompt_json,provider,generated_at) values (?,?,?,?,?,?,?,?,?,?,?,'llm-client.responses',?)`)
     .bind(runId, code, OPERATING_ANALYSIS_PROMPT_VERSION, inputFingerprint, now, JSON.stringify(input), report, reasoningMarkdown.trim(), totalDurationMs, streamStats ? JSON.stringify(streamStats) : null, JSON.stringify(modelPrompt), now).run();
-  const claimed = await db.prepare(`update research_operating_analysis_jobs set status='completed', run_id=?, last_error=null, completed_at=?, updated_at=? where security_code=? and prompt_version=? and status='running' and lease_owner=?`).bind(runId, now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).run();
+  const claimed = await db.prepare(`update research_operating_analysis_jobs set status='completed', run_id=?, last_error=null, completed_at=?, updated_at=?, lease_until=null where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(runId, now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
   if (!claimed.meta.changes) throw new Error("operating-analysis job lease is no longer owned by this runner");
+  await releaseLocalJobProviderSlot(db, text(job.jobId), attempt, runner, now);
   return await loadResearchOperatingAnalysis(db, code);
 }
 
-export async function failResearchOperatingAnalysisJob(db: D1Database, securityCode: string, error: unknown, runnerInstanceId: string) {
+export async function failResearchOperatingAnalysisJob(db: D1Database, securityCode: string, error: unknown, runnerInstanceId: string, attempt: number) {
   const now = Date.now(); const message = error instanceof Error ? error.message : String(error);
-  await db.prepare(`update research_operating_analysis_stage_artifacts set status='failed', last_error=?, updated_at=? where security_code=? and prompt_version=? and status='running'`).bind(message.slice(0, 1600), now, securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION).run();
-  await db.prepare(`update research_operating_analysis_jobs set status='failed', last_error=?, completed_at=?, updated_at=? where security_code=? and prompt_version=? and status='running' and lease_owner=?`).bind(message.slice(0, 1600), now, now, securityCode.trim().toUpperCase(), OPERATING_ANALYSIS_PROMPT_VERSION, runnerInstanceId.trim()).run();
+  const code = securityCode.trim().toUpperCase(); const runner = runnerInstanceId.trim();
+  const job = await db.prepare(`select job_id as jobId from research_operating_analysis_jobs where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).first<Row>();
+  if (!job) throw new Error("operating-analysis job lease is no longer owned by this runner");
+  await db.prepare(`update research_operating_analysis_stage_artifacts set status='failed', last_error=?, updated_at=? where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=?`).bind(message.slice(0, 1600), now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner).run();
+  const updated = await db.prepare(`update research_operating_analysis_jobs set status='failed', last_error=?, completed_at=?, updated_at=?, lease_until=null where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`).bind(message.slice(0, 1600), now, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
+  if (!updated.meta.changes) throw new Error("operating-analysis job lease is no longer owned by this runner");
+  await releaseLocalJobProviderSlot(db, text(job.jobId), attempt, runner, now);
   return await loadResearchOperatingAnalysis(db, securityCode);
 }
 
 /**
- * A local Worker restart can interrupt a runner while its model stream is
+ * A local Node runtime restart can interrupt a runner while its model stream is
  * still alive. Return only that runner's non-terminal work to the queue so a
  * later claim resumes from the last terminal stage instead of stranding it.
  */
-export async function requeueInterruptedResearchOperatingAnalysisJob(db: D1Database, securityCode: string, error: unknown, runnerInstanceId: string) {
+export async function requeueInterruptedResearchOperatingAnalysisJob(db: D1Database, securityCode: string, error: unknown, runnerInstanceId: string, attempt: number) {
   const code = securityCode.trim().toUpperCase(); const runner = runnerInstanceId.trim(); const now = Date.now();
-  const job = await db.prepare(`select status, lease_owner as leaseOwner from research_operating_analysis_jobs where security_code=? and prompt_version=?`)
+  const job = await db.prepare(`select job_id as jobId, status, lease_owner as leaseOwner, lease_until as leaseUntil, attempt from research_operating_analysis_jobs where security_code=? and prompt_version=?`)
     .bind(code, OPERATING_ANALYSIS_PROMPT_VERSION).first<Row>();
-  if (text(job?.status) !== "running" || text(job?.leaseOwner) !== runner) return false;
-  const message = `local Worker interrupted this runner; continuing from the last completed stage: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1600);
+  // A runner that lost its transport cannot revoke its own still-valid lease.
+  // Recovery is deliberately delayed until the lease expires, fencing any
+  // late stream output from the abandoned attempt.
+  if (text(job?.status) !== "running" || text(job?.leaseOwner) !== runner || Number(job?.attempt) !== attempt || Number(job?.leaseUntil) >= now) return false;
+  const message = `local Node runtime interrupted this runner; continuing from the last completed stage: ${error instanceof Error ? error.message : String(error)}`.slice(0, 1600);
   await db.prepare(`update research_operating_analysis_stage_artifacts set status='queued', last_error=?, completed_at=null, updated_at=?
-    where security_code=? and prompt_version=? and status='running'`)
-    .bind(message, now, code, OPERATING_ANALYSIS_PROMPT_VERSION).run();
-  const result = await db.prepare(`update research_operating_analysis_jobs set status='queued', last_error=?, lease_owner=null, updated_at=?
-    where security_code=? and prompt_version=? and status='running' and lease_owner=?`)
-    .bind(message, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, runner).run();
+    where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until<?`)
+    .bind(message, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
+  const result = await db.prepare(`update research_operating_analysis_jobs set status='queued', last_error=?, lease_owner=null, lease_until=null, updated_at=?
+    where security_code=? and prompt_version=? and status='running' and attempt=? and lease_owner=? and lease_until<?`)
+    .bind(message, now, code, OPERATING_ANALYSIS_PROMPT_VERSION, attempt, runner, now).run();
+  if (result.meta.changes) await releaseLocalJobProviderSlot(db, text(job?.jobId), attempt, runner, now);
   return result.meta.changes > 0;
+}
+
+export async function heartbeatResearchOperatingAnalysisJob(db: D1Database, securityCode: string, runnerInstanceId: string, attempt: number) {
+  const code = securityCode.trim().toUpperCase();
+  return renewLocalJobLease(db, "research_operating_analysis_jobs", "security_code=? and prompt_version=?", [code, OPERATING_ANALYSIS_PROMPT_VERSION], attempt, runnerInstanceId.trim());
 }
 
 function assertStage(value: string): asserts value is OperatingAnalysisStageKey { if (!OPERATING_ANALYSIS_STAGES.some((stage) => stage.key === value)) throw new Error("unsupported operating-analysis stage"); }

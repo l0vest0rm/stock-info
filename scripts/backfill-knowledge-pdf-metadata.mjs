@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { writeFileSync, unlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { parseKnowledgeFilename } from "./lib/knowledge-filename-parser.mjs";
+import { executeLocalD1SqlFile, LOCAL_SQLITE_BUSY_TIMEOUT_MS, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const args = parseArgs(process.argv.slice(2));
-const databaseFile = args.dbFile || findLocalD1Database();
+const databaseFile = resolveLocalD1Database({ root, path: args.dbFile || undefined, requiredTable: "knowledge_docs" });
 const rows = queryRows(databaseFile);
 const updates = rows
   .map((row) => buildUpdate(row))
@@ -28,7 +29,7 @@ if (!args.dryRun) {
   const sqlFile = join(root, ".tmp-backfill-knowledge-pdf-metadata.sql");
   writeFileSync(sqlFile, renderSql(updates));
   try {
-    execFileSync("sqlite3", [databaseFile, `.read ${sqlFile}`], { cwd: root, stdio: "inherit" });
+    executeLocalD1SqlFile(sqlFile, { path: databaseFile, requiredTable: "knowledge_docs" });
   } finally {
     unlinkSync(sqlFile);
   }
@@ -63,23 +64,6 @@ function requireValue(argv, index, flag) {
   return value;
 }
 
-function findLocalD1Database() {
-  const dir = resolve(root, ".wrangler/state/v3/d1/miniflare-D1DatabaseObject");
-  if (!existsSync(dir)) {
-    throw new Error(`local D1 directory not found: ${dir}`);
-  }
-  const candidates = readdirSync(dir)
-    .filter((name) => name.endsWith(".sqlite") && name !== "metadata.sqlite")
-    .map((name) => join(dir, name));
-  for (const file of candidates) {
-    const tables = execFileSync("sqlite3", [file, ".tables"], { cwd: root, encoding: "utf8" });
-    if (tables.includes("knowledge_docs")) {
-      return file;
-    }
-  }
-  throw new Error(`no local D1 sqlite file with knowledge_docs found under ${dir}`);
-}
-
 function queryRows(databaseFile) {
   const sql = [
     ".mode tabs",
@@ -100,7 +84,7 @@ function queryRows(databaseFile) {
     "  and discovery_method = 'local_process_once'",
     "  and coalesce(json_extract(metadata_json, '$.originalFile'), '') like '%.pdf';",
   ].join("\n");
-  const output = execFileSync("sqlite3", [databaseFile], {
+  const output = execFileSync("sqlite3", ["-cmd", `.timeout ${LOCAL_SQLITE_BUSY_TIMEOUT_MS}`, databaseFile], {
     cwd: root,
     encoding: "utf8",
     input: sql,

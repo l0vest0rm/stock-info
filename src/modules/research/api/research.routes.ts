@@ -122,8 +122,9 @@ import { produceResearchStatutoryOperatingEvidenceCandidates } from "../applicat
 import { importIndexedStatutoryDisclosureToKnowledge } from "../application/import-statutory-disclosure-to-knowledge";
 import { extractResearchAutoFilingInsights, loadResearchAutoBusinessDriverTree, loadResearchAutoFilingDocumentVersions, loadResearchAutoFilingFactInputs, loadResearchAutoFilingInsights, loadResearchAutoFilingModuleRebuilds, loadResearchAutoForecastInputGate, loadResearchAutoGovernanceCapitalLedger, loadResearchAutoIndustryCompetitionInputs, loadResearchAutoMarketSpaceInputs, loadResearchAutoRiskLedger, loadResearchAutoRiskQuantitativeInputGate, loadResearchAutoRiskSnapshotHistory, loadResearchAutoSecurityStructureCandidates, rebuildResearchAutoFilingReadModels } from "../application/research-auto-filing-insights";
 import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } from "../application/research-industry-source-series";
-import { claimNextResearchWebSearchPackageJob, completeResearchWebSearchPackageJob, enqueueResearchWebSearchPackage, failResearchWebSearchPackageJob, loadResearchWebSearchPackages } from "../application/research-web-search-packages";
-import { checkpointResearchOperatingAnalysisStage, claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, loadResearchOperatingAnalysis, loadResearchOperatingAnalysisRun, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage, type OperatingAnalysisStageKey, type OperatingAnalysisStageStatus } from "../application/research-operating-analysis";
+import { claimNextResearchWebSearchPackageJob, completeResearchWebSearchPackageJob, enqueueResearchWebSearchPackage, failResearchWebSearchPackageJob, heartbeatResearchWebSearchPackageJob, loadResearchWebSearchPackages } from "../application/research-web-search-packages";
+import { loadLocalJobRuntimeState } from "../../../shared/local-job-protocol";
+import { checkpointResearchOperatingAnalysisStage, claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, heartbeatResearchOperatingAnalysisJob, loadResearchOperatingAnalysis, loadResearchOperatingAnalysisRun, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage, type OperatingAnalysisStageKey, type OperatingAnalysisStageStatus } from "../application/research-operating-analysis";
 import { renewResearchOperatingAnalysisRunnerLease } from "../application/research-operating-analysis-runner-lease";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
 import {
@@ -204,6 +205,7 @@ researchRoutes.get("/research/company/:code/forecasts", async (c) => {
 });
 
 researchRoutes.post("/research/company/:code/forecast-reviews", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual forecast reviews are only available in local research runtime");
   return fail(c, 410, "manual forecast review is retired; run the local automatic third-party forecast sync with source-bound evidence");
 });
 
@@ -220,18 +222,22 @@ researchRoutes.post("/research/company/:code/third-party-forecasts/sync-auto", a
 });
 
 researchRoutes.post("/research/forecast-source-independence-groups", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual forecast source identity writes are only available in local research runtime");
   return fail(c, 410, "manual forecast source identity writes are retired; identity evidence must arrive in the automatic document provenance contract");
 });
 
 researchRoutes.post("/research/forecast-source-identities", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual forecast source identity writes are only available in local research runtime");
   return fail(c, 410, "manual forecast source identity writes are retired; identity evidence must arrive in the automatic document provenance contract");
 });
 
 researchRoutes.post("/research/forecast-model-lineages", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual forecast lineage writes are only available in local research runtime");
   return fail(c, 410, "manual forecast lineage writes are retired; model lineage must arrive in the automatic document provenance contract");
 });
 
 researchRoutes.post("/research/forecast-source-identity-assertions", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual forecast identity assertions are only available in local research runtime");
   return fail(c, 410, "manual forecast identity assertions are retired; the automatic sync binds exact document versions only");
 });
 
@@ -248,6 +254,7 @@ researchRoutes.post("/research/company/:code/forecast-synthesis-drafts", async (
 });
 
 researchRoutes.post("/research/company/:code/forecast-scenarios", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual forecast scenarios are only available in local research runtime");
   return fail(c, 410, "manual forecast scenarios are retired; only issuer-explicit source scenarios are written by the automatic filing pipeline");
 });
 
@@ -257,6 +264,7 @@ researchRoutes.post("/research/company/:code/forecast-calibrations", async (c) =
 });
 
 researchRoutes.post("/research/company/:code/management-guidance-forecasts", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual management guidance writes are only available in local research runtime");
   return fail(c, 410, "manual management guidance writes are retired; only source-bound issuer guidance is written by the automatic filing pipeline");
 });
 
@@ -317,10 +325,12 @@ researchRoutes.get("/research/company/:code/formal-actual-candidates", async (c)
 });
 
 researchRoutes.post("/research/company/:code/formal-actual-candidate-reviews", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual formal actual acceptance is only available in local research runtime");
   return fail(c, 410, "manual formal-actual acceptance is retired; run the local automatic statutory-evidence sync");
 });
 
 researchRoutes.post("/research/company/:code/formal-actual-calibrations", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual formal actual calibration is only available in local research runtime");
   return fail(c, 410, "manual forecast-actual calibration is retired; automatic statutory actual sync calibrates all matching saved forecasts");
 });
 
@@ -335,6 +345,7 @@ researchRoutes.get("/research/company/:code/model-review-items", async (c) => {
 });
 
 researchRoutes.post("/research/company/:code/model-review-items/:id/resolve", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual model review resolution is only available in local research runtime");
   return fail(c, 410, "manual model-review resolution is retired; source updates automatically rebuild supported read models or keep unsupported conclusions blocked");
 });
 
@@ -741,7 +752,9 @@ researchRoutes.post("/research/company/:code/web-search-packages/:packageKind", 
 // never held open by an upstream Responses SSE connection.
 researchRoutes.post("/research/web-search-package-jobs/claim-next", async (c) => {
   if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
-  try { return ok(c, await claimNextResearchWebSearchPackageJob(c.env.DB)); }
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
+  try { return ok(c, await claimNextResearchWebSearchPackageJob(c.env.DB, body.runnerInstanceId)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -752,7 +765,9 @@ researchRoutes.post("/research/web-search-package-jobs/:code/:packageKind/comple
   try {
     const body = await c.req.json<unknown>();
     if (!body || typeof body !== "object" || Array.isArray(body)) return fail(c, 400, "web search package result is required");
-    return ok(c, await completeResearchWebSearchPackageJob(c.env.DB, code, c.req.param("packageKind"), body as { model: string; text: string; webSearch?: { searched?: boolean; queries?: string[]; citations?: Array<{ title: string; url: string; start?: number; end?: number }> } }));
+    const payload = body as { model: string; text: string; runnerInstanceId?: unknown; attempt?: unknown; webSearch?: { searched?: boolean; queries?: string[]; citations?: Array<{ title: string; url: string; start?: number; end?: number }> } };
+    if (typeof payload.runnerInstanceId !== "string" || !payload.runnerInstanceId.trim() || !Number.isInteger(payload.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+    return ok(c, await completeResearchWebSearchPackageJob(c.env.DB, code, c.req.param("packageKind"), payload, payload.runnerInstanceId, payload.attempt as number));
   }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
@@ -763,10 +778,26 @@ researchRoutes.post("/research/web-search-package-jobs/:code/:packageKind/fail",
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   try {
     const body = await c.req.json<unknown>();
-    const message = body && typeof body === "object" && !Array.isArray(body) && typeof (body as { error?: unknown }).error === "string"
-      ? (body as { error: string }).error : "local Web Search runner failed without an error message";
-    return ok(c, await failResearchWebSearchPackageJob(c.env.DB, code, c.req.param("packageKind"), message));
+    const payload = body && typeof body === "object" && !Array.isArray(body) ? body as { error?: unknown; runnerInstanceId?: unknown; attempt?: unknown } : {};
+    if (typeof payload.runnerInstanceId !== "string" || !payload.runnerInstanceId.trim() || !Number.isInteger(payload.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+    const message = typeof payload.error === "string" ? payload.error : "local Web Search runner failed without an error message";
+    return ok(c, await failResearchWebSearchPackageJob(c.env.DB, code, c.req.param("packageKind"), message, payload.runnerInstanceId, payload.attempt as number));
   }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/web-search-package-jobs/:code/:packageKind/heartbeat", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (!isSupportedCompanyCode(code) || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+  try { return ok(c, { active: await heartbeatResearchWebSearchPackageJob(c.env.DB, code, c.req.param("packageKind"), body.runnerInstanceId, body.attempt as number) }); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.get("/research/local-job-runtime", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "local job runtime is only available in local research runtime");
+  try { return ok(c, await loadLocalJobRuntimeState(c.env.DB)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -820,9 +851,9 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/complete", async (c
   try {
     const body = await c.req.json<Record<string, unknown>>();
     if (typeof body.reportMarkdown !== "string" || typeof body.inputFingerprint !== "string") return fail(c, 400, "reportMarkdown and inputFingerprint are required");
-    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
+    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
     return ok(c, await completeResearchOperatingAnalysisJob(c.env.DB, code, body.input, body.prompt, body.reportMarkdown,
-      typeof body.reasoningMarkdown === "string" ? body.reasoningMarkdown : "", body.inputFingerprint, body.runnerInstanceId, body.streamStats));
+      typeof body.reasoningMarkdown === "string" ? body.reasoningMarkdown : "", body.inputFingerprint, body.runnerInstanceId, body.attempt as number, body.streamStats));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -833,8 +864,8 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/stages/:stageKey/st
   try {
     const body = await c.req.json<Record<string, unknown>>();
     if (!body || typeof body.prompt !== "object" || !body.prompt || Array.isArray(body.prompt)) return fail(c, 400, "prompt is required");
-    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-    return ok(c, await startResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey") as OperatingAnalysisStageKey, body.input, body.prompt, body.runnerInstanceId));
+    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+    return ok(c, await startResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey") as OperatingAnalysisStageKey, body.input, body.prompt, body.runnerInstanceId, body.attempt as number));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -844,8 +875,8 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/stages/:stageKey/ch
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try {
-    if (typeof body.partialOutput !== "string" || typeof body.runnerInstanceId !== "string") return fail(c, 400, "partialOutput and runnerInstanceId are required");
-    return ok(c, await checkpointResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey") as OperatingAnalysisStageKey, body.partialOutput, body.runnerInstanceId));
+    if (typeof body.partialOutput !== "string" || typeof body.runnerInstanceId !== "string" || !Number.isInteger(body.attempt)) return fail(c, 400, "partialOutput, runnerInstanceId and attempt are required");
+    return ok(c, await checkpointResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey") as OperatingAnalysisStageKey, body.partialOutput, body.runnerInstanceId, body.attempt as number));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -855,8 +886,8 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/stages/:stageKey/co
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try {
-    if (typeof body.runnerInstanceId !== "string" || typeof body.status !== "string") return fail(c, 400, "status and runnerInstanceId are required");
-    return ok(c, await completeResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey") as OperatingAnalysisStageKey, body.output, body.status as OperatingAnalysisStageStatus, body.runnerInstanceId));
+    if (typeof body.runnerInstanceId !== "string" || typeof body.status !== "string" || !Number.isInteger(body.attempt)) return fail(c, 400, "status, runnerInstanceId and attempt are required");
+    return ok(c, await completeResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey") as OperatingAnalysisStageKey, body.output, body.status as OperatingAnalysisStageStatus, body.runnerInstanceId, body.attempt as number));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -866,8 +897,8 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/fail", async (c) =>
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try {
-    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-    return ok(c, await failResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "local operating-analysis runner failed", body.runnerInstanceId));
+    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+    return ok(c, await failResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "local operating-analysis runner failed", body.runnerInstanceId, body.attempt as number));
   }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
@@ -878,9 +909,18 @@ researchRoutes.post("/research/operating-analysis-jobs/:code/requeue", async (c)
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try {
-    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-    return ok(c, { requeued: await requeueInterruptedResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "local Worker became unavailable", body.runnerInstanceId) });
+    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+    return ok(c, { requeued: await requeueInterruptedResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "local Node runtime became unavailable", body.runnerInstanceId, body.attempt as number) });
   }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/operating-analysis-jobs/:code/heartbeat", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (!isSupportedCompanyCode(code) || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+  try { return ok(c, { active: await heartbeatResearchOperatingAnalysisJob(c.env.DB, code, body.runnerInstanceId, body.attempt as number) }); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -1326,6 +1366,7 @@ researchRoutes.get("/research/company/:code/financial-profile", async (c) => {
 });
 
 researchRoutes.post("/research/company/:code/financial-profile", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "financial profile manual writes are only available in local research runtime");
   return fail(c, 410, "financial profile manual writes are retired; only automatic source-bound filing inputs may update research profiles");
 });
 
@@ -1337,6 +1378,7 @@ researchRoutes.get("/research/company/:code/financial-specialty-metrics", async 
 });
 
 researchRoutes.post("/research/company/:code/financial-specialty-metrics", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "financial specialty metric manual writes are only available in local research runtime");
   return fail(c, 410, "financial specialty metric manual writes are retired; only automatic source-bound filing inputs may update research metrics");
 });
 

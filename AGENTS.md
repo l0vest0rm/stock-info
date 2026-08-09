@@ -2,19 +2,19 @@
 
 ## Runtime Model
 
-- Treat this repo as a Cloudflare Worker project in production and a local Wrangler simulation in development.
-- Local development should default to `./start-local.sh`.
+- Treat this repo as a Cloudflare Worker project in production and a Node runtime project in local development.
+- Local development should default to `./start-local.sh`, which starts the Node runtime without Wrangler.
 - The default local URL is `http://127.0.0.1:8000`.
-- Production deployment and verification must be treated separately from local `wrangler dev --local`.
+- Production deployment and verification must be treated separately from the Node local runtime.
 
 ## LLM Runtime Boundary
 
-- Remote LLM calls are allowed only from a local Wrangler development runtime, explicitly marked with `LLM_RUNTIME=local` by the supported local launch scripts.
+- Remote LLM calls are allowed only from the local Node development runtime, explicitly marked with `LLM_RUNTIME=local` by the supported local launch scripts.
 - Production must keep `LLM_RUNTIME=production`; never add an LLM fallback, exception, or production override, even when model credentials are present.
 
 ## Local Workflow
 
-- Use `./start-local.sh` for the standard local loop because it already builds `web/dist`, typechecks, applies local D1 migrations, starts Wrangler, and waits for `/api/health`.
+- Use `./start-local.sh` for the standard local loop because it already builds `web/dist`, typechecks, applies local SQLite migrations, starts the Node runtime, and waits for `/api/health`.
 - Prefer `npm run test:smoke:pages` when the change affects served pages or routing.
 - For browser-facing changes, remember that static assets are served from `web/dist`; stale build output is a common false negative.
 

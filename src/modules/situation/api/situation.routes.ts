@@ -79,7 +79,7 @@ situationRoutes.get("/situations/events/:id", async (c) => { const event = await
 situationRoutes.get("/situations/snapshots/:id", async (c) => { const snapshot = await new D1SituationRepository(c.env.DB).getSnapshot(c.req.param("id")); return snapshot ? ok(c, { snapshot }) : fail(c, 404, "snapshot not found"); });
 
 situationRoutes.post("/situations/candidates/:id/disposition", async (c) => {
-  if (!isLocalDevelopmentRuntime()) return fail(c, 404, "candidate disposition is only available in local development until an authenticated owner model exists");
+  if (!isLocalDevelopmentRuntime(c.env)) return fail(c, 404, "candidate disposition is only available in local development until an authenticated owner model exists");
   const body = await c.req.json().catch(() => null); const disposition = isRecord(body) ? String(body.disposition ?? "") : "";
   if (!(["confirmed", "ignored", "deferred", "researching"].includes(disposition))) return fail(c, 400, "invalid disposition");
   const owner = ownerKey(isRecord(body) ? String(body.ownerKey ?? "local") : "local"); if (!owner) return fail(c, 400, "invalid owner");
@@ -94,10 +94,10 @@ situationRoutes.get("/situations/portfolio-rules", async (c) => { const owner = 
 situationRoutes.put("/situations/holdings/:code", async (c) => writeLocal(c, async (repository, body, owner, now) => { if (!isRecord(body.profile)) return fail(c, 400, "profile must be an object"); const code = normalizeCode(c.req.param("code")); if (!code) return fail(c, 400, "invalid code"); await repository.putHoldingProfile(owner, code, body.profile, now); return ok(c, { code, profile: body.profile }); }));
 
 situationRoutes.post("/situations/evidence", async (c) => writeLocal(c, async (repository, body, _owner, now) => { if (!validEvidenceInput(body)) return fail(c, 400, "invalid evidence payload"); const result = await ingestEvidence(repository, body, now); const holdings = await repository.listHoldingProfiles("local"); await refreshOwnerCandidates(repository, "local", holdings.map((item) => item.code), now); return ok(c, result); }));
-situationRoutes.post("/situations/sync", async (c) => { if (!isLocalDevelopmentRuntime()) return fail(c, 404, "situation sync endpoint is only available in local development"); return ok(c, await syncSituationData(c.env)); });
+situationRoutes.post("/situations/sync", async (c) => { if (!isLocalDevelopmentRuntime(c.env)) return fail(c, 404, "situation sync endpoint is only available in local development"); return ok(c, await syncSituationData(c.env)); });
 
 async function writeLocal(c: any, fn: (repository: D1SituationRepository, body: Record<string, unknown>, owner: string, now: number) => Promise<Response>): Promise<Response> {
-  if (!isLocalDevelopmentRuntime()) return fail(c, 404, "situation configuration is only available in local development until an authenticated owner model exists");
+  if (!isLocalDevelopmentRuntime(c.env)) return fail(c, 404, "situation configuration is only available in local development until an authenticated owner model exists");
   const body = await c.req.json().catch(() => null); if (!isRecord(body)) return fail(c, 400, "invalid request body"); const owner = ownerKey(String(body.ownerKey ?? "local")); if (!owner) return fail(c, 400, "invalid owner"); return fn(new D1SituationRepository(c.env.DB), body, owner, Date.now());
 }
 async function marketViews(repository: D1SituationRepository, macroSources: Array<{ state: string }>, asOf: number) {

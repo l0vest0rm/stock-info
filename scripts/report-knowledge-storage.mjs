@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import { queryLocalD1Sql, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const args = parseArgs(process.argv.slice(2));
-const dbTarget = args.remote ? "--remote" : "--local";
+if (args.help) {
+  printHelp();
+  process.exit(0);
+}
+const localDatabaseFile = args.remote ? "" : resolveLocalD1Database({ root, requiredTable: "_local_migrations" });
 const existingTables = new Set(
   (runD1Sql(["select name from sqlite_master where type = 'table' and name like 'knowledge_%'"])[0] ?? [])
     .map((row) => String(row.name || "").trim())
     .filter(Boolean)
 );
 
-const dbInfo = args.remote ? runD1Info() : null;
+const dbInfo = args.remote ? runD1Info() : localDatabaseInfo(localDatabaseFile);
 const knowledgeTableStats = runD1Sql(knowledgeTableStatsSqls());
 const knowledgeCategoryStats = runD1Sql([knowledgeCategoryStatsSql()]);
 const filteredStatusStats = runD1Sql([filteredStatusStatsSql()]);
@@ -28,7 +33,8 @@ const knowledgeDocCount = tableRows.find((row) => row.scope === "knowledge_docs"
 const filteredDocCount = tableRows.find((row) => row.scope === "knowledge_filtered_docs")?.rowCount ?? 0;
 
 const summary = {
-  database: args.database,
+  database: args.remote ? args.database : localDatabaseFile,
+  databasePath: args.remote ? null : localDatabaseFile,
   remote: args.remote,
   d1: {
     totalBytes: integer(dbInfo?.database_size, 0),
@@ -74,6 +80,9 @@ if (!args.jsonOnly) {
 console.log(JSON.stringify(summary, null, 2));
 
 function runD1Sql(commands) {
+  if (!args.remote) {
+    return commands.map((command) => queryLocalD1Sql(command, { root, requiredTable: "_local_migrations" }));
+  }
   const output = execFileSync(
     "npx",
     [
@@ -81,7 +90,7 @@ function runD1Sql(commands) {
       "d1",
       "execute",
       args.database,
-      dbTarget,
+      "--remote",
       "--json",
       "--command",
       commands.join("; "),
@@ -89,6 +98,10 @@ function runD1Sql(commands) {
     { cwd: root, stdio: "pipe", encoding: "utf8" }
   );
   return JSON.parse(output).map((entry) => entry.results ?? []);
+}
+
+function localDatabaseInfo(databaseFile) {
+  return { database_size: statSync(databaseFile).size };
 }
 
 function runD1Info() {
@@ -298,11 +311,13 @@ function parseArgs(argv) {
     database: "stock_info",
     remote: false,
     jsonOnly: false,
+    help: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--remote") parsed.remote = true;
     else if (arg === "--local") parsed.remote = false;
+    else if (arg === "--help" || arg === "-h") parsed.help = true;
     else if (arg === "--database") parsed.database = requireValue(argv, ++i, arg);
     else if (arg === "--json-only") parsed.jsonOnly = true;
     else throw new Error(`unknown argument: ${arg}`);
@@ -338,9 +353,10 @@ function formatBytes(bytes) {
 function printHumanSummary(summary) {
   const label = summary.remote ? "remote" : "local";
   if (summary.d1.exactSizeAvailable) {
-    console.log(`[knowledge-storage] D1 ${label}/${summary.database} total=${formatBytes(summary.d1.totalBytes)} exact=cloudflare`);
+    const source = summary.remote ? `Cloudflare D1 remote/${summary.database}` : `Node SQLite ${summary.databasePath}`;
+    console.log(`[knowledge-storage] ${source} total=${formatBytes(summary.d1.totalBytes)} exact=${summary.remote ? "cloudflare" : "filesystem"}`);
   } else {
-    console.log(`[knowledge-storage] D1 ${label}/${summary.database} total=unavailable exact=not-supported-for-local estimate=${formatBytes(summary.d1.knowledgeApproxBytes)}`);
+    console.log(`[knowledge-storage] ${label} database total=unavailable estimate=${formatBytes(summary.d1.knowledgeApproxBytes)}`);
   }
   console.log(`[knowledge-storage] Knowledge payload approx=${formatBytes(summary.d1.knowledgeApproxBytes)} docs=${summary.d1.knowledgeDocCount} filtered=${summary.d1.filteredDocCount}`);
   for (const row of summary.d1.categories) {
@@ -356,11 +372,17 @@ function printHumanSummary(summary) {
     }
   }
   if (summary.r2.configured) {
-    console.log(`[knowledge-storage] R2 configured buckets=${summary.r2.buckets.join(", ")} size=unavailable via current local wrangler command set`);
+    console.log(`[knowledge-storage] R2 configured buckets=${summary.r2.buckets.join(", ")} size=unavailable in the local Node runtime`);
   } else {
     console.log("[knowledge-storage] R2 not configured in wrangler.jsonc for this repo");
   }
-  console.log("[knowledge-storage] Notes: category/table bytes are D1 payload approximations from row content, not exact index/SQLite overhead.");
+  console.log("[knowledge-storage] Notes: category/table bytes are payload approximations from row content, not exact index/SQLite overhead.");
+}
+
+function printHelp() {
+  console.log(`Usage: npm run stats:knowledge:storage -- [--local|--remote] [--database NAME] [--json-only]
+
+Without --remote, reads the Node SQLite database at LOCAL_DB_PATH (default data/local/stock-info.sqlite). --remote reads Cloudflare D1 through Wrangler.`);
 }
 
 function readR2Config(file) {

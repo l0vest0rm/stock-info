@@ -916,7 +916,7 @@ POST /api/knowledge/views/:entityId/rebuild
 
 ## 13. 运行边界
 
-远程 LLM 调用只允许发生在显式标记 `LLM_RUNTIME=local` 的本地 Wrangler 开发运行时。生产 Worker 不调用模型。
+远程 LLM 调用只允许发生在显式标记 `LLM_RUNTIME=local` 的本地 Node 开发运行时。生产 Worker 不调用模型。
 
 ```text
 本地采集任务

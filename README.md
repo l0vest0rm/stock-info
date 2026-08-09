@@ -35,7 +35,7 @@ npm install --no-audit --no-fund --omit=optional
 npm install --no-audit --no-fund --ignore-scripts
 npm run db:migrate:local
 npm run build
-npm run dev:worker -- --port 8000
+npm run dev:local
 ```
 
 macOS 上也可以直接用根目录脚本：
@@ -47,11 +47,13 @@ chmod +x ./start-local.sh
 
 默认访问地址是 `http://127.0.0.1:8000`。
 
-`start-local.sh` 会同时启动通用本地 cron runner。它直接读取
-`wrangler.jsonc` 的 `triggers.crons`，按 Cloudflare 一致的 UTC cron 配置调用
-本地 Worker 的 scheduled handler；以后新增定时任务只需要维护线上同一份配置。
-调度日志位于 `data/logs/stock-info-local-cron.log`。需要立即手动执行所有已配置
-cron 时，可以在 Worker 已启动后运行：
+`start-local.sh` 最终以前台 `local-supervisor` 运行，并管理 `local-http`、
+`local-job-worker` 和 `local-scheduler` 三个常驻角色。`local-http` 同时监听 8000 API
+与 8788 知识正文端点；宏观数据直接请求 allowlist 官方来源，8791 不再有本地 relay。
+调度器直接读取 `wrangler.jsonc` 的 `triggers.crons`，按 Cloudflare 一致的 UTC cron
+配置调用共享 scheduled 分发函数；以后新增定时任务只维护线上同一份配置。Supervisor 的
+JSON 行日志可按 `run_id`、`role`、`event` 与任务字段关联。需要立即手动执行所有已配置
+cron 时，可以在已构建 Node runtime 后运行：
 
 ```bash
 npm run dev:cron:once
@@ -76,8 +78,8 @@ npm run dev:cron:once
 
 ### 机构持仓关键词信息预处理
 
-用于按机构持仓关键词筛选本地 D1 中的新闻，并逐篇调用本地 Worker 的信息处理接口。
-先用 `./start-local.sh` 启动本地运行时（信息处理只允许在 `LLM_RUNTIME=local` 下运行），再执行：
+用于按机构持仓关键词筛选本地 Node SQLite 中的新闻，并逐篇调用本地 Node HTTP 的信息处理接口。
+先用 `./start-local.sh` 启动本地 Node 运行时（信息处理只允许在 `LLM_RUNTIME=local` 下运行），再执行：
 
 ```bash
 npm run process:information:institutional
@@ -116,25 +118,25 @@ npm run process:information:institutional -- --all --max-age-days 14
 - 执行 `full-rescan`
 - 忽略年龄限制
 - 把 `processedDir` 也作为额外输入目录重新扫描
-- 结果写入本地 D1，并把正文内容写入本地正文缓存，内容键统一为 `knowledge-content/*`
+- 结果写入本地 Node SQLite，并把正文内容写入本地正文缓存，内容键统一为 `knowledge-content/*`
 - 更新本地同步状态文件 `knowledge-remote-sync.jsonl`
-- 本地导入直接对 Wrangler 的本地 D1 SQLite 状态库执行分块事务，避免为每个小批次反复启动 Wrangler；远端导入仍使用 `wrangler d1 execute --remote`
+- 本地导入直接对 `data/local/stock-info.sqlite` 执行分块事务；远端导入仍使用 `wrangler d1 execute --remote`
 - 增量判断使用排除抓取时间、来源文件名和 mtime 等易变字段后的内容指纹；同步账本会在导入完成后原子压缩，只保留每篇文档在各目标上的最新状态
 
-本地 D1 文件通常会根据包含 `knowledge_docs` 的 Wrangler 状态库自动识别。如果同一状态目录存在多个候选库，可以显式设置：
+本地数据库默认是 `data/local/stock-info.sqlite`；所有本地脚本、导入与 Node HTTP
+运行时均优先使用同一个 `LOCAL_DB_PATH`。需要使用其他路径时，可以显式设置：
 
 ```bash
-KNOWLEDGE_IMPORT_LOCAL_D1_FILE=/absolute/path/to/local-d1.sqlite ./process-knowledge-local-full.sh
+LOCAL_DB_PATH=/absolute/path/to/stock-info.sqlite ./process-knowledge-local-full.sh
 ```
 
 适合什么时候用：
 
 - 想在本地完整重建一次知识库
 - 想重新生成最新的 `knowledge-import-*.jsonl`
-- 想在本地重建 D1，同时保持与生产一致的正文 key/元数据形态
+- 想在本地重建 SQLite，同时保持与生产一致的正文 key/元数据形态
 
-如果需要把历史 `localfs:` 记录迁到统一的 `knowledge-content/*`，先停掉本地
-`wrangler dev`，再执行：
+如果需要把历史 `localfs:` 记录迁到统一的 `knowledge-content/*`，可直接执行：
 
 ```bash
 npm run migrate:knowledge:localfs
@@ -167,7 +169,22 @@ Cloudflare lifecycle rule 控制；如果需要手动核对 orphan，可单独�
 
 ## 正文清理
 
-正文清理默认是单独手工执行，不会在 `deploy-cloudflare.sh` 里自动触发。需要时先跑 dry-run，对比远端 D1 引用和远端 R2 对象，找出超过保留期的未引用对象：
+正文清理默认是单独手工执行，不会在 `deploy-cloudflare.sh` 里自动触发。本地模式对比
+Node SQLite 引用和 `KNOWLEDGE_CONTENT_LOCAL_DIR` 文件；远端模式对比 Cloudflare D1 引用和 R2 对象。
+
+本地先跑 dry-run：
+
+```bash
+npm run cleanup:knowledge:content:local:dry-run
+```
+
+本地真正删除：
+
+```bash
+npm run cleanup:knowledge:content:local
+```
+
+远端需要时先跑 dry-run，找出超过保留期的未引用对象：
 
 ```bash
 npm run cleanup:knowledge:content
@@ -179,7 +196,7 @@ npm run cleanup:knowledge:content
 npm run cleanup:knowledge:content:apply
 ```
 
-清理脚本依赖下面这些环境变量：
+远端清理依赖下面这些环境变量：
 
 ```bash
 export CLOUDFLARE_R2_ENDPOINT=...
@@ -370,7 +387,7 @@ npm run deploy
 - `wrangler deploy`
 - `curl https://tinfo.cc/api/health`
 
-`XUEQIU_COOKIE` 作为 Worker 变量随标准 `wrangler deploy` 发布。`start-local.sh` 在上次成功刷新已超过 6 小时时才刷新本地与待发布变量；因此本地服务频繁重启不会重复刷新。刷新本身不会部署线上，需在确认后执行 `npm run deploy`。
+`XUEQIU_COOKIE` 作为 Worker 变量随标准 `wrangler deploy` 发布。local-scheduler 在上次成功刷新超过 6 小时时启动受控 CDP 子进程；候选 Cookie 必须先通过真实雪球 K 线请求，才会原子更新本地 credential store。local-http 会在下一个请求读取新值，PID 不变。验证失败不会推进成功时间，并在 5 分钟后重试（可通过 `XUEQIU_COOKIE_REFRESH_RETRY_SECONDS` 调整）。自动刷新不会写入生产变量或自动部署；需要暂存 `.dev.vars` 或 `wrangler.jsonc` 时，显式运行 `npm run refresh:xueqiu-cookie -- --write-dev-vars --write-wrangler-vars`，再按需 `npm run deploy`。
 
 只做打包检查但不真正上线：
 

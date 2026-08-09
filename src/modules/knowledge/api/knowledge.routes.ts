@@ -14,14 +14,14 @@ import {
 } from "../../company/application/report-analysis-cache";
 import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
 import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income-statements";
-import {
-  completeInformationProcessing,
-  failInformationProcessing,
-  INFORMATION_PROCESSING_PROMPT_VERSION,
-  prepareInformationDocument,
-  type InformationProcessingModelRequest,
-} from "../application/information-processing";
+import { INFORMATION_PROCESSING_PROMPT_VERSION, type InformationProcessingModelRequest } from "../application/information-processing";
 import { listKnowledgeCompanyCodeMappings, refreshKnowledgeCompanyCodeMappings } from "../application/company-code-mappings";
+import {
+  claimAndPrepareInformationProcessingJob,
+  completeClaimedInformationProcessingJob,
+  failClaimedInformationProcessingJob,
+  heartbeatInformationProcessingJob,
+} from "../application/information-processing-jobs";
 import type { AppEnv } from '../../../types';
 
 export const knowledgeRoutes = new Hono<AppEnv>();
@@ -400,72 +400,53 @@ knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
 // prepares/persists D1/R2 state; it must never await a remote model stream.
 knowledgeRoutes.post("/knowledge/processing-jobs/claim-next", async (c) => {
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  let job: { job_id: string; doc_id: string } | undefined;
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
   try {
-    [job] = await claimInformationJobs(c.env.DB, 1);
-    if (!job) return ok(c, { job: null });
+    return ok(c, { job: await claimAndPrepareInformationProcessingJob(c.env, body.runnerInstanceId) });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // This endpoint is polled every two seconds by a local Node process. A D1
-    // failure must remain an explicit retryable boundary response rather than
-    // escape to Hono's global error handler, which can terminate Miniflare's
-    // local ProxyWorker after repeated 500s.
+    // This endpoint is polled by local-job-worker. A SQLite/API failure remains
+    // an explicit retryable boundary response rather than an opaque route error.
     return fail(c, 503, `information processing queue unavailable: ${message}`);
-  }
-  try {
-    const prepared = await prepareInformationDocument(c.env, job.doc_id);
-    if (prepared.kind === "complete") {
-      const status = prepared.result.needsReview ? "needs_review" : "completed";
-      await c.env.DB.prepare("update information_processing_jobs set status = ?, last_run_id = ?, last_error = null, updated_at = ? where job_id = ?")
-        .bind(status, prepared.result.runId, Date.now(), job.job_id).run();
-      return ok(c, { job: { jobId: job.job_id, documentId: job.doc_id, status, result: prepared.result } });
-    }
-    await c.env.DB.prepare("update information_processing_jobs set last_run_id = ?, updated_at = ? where job_id = ? and status = 'processing'")
-      .bind(prepared.request.runId, Date.now(), job.job_id).run();
-    return ok(c, { job: { jobId: job.job_id, documentId: job.doc_id, status: "processing", request: prepared.request } });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    try {
-      await c.env.DB.prepare("update information_processing_jobs set status = 'failed', last_error = ?, updated_at = ? where job_id = ?")
-        .bind(message, Date.now(), job.job_id).run();
-      return ok(c, { job: { jobId: job.job_id, documentId: job.doc_id, status: "failed", error: message } });
-    } catch (persistenceError) {
-      const persistenceMessage = persistenceError instanceof Error ? persistenceError.message : String(persistenceError);
-      return fail(c, 503, `information processing queue unavailable: ${persistenceMessage}`);
-    }
   }
 });
 
 knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/complete", async (c) => {
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; text?: unknown; raw?: unknown; cached?: unknown } | null;
+  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; text?: unknown; raw?: unknown; cached?: unknown; runnerInstanceId?: unknown; attempt?: unknown } | null;
   const request = body?.request;
-  if (!request || typeof body?.text !== "string" || !sameInformationRun(request, c.req.param("jobId"), await informationJob(c.env.DB, c.req.param("jobId")))) return fail(c, 400, "invalid information processing completion");
+  const runnerInstanceId = typeof body?.runnerInstanceId === "string" ? body.runnerInstanceId : "";
+  const attempt = Number(body?.attempt);
+  if (!request || typeof body?.text !== "string" || !runnerInstanceId || !Number.isInteger(attempt)) return fail(c, 400, "invalid information processing completion");
   try {
-    const result = await completeInformationProcessing(c.env, request, body.text, body.raw, body.cached === true);
-    const status = result.needsReview ? "needs_review" : "completed";
-    await c.env.DB.prepare("update information_processing_jobs set status = ?, last_run_id = ?, last_error = null, updated_at = ? where job_id = ?")
-      .bind(status, result.runId, Date.now(), c.req.param("jobId")).run();
-    return ok(c, { status, result });
+    return ok(c, await completeClaimedInformationProcessingJob(c.env, c.req.param("jobId"), { request, text: body.text, raw: body.raw, cached: body.cached === true, runnerInstanceId, attempt }));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await c.env.DB.prepare("update information_processing_jobs set status = 'failed', last_error = ?, updated_at = ? where job_id = ?")
-      .bind(message, Date.now(), c.req.param("jobId")).run();
-    return fail(c, 400, message);
+    return fail(c, /lease is no longer owned/.test(error instanceof Error ? error.message : String(error)) ? 409 : 400, error instanceof Error ? error.message : String(error));
   }
 });
 
 knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/fail", async (c) => {
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; error?: unknown } | null;
+  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; error?: unknown; runnerInstanceId?: unknown; attempt?: unknown } | null;
   const request = body?.request;
-  const job = await informationJob(c.env.DB, c.req.param("jobId"));
-  if (!request || !sameInformationRun(request, c.req.param("jobId"), job)) return fail(c, 400, "invalid information processing failure");
+  const runnerInstanceId = typeof body?.runnerInstanceId === "string" ? body.runnerInstanceId : "";
+  const attempt = Number(body?.attempt);
+  if (!request || !runnerInstanceId || !Number.isInteger(attempt)) return fail(c, 400, "invalid information processing failure");
   const message = typeof body?.error === "string" && body.error.trim() ? body.error.trim() : "local information processing runner failed";
-  await failInformationProcessing(c.env, request, message);
-  await c.env.DB.prepare("update information_processing_jobs set status = 'failed', last_error = ?, updated_at = ? where job_id = ?")
-    .bind(message, Date.now(), c.req.param("jobId")).run();
-  return ok(c, { status: "failed" });
+  try { await failClaimedInformationProcessingJob(c.env, c.req.param("jobId"), { request, error: message, runnerInstanceId, attempt }); return ok(c, { status: "failed" }); }
+  catch (error) { return fail(c, /lease is no longer owned/.test(error instanceof Error ? error.message : String(error)) ? 409 : 400, error instanceof Error ? error.message : String(error)); }
+});
+
+knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/heartbeat", async (c) => {
+  if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const runnerInstanceId = typeof body.runnerInstanceId === "string" ? body.runnerInstanceId : "";
+  const attempt = Number(body.attempt);
+  if (!runnerInstanceId.trim() || !Number.isInteger(attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
+  try {
+    return ok(c, { active: await heartbeatInformationProcessingJob(c.env.DB, c.req.param("jobId"), runnerInstanceId, attempt) });
+  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
 knowledgeRoutes.post("/knowledge/processing-jobs/:id/retry", async (c) => {
@@ -591,7 +572,7 @@ knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
 });
 
 knowledgeRoutes.get("/knowledge/filtered", async (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "filtered review is only available in local development");
   }
   const q = String(c.req.query("q") ?? "").trim();
@@ -615,7 +596,7 @@ knowledgeRoutes.get("/knowledge/filtered", async (c) => {
 });
 
 knowledgeRoutes.get("/knowledge/filtered/doc", async (c) => {
-  if (!isLocalDevelopmentRuntime()) return fail(c, 404, "filtered review is only available in local development");
+  if (!isLocalDevelopmentRuntime(c.env)) return fail(c, 404, "filtered review is only available in local development");
   const id = c.req.query("id")?.trim() ?? "";
   if (!id) return fail(c, 400, "missing doc id");
   const reviewRows = await loadLocalFilteredReviewRows();
@@ -626,7 +607,7 @@ knowledgeRoutes.get("/knowledge/filtered/doc", async (c) => {
 });
 
 knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
-  if (!isLocalDevelopmentRuntime()) return fail(c, 404, "filtered review is only available in local development");
+  if (!isLocalDevelopmentRuntime(c.env)) return fail(c, 404, "filtered review is only available in local development");
   const body = await c.req.json().catch(() => ({})) as { id?: string };
   const id = String(body.id || c.req.query("id") || "").trim();
   if (!id) return fail(c, 400, "missing doc id");
@@ -798,7 +779,7 @@ knowledgeRoutes.get("/knowledge/information-filters", async (c) => {
 });
 
 knowledgeRoutes.post("/knowledge/company-code-mappings/refresh", async (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "company-code mapping refresh is only available in local development");
   }
   const body = await c.req.json().catch(() => ({})) as { maxCompanies?: number };
@@ -861,7 +842,7 @@ function knowledgeContentUrlContext(c: { env: AppEnv["Bindings"]; req: { raw: Re
   const url = new URL(c.req.raw.url);
   const host = c.req.raw.headers.get("host") || "";
   return {
-    local: isLocalDevelopmentRuntime() || isKnowledgeTextSearchEnabled(c.env),
+    local: isLocalDevelopmentRuntime(c.env) || isKnowledgeTextSearchEnabled(c.env),
     origin: host ? `${url.protocol}//${host}` : url.origin,
     publicBaseUrl: String(c.env.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL || "").trim(),
   };
@@ -2323,7 +2304,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 function isLocalInformationProcessingRuntime(env: AppEnv["Bindings"]): boolean {
-  return env.LLM_RUNTIME === "local" && isLocalDevelopmentRuntime();
+  return env.LLM_RUNTIME === "local" && isLocalDevelopmentRuntime(env);
 }
 
 function mapInformationRow(row: Record<string, unknown>): Record<string, unknown> {
@@ -2375,7 +2356,7 @@ async function enqueueUnprocessedInformationDocuments(
         and not exists (
           select 1 from information_processing_jobs j
            where j.doc_id = d.doc_id
-             and (j.status = 'queued' or (j.status = 'processing' and j.updated_at >= ?))
+             and (j.status = 'queued' or (j.status = 'running' and j.updated_at >= ?))
         )
         and coalesce((
           select p.action
@@ -2409,52 +2390,4 @@ function normalizeInformationTriggerSource(value: unknown): "automatic" | "cli" 
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, "\\$&");
-}
-
-async function claimInformationJobs(
-  db: AppEnv["Bindings"]["DB"],
-  limit: number,
-  documentIds?: string[],
-): Promise<Array<{ job_id: string; doc_id: string }>> {
-  // A killed local runner cannot execute its failure callback. Do not leave a
-  // perpetual spinner: expose the interrupted attempt, then a later explicit
-  // retry/automatic enqueue may create a fresh run with a new run id.
-  const now = Date.now();
-  await db.prepare(
-    "update information_processing_jobs set status = 'failed', last_error = ?, updated_at = ? where status = 'processing' and updated_at < ?",
-  ).bind("local information processing runner lease expired; retry the document", now, now - 10 * 60 * 1000).run();
-  const requestedIds = [...new Set(documentIds || [])];
-  const requestedClause = requestedIds.length > 0
-    ? ` and j.doc_id in (${requestedIds.map(() => "?").join(", ")})`
-    : "";
-  const queued = await db.prepare(
-    `select j.job_id, j.doc_id
-       from information_processing_jobs j
-       join knowledge_docs d on d.doc_id = j.doc_id
-      where j.status = 'queued'${requestedClause}
-      order by d.sort_time desc, d.doc_id desc
-      limit ?`,
-  ).bind(...requestedIds, limit).all<{ job_id: string; doc_id: string }>();
-  if (queued.results.length === 0) return [];
-  await db.batch(queued.results.map((job) => db.prepare(
-    "update information_processing_jobs set status = 'processing', attempt_count = attempt_count + 1, updated_at = ? where job_id = ? and status = 'queued'",
-  ).bind(now, job.job_id)));
-  return queued.results;
-}
-
-async function informationJob(db: AppEnv["Bindings"]["DB"], jobId: string): Promise<{ job_id: string; doc_id: string; status: string; last_run_id: string | null } | null> {
-  return await db.prepare("select job_id, doc_id, status, last_run_id from information_processing_jobs where job_id = ?")
-    .bind(jobId).first<{ job_id: string; doc_id: string; status: string; last_run_id: string | null }>();
-}
-
-function sameInformationRun(request: InformationProcessingModelRequest, jobId: string, job: { job_id: string; status: string; last_run_id: string | null } | null): boolean {
-  return Boolean(job
-    && job.job_id === jobId
-    && job.status === "processing"
-    && job.last_run_id === request.runId
-    && typeof request.runId === "string" && request.runId.startsWith("knowledge-run:")
-    && typeof request.versionId === "string" && request.versionId.startsWith("knowledge-version:")
-    && request.model === "gpt-5.6-luna"
-    && Number.isInteger(request.maxTokens) && request.maxTokens > 0
-    && typeof request.instructions === "string" && typeof request.input === "string");
 }

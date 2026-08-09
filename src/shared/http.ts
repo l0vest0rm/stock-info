@@ -309,7 +309,7 @@ class DomainLimiter {
       }
       // Keep the wait promise owned by the current Worker request. Resolving a
       // queued promise from another request context causes workerd to cancel it.
-      await scheduler.wait(Math.min(25, remainingMs));
+      await delay(Math.min(25, remainingMs));
     }
     try {
       return await fn();
@@ -325,6 +325,10 @@ class DomainLimiter {
       }
     }
   }
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 export function parseJsonOrJsonp(text: string): unknown {

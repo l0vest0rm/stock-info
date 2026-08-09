@@ -1,20 +1,24 @@
 import type { MacroFetch } from "./types";
 
-export function macroFetch(env: { MACRO_FETCH_RELAY_URL?: string }): MacroFetch {
-  const relayUrl = env.MACRO_FETCH_RELAY_URL?.trim();
-  if (!relayUrl) return fetch;
-  return (async (input: RequestInfo | URL, init: RequestInit = {}) => {
-    const headers = Object.fromEntries(new Headers(init.headers).entries());
-    return fetch(relayUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: init.signal,
-      body: JSON.stringify({
-        url: String(input),
-        method: init.method ?? "GET",
-        headers,
-        body: typeof init.body === "string" ? init.body : undefined,
-      }),
-    });
+const OFFICIAL_MACRO_HOSTS = new Set([
+  "api.bls.gov",
+  "api.hkma.gov.hk",
+  "api.stlouisfed.org",
+  "fred.stlouisfed.org",
+  "markets.newyorkfed.org",
+]);
+
+/**
+ * Macro adapters may only contact their documented official sources. Both
+ * runtimes use their native fetch implementation; local Node intentionally
+ * has no loopback relay or second service lifecycle.
+ */
+export function macroFetch(_env: object): MacroFetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? new URL(input.url) : new URL(String(input));
+    if (url.protocol !== "https:" || !OFFICIAL_MACRO_HOSTS.has(url.hostname.toLowerCase())) {
+      throw new Error(`macro source is not allowlisted: ${url.origin}`);
+    }
+    return fetch(input, init);
   }) as MacroFetch;
 }

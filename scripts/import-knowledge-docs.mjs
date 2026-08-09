@@ -123,7 +123,7 @@ function executeD1SqlFile(sqlFile) {
         "d1",
         "execute",
         args.database,
-        args.remote ? "--remote" : "--local",
+        "--remote",
         "--file",
         sqlFile,
       ],

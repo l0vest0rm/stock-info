@@ -56,7 +56,7 @@ export function createRouter(): Hono<AppEnv> {
   app.get("/home.html", (c) => c.redirect("/", 301));
 
   app.get("/company-option.html", (c) => {
-    if (!isLocalDevelopmentRuntime()) {
+    if (!isLocalDevelopmentRuntime(c.env)) {
       return fail(c, 404, "options page is only available in local development");
     }
     if (c.env.ASSETS) {
@@ -66,7 +66,7 @@ export function createRouter(): Hono<AppEnv> {
   });
 
   app.get("/company-option-theta.html", (c) => {
-    if (!isLocalDevelopmentRuntime()) {
+    if (!isLocalDevelopmentRuntime(c.env)) {
       return fail(c, 404, "options theta page is only available in local development");
     }
     if (c.env.ASSETS) {
@@ -76,7 +76,7 @@ export function createRouter(): Hono<AppEnv> {
   });
 
   app.get("/knowledge-config.html", (c) => {
-    if (!isLocalDevelopmentRuntime()) {
+    if (!isLocalDevelopmentRuntime(c.env)) {
       return fail(c, 404, "knowledge config is only available in local development");
     }
     if (c.env.ASSETS) {

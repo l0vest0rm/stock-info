@@ -202,7 +202,7 @@ function r2PutCommand({ bucket, key, file, encoding, remote }) {
     "object",
     "put",
     `${bucket}/${key}`,
-    remote ? "--remote" : "--local",
+    "--remote",
     "--file",
     file,
     "--content-type",

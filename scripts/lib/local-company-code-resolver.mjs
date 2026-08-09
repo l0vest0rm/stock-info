@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { LOCAL_SQLITE_BUSY_TIMEOUT_MS, resolveLocalD1Path } from "./local-d1-sqlite.mjs";
 
 export function loadLocalCompanyCodeResolver(projectRoot) {
   const dbPath = discoverLocalD1Path(projectRoot);
@@ -20,6 +21,8 @@ export function loadLocalCompanyCodeResolver(projectRoot) {
     const output = execFileSync(
       "sqlite3",
       [
+        "-cmd",
+        `.timeout ${LOCAL_SQLITE_BUSY_TIMEOUT_MS}`,
         dbPath,
         `select code, alias
            from (
@@ -69,21 +72,8 @@ export function loadLocalCompanyCodeResolver(projectRoot) {
 }
 
 function discoverLocalD1Path(projectRoot) {
-  const override = String(process.env.KNOWLEDGE_LOCAL_D1_SQLITE || "").trim();
-  if (override) {
-    const absolute = resolve(projectRoot, override);
-    return existsSync(absolute) ? absolute : "";
-  }
-  const dir = resolve(projectRoot, ".wrangler/state/v3/d1/miniflare-D1DatabaseObject");
-  if (!existsSync(dir)) {
-    return "";
-  }
-  const candidates = readdirSync(dir)
-    .filter((name) => name.endsWith(".sqlite") && name !== "metadata.sqlite")
-    .map((name) => join(dir, name))
-    .map((path) => ({ path, mtimeMs: statSync(path).mtimeMs }))
-    .sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return candidates[0]?.path || "";
+  const database = resolveLocalD1Path({ root: projectRoot });
+  return existsSync(database) ? database : "";
 }
 
 function buildAliasMap(output) {

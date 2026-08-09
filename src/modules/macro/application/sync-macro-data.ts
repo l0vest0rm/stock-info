@@ -81,11 +81,9 @@ export async function syncMacroData(env: Bindings, scheduledTime = Date.now()): 
         sourceId: "hkma",
         displayName: "Hong Kong Monetary Authority",
         run: async () => {
-          // Use the same controlled fetch path as the other official sources.
-          // In local Wrangler this is the allow-listed relay; in production it
-          // remains the Worker fetch implementation.  Constructing HKMA with
-          // the global fetch bypassed that boundary and made its health depend
-          // on the local Worker network stack rather than the source itself.
+          // Use the same allow-listed native fetch path as the other official
+          // sources. Local Node and the production Worker both fetch upstream
+          // directly; there is no local loopback relay.
           const adapter = new HkmaOpenApiAdapter(upstreamFetch);
           const settled = await Promise.allSettled([
             adapter.load({

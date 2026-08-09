@@ -7,14 +7,8 @@ import type { AppEnv } from "../../../types";
 export const localDataRoutes = new Hono<AppEnv>();
 const COMPANIES_FOLLOW_CONFIG_KEY = "companies-follow-config";
 
-localDataRoutes.get("/knowledge/docs", (c) => ok(c, { items: [], total: 0, hasNext: false }));
-localDataRoutes.get("/knowledge/doc", (c) => ok(c, null));
-localDataRoutes.post("/knowledge/doc/read", (c) => fail(c, 404, "knowledge read state is not enabled"));
-localDataRoutes.post("/knowledge/doc/event", (c) => fail(c, 404, "knowledge events are not enabled"));
-localDataRoutes.post("/knowledge/doc/favorite", (c) => fail(c, 404, "knowledge favorites are not enabled"));
-localDataRoutes.get("/knowledge/sources", (c) => ok(c, []));
 localDataRoutes.get("/knowledge/ingest-config", (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "knowledge ingest config is only available in local development");
   }
   return ok(c, {
@@ -36,13 +30,13 @@ localDataRoutes.get("/knowledge/ingest-config", (c) => {
   });
 });
 localDataRoutes.post("/knowledge/ingest-config", (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "knowledge ingest config is only available in local development");
   }
   return ok(c, { saved: false, reason: "not-migrated" });
 });
 localDataRoutes.post("/knowledge/ingest-run", (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "knowledge ingest run is only available in local development");
   }
   return ok(c, { started: false, reason: "not-migrated" });
@@ -64,7 +58,7 @@ localDataRoutes.post("/portfolio/transactions/confirm", (c) => ok(c, { saved: fa
 localDataRoutes.get("/stock-info", (c) => ok(c, {}));
 
 localDataRoutes.get("/companies/follow/forecast", async (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return ok(c, { version: 1, storage: "browser" });
   }
   const record = await getAppKv(c.env.DB, COMPANIES_FOLLOW_CONFIG_KEY);
@@ -85,7 +79,7 @@ localDataRoutes.get("/companies/follow/forecast", async (c) => {
   return ok(c, { ...config, storage: "backend", configured: true });
 });
 localDataRoutes.post("/companies/follow/forecast", async (c) => {
-  if (!isLocalDevelopmentRuntime()) {
+  if (!isLocalDevelopmentRuntime(c.env)) {
     return fail(c, 404, "companies follow config is only writable in local development");
   }
   const body = await c.req.json().catch(() => null);
@@ -101,10 +95,6 @@ localDataRoutes.post("/companies/follow/forecast", async (c) => {
   });
   return ok(c, { ...config, storage: "backend", configured: true });
 });
-localDataRoutes.get("/report/forecast", (c) => ok(c, {}));
-localDataRoutes.get("/company/reports", (c) => ok(c, { items: [], total: 0, hasNext: false }));
-localDataRoutes.post("/company/report/update", (c) => ok(c, { started: false, reason: "not-migrated" }));
-localDataRoutes.post("/company/report-ts/update", (c) => ok(c, { started: false, reason: "not-migrated" }));
 
 type CompaniesFollowConfig = {
   version: 1;

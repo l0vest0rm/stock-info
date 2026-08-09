@@ -362,7 +362,7 @@ async function evaluateAlerts(c: Context<AppEnv>, persist: boolean) {
 }
 
 macroRoutes.post("/macro/sync", async (c) => {
-  if (!isLocalDevelopmentRuntime()) return fail(c, 404, "macro sync endpoint is only available in local development");
+  if (!isLocalDevelopmentRuntime(c.env)) return fail(c, 404, "macro sync endpoint is only available in local development");
   return ok(c, await syncMacroData(c.env));
 });
 

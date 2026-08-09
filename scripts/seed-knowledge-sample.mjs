@@ -3,9 +3,16 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildContentOptions, prepareKnowledgeContent } from "./knowledge-content-r2.mjs";
+import { executeLocalD1SqlFile, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
-const remote = process.argv.includes("--remote");
-const contentOptions = buildContentOptions({});
+const args = parseArgs(process.argv.slice(2));
+if (args.help) {
+  printHelp();
+  process.exit(0);
+}
+if (!args.remote) resolveLocalD1Database({ requiredTable: "knowledge_docs" });
+const remote = args.remote;
+const contentOptions = buildContentOptions({ remote, uploadContentRemote: remote });
 const now = Date.now();
 const samples = [
   {
@@ -139,13 +146,38 @@ const dir = mkdtempSync(join(tmpdir(), "stock-info-knowledge-"));
 const file = join(dir, "seed.sql");
 try {
   writeFileSync(file, sql);
-  execFileSync(
-    "npx",
-    ["wrangler", "d1", "execute", "stock_info", remote ? "--remote" : "--local", "--file", file],
-    { stdio: "inherit" }
-  );
+  if (!remote) {
+    executeLocalD1SqlFile(file, { requiredTable: "knowledge_docs" });
+  } else {
+    execFileSync("npx", ["wrangler", "d1", "execute", args.database, "--remote", "--file", file], { stdio: "inherit" });
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true });
+}
+
+function parseArgs(argv) {
+  const parsed = { remote: false, database: "stock_info", help: false };
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--remote") parsed.remote = true;
+    else if (arg === "--local") parsed.remote = false;
+    else if (arg === "--database") parsed.database = requireValue(argv, ++index, arg);
+    else if (arg === "--help" || arg === "-h") parsed.help = true;
+    else throw new Error(`unknown argument: ${arg}`);
+  }
+  return parsed;
+}
+
+function requireValue(argv, index, flag) {
+  const value = argv[index];
+  if (!value) throw new Error(`missing value for ${flag}`);
+  return value;
+}
+
+function printHelp() {
+  console.log(`Usage: npm run seed:knowledge:sample -- [--local|--remote]
+
+Local mode seeds Node SQLite at LOCAL_DB_PATH (default data/local/stock-info.sqlite). Remote mode explicitly seeds Cloudflare D1.`);
 }
 
 function q(value) {
