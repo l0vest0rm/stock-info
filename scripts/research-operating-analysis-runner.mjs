@@ -72,7 +72,7 @@ const text = (value) => typeof value === "string" ? value.trim() : "";
 const json = (value) => { try { return JSON.parse(text(value).replace(/^```json\s*|\s*```$/g, "")); } catch { return null; } };
 function positiveInteger(value, fallback) { const parsed = Number(value); return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback; }
 
-async function buildInput(code) {
+async function buildInput(code, modelRun) {
   const [overview, income, balance, cashflow] = await Promise.all([
     request(`/api/company/overview?code=${encodeURIComponent(code)}`),
     request(`/api/finance/income?code=${encodeURIComponent(code)}&format=read-model`),
@@ -88,6 +88,7 @@ async function buildInput(code) {
     security: { securityCode: code, listingVenue: code.split(".").at(-1) || "未知", tradingCurrency: "CNY" },
     reportingBoundary: { latestFiledPeriod: String(latest.reportDate || "") || null, latestAnnualPeriod: latestAnnualPeriod(income), laterProvisionalUpdates: provisionalUpdates(income) },
     marketSnapshot: { asOf: String(overview?.marketDate || "") || null, price: finite(overview?.latestPrice), marketCapitalization: finite(overview?.marketCapYi), currency: "CNY", reportedMultiples: { peTtm: finite(overview?.peTtm), pb: finite(overview?.pb), psTtm: finite(overview?.psTtm), pcfTtm: finite(overview?.pcfTtm) } },
+    modelRun,
     financialDataSnapshot: financialContext.descriptor,
     financialContext,
     industryProfile: null,
@@ -109,7 +110,8 @@ async function runStage(claim, baseInput, task, definition) {
   const upstream = Object.fromEntries(dependsOn.map((upstreamKey) => [upstreamKey, artifact(task, upstreamKey)]));
   const { financialContext, ...sharedInput } = baseInput;
   const input = { ...sharedInput, financialDataSnapshot: financialSnapshotForStage(baseInput.financialDataSnapshot, financialContext, key), stage: { key, label, outputFormat: format }, upstreamArtifacts: upstream };
-  const modelPrompt = { model: config.model, instructions: INSTRUCTIONS, userPrompt: prompt(template, input) };
+  const selectedModel = claim.model || config.model;
+  const modelPrompt = { model: selectedModel, instructions: INSTRUCTIONS, userPrompt: prompt(template, input) };
   localRuntimeLog("research-operating-analysis", "stage_started", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, stage_key: key });
   await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/start`, { input, prompt: modelPrompt, runnerInstanceId, attempt: claim.attempt });
   let output = ""; let checkpointed = 0; let checkpointAt = 0;
@@ -117,7 +119,7 @@ async function runStage(claim, baseInput, task, definition) {
     if (!output || (!force && output.length - checkpointed < config.streamCheckpoint.minChars && Date.now() - checkpointAt < config.streamCheckpoint.intervalMs)) return;
     await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/checkpoint`, { partialOutput: output, runnerInstanceId, attempt: claim.attempt }); checkpointed = output.length; checkpointAt = Date.now();
   };
-  const llmRequest = { provider: "openai", model: config.model, instructions: modelPrompt.instructions, input: [{ role: "user", content: [{ type: "input_text", text: modelPrompt.userPrompt }] }], allowReasoning: true, reasoningEffort: claim.reasoningEffort, ...(webSearch ? { tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }], toolChoice: "required" } : {}), maxOutputTokens: config.maxOutputTokens, cacheEnabled: false, signal: AbortSignal.timeout(webSearch ? config.webSearchJobTimeoutMs : config.jobTimeoutMs), ...(webSearch ? {} : { onText: async (delta) => { output += delta; await checkpoint(); } }) };
+  const llmRequest = { provider: "openai", model: selectedModel, instructions: modelPrompt.instructions, input: [{ role: "user", content: [{ type: "input_text", text: modelPrompt.userPrompt }] }], allowReasoning: true, reasoningEffort: claim.reasoningEffort, ...(webSearch ? { tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }], toolChoice: "required" } : {}), maxOutputTokens: config.maxOutputTokens, cacheEnabled: false, signal: AbortSignal.timeout(webSearch ? config.webSearchJobTimeoutMs : config.jobTimeoutMs), ...(webSearch ? {} : { onText: async (delta) => { output += delta; await checkpoint(); } }) };
   const response = webSearch ? await client.generateText(llmRequest) : await client.streamText(llmRequest);
   output = text(response.text); await checkpoint(true);
   const parsed = format === "json" ? json(output) : output;
@@ -153,11 +155,11 @@ async function runJob(claim) {
     void post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/heartbeat`, { runnerInstanceId, attempt: claim.attempt }).catch(() => {});
   }, 10_000);
   try {
-    const input = await buildInput(claim.securityCode); const task = await request(`/api/research/company/${encodeURIComponent(claim.securityCode)}/operating-analysis`);
+    const input = await buildInput(claim.securityCode, { model: claim.model || config.model, reasoningEffort: claim.reasoningEffort }); const task = await request(`/api/research/company/${encodeURIComponent(claim.securityCode)}/operating-analysis`);
     const stageResults = await runOperatingAnalysisStageWaves(stageWaves, (definition) => runStage(claim, input, task, definition));
     const blocked = stageResults.find(({ output }) => output?.status === "blocked");
     if (blocked) throw new Error(`${blocked.stage.label} 被阻断：请补充其列出的证据或数据缺口`);
-    const report = assembleOperatingAnalysisReport(input, task.job.stages || []); const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex"); const finalPrompt = stageState(task, "valuation_conclusion")?.prompt || { model: config.model, instructions: INSTRUCTIONS, userPrompt: "六阶段任务由系统确定性组装" };
+    const report = assembleOperatingAnalysisReport(input, task.job.stages || []); const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex"); const finalPrompt = stageState(task, "valuation_conclusion")?.prompt || { model: claim.model || config.model, instructions: INSTRUCTIONS, userPrompt: "六阶段任务由系统确定性组装" };
     await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/complete`, { input: { ...input, stageArtifacts: task.job.stages }, prompt: finalPrompt, reportMarkdown: report, reasoningMarkdown: "", inputFingerprint: fingerprint, streamStats: { staged: true }, runnerInstanceId, attempt: claim.attempt });
     localRuntimeLog("research-operating-analysis", "completed", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, duration_ms: Date.now() - startedAt });
   } catch (error) {
