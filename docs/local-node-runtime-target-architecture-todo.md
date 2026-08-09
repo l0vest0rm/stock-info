@@ -257,8 +257,8 @@ local-supervisor / scheduler
 
 - [x] `ARCH-P3-003` 建立精确进程所有权。
   - 状态：`done`
-  - 要求：supervisor 保存 child handle，不按模糊命令字符串或任意端口杀进程；不得杀死非本仓 listener。
-  - 完成证据：8000 被无关测试进程占用时启动明确失败，且不终止该进程。
+  - 要求：supervisor 保存 child handle；启动替换时只回收工作目录属于本仓、命令精确为 `local-supervisor.mjs` 的旧 supervisor；不得按任意端口杀进程或杀死非本仓 listener。
+  - 完成证据：8000 被无关测试进程占用时启动明确失败且不终止该进程；同仓旧 supervisor 会先优雅停止并被新实例替换。
 
 - [x] `ARCH-P3-004` 统一健康、退避和故障传播。
   - 状态：`done`

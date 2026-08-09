@@ -51,11 +51,12 @@ npm run test:local-runtime
 本地路径禁止执行 `wrangler ... --local`；`npm run check:wrangler-local` 会检查该门禁。
 Wrangler 仅保留给远端 D1、production dry-run 与部署。
 
-`./start-local.sh` 只在启动前执行一次 prompts、`web/dist` 与 Node runtime 构建，再迁移
-显式本地 SQLite 并物化正文文件。随后它以 `exec` 交给前台 `local-supervisor`，后者管理
+`./start-local.sh` 会先按“命令属于本仓库的 `local-supervisor.mjs` 且工作目录属于本仓库”
+识别并优雅停止上一套本地运行时，再只执行一次 prompts、`web/dist` 与 Node runtime 构建，
+迁移显式本地 SQLite 并物化正文文件。随后它以 `exec` 交给前台 `local-supervisor`，后者管理
 三个常驻角色：`local-http`（8000 API 与同进程 8788 正文监听）、`local-job-worker` 和
-`local-scheduler`。它不会按 PID 文件、命令字符串或端口杀进程；8000 或 8788 被其他进程
-占用时会明确失败且不修改现有 listener。
+`local-scheduler`。启动流程不会按任意端口或模糊命令杀进程；8000 或 8788 若由无关进程
+占用，仍会明确失败且不修改现有 listener。
 
 调度器从 `wrangler.jsonc` 读取生产 cron 定义，并在自身进程中调用共享的
 `dispatchScheduledTask`；知识导入、PDF 转换和 Cookie 刷新是受控的一次性子进程。宏观数据

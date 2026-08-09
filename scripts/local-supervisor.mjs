@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { mkdir, readFile, readlink, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 import { startKnowledgeIngestScheduler } from "./knowledge-ingest-scheduler.mjs";
 
+const execFileAsync = promisify(execFile);
 const root = resolve(new URL("..", import.meta.url).pathname);
 const runId = `local-${randomUUID()}`;
 const host = process.env.HOST || "127.0.0.1";
@@ -17,6 +19,7 @@ const healthIntervalMs = positiveInteger(process.env.LOCAL_SUPERVISOR_HEALTH_INT
 const restartLimit = nonNegativeInteger(process.env.LOCAL_SUPERVISOR_MAX_RESTARTS, 3, "LOCAL_SUPERVISOR_MAX_RESTARTS");
 const restartBackoffMs = positiveInteger(process.env.LOCAL_SUPERVISOR_RESTART_BACKOFF_MS, 1_000, "LOCAL_SUPERVISOR_RESTART_BACKOFF_MS");
 const gracefulTimeoutMs = positiveInteger(process.env.LOCAL_SUPERVISOR_GRACEFUL_TIMEOUT_MS, 30_000, "LOCAL_SUPERVISOR_GRACEFUL_TIMEOUT_MS");
+const previousStopTimeoutMs = positiveInteger(process.env.LOCAL_SUPERVISOR_PREVIOUS_STOP_TIMEOUT_MS, gracefulTimeoutMs + 5_000, "LOCAL_SUPERVISOR_PREVIOUS_STOP_TIMEOUT_MS");
 const stateFile = resolve(process.env.LOCAL_XUEQIU_REFRESH_STATE_FILE || "data/local/runtime/xueqiu-cookie-refresh.json");
 const cookieRefreshIntervalMs = positiveInteger(process.env.XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS, 21_600, "XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS") * 1_000;
 const cookieRefreshRetryMs = positiveInteger(process.env.XUEQIU_COOKIE_REFRESH_RETRY_SECONDS, 300, "XUEQIU_COOKIE_REFRESH_RETRY_SECONDS") * 1_000;
@@ -47,6 +50,7 @@ function failure(role, event, error, details = {}) {
 }
 
 async function main() {
+  await stopPreviousLocalSupervisors();
   await assertPortsAvailable([httpPort, contentPort]);
   const { startLocalCronScheduler } = await import(pathToFileURL(resolve(root, "data/local/runtime/cron.cjs")).href);
   const http = startCore("local-http", process.execPath, [resolve(root, "data/local/runtime/server.mjs")]);
@@ -283,7 +287,7 @@ async function refreshCookie() {
 }
 
 function installShutdown({ cron, ingest }) {
-  for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void shutdown(0, { cron, ingest, signal }); });
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.once(signal, () => { void shutdown(0, { cron, ingest, signal }); });
 }
 
 async function shutdown(exitCode, scheduler = null) {
@@ -324,6 +328,84 @@ async function assertPortsAvailable(ports) {
   });
 }
 
+async function stopPreviousLocalSupervisors() {
+  const pids = await findOwnedSupervisorPids();
+  if (pids.length === 0) return;
+  for (const pid of pids) {
+    log("local-supervisor", "previous_instance_stop_requested", { previous_pid: pid });
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  }
+  for (const pid of pids) {
+    await waitForProcessExit(pid);
+    log("local-supervisor", "previous_instance_stopped", { previous_pid: pid });
+  }
+}
+
+async function findOwnedSupervisorPids() {
+  const rows = await listProcesses();
+  const pids = [];
+  for (const row of rows) {
+    if (row.pid === process.pid || !isSupervisorCommand(row.command)) continue;
+    if (await processWorkingDirectory(row.pid) === root) pids.push(row.pid);
+  }
+  return [...new Set(pids)];
+}
+
+async function listProcesses() {
+  try {
+    const { stdout } = await execFileAsync("ps", ["-axo", "pid=,command="], { maxBuffer: 2 * 1024 * 1024 });
+    return stdout.split(/\r?\n/).flatMap((line) => {
+      const match = line.trim().match(/^(\d+)\s+(.+)$/);
+      return match ? [{ pid: Number(match[1]), command: match[2] }] : [];
+    });
+  } catch (error) {
+    throw new Error(`cannot inspect local processes with ps: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function isSupervisorCommand(command) {
+  if (command.includes("--stop-previous")) return false;
+  const tokens = command.trim().split(/\s+/);
+  const scriptIndex = tokens.findIndex((token) => token === "scripts/local-supervisor.mjs" || token === resolve(root, "scripts/local-supervisor.mjs"));
+  if (scriptIndex < 0) return false;
+  if (scriptIndex === 0) return tokens[0] === resolve(root, "scripts/local-supervisor.mjs");
+  return /(?:^|\/)node(?:js)?$/.test(tokens[0]);
+}
+
+async function processWorkingDirectory(pid) {
+  if (process.platform === "linux") {
+    try { return await readlink(`/proc/${pid}/cwd`); } catch { /* use lsof below */ }
+  }
+  try {
+    const { stdout } = await execFileAsync("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"], { maxBuffer: 16 * 1024 });
+    return stdout.split(/\r?\n/).find((line) => line.startsWith("n"))?.slice(1) || null;
+  } catch (error) {
+    throw new Error(`cannot inspect cwd for local process ${pid}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function waitForProcessExit(pid) {
+  const deadline = Date.now() + previousStopTimeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) return;
+    await sleep(100);
+  }
+  throw new Error(`previous local supervisor pid ${pid} did not stop within ${previousStopTimeoutMs}ms`);
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
 function onceExit(child) {
   if (child.exitCode !== null) return Promise.resolve(true);
   return new Promise((resolveExit) => child.once("exit", () => resolveExit(true)));
@@ -349,7 +431,14 @@ function nonNegativeInteger(value, fallback, name) {
 
 function sleep(ms) { return new Promise((resolveSleep) => setTimeout(resolveSleep, ms)); }
 
-void main().catch((error) => {
-  failure("local-supervisor", "startup_failed", error);
-  void shutdown(1);
-});
+if (process.argv.includes("--stop-previous")) {
+  void stopPreviousLocalSupervisors().catch((error) => {
+    failure("local-supervisor", "previous_instance_stop_failed", error);
+    process.exitCode = 1;
+  });
+} else {
+  void main().catch((error) => {
+    failure("local-supervisor", "startup_failed", error);
+    void shutdown(1);
+  });
+}

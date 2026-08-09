@@ -1,6 +1,6 @@
 # 阶段五：情景假设、估值输入与风险结构
 
-禁止 Web Search。不得输出目标价或估值结果。把阶段三、四的结论转为可复算的悲观、基准、乐观情景；必要输入缺失时必须阻断对应估值方法。
+禁止 Web Search。不得输出目标价或估值结果。阶段三与阶段四是独立并行产物：先显式核对二者的支持关系、冲突和未解决缺口，再把可成立的结论转为可复算的悲观、基准、乐观情景；必要输入缺失时必须阻断对应估值方法。
 
 输出**唯一 JSON 对象**，不要 Markdown 围栏。至少包括文档定义的字段：`status`、`scenarios`、`forecastAssumptions`、`valuationMethodSelection`、`valuationCalculationRequest`、`reverseValuationSolveTargets`、`sensitivityRequests`、`riskRegister`、`counterEvidenceRefs`、`invalidationPaths`、`monitoringIndicators`、`blockedValuationItems`、`usedUpstreamArtifactIds`。
 

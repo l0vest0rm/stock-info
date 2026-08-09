@@ -15,6 +15,8 @@ import { fetchLocalRuntime } from "./lib/local-runtime-request.mjs";
 import { buildOperatingAnalysisFinancialContext, financialSnapshotForStage } from "./lib/operating-analysis-financial-snapshot.mjs";
 import { createLocalJobProvider, loadLocalJobRuntimeConfig, resolveLocalJobApiKey } from "./lib/local-job-provider-registry.mjs";
 import { localRuntimeError, localRuntimeLog } from "./lib/local-runtime-log.mjs";
+import { assembleOperatingAnalysisReport } from "./lib/operating-analysis-report.mjs";
+import { runOperatingAnalysisStageWaves } from "./lib/operating-analysis-stage-plan.mjs";
 
 const baseUrl = String(process.env.OPERATING_ANALYSIS_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const config = await loadConfig();
@@ -24,12 +26,19 @@ const apiKey = await resolveLocalJobApiKey();
 const runnerInstanceId = `operating-analysis-runner:${randomUUID()}`;
 const INSTRUCTIONS = "你是严谨的投资研究员。只使用本阶段允许的证据；不以模型记忆填补缺口；严格按输出格式返回。";
 const stages = [
-  ["company_baseline", "公司事实基线", "json", true, RESEARCH_OPERATING_ANALYSIS_COMPANY_BASELINE_PROMPT],
-  ["industry_validation", "行业、产业链与外部验证", "json", true, RESEARCH_OPERATING_ANALYSIS_INDUSTRY_VALIDATION_PROMPT],
-  ["operating_analysis", "经营、增长与竞争分析", "markdown", false, RESEARCH_OPERATING_ANALYSIS_OPERATING_STAGE_PROMPT],
-  ["financial_analysis", "财务、资本、治理与生存能力", "markdown", false, RESEARCH_OPERATING_ANALYSIS_FINANCIAL_STAGE_PROMPT],
-  ["valuation_inputs", "情景假设、估值输入与风险结构", "json", false, RESEARCH_OPERATING_ANALYSIS_VALUATION_INPUTS_PROMPT],
-  ["valuation_conclusion", "估值解释、反证与最终结论", "markdown", false, RESEARCH_OPERATING_ANALYSIS_VALUATION_CONCLUSION_PROMPT],
+  { key: "company_baseline", label: "公司事实基线", format: "json", webSearch: true, template: RESEARCH_OPERATING_ANALYSIS_COMPANY_BASELINE_PROMPT, dependsOn: [] },
+  { key: "industry_validation", label: "行业、产业链与外部验证", format: "json", webSearch: true, template: RESEARCH_OPERATING_ANALYSIS_INDUSTRY_VALIDATION_PROMPT, dependsOn: ["company_baseline"] },
+  { key: "operating_analysis", label: "经营、增长与竞争分析", format: "markdown", webSearch: false, template: RESEARCH_OPERATING_ANALYSIS_OPERATING_STAGE_PROMPT, dependsOn: ["company_baseline", "industry_validation"] },
+  { key: "financial_analysis", label: "财务、资本、治理与生存能力", format: "markdown", webSearch: false, template: RESEARCH_OPERATING_ANALYSIS_FINANCIAL_STAGE_PROMPT, dependsOn: ["company_baseline", "industry_validation"] },
+  { key: "valuation_inputs", label: "情景假设、估值输入与风险结构", format: "json", webSearch: false, template: RESEARCH_OPERATING_ANALYSIS_VALUATION_INPUTS_PROMPT, dependsOn: ["company_baseline", "industry_validation", "operating_analysis", "financial_analysis"] },
+  { key: "valuation_conclusion", label: "估值解释、反证与最终结论", format: "markdown", webSearch: false, template: RESEARCH_OPERATING_ANALYSIS_VALUATION_CONCLUSION_PROMPT, dependsOn: ["company_baseline", "industry_validation", "operating_analysis", "financial_analysis", "valuation_inputs"] },
+];
+const stageWaves = [
+  [stages[0]],
+  [stages[1]],
+  [stages[2], stages[3]],
+  [stages[4]],
+  [stages[5]],
 ];
 class WorkerUnavailableError extends Error {}
 if (!apiKey) throw new Error("local operating-analysis runner requires OPENAI_API_KEY or ~/.codex/auth.json");
@@ -94,10 +103,10 @@ function stageState(task, key) { return (task?.job?.stages || []).find((item) =>
 function artifact(task, key) { const item = stageState(task, key); return item?.output ?? null; }
 
 async function runStage(claim, baseInput, task, definition) {
-  const [key, label, format, webSearch, template] = definition;
+  const { key, label, format, webSearch, template, dependsOn } = definition;
   const prior = stageState(task, key);
   if (terminal(prior?.status)) return prior.output;
-  const upstream = Object.fromEntries(stages.slice(0, stages.findIndex((item) => item[0] === key)).map(([upstreamKey]) => [upstreamKey, artifact(task, upstreamKey)]));
+  const upstream = Object.fromEntries(dependsOn.map((upstreamKey) => [upstreamKey, artifact(task, upstreamKey)]));
   const { financialContext, ...sharedInput } = baseInput;
   const input = { ...sharedInput, financialDataSnapshot: financialSnapshotForStage(baseInput.financialDataSnapshot, financialContext, key), stage: { key, label, outputFormat: format }, upstreamArtifacts: upstream };
   const modelPrompt = { model: config.model, instructions: INSTRUCTIONS, userPrompt: prompt(template, input) };
@@ -137,16 +146,6 @@ function calculateValuation(stageFive) {
   return { status: results.length ? (blocked.length ? "partial" : "complete") : "blocked", method: "deterministic_dcf.v1", results, blockedItems: blocked };
 }
 
-function assembleReport(input, task) {
-  const statuses = (task.job.stages || []).map((item) => `- ${item.label || item.stageKey}：${item.status}`).join("\n");
-  return ["# 1. 研究范围与事实边界", `- 研究截止：${input.asOf}`, `- 公司：${input.company.name}（${input.security.securityCode}）`, "- 三张报表数值来自系统结构化财务接口；检索事实与分析判断按阶段产物区分。", "- 阶段状态：", statuses, "", text(artifact(task, "operating_analysis")), "", text(artifact(task, "financial_analysis")), "", text(artifact(task, "valuation_conclusion")), sourceIndex(task)].filter(Boolean).join("\n\n");
-}
-function sourceIndex(task) {
-  const seen = new Set(); const entries = [artifact(task, "company_baseline"), artifact(task, "industry_validation")].flatMap((item) => Array.isArray(item?.sourceIndex) ? item.sourceIndex : []);
-  const lines = entries.flatMap((item) => { const title = text(item?.sourceTitle || item?.title); const url = text(item?.sourceUrl || item?.url); const key = `${title}|${url}`; if (!title || !/^https?:\/\//.test(url) || seen.has(key)) return []; seen.add(key); return [`- [${title}](${url})`]; });
-  return lines.length ? ["# 附：来源索引", ...lines].join("\n") : "";
-}
-
 async function runJob(claim) {
   const startedAt = Date.now();
   localRuntimeLog("research-operating-analysis", "started", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode });
@@ -155,8 +154,10 @@ async function runJob(claim) {
   }, 10_000);
   try {
     const input = await buildInput(claim.securityCode); const task = await request(`/api/research/company/${encodeURIComponent(claim.securityCode)}/operating-analysis`);
-    for (const definition of stages) { const result = await runStage(claim, input, task, definition); if (result?.status === "blocked") throw new Error(`${definition[1]} 被阻断：请补充其列出的证据或数据缺口`); }
-    const report = assembleReport(input, task); const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex"); const finalPrompt = stageState(task, "valuation_conclusion")?.prompt || { model: config.model, instructions: INSTRUCTIONS, userPrompt: "六阶段任务由系统确定性组装" };
+    const stageResults = await runOperatingAnalysisStageWaves(stageWaves, (definition) => runStage(claim, input, task, definition));
+    const blocked = stageResults.find(({ output }) => output?.status === "blocked");
+    if (blocked) throw new Error(`${blocked.stage.label} 被阻断：请补充其列出的证据或数据缺口`);
+    const report = assembleOperatingAnalysisReport(input, task.job.stages || []); const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex"); const finalPrompt = stageState(task, "valuation_conclusion")?.prompt || { model: config.model, instructions: INSTRUCTIONS, userPrompt: "六阶段任务由系统确定性组装" };
     await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/complete`, { input: { ...input, stageArtifacts: task.job.stages }, prompt: finalPrompt, reportMarkdown: report, reasoningMarkdown: "", inputFingerprint: fingerprint, streamStats: { staged: true }, runnerInstanceId, attempt: claim.attempt });
     localRuntimeLog("research-operating-analysis", "completed", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, duration_ms: Date.now() - startedAt });
   } catch (error) {

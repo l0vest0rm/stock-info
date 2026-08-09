@@ -1,8 +1,9 @@
 #!/bin/zsh
 
 # Build and prepare the local Node data plane once, then hand every resident
-# role to the foreground supervisor. The supervisor never searches for or
-# kills arbitrary processes: an occupied port is a visible startup failure.
+# role to the foreground supervisor. Startup replaces only a previous
+# supervisor owned by this repository; an unrelated occupied port remains a
+# visible startup failure.
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")" && pwd)
@@ -39,6 +40,9 @@ if [[ "$XUEQIU_COOKIE_REFRESH_RETRY_SECONDS" != <-> || "$XUEQIU_COOKIE_REFRESH_R
 fi
 
 cd "$PROJECT_ROOT"
+
+print "Stopping any previous local supervisor owned by this repository..."
+node scripts/local-supervisor.mjs --stop-previous
 
 print "Building prompts, web assets, and Node runtime once..."
 npm run build:local
