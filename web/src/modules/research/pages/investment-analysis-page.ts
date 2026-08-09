@@ -9,7 +9,8 @@ type ModelPrompt = { model?: string; instructions?: string; userPrompt?: string 
 type ReportRun = { runId?: string; promptVersion?: string; reportMarkdown?: string; reasoningMarkdown?: string; totalDurationMs?: number | null; provider?: string; generatedAt?: number; input?: Json | null; prompt?: ModelPrompt | null; streamStats?: StreamStats | null };
 type ReportVersion = Pick<ReportRun, "runId" | "promptVersion" | "provider" | "generatedAt" | "totalDurationMs">;
 type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
-type ReportJob = { status?: "queued" | "running" | "completed" | "failed"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; partialReportMarkdown?: string | null; partialReasoningMarkdown?: string | null; prompt?: ModelPrompt | null; partialUpdatedAt?: number | null; streamStats?: StreamStats | null };
+type AnalysisStage = { stageKey: string; label?: string; status?: "queued" | "running" | "complete" | "partial" | "blocked" | "not_applicable" | "failed"; attemptCount?: number; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; lastError?: string | null; partialOutput?: string | null; blocked?: unknown; outputKind?: "json" | "markdown" };
+type ReportJob = { status?: "queued" | "running" | "completed" | "failed"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; stages?: AnalysisStage[] };
 type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; run?: ReportRun | null; job?: ReportJob | null; versions?: ReportVersion[] };
 type CompanyOverview = { name?: string; latestPrice?: number | null; pctChange?: number | null; marketCapYi?: number | null; peTtm?: number | null };
 type KlineBar = { date?: string; close?: number | null };
@@ -67,6 +68,9 @@ function date(value: unknown): string {
   return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString("zh-CN", { hour12: false });
 }
 function isRunning(job: ReportJob | null | undefined): boolean { return job?.status === "queued" || job?.status === "running"; }
+function stageStatusLabel(status: AnalysisStage["status"]): string { return ({ queued: "等待", running: "处理中", complete: "已完成", partial: "部分完成", blocked: "已阻断", not_applicable: "不适用", failed: "失败" } as Record<string, string>)[status || "queued"] || "等待"; }
+function currentStage(job: ReportJob | null | undefined): AnalysisStage | null { return job?.stages?.find((stage) => stage.status === "running") || job?.stages?.find((stage) => stage.status === "queued") || null; }
+function stagePartialMarkdown(job: ReportJob | null | undefined): string { const stage = currentStage(job); return stage?.outputKind === "markdown" ? text(stage.partialOutput) : ""; }
 function duration(ms: unknown): string {
   const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1_000));
   if (!Number.isFinite(totalSeconds)) return "—";
@@ -261,7 +265,7 @@ function reportCard(options: {
 }): VNodeChild {
   const running = isRunning(options.job);
   const completedMarkdown = text(options.report?.reportMarkdown);
-  const partialMarkdown = text(options.job?.partialReportMarkdown);
+  const partialMarkdown = stagePartialMarkdown(options.job);
   const prompt = options.report?.prompt || options.job?.prompt;
   const recordedModelRun = asRecord(asRecord(options.report?.input).modelRun);
   const model = running ? text(prompt?.model) || text(recordedModelRun.model) : text(recordedModelRun.model) || text(prompt?.model);
@@ -316,9 +320,10 @@ function reportCard(options: {
       ]) : null,
     ]),
     markdown || prompt ? [
+      stageProgress(options.job, options.now),
       failure ? h("div", { class: "ia-message error", role: "status" }, [h("strong", "生成未完成"), h("span", failure)]) : null,
       qualityIssues.length ? h("div", { class: "ia-quality-warning", role: "status", style: "margin-top:17px;border:1px solid #e6cb82;border-radius:10px;background:#fff9e7;padding:10px 12px;color:#745300;font-size:12px;line-height:1.6" }, [h("strong", "报告已生成，但需注意："), h("span", qualityIssues.join("；"))]) : null,
-      partial ? h("div", { class: "ia-streaming-notice", role: "status" }, `正在生成，以下为已保存的正文（更新于 ${date(options.job?.partialUpdatedAt)}；已运行 ${elapsed}）。`) : null,
+      partial ? h("div", { class: "ia-streaming-notice", role: "status" }, `当前阶段正在生成，以下为该阶段已保存的正文（已运行 ${elapsed}）。`) : null,
       prompt ? h("details", { class: "ia-prompt" }, [
         h("summary", "查看实际发送给大模型的 Prompt"),
         h("div", { class: "ia-prompt-body" }, [
@@ -330,7 +335,21 @@ function reportCard(options: {
       ]) : null,
       markdown ? h("article", { class: "ia-markdown", "aria-live": partial ? "polite" : undefined }, renderMarkdown(markdown)) : h("div", { class: "ia-message" }, "模型尚未返回正文；页面会继续读取已保存的输出。"),
     ]
-      : h("div", { class: failure ? "ia-message error" : "ia-message" }, failure ? [h("strong", "生成失败"), h("span", failure)] : running ? [`任务已运行 ${elapsed}；页面会每 5 秒读取一次已保存的正文。可以离开或刷新页面。`, options.requestError ? h("span", { class: "ia-connection-warning" }, `本地 Worker 暂时无法连接（${options.requestError}）；恢复后将继续读取任务状态。`) : null] : options.emptyMessage),
+      : h("div", { class: failure ? "ia-message error" : "ia-message" }, failure ? [h("strong", "生成失败"), h("span", failure), stageProgress(options.job, options.now)] : running ? [`任务已运行 ${elapsed}；页面会每 5 秒读取一次阶段状态。可以离开或刷新页面。`, stageProgress(options.job, options.now), options.requestError ? h("span", { class: "ia-connection-warning" }, `本地 Worker 暂时无法连接（${options.requestError}）；恢复后将继续读取任务状态。`) : null] : options.emptyMessage),
+  ]);
+}
+
+function stageProgress(job: ReportJob | null | undefined, now: number): VNodeChild | null {
+  if (!job?.stages?.length) return null;
+  return h("section", { class: "ia-stage-progress", "aria-label": "六阶段处理进度" }, [
+    h("h3", "六阶段处理进度"),
+    h("ol", job.stages.map((stage) => {
+      const active = stage.status === "running";
+      const detail = active ? `已运行 ${duration(now - Number(stage.startedAt || stage.updatedAt || now))}` : stage.completedAt && stage.startedAt ? `耗时 ${duration(Number(stage.completedAt) - Number(stage.startedAt))}` : "";
+      const error = text(stage.lastError);
+      const blocked = Array.isArray(stage.blocked) ? stage.blocked.map((item) => typeof item === "string" ? item : JSON.stringify(item)).join("；") : "";
+      return h("li", { class: `ia-stage ${stage.status || "queued"}` }, [h("span", { class: "ia-stage-dot" }), h("div", [h("strong", stage.label || stage.stageKey), h("span", `${stageStatusLabel(stage.status)}${detail ? ` · ${detail}` : ""}`), error || blocked ? h("small", error || blocked) : null])]);
+    })),
   ]);
 }
 
@@ -340,6 +359,7 @@ const styles = `
 @media(max-width:800px){.ia-outline{max-height:none;overflow:visible}}
 .ia-prompt{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#fff;padding:12px 15px}.ia-prompt summary{cursor:pointer;color:#174b45;font-size:13px;font-weight:800}.ia-prompt-body{margin-top:12px}.ia-prompt-body h4{margin:13px 0 6px;color:#476762;font-size:12px}.ia-prompt-body h4:first-child{margin-top:0}.ia-prompt-body pre{max-height:420px;overflow:auto;margin:0;padding:11px;border:1px solid #dce9e6;border-radius:8px;background:#f6faf9;color:#234640;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}
 .ia-version-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800;flex:none}.ia-version-control select{max-width:250px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-compare{flex:none;border:1px solid #69a99d;border-radius:9px;background:#f1faf7;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}@media(max-width:650px){.ia-generation-controls{justify-content:flex-start}}
+.ia-stage-progress{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:13px 15px}.ia-stage-progress h3{margin:0 0 9px;color:#174b45;font-size:13px}.ia-stage-progress ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:0;padding:0;list-style:none}.ia-stage{display:flex;gap:8px;min-width:0;color:#6b817d;font-size:12px;line-height:1.45}.ia-stage-dot{width:8px;height:8px;flex:none;margin-top:4px;border-radius:50%;background:#b6c9c5}.ia-stage strong,.ia-stage span,.ia-stage small{display:block}.ia-stage strong{color:#365a54}.ia-stage small{margin-top:2px;color:#a24337}.ia-stage.running .ia-stage-dot{background:#08786c;box-shadow:0 0 0 4px #08786c22}.ia-stage.complete .ia-stage-dot,.ia-stage.partial .ia-stage-dot,.ia-stage.not_applicable .ia-stage-dot{background:#34a27d}.ia-stage.blocked .ia-stage-dot,.ia-stage.failed .ia-stage-dot{background:#c76854}@media(max-width:650px){.ia-stage-progress ol{grid-template-columns:1fr}}
 `;
 
 const App = defineComponent({
@@ -456,9 +476,10 @@ const App = defineComponent({
       const activeReport = selectedReport.value || operating.value?.run;
       const showJob = !selectedRunId.value || selectedRunId.value === operating.value?.run?.runId;
       const displayJob = showJob ? operating.value?.job : null;
-      const markdown = isRunning(displayJob) && text(displayJob?.partialReportMarkdown)
-        ? text(displayJob?.partialReportMarkdown)
-        : text(activeReport?.reportMarkdown) || text(displayJob?.partialReportMarkdown);
+      const partialMarkdown = stagePartialMarkdown(displayJob);
+      const markdown = isRunning(displayJob) && partialMarkdown
+        ? partialMarkdown
+        : text(activeReport?.reportMarkdown) || partialMarkdown;
       return h("main", { class: "ia" }, [
         h("style", styles),
         h("div", { class: "container ia-shell" }, [

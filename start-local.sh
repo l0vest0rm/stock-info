@@ -95,8 +95,14 @@ cd "$PROJECT_ROOT"
 LLM_CLIENT_RUNTIME_DIR="$PROJECT_ROOT/node_modules/@m2ai/shared-llm-client/dist"
 OPERATING_ANALYSIS_RUNNER_FINGERPRINT=$(shasum -a 256 \
   "$PROJECT_ROOT/scripts/research-operating-analysis-runner.mjs" \
+  "$PROJECT_ROOT/scripts/lib/operating-analysis-financial-snapshot.mjs" \
   "$PROJECT_ROOT/scripts/build-prompts.mjs" \
-  "$PROJECT_ROOT/prompts/research/operating-analysis.md" \
+  "$PROJECT_ROOT/prompts/research/operating-analysis/company-baseline.md" \
+  "$PROJECT_ROOT/prompts/research/operating-analysis/industry-validation.md" \
+  "$PROJECT_ROOT/prompts/research/operating-analysis/operating-analysis.md" \
+  "$PROJECT_ROOT/prompts/research/operating-analysis/financial-analysis.md" \
+  "$PROJECT_ROOT/prompts/research/operating-analysis/valuation-inputs.md" \
+  "$PROJECT_ROOT/prompts/research/operating-analysis/valuation-conclusion.md" \
   "$PROJECT_ROOT/config/research-operating-analysis.json" \
   "$LLM_CLIENT_RUNTIME_DIR/index.js" \
   "$LLM_CLIENT_RUNTIME_DIR/providers/responses-provider.js" \
@@ -299,6 +305,31 @@ start_worker() {
   fi
 }
 
+# `npm run dev:worker:bare` owns the Wrangler process tree. Killing only a
+# workerd listener leaves its npm parent alive, allowing stale local Workers
+# to later contend for the same port.
+stop_worker_process_tree() {
+  local pid="$1" child
+  [[ "$pid" == <-> && "$pid" != "$$" ]] || return
+  for child in ${(f)"$(pgrep -P "$pid" 2>/dev/null || true)"}; do
+    stop_worker_process_tree "$child"
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+}
+
+stop_local_worker_processes() {
+  local -a roots=()
+  local pid
+  roots+=( ${(f)"$(pgrep -f "npm run dev:worker:bare .*--port ${PORT}" 2>/dev/null || true)"} )
+  roots+=( ${(f)"$(pgrep -f "node .*wrangler dev --local --port ${PORT}" 2>/dev/null || true)"} )
+  roots=( ${(u)roots} )
+  if (( ${#roots[@]} )); then
+    echo "Stopping local Worker process tree(s): ${roots[*]}"
+    for pid in "${roots[@]}"; do stop_worker_process_tree "$pid"; done
+    sleep 1
+  fi
+}
+
 wait_for_worker() {
   ATTEMPTS=0
   until curl -fsS "${BASE_URL}/api/health" >/dev/null 2>&1; do
@@ -327,14 +358,7 @@ restart_worker_with_refreshed_cookie() {
     return 0
   fi
   local restart_status=0
-  if [[ -f "$WORKER_PID_FILE" ]]; then
-    ACTIVE_WORKER_PID=$(<"$WORKER_PID_FILE")
-    if [[ "$ACTIVE_WORKER_PID" == <-> ]] && kill -0 "$ACTIVE_WORKER_PID" >/dev/null 2>&1; then
-      echo "Restarting local Worker to load the refreshed Xueqiu cookie."
-      kill "$ACTIVE_WORKER_PID" || true
-      sleep 1
-    fi
-  fi
+  stop_local_worker_processes
   EXISTING_LISTENERS=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
   if [[ -n "$EXISTING_LISTENERS" ]]; then
     echo "$EXISTING_LISTENERS" | xargs kill
@@ -357,12 +381,7 @@ else
   echo "Skipping Xueqiu cookie refresh; next refresh is due in ${COOKIE_REFRESH_WAIT_SECONDS}s."
 fi
 
-EXISTING_WRANGLER_PIDS=$(pgrep -f "node .*wrangler dev --local --port ${PORT}" || true)
-if [[ -n "$EXISTING_WRANGLER_PIDS" ]]; then
-  echo "Stopping existing wrangler process(es): ${EXISTING_WRANGLER_PIDS}"
-  echo "$EXISTING_WRANGLER_PIDS" | xargs kill || true
-  sleep 1
-fi
+stop_local_worker_processes
 
 EXISTING_LISTENERS=$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
 if [[ -n "$EXISTING_LISTENERS" ]]; then

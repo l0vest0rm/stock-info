@@ -11,6 +11,7 @@ import {
 import { convertResponse, parseResponseData } from '../../api'
 import { createBsTable } from '../../bs-table'
 import { createCompanyTableRuntime } from '../../modules/company/runtime/company-table-runtime'
+import { trailingQuarterlyParentNetProfits } from '../../modules/company/domain/pe-ttm'
 import { addFollowedCompany, removeFollowedCompany } from '../../modules/companies/domain/follow-storage'
 import { calculateKlineDrawdowns } from '../../modules/market/domain/kline-drawdown'
 import { findInsertIndex, findTsIndex } from '../../chart'
@@ -1626,15 +1627,7 @@ function onFinanceCheckChange(selected: any[], type: string, checked: boolean) {
               // PE TTM = 市值 / 最近4个季度净利润之和
               if (totalShares && totalShares > 0) {
                 const marketCap = price * totalShares
-                // 累加最近4个季度的净利润
-                const trailingProfits: number[] = []
-                for (const finance of financeData) {
-                  const reportDate = new Date(finance.reportDate).getTime()
-                  const profit = Number(finance.parentNetprofit)
-                  if (reportDate <= timestamp && Number.isFinite(profit) && trailingProfits.length < 4) {
-                    trailingProfits.push(profit)
-                  }
-                }
+                const trailingProfits = trailingQuarterlyParentNetProfits(financeData, timestamp)
                 const totalNetProfit = trailingProfits.reduce((sum, profit) => sum + profit, 0)
                 if (trailingProfits.length === 4 && totalNetProfit > 0) {
                   value = marketCap / totalNetProfit
@@ -3088,10 +3081,7 @@ function calculateAndDisplayValuation(code: string, data: number[][], currentPri
       // PE TTM = 市值 / 最近4个季度的净利润之和
       if (totalShares && totalShares > 0 && financeData.length >= 4) {
         const marketCap = currentPrice * totalShares // 市值（元）
-        const trailingProfits = financeData
-          .slice(0, 4)
-          .map((item) => Number(item.parentNetprofit))
-          .filter((profit) => Number.isFinite(profit))
+        const trailingProfits = trailingQuarterlyParentNetProfits(financeData)
         const totalNetProfit = trailingProfits.reduce((sum, profit) => sum + profit, 0)
 
         if (trailingProfits.length === 4 && totalNetProfit > 0) {

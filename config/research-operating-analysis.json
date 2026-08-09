@@ -1,6 +1,7 @@
 {
-  "version": "investment-analysis.llm-client.v2",
+  "version": "investment-analysis.staged.v1",
   "model": "gpt-5.6-luna",
+  "concurrency": 5,
   "reasoningEffort": "max",
   "maxOutputTokens": 16000,
   "webSearch": {
@@ -8,6 +9,7 @@
     "required": true
   },
   "jobTimeoutMs": 1200000,
+  "streamIdleTimeoutMs": 90000,
   "streamCheckpoint": {
     "intervalMs": 1500,
     "minChars": 800

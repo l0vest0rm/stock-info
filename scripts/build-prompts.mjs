@@ -60,6 +60,12 @@ const promptEntries = [
     exportName: "RESEARCH_OPERATING_ANALYSIS_PROMPT",
     source: "prompts/research/operating-analysis.md",
   },
+  { exportName: "RESEARCH_OPERATING_ANALYSIS_COMPANY_BASELINE_PROMPT", source: "prompts/research/operating-analysis/company-baseline.md" },
+  { exportName: "RESEARCH_OPERATING_ANALYSIS_INDUSTRY_VALIDATION_PROMPT", source: "prompts/research/operating-analysis/industry-validation.md" },
+  { exportName: "RESEARCH_OPERATING_ANALYSIS_OPERATING_STAGE_PROMPT", source: "prompts/research/operating-analysis/operating-analysis.md" },
+  { exportName: "RESEARCH_OPERATING_ANALYSIS_FINANCIAL_STAGE_PROMPT", source: "prompts/research/operating-analysis/financial-analysis.md" },
+  { exportName: "RESEARCH_OPERATING_ANALYSIS_VALUATION_INPUTS_PROMPT", source: "prompts/research/operating-analysis/valuation-inputs.md" },
+  { exportName: "RESEARCH_OPERATING_ANALYSIS_VALUATION_CONCLUSION_PROMPT", source: "prompts/research/operating-analysis/valuation-conclusion.md" },
   {
     exportName: "RESEARCH_WEB_SEARCH_SOURCE_PACKAGE_SYSTEM_PROMPT",
     source: "prompts/research/web-search-source-package-system.md",
