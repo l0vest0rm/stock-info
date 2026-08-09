@@ -1,0 +1,109 @@
+{
+  "schemaVersion": "research-artifact-projection.v1",
+  "projectionVersion": "research-artifact-projection.v1",
+  "metadataFields": [
+    "artifactId",
+    "runId",
+    "stepKey",
+    "stageVersion",
+    "inputFingerprint",
+    "upstreamArtifactIds",
+    "sourceIds",
+    "claimIds",
+    "evidenceIds",
+    "unknownIds",
+    "status",
+    "structureValid",
+    "blocked",
+    "errorCode",
+    "errorMessage",
+    "terminalMetadata",
+    "projectionVersion",
+    "completedAt"
+  ],
+  "stages": {
+    "research_context": {
+      "allowedFields": [
+        "contextVersion",
+        "researchTaskId",
+        "asOf",
+        "company",
+        "security",
+        "reportingBoundary",
+        "financialSnapshot",
+        "marketSnapshot",
+        "scopeEnvelope",
+        "sourceRegistryId",
+        "knownSourceIds",
+        "sourceRegistry",
+        "inputFingerprint",
+        "analysisGaps",
+        "quality"
+      ]
+    },
+    "company_facts": {
+      "allowedFields": ["status", "markdown", "summary", "companyScope", "formalDisclosureFacts", "managementStatements", "reportingAndAccountingNotes", "governanceAndCapitalAllocationFacts", "financialSnapshotRef", "facts", "claims", "evidence", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]
+    },
+    "industry_structure": {
+      "allowedFields": ["status", "markdown", "summary", "industryBoundary", "valueChain", "profitPool", "marketStructure", "thirdPartyForecasts", "supportsCompanyClaims", "contradictsCompanyClaims", "claims", "evidence", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]
+    },
+    "supply_demand_cycle": {
+      "allowedFields": ["status", "markdown", "summary", "supply", "demand", "inventory", "cycle", "cyclePosition", "price", "cost", "capital", "leadingIndicators", "pressureInputs", "thirdPartyForecasts", "supportsCompanyClaims", "contradictsCompanyClaims", "claims", "evidence", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]
+    },
+    "competition_peers": {
+      "allowedFields": ["status", "markdown", "summary", "relevantCompetitiveMarket", "peerSet", "competitivePosition", "barriersAndSubstitutes", "thirdPartyRankings", "supportsCompanyClaims", "contradictsCompanyClaims", "comparability", "claims", "evidence", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]
+    },
+    "company_operating_drivers": {
+      "allowedFields": ["status", "markdown", "summary", "drivers", "orders", "capacity", "priceVolumeMix", "costs", "productsAndRAndD", "catalysts", "counterEvidence", "claims", "evidence", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]
+    },
+    "financial_quality": {
+      "allowedFields": ["status", "markdown", "summary", "financialQuality", "observations", "profitQuality", "cashConversion", "workingCapital", "capitalEfficiency", "governance", "capitalAllocation", "debt", "stressTest", "stressTests", "industryPressureRefs", "claims", "evidence", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]
+    },
+    "market_valuation_facts": {
+      "allowedFields": ["status", "markdown", "summary", "marketFacts", "price", "marketCapitalization", "shareCapital", "currency", "securityRights", "historicalValuation", "comparability", "availableMethods", "claims", "evidence", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]
+    },
+    "operating_thesis": {
+      "allowedFields": ["schemaVersion", "status", "markdown", "summary", "causalChain", "thesis", "judgments", "judgmentIds", "claims", "claimIds", "evidence", "evidenceIds", "sourceIds", "assumptions", "risks", "unknowns", "unknownIds", "usedUpstreamArtifactIds", "analysisGaps"]
+    },
+    "scenario_valuation": {
+      "allowedFields": ["schemaVersion", "status", "markdown", "summary", "scenarios", "valuationMethodSelection", "method", "assumptions", "valuationCalculationRequest", "reverseValuationSolveTargets", "sensitivityRequests", "riskRegister", "risks", "invalidationPaths", "monitoringIndicators", "blockedValuationItems", "claims", "claimIds", "evidence", "evidenceIds", "sourceIds", "unknowns", "unknownIds", "usedUpstreamArtifactIds", "analysisGaps"]
+    },
+    "deterministic_valuation": {
+      "allowedFields": ["schemaVersion", "formulaVersion", "status", "summary", "calculations", "results", "sensitivity", "calculationTrace", "calculationIds", "input", "rounding", "blockedValuationItems", "assumptions", "risks", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]
+    },
+    "investment_conclusion": {
+      "allowedFields": ["schemaVersion", "status", "markdown", "markdownByChapter", "summary", "conclusion", "judgments", "judgmentIds", "assumptions", "assumptionIds", "risks", "riskIds", "monitoring", "claims", "claimIds", "evidence", "evidenceIds", "sourceIds", "calculations", "calculationIds", "unknowns", "unknownIds", "analysisGaps"]
+    },
+    "report_assembly": {
+      "allowedFields": ["chapters", "conclusion", "monitoring", "risks", "analysisGaps"]
+    }
+  },
+  "manifest": {
+    "schemaVersion": "research-evidence-manifest.v1",
+    "collections": {
+      "source": "sources",
+      "evidence": "evidence",
+      "claim": "claims",
+      "judgment": "judgments",
+      "assumption": "assumptions",
+      "risk": "risks",
+      "calculation": "calculations",
+      "report": "reports"
+    },
+    "references": {
+      "evidence": [{"field": "sourceIds", "target": "source", "required": true}],
+      "claim": [{"field": "evidenceIds", "target": "evidence", "required": true}],
+      "judgment": [{"field": "claimIds", "target": "claim", "required": true}],
+      "assumption": [{"field": "judgmentIds", "target": "judgment", "required": true}],
+      "risk": [{"field": "judgmentIds", "target": "judgment", "required": true}],
+      "calculation": [
+        {"field": "assumptionIds", "target": "assumption", "required": false},
+        {"field": "riskIds", "target": "risk", "required": false}
+      ],
+      "report": [{"field": "calculationIds", "target": "calculation", "required": true}]
+    },
+    "requiredAny": {
+      "calculation": [["assumptionIds", "riskIds"]]
+    }
+  }
+}

@@ -68,6 +68,8 @@ export type GenericLlmRun = {
   inputAsOf: number | null;
   input: unknown;
   prompt: unknown;
+  /** The nearest prior run whose terminal artifacts were considered for reuse. */
+  lineageRunId: string | null;
   status: GenericLlmRunStatus;
   leaseOwner: string | null;
   leaseUntil: number | null;
@@ -87,7 +89,13 @@ export type GenericLlmArtifact = {
   artifactId: string;
   runId: string;
   stepKey: string;
+  stageVersion: string | null;
+  inputFingerprint: string | null;
   upstreamArtifactIds: string[];
+  sourceIds: string[];
+  claimIds: string[];
+  evidenceIds: string[];
+  unknownIds: string[];
   outputType: GenericLlmOutputType;
   status: GenericLlmArtifactStatus;
   output: unknown;
@@ -96,7 +104,11 @@ export type GenericLlmArtifact = {
   errorCode: string | null;
   errorMessage: string | null;
   terminalMetadata: unknown;
+  projectionVersion: string | null;
   completedAt: number;
+  /** Source run when this artifact is linked into a recovery run. */
+  sourceRunId?: string | null;
+  reused?: boolean;
 };
 
 export type GenericLlmTaskCreateResult = {
@@ -112,6 +124,8 @@ export type GenericLlmTaskRunClaim = {
 
 export type GenericLlmTaskClaimOptions = {
   taskType?: string;
+  protocolVersion?: string;
+  promptVersion?: string;
   provider?: string;
   model?: string;
   reasoningEffort?: string | null;
@@ -124,7 +138,13 @@ export type GenericLlmTaskClaimOptions = {
 
 export type GenericLlmArtifactInput = {
   stepKey: string;
+  stageVersion?: string;
+  inputFingerprint?: string | null;
   upstreamArtifactIds?: string[];
+  sourceIds?: string[];
+  claimIds?: string[];
+  evidenceIds?: string[];
+  unknownIds?: string[];
   outputType: GenericLlmOutputType;
   status: GenericLlmArtifactStatus;
   output?: unknown;
@@ -133,6 +153,7 @@ export type GenericLlmArtifactInput = {
   errorCode?: string | null;
   errorMessage?: string | null;
   terminalMetadata?: unknown;
+  projectionVersion?: string | null;
   completedAt?: number;
 };
 
@@ -156,6 +177,19 @@ export type GenericLlmRunProgressInput = {
   stepKey?: string | null;
   metadata?: unknown;
   updatedAt?: number;
+};
+
+export type GenericLlmArtifactCompatibilityInput = {
+  runId: string;
+  taskId: string;
+  attempt: number;
+  leaseOwner: string;
+  stepKey: string;
+  stageVersion: string;
+  inputFingerprint: string | null;
+  upstreamArtifactIds?: string[];
+  projectionVersion: string;
+  now?: number;
 };
 
 export function localJobLeaseUntil(now = Date.now()): number {
@@ -293,7 +327,7 @@ export async function loadGenericLlmRun(db: D1Database, runId: string): Promise<
   const id = requiredGeneric(runId, "runId");
   return normalizeGenericRun(await db.prepare(`select run_id as runId, task_id as taskId, attempt, provider, model,
     reasoning_effort as reasoningEffort, prompt_version as promptVersion, input_fingerprint as inputFingerprint, input_as_of as inputAsOf,
-    input_json as inputJson, prompt_json as promptJson, status, lease_owner as leaseOwner, lease_until as leaseUntil,
+    input_json as inputJson, prompt_json as promptJson, lineage_run_id as lineageRunId, status, lease_owner as leaseOwner, lease_until as leaseUntil,
     heartbeat_at as heartbeatAt, current_step_key as currentStepKey, progress_json as progressJson, progress_updated_at as progressUpdatedAt,
     terminal_metadata_json as terminalMetadataJson, error_code as errorCode, error_message as errorMessage,
     started_at as startedAt, completed_at as completedAt, updated_at as updatedAt
@@ -303,11 +337,38 @@ export async function loadGenericLlmRun(db: D1Database, runId: string): Promise<
 export async function loadGenericLlmRunArtifacts(db: D1Database, runId: string): Promise<GenericLlmArtifact[]> {
   const id = requiredGeneric(runId, "runId");
   const rows = await db.prepare(`select artifact_id as artifactId, run_id as runId, step_key as stepKey,
-    upstream_artifact_ids_json as upstreamArtifactIdsJson, output_type as outputType, status, output_json as outputJson,
+    stage_version as stageVersion, input_fingerprint as inputFingerprint,
+    upstream_artifact_ids_json as upstreamArtifactIdsJson, source_ids_json as sourceIdsJson,
+    claim_ids_json as claimIdsJson, evidence_ids_json as evidenceIdsJson, unknown_ids_json as unknownIdsJson,
+    output_type as outputType, status, output_json as outputJson,
     output_markdown as outputMarkdown, structure_valid as structureValid, blocked_json as blockedJson,
-    error_code as errorCode, error_message as errorMessage, terminal_metadata_json as terminalMetadataJson, completed_at as completedAt
+    error_code as errorCode, error_message as errorMessage, terminal_metadata_json as terminalMetadataJson,
+    projection_version as projectionVersion, completed_at as completedAt
     from llm_run_artifacts where run_id=? order by completed_at, step_key`).bind(id).all<Record<string, unknown>>();
-  return rows.results.map(normalizeGenericArtifact);
+  let linkedRows: { results: Record<string, unknown>[] } = { results: [] };
+  try {
+    linkedRows = await db.prepare(`select a.artifact_id as artifactId, ? as runId, source_run.run_id as sourceRunId, 1 as reused, a.step_key as stepKey,
+      a.stage_version as stageVersion, a.input_fingerprint as inputFingerprint,
+      a.upstream_artifact_ids_json as upstreamArtifactIdsJson, a.source_ids_json as sourceIdsJson,
+      a.claim_ids_json as claimIdsJson, a.evidence_ids_json as evidenceIdsJson, a.unknown_ids_json as unknownIdsJson,
+      a.output_type as outputType, a.status, a.output_json as outputJson,
+      a.output_markdown as outputMarkdown, a.structure_valid as structureValid, a.blocked_json as blockedJson,
+      a.error_code as errorCode, a.error_message as errorMessage, a.terminal_metadata_json as terminalMetadataJson,
+      a.projection_version as projectionVersion, a.completed_at as completedAt
+      from llm_run_artifact_links l
+      join llm_run_artifacts a on a.artifact_id=l.artifact_id
+      join llm_runs source_run on source_run.run_id=a.run_id
+      join llm_runs owner_run on owner_run.run_id=l.run_id and owner_run.task_id=source_run.task_id
+      where l.run_id=? order by a.completed_at, a.step_key`).bind(id, id).all<Record<string, unknown>>();
+  } catch (error) {
+    if (!/no such table/i.test(String(error))) throw error;
+  }
+  const byArtifact = new Map<string, Record<string, unknown>>();
+  for (const row of [...rows.results, ...linkedRows.results]) {
+    const artifactId = textGeneric(row.artifactId);
+    if (artifactId && !byArtifact.has(artifactId)) byArtifact.set(artifactId, row);
+  }
+  return [...byArtifact.values()].sort((left, right) => Number(left.completedAt || 0) - Number(right.completedAt || 0) || textGeneric(left.stepKey).localeCompare(textGeneric(right.stepKey))).map(normalizeGenericArtifact);
 }
 
 /**
@@ -321,11 +382,18 @@ export async function claimGenericLlmTaskRun(db: D1Database, runnerInstanceId: s
   await reconcileLocalJobProviderSlots(db, now);
   await requeueExpiredGenericLlmTaskRuns(db, now);
   const taskType = nullableGeneric(options.taskType);
+  const protocolVersion = nullableGeneric(options.protocolVersion);
+  const promptVersion = nullableGeneric(options.promptVersion);
+  const claimConditions = ["status='queued'"];
+  const claimBindings: string[] = [];
+  if (taskType) { claimConditions.push("task_type=?"); claimBindings.push(taskType); }
+  if (protocolVersion) { claimConditions.push("protocol_version=?"); claimBindings.push(protocolVersion); }
+  if (promptVersion) { claimConditions.push("prompt_version=?"); claimBindings.push(promptVersion); }
   const candidate = await db.prepare(`select task_id as taskId, task_type as taskType, target_type as targetType, target_id as targetId,
     idempotency_key as idempotencyKey, protocol_version as protocolVersion, prompt_version as promptVersion,
     requested_model as requestedModel, requested_reasoning_effort as requestedReasoningEffort
-    from llm_tasks where status='queued'${taskType ? " and task_type=?" : ""} order by created_at, task_id limit 1`)
-    .bind(...(taskType ? [taskType] : [])).first<Record<string, unknown>>();
+    from llm_tasks where ${claimConditions.join(" and ")} order by created_at, task_id limit 1`)
+    .bind(...claimBindings).first<Record<string, unknown>>();
   if (!candidate) return null;
   const taskId = requiredGeneric(candidate.taskId, "taskId");
   const attemptRow = await db.prepare("select coalesce(max(attempt), 0) + 1 as nextAttempt from llm_runs where task_id=?").bind(taskId).first<{ nextAttempt: number }>();
@@ -336,6 +404,7 @@ export async function claimGenericLlmTaskRun(db: D1Database, runnerInstanceId: s
   const reasoningEffort = nullableGeneric(options.reasoningEffort ?? candidate.requestedReasoningEffort);
   if (!await reserveLocalJobProviderSlot(db, taskId, "llm_run", attempt, runner, now)) return null;
   const runId = `llm-run:${crypto.randomUUID()}`;
+  const lineageRunId = await nearestGenericLlmRunId(db, taskId);
   const inputJson = serializeGenericJson(options.input, "input");
   const promptJson = serializeGenericJson(options.prompt, "prompt");
   try {
@@ -348,10 +417,10 @@ export async function claimGenericLlmTaskRun(db: D1Database, runnerInstanceId: s
     }
     const runInsert = await db.prepare(`insert into llm_runs (
       run_id, task_id, attempt, provider, model, reasoning_effort, prompt_version, input_fingerprint, input_as_of,
-      input_json, prompt_json, status, lease_owner, lease_until, heartbeat_at, started_at, updated_at
-    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`)
+      input_json, prompt_json, lineage_run_id, status, lease_owner, lease_until, heartbeat_at, started_at, updated_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`)
       .bind(runId, taskId, attempt, provider, model, reasoningEffort, textGeneric(candidate.promptVersion),
-        nullableGeneric(options.inputFingerprint), finiteTimestamp(options.inputAsOf), inputJson, promptJson,
+        nullableGeneric(options.inputFingerprint), finiteTimestamp(options.inputAsOf), inputJson, promptJson, lineageRunId,
         runner, localJobLeaseUntil(now), now, now, now).run();
     if (!runInsert.meta.changes) throw new Error("generic LLM run was not created");
     const task = await loadGenericLlmTask(db, taskId);
@@ -404,31 +473,136 @@ export async function writeGenericLlmRunArtifact(db: D1Database, input: GenericL
   const stepKey = requiredGeneric(input.stepKey, "stepKey");
   const now = finiteTimestamp(input.completedAt) ?? Date.now();
   assertGenericArtifactStatus(input.status);
+  assertGenericOutputType(input.outputType);
+  const stageVersion = nullableGeneric(input.stageVersion);
+  const inputFingerprint = nullableGeneric(input.inputFingerprint);
+  const upstreamArtifactIds = normalizeGenericLlmIdArray(input.upstreamArtifactIds, "upstreamArtifactIds");
+  const sourceIds = normalizeGenericLlmIdArray(input.sourceIds, "sourceIds");
+  const claimIds = normalizeGenericLlmIdArray(input.claimIds, "claimIds");
+  const evidenceIds = normalizeGenericLlmIdArray(input.evidenceIds, "evidenceIds");
+  const unknownIds = normalizeGenericLlmIdArray(input.unknownIds, "unknownIds");
+  const projectionVersion = nullableGeneric(input.projectionVersion);
   const outputJson = input.outputType === "json" ? serializeGenericJson(input.output, "output") : null;
   const outputMarkdown = input.outputType === "markdown" ? nullableGeneric(input.output) : null;
+  if (input.outputType === "json" && input.status === "complete" && (input.output === undefined || input.output === null)) throw new Error("complete JSON artifact requires output");
   if (input.outputType === "markdown" && input.status === "complete" && !outputMarkdown) throw new Error("complete Markdown artifact requires output");
   const active = await db.prepare(`select run_id as runId from llm_runs where run_id=? and task_id=? and status='running'
     and attempt=? and lease_owner=? and lease_until>=?`).bind(runId, taskId, input.attempt, leaseOwner, now).first();
   if (!active) throw new Error("generic LLM run lease is no longer owned by this runner");
   const artifactId = `llm-artifact:${crypto.randomUUID()}`;
   const inserted = await db.prepare(`insert into llm_run_artifacts (
-    artifact_id, run_id, step_key, upstream_artifact_ids_json, output_type, status, output_json, output_markdown,
-    structure_valid, blocked_json, error_code, error_message, terminal_metadata_json, completed_at
-  ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(artifactId, runId, stepKey, JSON.stringify(input.upstreamArtifactIds || []), input.outputType, input.status,
+    artifact_id, run_id, step_key, stage_version, input_fingerprint, upstream_artifact_ids_json,
+    source_ids_json, claim_ids_json, evidence_ids_json, unknown_ids_json, output_type, status,
+    output_json, output_markdown, structure_valid, blocked_json, error_code, error_message,
+    terminal_metadata_json, projection_version, completed_at
+  ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(artifactId, runId, stepKey, stageVersion, inputFingerprint, JSON.stringify(upstreamArtifactIds), JSON.stringify(sourceIds), JSON.stringify(claimIds), JSON.stringify(evidenceIds), JSON.stringify(unknownIds), input.outputType, input.status,
       outputJson, outputMarkdown, input.structureValid === null || input.structureValid === undefined ? null : input.structureValid ? 1 : 0,
       serializeGenericJson(input.blocked, "blocked"), nullableGeneric(input.errorCode), nullableGeneric(input.errorMessage),
-      serializeGenericJson(input.terminalMetadata, "terminalMetadata"), now).run();
+      serializeGenericJson(input.terminalMetadata, "terminalMetadata"), projectionVersion, now).run();
   if (!inserted.meta.changes) throw new Error("generic LLM terminal artifact was not persisted");
   await db.prepare("update llm_runs set updated_at=? where run_id=? and status='running' and attempt=? and lease_owner=?")
     .bind(now, runId, input.attempt, leaseOwner).run();
   const artifact = await db.prepare(`select artifact_id as artifactId, run_id as runId, step_key as stepKey,
-    upstream_artifact_ids_json as upstreamArtifactIdsJson, output_type as outputType, status, output_json as outputJson,
+    stage_version as stageVersion, input_fingerprint as inputFingerprint,
+    upstream_artifact_ids_json as upstreamArtifactIdsJson, source_ids_json as sourceIdsJson,
+    claim_ids_json as claimIdsJson, evidence_ids_json as evidenceIdsJson, unknown_ids_json as unknownIdsJson,
+    output_type as outputType, status, output_json as outputJson,
     output_markdown as outputMarkdown, structure_valid as structureValid, blocked_json as blockedJson,
-    error_code as errorCode, error_message as errorMessage, terminal_metadata_json as terminalMetadataJson, completed_at as completedAt
+    error_code as errorCode, error_message as errorMessage, terminal_metadata_json as terminalMetadataJson,
+    projection_version as projectionVersion, completed_at as completedAt
     from llm_run_artifacts where artifact_id=?`).bind(artifactId).first<Record<string, unknown>>();
   if (!artifact) throw new Error("generic LLM terminal artifact was inserted but cannot be reloaded");
   return normalizeGenericArtifact(artifact);
+}
+
+/**
+ * Link one compatible terminal artifact from the nearest prior run into the
+ * active recovery run.  The artifact row is never copied or rewritten: its
+ * UUID and upstream lineage stay stable and the link table records the new
+ * run's ownership.  Compatibility is deliberately exact so a changed input,
+ * stage schema, projection, or upstream artifact invalidates that stage and
+ * lets the dependency wave recompute only the affected descendants.
+ */
+export async function reuseCompatibleGenericLlmRunArtifact(db: D1Database, input: GenericLlmArtifactCompatibilityInput): Promise<GenericLlmArtifact | null> {
+  const runId = requiredGeneric(input.runId, "runId");
+  const taskId = requiredGeneric(input.taskId, "taskId");
+  const runner = requiredGeneric(input.leaseOwner, "leaseOwner");
+  const stepKey = requiredGeneric(input.stepKey, "stepKey");
+  const stageVersion = requiredGeneric(input.stageVersion, "stageVersion");
+  const projectionVersion = requiredGeneric(input.projectionVersion, "projectionVersion");
+  const now = finiteTimestamp(input.now) ?? Date.now();
+  const upstreamArtifactIds = normalizeGenericLlmIdArray(input.upstreamArtifactIds, "upstreamArtifactIds").sort();
+  const inputFingerprint = nullableGeneric(input.inputFingerprint);
+  const active = await db.prepare(`select run_id as runId from llm_runs
+    where run_id=? and task_id=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`)
+    .bind(runId, taskId, input.attempt, runner, now).first();
+  if (!active) throw new Error("generic LLM run lease is no longer owned by this runner");
+
+  const current = (await loadGenericLlmRunArtifacts(db, runId)).find((artifact) => artifact.stepKey === stepKey);
+  if (current && ["complete", "not_applicable"].includes(current.status)) return current;
+
+  // A null fingerprint is intentionally not reusable.  It means the caller
+  // failed to establish the deterministic input boundary for this stage.
+  if (!inputFingerprint) return null;
+  let candidate: Record<string, unknown> | null = null;
+  try {
+    candidate = await db.prepare(`select candidateArtifactId as artifactId, candidateSourceRunId as sourceRunId, candidateSourceRunId as runId, candidateStepKey as stepKey,
+      candidateStageVersion as stageVersion, candidateInputFingerprint as inputFingerprint,
+      candidateUpstreamIds as upstreamArtifactIdsJson, candidateSourceIds as sourceIdsJson,
+      candidateClaimIds as claimIdsJson, candidateEvidenceIds as evidenceIdsJson, candidateUnknownIds as unknownIdsJson,
+      candidateOutputType as outputType, candidateStatus as status, candidateOutputJson as outputJson,
+      candidateOutputMarkdown as outputMarkdown, candidateStructureValid as structureValid, candidateBlockedJson as blockedJson,
+      candidateErrorCode as errorCode, candidateErrorMessage as errorMessage, candidateTerminalMetadataJson as terminalMetadataJson,
+      candidateProjectionVersion as projectionVersion, candidateCompletedAt as completedAt
+      from (
+        select r.attempt as candidateAttempt, r.run_id as candidateRunId, a.run_id as candidateSourceRunId, a.artifact_id as candidateArtifactId, a.step_key as candidateStepKey,
+          a.stage_version as candidateStageVersion, a.input_fingerprint as candidateInputFingerprint, a.upstream_artifact_ids_json as candidateUpstreamIds,
+          a.source_ids_json as candidateSourceIds, a.claim_ids_json as candidateClaimIds, a.evidence_ids_json as candidateEvidenceIds,
+          a.unknown_ids_json as candidateUnknownIds, a.output_type as candidateOutputType, a.status as candidateStatus,
+          a.output_json as candidateOutputJson, a.output_markdown as candidateOutputMarkdown, a.structure_valid as candidateStructureValid,
+          a.blocked_json as candidateBlockedJson, a.error_code as candidateErrorCode, a.error_message as candidateErrorMessage,
+          a.terminal_metadata_json as candidateTerminalMetadataJson, a.projection_version as candidateProjectionVersion, a.completed_at as candidateCompletedAt
+          from llm_runs r join llm_run_artifacts a on a.run_id=r.run_id
+          where r.task_id=? and r.run_id<>? and r.attempt<? and r.status in ('completed','failed','blocked')
+        union all
+        select r.attempt as candidateAttempt, r.run_id as candidateRunId, a.run_id as candidateSourceRunId, a.artifact_id as candidateArtifactId, a.step_key as candidateStepKey,
+          a.stage_version as candidateStageVersion, a.input_fingerprint as candidateInputFingerprint, a.upstream_artifact_ids_json as candidateUpstreamIds,
+          a.source_ids_json as candidateSourceIds, a.claim_ids_json as candidateClaimIds, a.evidence_ids_json as candidateEvidenceIds,
+          a.unknown_ids_json as candidateUnknownIds, a.output_type as candidateOutputType, a.status as candidateStatus,
+          a.output_json as candidateOutputJson, a.output_markdown as candidateOutputMarkdown, a.structure_valid as candidateStructureValid,
+          a.blocked_json as candidateBlockedJson, a.error_code as candidateErrorCode, a.error_message as candidateErrorMessage,
+          a.terminal_metadata_json as candidateTerminalMetadataJson, a.projection_version as candidateProjectionVersion, a.completed_at as candidateCompletedAt
+          from llm_runs r
+          join llm_run_artifact_links l on l.run_id=r.run_id
+          join llm_run_artifacts a on a.artifact_id=l.artifact_id
+          join llm_runs source_run on source_run.run_id=a.run_id and source_run.task_id=r.task_id
+          where r.task_id=? and r.run_id<>? and r.attempt<? and r.status in ('completed','failed','blocked')
+      ) candidates
+      where candidateStepKey=? and candidateStatus in ('complete','not_applicable')
+        and candidateStageVersion=? and candidateInputFingerprint=?
+        and candidateUpstreamIds=? and candidateProjectionVersion=?
+      order by candidateAttempt desc, candidateCompletedAt desc limit 1`)
+      .bind(taskId, runId, input.attempt, taskId, runId, input.attempt, stepKey, stageVersion, inputFingerprint, JSON.stringify(upstreamArtifactIds), projectionVersion)
+      .first<Record<string, unknown>>();
+  } catch (error) {
+    if (/no such table/i.test(String(error))) return null;
+    throw error;
+  }
+  if (!candidate) return null;
+  const sourceRunId = requiredGeneric(candidate.sourceRunId, "sourceRunId");
+  const candidateArtifact = normalizeGenericArtifact({ ...candidate, runId: sourceRunId });
+  if (!genericArtifactCompatibilityMatches(candidateArtifact, { stageVersion, inputFingerprint, upstreamArtifactIds, projectionVersion })) return null;
+  const linked = await db.prepare(`insert or ignore into llm_run_artifact_links
+    (run_id, artifact_id, source_run_id, step_key, stage_version, input_fingerprint, upstream_artifact_ids_json, projection_version, linked_at)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(runId, requiredGeneric(candidate.artifactId, "artifactId"), sourceRunId, stepKey, stageVersion, inputFingerprint, JSON.stringify(upstreamArtifactIds), projectionVersion, now).run();
+  if (!linked.meta.changes) {
+    const existing = (await loadGenericLlmRunArtifacts(db, runId)).find((artifact) => artifact.stepKey === stepKey);
+    if (existing && ["complete", "not_applicable"].includes(existing.status)) return existing;
+    return null;
+  }
+  return normalizeGenericArtifact({ ...candidate, runId, sourceRunId, reused: 1 });
 }
 
 export async function completeGenericLlmRun(db: D1Database, input: GenericLlmRunTerminalInput): Promise<{ task: GenericLlmTask; run: GenericLlmRun; artifacts: GenericLlmArtifact[] }> {
@@ -545,7 +719,7 @@ function normalizeGenericRun(row: Record<string, unknown> | null): GenericLlmRun
   if (!["running", "completed", "failed", "blocked"].includes(status)) throw new Error("invalid generic LLM run status");
   return {
     runId: requiredGeneric(row.runId, "runId"), taskId: requiredGeneric(row.taskId, "taskId"), attempt: Number(row.attempt), provider: requiredGeneric(row.provider, "provider"), model: requiredGeneric(row.model, "model"),
-    reasoningEffort: nullableGeneric(row.reasoningEffort), promptVersion: requiredGeneric(row.promptVersion, "promptVersion"), inputFingerprint: nullableGeneric(row.inputFingerprint), inputAsOf: finiteTimestamp(row.inputAsOf), input: parseGenericJson(row.inputJson), prompt: parseGenericJson(row.promptJson), status,
+    reasoningEffort: nullableGeneric(row.reasoningEffort), promptVersion: requiredGeneric(row.promptVersion, "promptVersion"), inputFingerprint: nullableGeneric(row.inputFingerprint), inputAsOf: finiteTimestamp(row.inputAsOf), input: parseGenericJson(row.inputJson), prompt: parseGenericJson(row.promptJson), lineageRunId: nullableGeneric(row.lineageRunId), status,
     leaseOwner: nullableGeneric(row.leaseOwner), leaseUntil: finiteTimestamp(row.leaseUntil), heartbeatAt: finiteTimestamp(row.heartbeatAt), currentStepKey: nullableGeneric(row.currentStepKey), progress: parseGenericJson(row.progressJson), progressUpdatedAt: finiteTimestamp(row.progressUpdatedAt), terminalMetadata: parseGenericJson(row.terminalMetadataJson), errorCode: nullableGeneric(row.errorCode), errorMessage: nullableGeneric(row.errorMessage),
     startedAt: finiteTimestamp(row.startedAt) ?? 0, completedAt: finiteTimestamp(row.completedAt), updatedAt: finiteTimestamp(row.updatedAt) ?? 0,
   };
@@ -558,15 +732,24 @@ function normalizeGenericArtifact(row: Record<string, unknown>): GenericLlmArtif
   if (!["json", "markdown"].includes(outputType)) throw new Error("invalid generic LLM artifact output type");
   const structure = row.structureValid === null || row.structureValid === undefined ? null : Boolean(Number(row.structureValid));
   const output = outputType === "json" ? parseGenericJson(row.outputJson) : nullableGeneric(row.outputMarkdown);
-  const upstream = parseGenericJson(row.upstreamArtifactIdsJson);
+  const upstreamArtifactIds = parseGenericIdArray(row.upstreamArtifactIdsJson, "upstreamArtifactIds");
+  const sourceIds = parseGenericIdArray(row.sourceIdsJson, "sourceIds");
+  const claimIds = parseGenericIdArray(row.claimIdsJson, "claimIds");
+  const evidenceIds = parseGenericIdArray(row.evidenceIdsJson, "evidenceIds");
+  const unknownIds = parseGenericIdArray(row.unknownIdsJson, "unknownIds");
   return {
-    artifactId: requiredGeneric(row.artifactId, "artifactId"), runId: requiredGeneric(row.runId, "runId"), stepKey: requiredGeneric(row.stepKey, "stepKey"), upstreamArtifactIds: Array.isArray(upstream) ? upstream.flatMap((item) => typeof item === "string" && item.trim() ? [item.trim()] : []) : [], outputType, status, output,
-    structureValid: structure, blocked: parseGenericJson(row.blockedJson), errorCode: nullableGeneric(row.errorCode), errorMessage: nullableGeneric(row.errorMessage), terminalMetadata: parseGenericJson(row.terminalMetadataJson), completedAt: finiteTimestamp(row.completedAt) ?? 0,
+    artifactId: requiredGeneric(row.artifactId, "artifactId"), runId: requiredGeneric(row.runId, "runId"), stepKey: requiredGeneric(row.stepKey, "stepKey"), stageVersion: nullableGeneric(row.stageVersion), inputFingerprint: nullableGeneric(row.inputFingerprint), upstreamArtifactIds, sourceIds, claimIds, evidenceIds, unknownIds, outputType, status, output,
+    structureValid: structure, blocked: parseGenericJson(row.blockedJson), errorCode: nullableGeneric(row.errorCode), errorMessage: nullableGeneric(row.errorMessage), terminalMetadata: parseGenericJson(row.terminalMetadataJson), projectionVersion: nullableGeneric(row.projectionVersion), completedAt: finiteTimestamp(row.completedAt) ?? 0,
+    ...(nullableGeneric(row.sourceRunId) ? { sourceRunId: nullableGeneric(row.sourceRunId), reused: Boolean(row.reused) } : {}),
   };
 }
 
 function assertGenericArtifactStatus(value: string): asserts value is GenericLlmArtifactStatus {
   if (!["complete", "partial", "blocked", "not_applicable", "failed"].includes(value)) throw new Error("invalid generic LLM artifact terminal status");
+}
+
+function assertGenericOutputType(value: string): asserts value is GenericLlmOutputType {
+  if (!["json", "markdown"].includes(value)) throw new Error("invalid generic LLM artifact output type");
 }
 
 function textGeneric(value: unknown): string { return typeof value === "string" ? value.trim() : typeof value === "number" && Number.isFinite(value) ? String(value) : ""; }
@@ -585,6 +768,52 @@ function parseGenericJson(value: unknown): unknown {
   if (typeof value !== "string" || !value.trim()) return null;
   try { return JSON.parse(value); } catch { return null; }
 }
+
+/**
+ * Normalize lineage IDs without silently dropping malformed references.  An
+ * omitted field (or a legacy row predating 0108) is the safe empty default;
+ * once a caller supplies an array, every member must be a named, unique ID.
+ */
+export function normalizeGenericLlmIdArray(value: unknown, name = "lineageIds"): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new Error(`generic LLM ${name} must be an array of IDs`);
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") throw new Error(`generic LLM ${name} contains a non-string ID`);
+    const id = item.trim();
+    if (!id || /^\d+$/.test(id) || /\s/.test(id)) throw new Error(`generic LLM ${name} contains an invalid ID`);
+    if (seen.has(id)) throw new Error(`generic LLM ${name} contains a duplicate ID: ${id}`);
+    seen.add(id);
+    result.push(id);
+  }
+  return result;
+}
+
+/** Pure contract predicate used by recovery tests and by callers that need to
+ * explain why an artifact was invalidated without touching the database. */
+export function genericArtifactCompatibilityMatches(artifact: Pick<GenericLlmArtifact, "status" | "stageVersion" | "inputFingerprint" | "upstreamArtifactIds" | "projectionVersion">, expected: Pick<GenericLlmArtifactCompatibilityInput, "stageVersion" | "inputFingerprint" | "upstreamArtifactIds" | "projectionVersion">): boolean {
+  if (!["complete", "not_applicable"].includes(artifact.status)) return false;
+  if (artifact.stageVersion !== expected.stageVersion || artifact.inputFingerprint !== expected.inputFingerprint || artifact.projectionVersion !== expected.projectionVersion) return false;
+  const actualIds = normalizeGenericLlmIdArray(artifact.upstreamArtifactIds, "upstreamArtifactIds").sort();
+  const expectedIds = normalizeGenericLlmIdArray(expected.upstreamArtifactIds, "upstreamArtifactIds").sort();
+  return actualIds.length === expectedIds.length && actualIds.every((id, index) => id === expectedIds[index]);
+}
+
+function parseGenericIdArray(value: unknown, name: string): string[] {
+  if (value === undefined || value === null || value === "") return [];
+  if (typeof value !== "string") return normalizeGenericLlmIdArray(value, name);
+  let parsed: unknown;
+  try { parsed = JSON.parse(value); } catch { throw new Error(`generic LLM ${name} JSON is invalid`); }
+  return normalizeGenericLlmIdArray(parsed, name);
+}
+
+async function nearestGenericLlmRunId(db: D1Database, taskId: string): Promise<string | null> {
+  const previous = await db.prepare(`select run_id as runId from llm_runs
+    where task_id=? order by attempt desc, updated_at desc limit 1`).bind(taskId).first<{ runId: string }>();
+  return nullableGeneric(previous?.runId);
+}
+
 async function hasGenericLlmProtocol(db: D1Database): Promise<boolean> {
   try {
     const row = await db.prepare(`select count(*) as count from sqlite_master where type='table' and name in ('llm_tasks','llm_runs','llm_run_artifacts')`).first<{ count: number }>();

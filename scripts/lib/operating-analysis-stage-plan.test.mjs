@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assembleOperatingAnalysisReport } from "./operating-analysis-report.mjs";
-import { runOperatingAnalysisStageWaves } from "./operating-analysis-stage-plan.mjs";
+import { assembleLowDependencyOperatingAnalysisReport, assembleOperatingAnalysisReport } from "./operating-analysis-report.mjs";
+import { runOperatingAnalysisStageWaves, runResearchOperatingAnalysisStageWaves, researchOperatingAnalysisStageWaves } from "./operating-analysis-stage-plan.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -54,4 +54,90 @@ test("final report retains inline citations without a detached source index", ()
   assert.match(report, /\[公司公告\]\(https:\/\/example\.com\/filing\)/);
   assert.match(report, /\[行业统计\]\(https:\/\/example\.com\/industry\)/);
   assert.doesNotMatch(report, /来源索引|example\.com\/index/);
+});
+
+test("target registry drives the S0-S7 scope wave and applies a resource cap", async () => {
+  const waves = researchOperatingAnalysisStageWaves({ scopeEnvelopeAvailable: true });
+  assert.deepEqual(waves[1].map((stage) => stage.key), ["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers", "financial_quality", "market_valuation_facts"]);
+  let active = 0;
+  let maximum = 0;
+  const settled = [];
+  await runResearchOperatingAnalysisStageWaves({ scopeEnvelopeAvailable: true, resourceCap: 2, onStageSettled: (stage, result) => settled.push([stage.key, result.status]), runStage: async (stage) => {
+    active += 1; maximum = Math.max(maximum, active);
+    await delay(2);
+    active -= 1;
+    return { stageKey: stage.key, status: "complete" };
+  } });
+  assert.equal(maximum, 2);
+  assert.equal(settled.length, 13);
+});
+
+test("target registry releases S8-S12 only after their declared valuation dependencies", async () => {
+  const waves = researchOperatingAnalysisStageWaves({ scopeEnvelopeAvailable: true });
+  assert.deepEqual(waves.slice(2).map((wave) => wave.map((stage) => stage.key)), [
+    ["operating_thesis"],
+    ["scenario_valuation"],
+    ["deterministic_valuation"],
+    ["investment_conclusion"],
+    ["report_assembly"],
+  ]);
+  const calls = [];
+  const result = await runResearchOperatingAnalysisStageWaves({
+    scopeEnvelopeAvailable: true,
+    runStage: async (stage) => {
+      calls.push(stage.key);
+      return { status: stage.key === "scenario_valuation" ? "blocked" : "complete" };
+    },
+  });
+  const byKey = new Map(result.map((item) => [item.stage.key, item.output]));
+  assert.equal(byKey.get("scenario_valuation").status, "blocked");
+  assert.equal(byKey.get("deterministic_valuation").status, "blocked");
+  assert.equal(byKey.get("investment_conclusion").status, "blocked");
+  assert.equal(byKey.get("report_assembly").status, "blocked");
+  assert(calls.includes("operating_thesis"));
+});
+
+test("target fallback wave exposes only the S1-to-S2-S5 companyScope edge", () => {
+  const waves = researchOperatingAnalysisStageWaves({ scopeEnvelopeAvailable: false });
+  assert.deepEqual(waves[1].map((stage) => stage.key), ["company_facts", "financial_quality", "market_valuation_facts"]);
+  assert.deepEqual(waves[2].map((stage) => stage.key), ["industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers"]);
+});
+
+test("target waves settle siblings and block only their declared dependants", async () => {
+  const settled = await runResearchOperatingAnalysisStageWaves({ scopeEnvelopeAvailable: true, runStage: async (stage) => {
+    if (stage.key === "industry_structure") throw new Error("industry unavailable");
+    return { status: "complete" };
+  } });
+  const byKey = new Map(settled.map((item) => [item.stage.key, item.output]));
+  assert.equal(byKey.get("industry_structure").status, "failed");
+  assert.equal(byKey.get("supply_demand_cycle").status, "complete");
+  assert.equal(byKey.get("competition_peers").status, "complete");
+  assert.equal(byKey.get("operating_thesis").status, "blocked");
+  assert.equal(byKey.get("financial_quality").status, "complete");
+});
+
+test("S12 assembles all twelve headings from chapter owners and exposes the final gate", () => {
+  const stages = [
+    { stageKey: "research_context", artifactId: "llm-artifact:s0", status: "complete", output: { company: { name: "测试公司" }, security: { securityCode: "000001.SZ" }, asOf: "2026-08-10", reportingBoundary: {}, contextVersion: "research-context.v1" } },
+    { stageKey: "company_facts", artifactId: "llm-artifact:s1", status: "complete", output: { markdown: "公司事实正文" } },
+    { stageKey: "industry_structure", artifactId: "llm-artifact:s2", status: "complete", output: { markdown: "行业结构正文" } },
+    { stageKey: "supply_demand_cycle", artifactId: "llm-artifact:s3", status: "complete", output: { markdown: "供需周期正文" } },
+    { stageKey: "competition_peers", artifactId: "llm-artifact:s4", status: "complete", output: { markdown: "竞争同行正文" } },
+    { stageKey: "company_operating_drivers", artifactId: "llm-artifact:s5", status: "complete", output: { markdown: "经营驱动正文" } },
+    { stageKey: "financial_quality", artifactId: "llm-artifact:s6", status: "complete", output: { markdown: "财务质量正文" } },
+    { stageKey: "market_valuation_facts", artifactId: "llm-artifact:s7", status: "complete", output: { markdown: "市场事实正文" } },
+    { stageKey: "operating_thesis", artifactId: "llm-artifact:s8", status: "complete", output: { markdown: "经营论题正文" } },
+    { stageKey: "scenario_valuation", artifactId: "llm-artifact:s9", status: "complete", output: {} },
+    { stageKey: "deterministic_valuation", artifactId: "llm-artifact:s10", status: "complete", output: { calculationTrace: [{ calculationId: "calculation:base:dcf" }] } },
+    { stageKey: "investment_conclusion", artifactId: "llm-artifact:s11", status: "complete", output: { markdownByChapter: { "9": "估值解释", "10": "风险反证", "11": "跟踪仪表盘", "12": "最终结论" } } },
+  ];
+  const report = assembleLowDependencyOperatingAnalysisReport({ runId: "llm-run:1", context: stages[0].output, stages });
+  assert.equal(report.status, "complete");
+  for (let chapter = 1; chapter <= 12; chapter += 1) assert.match(report.markdown, new RegExp(`# ${chapter}\\.`));
+  assert.match(report.markdown, /最终结论/);
+  assert.deepEqual(report.manifest.chapterOwners["12"], ["investment_conclusion"]);
+  assert.deepEqual(report.manifest.chapterArtifactIds["12"], ["llm-artifact:s11"]);
+  const blocked = assembleLowDependencyOperatingAnalysisReport({ context: stages[0].output, stages: stages.map((stage) => stage.stageKey === "financial_quality" ? { ...stage, status: "partial" } : stage) });
+  assert.equal(blocked.status, "partial");
+  assert.match(blocked.markdown, /报告状态：partial/);
 });

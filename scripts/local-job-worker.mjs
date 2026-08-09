@@ -2,7 +2,7 @@
 
 import { pathToFileURL } from "node:url";
 import { startInformationProcessingRunner } from "./information-processing-runner.mjs";
-import { startResearchOperatingAnalysisRunner } from "./research-operating-analysis-runner.mjs";
+import { startResearchOperatingAnalysisLowDependencyRunner } from "./research-operating-analysis-low-dependency-runner.mjs";
 import { startResearchWebSearchPackageRunner } from "./research-web-search-package-runner.mjs";
 import { startCompanyReportDiscoveryRunner } from "./company-report-discovery-runner.mjs";
 import { localRuntimeLog } from "./lib/local-runtime-log.mjs";
@@ -12,7 +12,7 @@ export function startLocalJobWorker() {
   const controllers = [
     startCompanyReportDiscoveryRunner(),
     startResearchWebSearchPackageRunner(),
-    startResearchOperatingAnalysisRunner(),
+    startResearchOperatingAnalysisLowDependencyRunner(),
     startInformationProcessingRunner(),
   ];
   return {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildOperatingAnalysisFinancialContext, financialSnapshotForStage } from "./operating-analysis-financial-snapshot.mjs";
+import { buildOperatingAnalysisFinancialContext, buildOperatingAnalysisMarketSnapshot, financialSnapshotForStage, validateFinancialQualitySnapshot } from "./operating-analysis-financial-snapshot.mjs";
 
 const statement = (rows, source = "eastmoney") => ({ dataAsOf: "2026-08-09T00:00:00.000Z", reportingCurrencies: ["CNY"], rows: rows.map(([reportDate, fiscalPeriod, payload]) => ({ reportDate, fiscalPeriod, source, payload })) });
 const context = buildOperatingAnalysisFinancialContext({
@@ -30,4 +30,27 @@ test("each model stage receives only its financial minimum", () => {
   assert.equal("incomeStatement" in valuation, false);
   assert.equal("operatingTrend" in valuation, true);
   assert.equal("operatingTrend" in conclusion, false);
+});
+
+test("target financial and market domains receive only deterministic S0 projections", () => {
+  const financial = financialSnapshotForStage(context.descriptor, { ...context, marketSnapshot: { source: "xueqiu", price: 10, marketCapitalization: 100 } }, "financial_quality");
+  assert.equal(financial.incomeStatement[0].values.TOTAL_OPERATE_INCOME, 100);
+  assert.equal("operatingTrend" in financial, false);
+  const market = financialSnapshotForStage(context.descriptor, { ...context, marketSnapshot: { source: "xueqiu", price: 10, marketCapitalization: 100 } }, "market_valuation_facts");
+  assert.equal(market.source, "xueqiu");
+  assert.equal(market.price, 10);
+  assert.equal("incomeStatement" in market, false);
+  const snapshot = buildOperatingAnalysisMarketSnapshot({ overview: { marketDate: "2026-08-09", latestPrice: 10, marketCapYi: 100, peTtm: 20 }, security: { securityCode: "300308.SZ", listingVenue: "SZ", tradingCurrency: "CNY" } });
+  assert.equal(snapshot.source, "xueqiu");
+  assert.equal(snapshot.reportedMultiples.peTtm, 20);
+});
+
+test("financial quality gate preserves gaps and financial-sector non-applicability", () => {
+  const available = validateFinancialQualitySnapshot({ asOf: "2026-08-09", schemaVersion: "financial.v1", source: "structured_financial", incomeStatement: [{ period: "2026-03-31", currency: "CNY", unit: "reported", source: "structured_financial" }], balanceSheet: [{ period: "2026-03-31", currency: "CNY", unit: "reported", source: "structured_financial" }], cashFlowStatement: [{ period: "2026-03-31", currency: "CNY", unit: "reported", source: "structured_financial" }] });
+  assert.equal(available.status, "available");
+  const missing = validateFinancialQualitySnapshot({ asOf: "2026-08-09", schemaVersion: "financial.v1", source: "structured_financial", incomeStatement: [{ period: "2026-03-31" }], balanceSheet: [], cashFlowStatement: [] });
+  assert.equal(missing.status, "blocked");
+  assert(missing.gaps.some((gap) => gap.code === "incomeStatement_unit_source_missing"));
+  const notApplicable = validateFinancialQualitySnapshot({ asOf: "2026-08-09", schemaVersion: "financial.v1", source: "structured_financial", incomeStatement: [{ period: "2026-03-31", currency: "CNY", unit: "reported", source: "structured_financial" }], balanceSheet: [{ period: "2026-03-31", currency: "CNY", unit: "reported", source: "structured_financial" }], cashFlowStatement: [{ period: "2026-03-31", currency: "CNY", unit: "reported", source: "structured_financial" }] }, { entityType: "financial" });
+  assert.equal(notApplicable.status, "not_applicable");
 });

@@ -16,6 +16,7 @@ import { buildOperatingAnalysisFinancialContext, financialSnapshotForStage } fro
 import { createLocalJobProvider, loadLocalJobRuntimeConfig, resolveLocalJobApiKey } from "./lib/local-job-provider-registry.mjs";
 import { localRuntimeError, localRuntimeLog } from "./lib/local-runtime-log.mjs";
 import { assembleOperatingAnalysisReport } from "./lib/operating-analysis-report.mjs";
+import { calculateDeterministicValuation } from "./lib/operating-analysis-deterministic-valuation.mjs";
 import { runOperatingAnalysisStageWaves } from "./lib/operating-analysis-stage-plan.mjs";
 
 const baseUrl = String(process.env.OPERATING_ANALYSIS_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -134,27 +135,16 @@ async function runStage(claim, baseInput, task, definition) {
     ? jsonOutputParseError(key, output, response)
     : new Error(`${key} returned no valid ${format} output`);
   const status = format === "json" && terminal(parsed.status) ? parsed.status : "complete";
-  const finalOutput = key === "valuation_inputs" ? { ...parsed, deterministicValuation: calculateValuation(parsed) } : parsed;
+  const finalOutput = key === "valuation_inputs" ? { ...parsed, deterministicValuation: calculateValuation(parsed, baseInput) } : parsed;
   await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/stages/${key}/complete`, { output: finalOutput, status, runnerInstanceId, attempt: claim.attempt });
   localRuntimeLog("research-operating-analysis", "stage_completed", { job_id: claim.jobId, attempt: claim.attempt, security_code: claim.securityCode, stage_key: key, stage_status: status });
   task.job.stages = (task.job.stages || []).map((item) => item.stageKey === key ? { ...item, status, output: finalOutput } : item);
   return finalOutput;
 }
 
-/** The calculation consumes only stage-five fields; it never invents an operating assumption. */
-function calculateValuation(stageFive) {
-  const items = Array.isArray(stageFive?.valuationCalculationRequest?.dcfScenarios) ? stageFive.valuationCalculationRequest.dcfScenarios : [];
-  const blocked = []; const results = [];
-  for (const scenario of items) {
-    const years = Array.isArray(scenario?.years) ? scenario.years : [];
-    const values = [scenario?.openingRevenue, scenario?.openingNetWorkingCapital, scenario?.wacc, scenario?.terminalGrowth, scenario?.netDebt, scenario?.dilutedShares, ...years.flatMap((year) => [year?.revenueGrowth, year?.ebitMargin, year?.taxRate, year?.depreciationAmortizationMargin, year?.capitalExpenditureMargin, year?.netWorkingCapitalToRevenue])].map(Number);
-    if (!years.length || values.some((value) => !Number.isFinite(value)) || Number(scenario.wacc) <= Number(scenario.terminalGrowth) || Number(scenario.dilutedShares) <= 0) { blocked.push({ scenario: scenario?.scenario || "unknown", reason: "DCF 输入缺失、非数值，或 WACC 不大于永续增长率" }); continue; }
-    let revenue = Number(scenario.openingRevenue); let nwc = Number(scenario.openingNetWorkingCapital); let enterpriseValue = 0;
-    const annuals = years.map((year, index) => { revenue *= 1 + Number(year.revenueGrowth); const ebit = revenue * Number(year.ebitMargin); const fcf = ebit * (1 - Number(year.taxRate)) + revenue * Number(year.depreciationAmortizationMargin) - revenue * Number(year.capitalExpenditureMargin) - (revenue * Number(year.netWorkingCapitalToRevenue) - nwc); nwc = revenue * Number(year.netWorkingCapitalToRevenue); enterpriseValue += fcf / ((1 + Number(scenario.wacc)) ** (index + 1)); return { fiscalYear: year.fiscalYear, revenue, ebit, freeCashFlow: fcf }; });
-    const terminalValue = annuals.at(-1).freeCashFlow * (1 + Number(scenario.terminalGrowth)) / (Number(scenario.wacc) - Number(scenario.terminalGrowth)); enterpriseValue += terminalValue / ((1 + Number(scenario.wacc)) ** years.length);
-    const equityValue = enterpriseValue - Number(scenario.netDebt); results.push({ scenario: scenario.scenario, currency: scenario.currency, amountScale: scenario.amountScale, annuals, enterpriseValue, equityValue, dilutedValuePerShare: equityValue / Number(scenario.dilutedShares), terminalValueShare: terminalValue / (enterpriseValue * ((1 + Number(scenario.wacc)) ** years.length)) });
-  }
-  return { status: results.length ? (blocked.length ? "partial" : "complete") : "blocked", method: "deterministic_dcf.v1", results, blockedItems: blocked };
+/** The calculation consumes only S9-confirmed fields; it never invents an operating assumption. */
+function calculateValuation(stageFive, context = {}) {
+  return calculateDeterministicValuation({ scenarioOutput: stageFive, context });
 }
 
 async function runJob(claim) {
@@ -166,7 +156,7 @@ async function runJob(claim) {
   try {
     const input = await buildInput(claim.securityCode, { model: claim.model || config.model, reasoningEffort: claim.reasoningEffort }); const task = await request(`/api/research/company/${encodeURIComponent(claim.securityCode)}/operating-analysis`);
     const stageResults = await runOperatingAnalysisStageWaves(stageWaves, (definition) => runStage(claim, input, task, definition));
-    const blocked = stageResults.find(({ output }) => output?.status === "blocked");
+    const blocked = stageResults.find(({ output }) => output?.status === "blocked" || output?.deterministicValuation?.status === "blocked");
     if (blocked) throw new Error(`${blocked.stage.label} 被阻断：请补充其列出的证据或数据缺口`);
     const report = assembleOperatingAnalysisReport(input, task.job.stages || []); const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex"); const finalPrompt = stageState(task, "valuation_conclusion")?.prompt || { model: claim.model || config.model, instructions: INSTRUCTIONS, userPrompt: "六阶段任务由系统确定性组装" };
     await post(`/api/research/operating-analysis-jobs/${encodeURIComponent(claim.securityCode)}/complete`, { input: { ...input, stageArtifacts: task.job.stages }, prompt: finalPrompt, reportMarkdown: report, reasoningMarkdown: "", inputFingerprint: fingerprint, streamStats: { staged: true }, runnerInstanceId, attempt: claim.attempt });

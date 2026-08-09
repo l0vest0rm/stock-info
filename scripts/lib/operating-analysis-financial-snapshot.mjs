@@ -37,11 +37,57 @@ export function buildOperatingAnalysisFinancialContext({ income, balance, cashfl
 }
 
 export function financialSnapshotForStage(sharedDescriptor, context, stageKey) {
+  if (stageKey === "research_context") return sharedDescriptor;
+  if (["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers"].includes(stageKey)) return sharedDescriptor;
+  if (stageKey === "financial_quality") return { ...sharedDescriptor, ...context.financialAnalysis };
+  if (stageKey === "market_valuation_facts") return context.marketSnapshot || context.marketValuation || { ...sharedDescriptor, ...context.valuationSummary };
+  if (stageKey === "operating_thesis") return { ...sharedDescriptor, operatingTrend: context.operatingTrend };
   if (stageKey === "company_baseline" || stageKey === "industry_validation") return sharedDescriptor;
   if (stageKey === "operating_analysis") return { ...sharedDescriptor, operatingTrend: context.operatingTrend };
   if (stageKey === "financial_analysis") return { ...sharedDescriptor, ...context.financialAnalysis };
   if (stageKey === "valuation_inputs") return { ...sharedDescriptor, ...context.valuationSummary };
   return sharedDescriptor;
+}
+
+/** Compact S0 market facts. The stock market source remains Xueqiu-only. */
+export function buildOperatingAnalysisMarketSnapshot({ overview, security, asOf } = {}) {
+  const value = overview && typeof overview === "object" ? overview : {};
+  const securityValue = security && typeof security === "object" ? security : {};
+  return {
+    asOf: text(value.marketDate) || text(asOf) || null,
+    schemaVersion: "market-snapshot.v1",
+    source: "xueqiu",
+    securityId: text(securityValue.securityId) || null,
+    securityCode: text(securityValue.securityCode || securityValue.code) || null,
+    listingVenue: text(securityValue.listingVenue || securityValue.venue) || null,
+    shareClass: text(securityValue.shareClass) || null,
+    tradingCurrency: text(securityValue.tradingCurrency || securityValue.currency) || null,
+    price: finite(value.latestPrice),
+    marketCapitalization: finite(value.marketCapYi),
+    sharesOutstanding: finite(value.sharesOutstanding || value.totalShares),
+    rights: securityValue.rights && typeof securityValue.rights === "object" && !Array.isArray(securityValue.rights)
+      ? securityValue.rights
+      : value.rights && typeof value.rights === "object" && !Array.isArray(value.rights) ? value.rights : null,
+    reportedMultiples: { peTtm: finite(value.peTtm), pb: finite(value.pb), psTtm: finite(value.psTtm), pcfTtm: finite(value.pcfTtm) },
+    historicalValuation: Array.isArray(value.historicalValuation) ? value.historicalValuation : [],
+    qualityIssues: [],
+  };
+}
+
+/** Deterministic S6 input gate; model output cannot fill these gaps. */
+export function validateFinancialQualitySnapshot(snapshot, { entityType = "operating" } = {}) {
+  const value = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) ? snapshot : {};
+  const gaps = [];
+  for (const field of ["asOf", "schemaVersion", "source"]) if (!text(value[field])) gaps.push({ code: `financial_snapshot_${field}_missing`, field, blocking: true });
+  for (const statement of ["incomeStatement", "balanceSheet", "cashFlowStatement"]) {
+    if (!Array.isArray(value[statement]) || value[statement].length === 0) { gaps.push({ code: `${statement}_missing`, field: statement, blocking: true }); continue; }
+    value[statement].forEach((row, index) => {
+      if (!text(row?.period)) gaps.push({ code: `${statement}_period_missing`, field: `${statement}[${index}].period`, blocking: true });
+      if (!text(row?.currency) || !text(row?.unit) || !text(row?.source)) gaps.push({ code: `${statement}_unit_source_missing`, field: `${statement}[${index}]`, blocking: true });
+    });
+  }
+  if (entityType === "financial") return { status: "not_applicable", gaps: [...gaps, { code: "financial_entity_specialty_metrics_not_applicable", field: "entityType", blocking: false }] };
+  return { status: gaps.some((gap) => gap.blocking) ? "blocked" : gaps.length ? "partial" : "available", gaps };
 }
 
 function descriptor(income, balance, cashflow) {

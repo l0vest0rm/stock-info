@@ -24,11 +24,13 @@ async function verifyPageShell() {
   assert(html.includes("investment-analysis-vue-root"), "investment-analysis root is missing");
   assert(html.includes("js/investment-analysis-page.js"), "investment-analysis bundle is missing");
   const bundle = await text("/js/investment-analysis-page.js");
-  for (const label of ["完整投资研究", "报告目录", "打开 ChatGPT 会话", "ia-heading-"]) {
+  for (const label of ["完整投资研究", "报告目录", "S0-S12处理进度", "operating-analysis-low-dependency", "ia-heading-"]) {
     assert(bundle.includes(label), `investment-analysis bundle is missing ${label}`);
   }
   assert(!bundle.includes("investment-review"), "investment-analysis bundle still calls the retired second-stage review API");
   assert(!bundle.includes("两轮问答"), "investment-analysis bundle still describes the retired two-stage workflow");
+  assert(!bundle.includes("六阶段处理进度"), "investment-analysis bundle still exposes the retired six-stage progress label");
+  assert(!bundle.includes("/operating-analysis/refresh"), "investment-analysis bundle still calls the legacy staged refresh API");
 }
 
 async function verifySample({ code, market }) {
@@ -66,6 +68,13 @@ async function verifySample({ code, market }) {
   }
   const overview = await api(`/api/company/overview?code=${encodeURIComponent(code)}`);
   assert(overview.data?.source === "xueqiu", `${code}: ${market} market price did not retain Xueqiu provenance`);
+  const lowDependency = await api(`/api/research/company/${encodeURIComponent(code)}/operating-analysis-low-dependency`);
+  assert(["investment-analysis.low-dependency.v1"].includes(lowDependency.data?.protocolVersion), `${code}: low-dependency protocol is absent or unexpected`);
+  if (lowDependency.data?.availability === "available") {
+    assert(Array.isArray(lowDependency.data.stages) && lowDependency.data.stages.length === 13, `${code}: low-dependency read model does not expose S0-S12`);
+    assert(lowDependency.data.task?.runId === lowDependency.data.run?.runId, `${code}: task/run identity is not aligned`);
+    if (lowDependency.data.report) assert(lowDependency.data.report.status !== "complete" || lowDependency.data.task?.status === "completed", `${code}: complete report is exposed before task completion`);
+  }
 }
 
 function requirementsFor(tabId) {

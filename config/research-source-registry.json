@@ -1,0 +1,16 @@
+{
+  "version": "research-source-registry.v1",
+  "roles": [
+    "formal_disclosure",
+    "regulatory",
+    "company_ir",
+    "management_statement",
+    "external_evidence",
+    "third_party_forecast",
+    "structured_financial",
+    "market_data",
+    "other"
+  ],
+  "availabilityStatuses": ["available", "stale", "conflict", "unavailable"],
+  "requiredFields": ["url", "title", "publishedAt", "subject", "role", "retrievedAt", "contentFingerprint"]
+}

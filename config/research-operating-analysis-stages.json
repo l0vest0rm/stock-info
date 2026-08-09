@@ -1,0 +1,237 @@
+{
+  "registryVersion": "investment-analysis.stage-registry.v1",
+  "targetProtocolVersion": "investment-analysis.low-dependency.v1",
+  "targetPromptVersion": "investment-analysis.low-dependency.v1",
+  "targetTaskType": "research_operating_analysis_low_dependency",
+  "legacy": {
+    "protocolVersion": "llm-task-protocol.v1",
+    "promptVersion": "investment-analysis.staged.v1",
+    "taskType": "research_operating_analysis",
+    "stageKeys": [
+      "company_baseline",
+      "industry_validation",
+      "operating_analysis",
+      "financial_analysis",
+      "valuation_inputs",
+      "valuation_conclusion"
+    ]
+  },
+  "stages": [
+    {
+      "key": "research_context",
+      "label": "0. 研究上下文",
+      "outputKind": "json",
+      "owner": "deterministic_context",
+      "execution": "deterministic",
+      "webSearch": false,
+      "dependsOn": [],
+      "fallbackDependsOn": [],
+      "schemaVersion": "research-context.v1",
+      "reportHeadings": ["# 1. 研究范围与事实边界"]
+    },
+    {
+      "key": "company_facts",
+      "label": "1. 公司事实",
+      "outputKind": "json",
+      "owner": "company_facts",
+      "execution": "model",
+      "webSearch": true,
+      "dependsOn": ["research_context"],
+      "fallbackDependsOn": ["research_context"],
+      "schemaVersion": "company-facts.v1",
+      "reportHeadings": ["# 2. 公司概况与商业模式"]
+    },
+    {
+      "key": "industry_structure",
+      "label": "2. 行业结构",
+      "outputKind": "json",
+      "owner": "industry_structure",
+      "execution": "model",
+      "webSearch": true,
+      "dependsOn": ["research_context"],
+      "fallbackDependsOn": ["company_facts"],
+      "schemaVersion": "industry-structure.v1",
+      "reportHeadings": ["# 3. 行业与产业链"]
+    },
+    {
+      "key": "supply_demand_cycle",
+      "label": "3. 供需与周期",
+      "outputKind": "json",
+      "owner": "supply_demand_cycle",
+      "execution": "model",
+      "webSearch": true,
+      "dependsOn": ["research_context"],
+      "fallbackDependsOn": ["company_facts"],
+      "schemaVersion": "supply-demand-cycle.v1",
+      "reportHeadings": ["# 3. 行业与产业链", "# 5. 增长、驱动与可持续性", "# 8. 资产负债表与压力测试"]
+    },
+    {
+      "key": "competition_peers",
+      "label": "4. 竞争与同行",
+      "outputKind": "json",
+      "owner": "competition_peers",
+      "execution": "model",
+      "webSearch": true,
+      "dependsOn": ["research_context"],
+      "fallbackDependsOn": ["company_facts"],
+      "schemaVersion": "competition-peers.v1",
+      "reportHeadings": ["# 4. 公司竞争地位"]
+    },
+    {
+      "key": "company_operating_drivers",
+      "label": "5. 公司经营驱动",
+      "outputKind": "json",
+      "owner": "company_operating_drivers",
+      "execution": "model",
+      "webSearch": true,
+      "dependsOn": ["research_context"],
+      "fallbackDependsOn": ["company_facts"],
+      "schemaVersion": "company-operating-drivers.v1",
+      "reportHeadings": ["# 2. 公司概况与商业模式", "# 5. 增长、驱动与可持续性"]
+    },
+    {
+      "key": "financial_quality",
+      "label": "6. 财务质量",
+      "outputKind": "json",
+      "owner": "financial_quality",
+      "execution": "model",
+      "webSearch": false,
+      "dependsOn": ["research_context"],
+      "fallbackDependsOn": ["research_context"],
+      "schemaVersion": "financial-quality.v1",
+      "reportHeadings": ["# 6. 利润质量、现金转换与营运资本", "# 7. 资本效率、管理层治理与资本配置", "# 8. 资产负债表与压力测试"]
+    },
+    {
+      "key": "market_valuation_facts",
+      "label": "7. 市场估值事实",
+      "outputKind": "json",
+      "owner": "market_valuation_facts",
+      "execution": "model",
+      "webSearch": false,
+      "dependsOn": ["research_context"],
+      "fallbackDependsOn": ["research_context"],
+      "schemaVersion": "market-valuation-facts.v1",
+      "reportHeadings": ["# 9. 估值与市场隐含经营要求"]
+    },
+    {
+      "key": "operating_thesis",
+      "label": "8. 经营论题",
+      "outputKind": "json",
+      "owner": "operating_thesis",
+      "execution": "model",
+      "webSearch": false,
+      "dependsOn": ["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers"],
+      "fallbackDependsOn": ["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers"],
+      "schemaVersion": "operating-thesis.v1",
+      "reportHeadings": ["# 2. 公司概况与商业模式", "# 3. 行业与产业链", "# 4. 公司竞争地位", "# 5. 增长、驱动与可持续性"]
+    },
+    {
+      "key": "scenario_valuation",
+      "label": "9. 情景估值",
+      "outputKind": "json",
+      "owner": "scenario_valuation",
+      "execution": "model",
+      "webSearch": false,
+      "dependsOn": ["research_context", "operating_thesis", "financial_quality", "market_valuation_facts"],
+      "fallbackDependsOn": ["research_context", "operating_thesis", "financial_quality", "market_valuation_facts"],
+      "schemaVersion": "scenario-valuation.v1",
+      "reportHeadings": ["# 9. 估值与市场隐含经营要求", "# 10. 核心风险与反面证据", "# 11. 后续跟踪仪表盘"]
+    },
+    {
+      "key": "deterministic_valuation",
+      "label": "10. 确定性估值计算",
+      "outputKind": "json",
+      "owner": "deterministic_valuation",
+      "execution": "deterministic",
+      "webSearch": false,
+      "dependsOn": ["research_context", "scenario_valuation"],
+      "fallbackDependsOn": ["research_context", "scenario_valuation"],
+      "schemaVersion": "deterministic-valuation.v1",
+      "reportHeadings": ["# 9. 估值与市场隐含经营要求", "# 11. 后续跟踪仪表盘"]
+    },
+    {
+      "key": "investment_conclusion",
+      "label": "11. 投资结论",
+      "outputKind": "json",
+      "owner": "investment_conclusion",
+      "execution": "model",
+      "webSearch": false,
+      "dependsOn": ["scenario_valuation", "deterministic_valuation"],
+      "fallbackDependsOn": ["scenario_valuation", "deterministic_valuation"],
+      "schemaVersion": "investment-conclusion.v1",
+      "reportHeadings": ["# 9. 估值与市场隐含经营要求", "# 10. 核心风险与反面证据", "# 11. 后续跟踪仪表盘", "# 12. 最终结论"]
+    },
+    {
+      "key": "report_assembly",
+      "label": "12. 确定性报告组装",
+      "outputKind": "markdown",
+      "owner": "deterministic_report_assembly",
+      "execution": "deterministic",
+      "webSearch": false,
+      "dependsOn": [
+        "research_context",
+        "company_facts",
+        "industry_structure",
+        "supply_demand_cycle",
+        "competition_peers",
+        "company_operating_drivers",
+        "financial_quality",
+        "market_valuation_facts",
+        "operating_thesis",
+        "scenario_valuation",
+        "deterministic_valuation",
+        "investment_conclusion"
+      ],
+      "fallbackDependsOn": [
+        "research_context",
+        "company_facts",
+        "industry_structure",
+        "supply_demand_cycle",
+        "competition_peers",
+        "company_operating_drivers",
+        "financial_quality",
+        "market_valuation_facts",
+        "operating_thesis",
+        "scenario_valuation",
+        "deterministic_valuation",
+        "investment_conclusion"
+      ],
+      "schemaVersion": "research-operating-analysis-report.v1",
+      "reportHeadings": [
+        "# 1. 研究范围与事实边界",
+        "# 2. 公司概况与商业模式",
+        "# 3. 行业与产业链",
+        "# 4. 公司竞争地位",
+        "# 5. 增长、驱动与可持续性",
+        "# 6. 利润质量、现金转换与营运资本",
+        "# 7. 资本效率、管理层治理与资本配置",
+        "# 8. 资产负债表与压力测试",
+        "# 9. 估值与市场隐含经营要求",
+        "# 10. 核心风险与反面证据",
+        "# 11. 后续跟踪仪表盘",
+        "# 12. 最终结论"
+      ]
+    }
+  ],
+  "waves": {
+    "scopeEnvelope": [
+      ["research_context"],
+      ["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers", "financial_quality", "market_valuation_facts"],
+      ["operating_thesis"],
+      ["scenario_valuation"],
+      ["deterministic_valuation"],
+      ["investment_conclusion"],
+      ["report_assembly"]
+    ],
+    "companyScopeFallback": [
+      ["research_context"],
+      ["company_facts", "financial_quality", "market_valuation_facts"],
+      ["industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers"],
+      ["operating_thesis"],
+      ["scenario_valuation"],
+      ["deterministic_valuation"],
+      ["investment_conclusion"],
+      ["report_assembly"]
+    ]
+  }
+}

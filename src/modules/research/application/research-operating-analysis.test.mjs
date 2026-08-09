@@ -70,6 +70,26 @@ test("terminal stage output uses the generic artifact table and validates JSON s
   await assert.rejects(() => completeResearchOperatingAnalysisStage(db, "300308.SZ", "company_baseline", "not JSON", "complete", "runner", 2), /JSON stage output is invalid/);
 });
 
+test("legacy valuation input completion never dual-writes the low-dependency S10 artifact", async () => {
+  const db = genericDb();
+  await completeResearchOperatingAnalysisStage(db, "300308.SZ", "valuation_inputs", {
+    status: "complete",
+    valuationCalculationRequest: { dcfScenarios: [] },
+    deterministicValuation: {
+      schemaVersion: "deterministic-valuation.v1",
+      formulaVersion: "deterministic-valuation-formula.v1",
+      status: "complete",
+      results: [],
+      sensitivity: [],
+      calculationTrace: [{ calculationId: "calculation:base:dcf" }],
+      blockedValuationItems: [],
+      input: { upstreamArtifactIds: [], sourceIds: [], claimIds: [], evidenceIds: [] },
+    },
+  }, "complete", "runner", 2);
+  assert.equal(db.statements.filter((sql) => /insert into llm_run_artifacts/.test(sql)).length, 1);
+  assert(!db.statements.some((sql) => /deterministic_valuation/.test(sql)));
+});
+
 test("a stale generic run lease cannot start or persist a stage", async () => {
   const db = genericDb({ leaseUntil: 0 });
   await assert.rejects(() => startResearchOperatingAnalysisStage(db, "300308.SZ", "company_baseline", { researchTaskId: "task" }, { model: "gpt-5.6-luna", instructions: "system", userPrompt: "user" }, "runner", 2), /lease is no longer owned/);

@@ -9,9 +9,12 @@ type ModelPrompt = { model?: string; instructions?: string; userPrompt?: string 
 type ReportRun = { runId?: string; promptVersion?: string; reportMarkdown?: string; reasoningMarkdown?: string; totalDurationMs?: number | null; provider?: string; generatedAt?: number; input?: Json | null; prompt?: ModelPrompt | null; streamStats?: StreamStats | null };
 type ReportVersion = Pick<ReportRun, "runId" | "promptVersion" | "provider" | "generatedAt" | "totalDurationMs">;
 type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
-type AnalysisStage = { stageKey: string; label?: string; status?: "queued" | "running" | "complete" | "partial" | "blocked" | "not_applicable" | "failed"; attemptCount?: number; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; lastError?: string | null; blocked?: unknown; outputKind?: "json" | "markdown" };
-type ReportJob = { status?: "queued" | "running" | "completed" | "failed" | "blocked"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attemptCount?: number; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; stages?: AnalysisStage[] };
-type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; run?: ReportRun | null; job?: ReportJob | null; versions?: ReportVersion[] };
+type AnalysisStage = { stageKey: string; label?: string; status?: "queued" | "running" | "complete" | "partial" | "blocked" | "not_applicable" | "failed"; attempt?: number; attemptCount?: number; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; elapsedMs?: number | null; lastError?: string | null; blocked?: unknown; outputKind?: "json" | "markdown"; reused?: boolean; sourceRunId?: string | null; prompt?: ModelPrompt | null };
+type ReportJob = { status?: "queued" | "running" | "completed" | "failed" | "blocked"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attempt?: number; attemptCount?: number; lineageRunId?: string | null; rerunStageKeys?: string[]; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; stages?: AnalysisStage[] };
+type LowDependencyRun = { runId?: string; attempt?: number; lineageRunId?: string | null; model?: string | null; reasoningEffort?: ReasoningEffort | null; status?: string; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; currentStepKey?: string | null };
+type LowDependencyReport = { status?: "complete" | "partial" | "blocked" | "not_applicable" | "failed"; artifactId?: string | null; markdown?: string | null; blockers?: unknown[]; projectionFingerprint?: string | null };
+type LowDependencyTask = ReportJob & { taskId?: string; jobId?: string; runId?: string | null; protocolVersion?: string; promptVersion?: string; securityCode?: string; currentStepKey?: string | null };
+type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; protocolVersion?: string; promptVersion?: string; run?: LowDependencyRun | null; task?: LowDependencyTask | null; report?: LowDependencyReport | null; stages?: AnalysisStage[]; finalArtifactId?: string | null; scopeEnvelopeAvailable?: boolean };
 type CompanyOverview = { name?: string; latestPrice?: number | null; pctChange?: number | null; marketCapYi?: number | null; peTtm?: number | null };
 type KlineBar = { date?: string; close?: number | null };
 type IncomeStatement = { parentNetprofit?: number | null };
@@ -75,6 +78,36 @@ function date(value: unknown): string {
 }
 function isRunning(job: ReportJob | null | undefined): boolean { return job?.status === "queued" || job?.status === "running"; }
 function stageStatusLabel(status: AnalysisStage["status"]): string { return ({ queued: "等待", running: "处理中", complete: "已完成", partial: "部分完成", blocked: "已阻断", not_applicable: "不适用", failed: "失败" } as Record<string, string>)[status || "queued"] || "等待"; }
+function lowDependencyTaskStatus(status: unknown): ReportJob["status"] {
+  if (status === "completed") return "completed";
+  if (status === "failed") return "failed";
+  if (status === "blocked") return "blocked";
+  if (status === "running") return "running";
+  return "queued";
+}
+function projectLowDependencyJob(model: OperatingAnalysis | null): ReportJob | null {
+  const task = model?.task;
+  if (!task) return null;
+  const run = model?.run;
+  const prompt = model?.stages?.find((stage) => stage.status === "running")?.prompt || null;
+  return {
+    status: lowDependencyTaskStatus(task.status), reasoningEffort: task.reasoningEffort, lastError: task.lastError,
+    createdAt: task.createdAt, startedAt: run?.startedAt ?? task.startedAt, completedAt: run?.completedAt ?? task.completedAt,
+    updatedAt: task.updatedAt, attempt: run?.attempt ?? task.attempt, attemptCount: run?.attempt ?? task.attemptCount,
+    lineageRunId: run?.lineageRunId ?? task.lineageRunId ?? null, rerunStageKeys: task.rerunStageKeys || [], prompt,
+    stages: model.stages || [],
+  };
+}
+function projectLowDependencyReport(model: OperatingAnalysis | null): ReportRun | null {
+  const report = model?.report;
+  if (!report?.markdown) return null;
+  const run = model?.run;
+  return {
+    runId: run?.runId, promptVersion: model?.promptVersion, reportMarkdown: report.markdown,
+    provider: "local-generic-llm", generatedAt: run?.completedAt || undefined,
+    totalDurationMs: run?.startedAt && run?.completedAt ? run.completedAt - run.startedAt : null,
+  };
+}
 function duration(ms: unknown): string {
   const totalSeconds = Math.max(0, Math.floor(Number(ms) / 1_000));
   if (!Number.isFinite(totalSeconds)) return "—";
@@ -120,7 +153,7 @@ function reasoningEffortLabel(value: unknown): string {
   return label ? `${label}（${effort}）` : effort;
 }
 function reportQualityIssues(markdown: string): string[] {
-  const requiredHeadings = ["商业模式与赚钱机制", "市场空间、产品边界与收入传导", "行业阶段、供给约束与竞争", "当前增长、驱动与可持续性", "利润质量、现金转换与营运资本", "资本效率与资本配置", "证券定价与反证", "当前价格隐含的经营要求", "关键估值情景与假设", "主报告最可能出错之处与反面证据", "投资逻辑失效路径", "后续跟踪指标与触发阈值"];
+  const requiredHeadings = ["研究范围与事实边界", "公司概况与商业模式", "行业与产业链", "公司竞争地位", "增长、驱动与可持续性", "利润质量、现金转换与营运资本", "资本效率、管理层治理与资本配置", "资产负债表与压力测试", "估值与市场隐含经营要求", "核心风险与反面证据", "后续跟踪仪表盘", "最终结论"];
   const issues: string[] = [];
   if (markdown.length < 1_400) issues.push(`正文较短（${markdown.length} 字符）`);
   const missing = requiredHeadings.filter((heading) => !markdown.includes(heading));
@@ -261,6 +294,7 @@ function reportCard(options: {
   onReasoningEffortChange?: (value: ReasoningEffort) => void;
   buttonLabel?: string;
   onRefresh?: () => void;
+  onStageRerun?: (stageKey: string) => void;
   disabled?: boolean;
   versions?: ReportVersion[];
   selectedRunId?: string | null;
@@ -325,7 +359,7 @@ function reportCard(options: {
       ]) : null,
     ]),
     markdown || prompt ? [
-      stageProgress(options.job, options.now),
+      stageProgress(options.job, options.now, options.onStageRerun),
       failure ? h("div", { class: "ia-message error", role: "status" }, [h("strong", "生成未完成"), h("span", failure)]) : null,
       qualityIssues.length ? h("div", { class: "ia-quality-warning", role: "status", style: "margin-top:17px;border:1px solid #e6cb82;border-radius:10px;background:#fff9e7;padding:10px 12px;color:#745300;font-size:12px;line-height:1.6" }, [h("strong", "报告已生成，但需注意："), h("span", qualityIssues.join("；"))]) : null,
       prompt ? h("details", { class: "ia-prompt" }, [
@@ -339,20 +373,24 @@ function reportCard(options: {
       ]) : null,
       markdown ? h("article", { class: "ia-markdown" }, renderMarkdown(markdown)) : h("div", { class: "ia-message" }, "阶段终态完成并通过报告门禁后，正文才会显示。"),
     ]
-      : h("div", { class: failure ? "ia-message error" : "ia-message" }, failure ? [h("strong", "生成失败"), h("span", failure), stageProgress(options.job, options.now)] : running ? [`任务已运行 ${elapsed}；页面会每 5 秒读取一次阶段状态。可以离开或刷新页面。`, stageProgress(options.job, options.now), options.requestError ? h("span", { class: "ia-connection-warning" }, `本地 Worker 暂时无法连接（${options.requestError}）；恢复后将继续读取任务状态。`) : null] : options.emptyMessage),
+      : h("div", { class: failure ? "ia-message error" : "ia-message" }, failure ? [h("strong", "生成失败"), h("span", failure), stageProgress(options.job, options.now, options.onStageRerun)] : running ? [`任务已运行 ${elapsed}；页面会每 5 秒读取一次阶段状态。可以离开或刷新页面。`, stageProgress(options.job, options.now, options.onStageRerun), options.requestError ? h("span", { class: "ia-connection-warning" }, `本地 Worker 暂时无法连接（${options.requestError}）；恢复后将继续读取任务状态。`) : null] : options.emptyMessage),
   ]);
 }
 
-function stageProgress(job: ReportJob | null | undefined, now: number): VNodeChild | null {
+function stageProgress(job: ReportJob | null | undefined, now: number, onRerun?: (stageKey: string) => void): VNodeChild | null {
   if (!job?.stages?.length) return null;
-  return h("section", { class: "ia-stage-progress", "aria-label": "六阶段处理进度" }, [
-    h("h3", "六阶段处理进度"),
+  const recovery = job.lineageRunId ? `恢复自 ${job.lineageRunId}；本次 attempt ${job.attempt || job.attemptCount || 0}` : `本次 attempt ${job.attempt || job.attemptCount || 0}`;
+  return h("section", { class: "ia-stage-progress", "aria-label": "S0-S12处理进度" }, [
+    h("h3", "S0-S12处理进度"),
+    h("div", { class: "ia-stage-recovery" }, recovery),
     h("ol", job.stages.map((stage) => {
       const active = stage.status === "running";
-      const detail = active ? `已运行 ${duration(now - Number(stage.startedAt || stage.updatedAt || now))}` : stage.completedAt && stage.startedAt ? `耗时 ${duration(Number(stage.completedAt) - Number(stage.startedAt))}` : "";
+      const detail = active ? `已运行 ${duration(now - Number(stage.startedAt || stage.updatedAt || now))}` : stage.elapsedMs !== null && stage.elapsedMs !== undefined ? `耗时 ${duration(stage.elapsedMs)}` : stage.completedAt && stage.startedAt ? `耗时 ${duration(Number(stage.completedAt) - Number(stage.startedAt))}` : "";
       const error = text(stage.lastError);
       const blocked = Array.isArray(stage.blocked) ? stage.blocked.map((item) => typeof item === "string" ? item : JSON.stringify(item)).join("；") : "";
-      return h("li", { class: `ia-stage ${stage.status || "queued"}` }, [h("span", { class: "ia-stage-dot" }), h("div", [h("strong", stage.label || stage.stageKey), h("span", `${stageStatusLabel(stage.status)}${detail ? ` · ${detail}` : ""}`), error || blocked ? h("small", error || blocked) : null])]);
+      const reuse = stage.reused ? ` · 已复用${stage.sourceRunId ? `（${stage.sourceRunId}）` : ""}` : "";
+      const rerun = onRerun && (stage.status === "failed" || stage.status === "blocked") ? h("button", { class: "ia-stage-rerun", type: "button", onClick: () => onRerun(stage.stageKey) }, "定向重跑") : null;
+      return h("li", { class: `ia-stage ${stage.status || "queued"}` }, [h("span", { class: "ia-stage-dot" }), h("div", [h("strong", stage.label || stage.stageKey), h("span", `${stageStatusLabel(stage.status)}${detail ? ` · ${detail}` : ""}${reuse}`), error || blocked ? h("small", error || blocked) : null, rerun])]);
     })),
   ]);
 }
@@ -363,7 +401,7 @@ const styles = `
 @media(max-width:800px){.ia-outline{max-height:none;overflow:visible}}
 .ia-prompt{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#fff;padding:12px 15px}.ia-prompt summary{cursor:pointer;color:#174b45;font-size:13px;font-weight:800}.ia-prompt-body{margin-top:12px}.ia-prompt-body h4{margin:13px 0 6px;color:#476762;font-size:12px}.ia-prompt-body h4:first-child{margin-top:0}.ia-prompt-body pre{max-height:420px;overflow:auto;margin:0;padding:11px;border:1px solid #dce9e6;border-radius:8px;background:#f6faf9;color:#234640;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}
 .ia-version-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800;flex:none}.ia-version-control select{max-width:250px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-compare{flex:none;border:1px solid #69a99d;border-radius:9px;background:#f1faf7;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}@media(max-width:650px){.ia-generation-controls{justify-content:flex-start}}
-.ia-stage-progress{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:13px 15px}.ia-stage-progress h3{margin:0 0 9px;color:#174b45;font-size:13px}.ia-stage-progress ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:0;padding:0;list-style:none}.ia-stage{display:flex;gap:8px;min-width:0;color:#6b817d;font-size:12px;line-height:1.45}.ia-stage-dot{width:8px;height:8px;flex:none;margin-top:4px;border-radius:50%;background:#b6c9c5}.ia-stage strong,.ia-stage span,.ia-stage small{display:block}.ia-stage strong{color:#365a54}.ia-stage small{margin-top:2px;color:#a24337}.ia-stage.running .ia-stage-dot{background:#08786c;box-shadow:0 0 0 4px #08786c22}.ia-stage.complete .ia-stage-dot,.ia-stage.partial .ia-stage-dot,.ia-stage.not_applicable .ia-stage-dot{background:#34a27d}.ia-stage.blocked .ia-stage-dot,.ia-stage.failed .ia-stage-dot{background:#c76854}@media(max-width:650px){.ia-stage-progress ol{grid-template-columns:1fr}}
+.ia-stage-progress{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:13px 15px}.ia-stage-progress h3{margin:0 0 4px;color:#174b45;font-size:13px}.ia-stage-recovery{margin-bottom:9px;color:#6b817d;font-size:11px}.ia-stage-progress ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:0;padding:0;list-style:none}.ia-stage{display:flex;gap:8px;min-width:0;color:#6b817d;font-size:12px;line-height:1.45}.ia-stage-dot{width:8px;height:8px;flex:none;margin-top:4px;border-radius:50%;background:#b6c9c5}.ia-stage strong,.ia-stage span,.ia-stage small{display:block}.ia-stage strong{color:#365a54}.ia-stage small{margin-top:2px;color:#a24337;overflow-wrap:anywhere}.ia-stage-rerun{margin-top:4px;border:1px solid #e3b9b0;border-radius:6px;background:#fff5f3;color:#98463d;padding:3px 7px;font:700 10px inherit;cursor:pointer}.ia-stage.running .ia-stage-dot{background:#08786c;box-shadow:0 0 0 4px #08786c22}.ia-stage.complete .ia-stage-dot,.ia-stage.partial .ia-stage-dot,.ia-stage.not_applicable .ia-stage-dot{background:#34a27d}.ia-stage.blocked .ia-stage-dot,.ia-stage.failed .ia-stage-dot{background:#c76854}@media(max-width:650px){.ia-stage-progress ol{grid-template-columns:1fr}}
 `;
 
 const App = defineComponent({
@@ -382,42 +420,27 @@ const App = defineComponent({
 
     const load = async () => {
       try {
-        const previousLatestRunId = operating.value?.run?.runId;
-        const next = await request<OperatingAnalysis>(`/api/research/company/${encodeURIComponent(code)}/operating-analysis`);
+        const next = await request<OperatingAnalysis>(`/api/research/company/${encodeURIComponent(code)}/operating-analysis-low-dependency`);
         operating.value = next;
-        if (!selectedRunId.value || selectedRunId.value === previousLatestRunId) {
-          selectedReport.value = next.run || null;
-          selectedRunId.value = next.run?.runId || null;
-        }
-        const recordedEffort = text(asRecord(asRecord(next.run?.input).modelRun).reasoningEffort);
-        if (isRunning(operating.value.job) && operating.value.job?.reasoningEffort) selectedReasoningEffort.value = operating.value.job.reasoningEffort;
-        else if (recordedEffort && reasoningEffortOptions.includes(recordedEffort as ReasoningEffort)) selectedReasoningEffort.value = recordedEffort as ReasoningEffort;
-        else if (operating.value.job?.reasoningEffort) selectedReasoningEffort.value = operating.value.job.reasoningEffort;
+        selectedReport.value = projectLowDependencyReport(next);
+        selectedRunId.value = next.run?.runId || null;
+        const recordedEffort = text(next.task?.reasoningEffort || next.run?.reasoningEffort);
+        if (recordedEffort && reasoningEffortOptions.includes(recordedEffort as ReasoningEffort)) selectedReasoningEffort.value = recordedEffort as ReasoningEffort;
         operatingError.value = null;
       } catch (reason) { operatingError.value = reason instanceof Error ? reason.message : String(reason); }
       loading.value = false;
     };
-    const selectVersion = async (runId: string) => {
-      if (!runId || runId === selectedRunId.value) return;
-      operatingError.value = null;
-      try {
-        selectedReport.value = await request<ReportRun>(`/api/research/company/${encodeURIComponent(code)}/operating-analysis/runs/${encodeURIComponent(runId)}`);
-        selectedRunId.value = runId;
-      } catch (reason) { operatingError.value = reason instanceof Error ? reason.message : String(reason); }
-    };
-    const openComparison = () => {
-      const versions = operating.value?.versions || [];
-      if (versions.length < 2) return;
-      const selected = selectedRunId.value || versions[0]?.runId;
-      const other = versions.find((item) => item.runId !== selected)?.runId;
-      if (!selected || !other) return;
-      const query = new URLSearchParams({ code, left: other, right: selected });
-      window.open(`investment-analysis-compare.html?${query.toString()}`, "_blank", "noopener");
-    };
     const refreshOperatingAnalysis = async () => {
       operatingError.value = null;
       try {
-        await request(`/api/research/company/${encodeURIComponent(code)}/operating-analysis/refresh`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: true, reasoningEffort: selectedReasoningEffort.value }) });
+        await request(`/api/research/company/${encodeURIComponent(code)}/operating-analysis-low-dependency/refresh`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ force: true, reasoningEffort: selectedReasoningEffort.value }) });
+        await load();
+      } catch (reason) { operatingError.value = reason instanceof Error ? reason.message : String(reason); }
+    };
+    const rerunStage = async (stageKey: string) => {
+      operatingError.value = null;
+      try {
+        await request(`/api/research/company/${encodeURIComponent(code)}/operating-analysis-low-dependency/rerun`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ stageKeys: [stageKey], reasoningEffort: selectedReasoningEffort.value }) });
         await load();
       } catch (reason) { operatingError.value = reason instanceof Error ? reason.message : String(reason); }
     };
@@ -467,7 +490,7 @@ const App = defineComponent({
       if (document.getElementById("codeName")) requestCompanyInfo();
       elapsedTimer = window.setInterval(() => { elapsedNow.value = Date.now(); }, 1_000);
       pollTimer = window.setInterval(() => {
-        if (isRunning(operating.value?.job)) void load();
+        if (isRunning(projectLowDependencyJob(operating.value))) void load();
       }, 5_000);
     });
     onUnmounted(() => {
@@ -477,9 +500,8 @@ const App = defineComponent({
     });
 
     return () => {
-      const activeReport = selectedReport.value || operating.value?.run;
-      const showJob = !selectedRunId.value || selectedRunId.value === operating.value?.run?.runId;
-      const displayJob = showJob ? operating.value?.job : null;
+      const activeReport = selectedReport.value || projectLowDependencyReport(operating.value);
+      const displayJob = projectLowDependencyJob(operating.value);
       const markdown = text(activeReport?.reportMarkdown);
       return h("main", { class: "ia" }, [
         h("style", styles),
@@ -489,7 +511,7 @@ const App = defineComponent({
             h("h2", "报告目录"),
               ...documentOutline(markdown).map((item) => h("button", { class: `l${item.level}`, onClick: () => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth", block: "start" }) }, item.text)),
             ]) : null,
-            reportCard({ title: "完整投资研究", description: "一次提问完成经营、产业、定价与反证；模型通过本地 llm-client 调用，阶段终态和完整报告通过门禁后才会显示。页面加载不会触发生成。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地模型会启用 Web Search 完成完整投资研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.run ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, disabled: isRunning(operating.value?.job), versions: operating.value?.versions || [], selectedRunId: selectedRunId.value, onVersionChange: (runId) => { void selectVersion(runId); }, onCompare: openComparison }),
+            reportCard({ title: "完整投资研究", description: "S0-S12 阶段按来源、财务、市场事实和确定性计算组装研究报告；页面只读取低依赖 read model，生成由本地任务 worker 执行。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地任务会按 S0-S12 完成研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.report?.markdown ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, onStageRerun: (stageKey) => { void rerunStage(stageKey); }, disabled: isRunning(displayJob) }),
           ]),
         ]),
       ]);
