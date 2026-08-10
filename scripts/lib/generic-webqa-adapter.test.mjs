@@ -5,6 +5,7 @@ import {
   deriveWebQaSession,
   normalizeWebQaSnapshot,
   runWebQaJob,
+  WebQaAdapterError,
 } from "./generic-webqa-adapter.mjs";
 
 const answer = (markdown) => ({
@@ -129,6 +130,29 @@ test("WebQA retries reuse a saved gateway task id and map cancellation to generi
   const failure = persisted.find((item) => item.path.endsWith("/fail"));
   assert.equal(failure.body.errorCode, "webqa_cancelled");
   assert.equal(persisted.some((item) => item.path.endsWith("/artifact")), false);
+});
+
+test("a transient gateway restart retries the saved task instead of failing the app run", async () => {
+  let reads = 0;
+  const gateway = {
+    async submit() { return { task_id: "gateway-task:restart", status: "queued", provider: config.provider, answer: null }; },
+    async get() {
+      reads += 1;
+      if (reads === 1) throw new WebQaAdapterError("webqa_gateway_unavailable", "WebQA gateway request failed: fetch failed");
+      return { task_id: "gateway-task:restart", status: "completed", provider: config.provider, answer: answer("recovered final answer") };
+    },
+    async cancel() { throw new Error("cancel should not run"); },
+  };
+  const persisted = [];
+  await runWebQaJob(job(), "runner:webqa-test", {
+    config: { ...config, taskTimeoutMs: 1_000 },
+    gateway,
+    sleep: async () => {},
+    runtimePost: async (path, body) => { persisted.push({ path, body }); return { active: true }; },
+  });
+  assert.equal(reads, 2);
+  assert.equal(persisted.some((item) => item.path.endsWith("/fail")), false);
+  assert.equal(persisted.filter((item) => item.path.endsWith("/complete")).length, 1);
 });
 
 test("unknown gateway status fails visibly instead of being treated as completion", () => {

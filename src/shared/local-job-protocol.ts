@@ -643,10 +643,58 @@ export async function loadGenericLlmTaskByIdentity(db: D1Database, identity: Gen
 
 export async function requeueGenericLlmTask(db: D1Database, taskId: string, now = Date.now()): Promise<boolean> {
   const id = requiredGeneric(taskId, "taskId");
+  const sourceTask = await loadGenericLlmTask(db, id);
+  const sourceRun = sourceTask?.status === "failed" && sourceTask.lastRunId
+    ? await loadGenericLlmRun(db, sourceTask.lastRunId)
+    : null;
   const result = await db.prepare(`update llm_tasks set status='queued', last_run_id=null, last_error_code=null, last_error_message=null,
     started_at=null, completed_at=null, updated_at=? where task_id=? and status in ('failed', 'blocked', 'completed')`).bind(now, id).run();
+  if (result.meta.changes && sourceTask && sourceRun) {
+    await persistGenericWebQaRecoveryMetadata(db, sourceTask, sourceRun, now);
+  }
   if (result.meta.changes) await refreshGenericLlmTaskDependencyState(db, id, now);
   return Boolean(result.meta.changes);
+}
+
+/**
+ * Keep the gateway task identity at the generic protocol boundary. A later
+ * fenced attempt then GETs the original browser conversation instead of
+ * submitting another ChatGPT turn after an app/worker interruption.
+ */
+export function genericWebQaRecoveryExternal(sourceTask: Pick<GenericLlmTask, "taskId">, sourceRun: Pick<GenericLlmRun, "runId" | "progress">): Record<string, unknown> | null {
+  const progress = sourceRun.progress && typeof sourceRun.progress === "object" && !Array.isArray(sourceRun.progress)
+    ? sourceRun.progress as Record<string, unknown>
+    : {};
+  const external = progress.external && typeof progress.external === "object" && !Array.isArray(progress.external)
+    ? progress.external as Record<string, unknown>
+    : null;
+  if (external?.kind !== "webqa") return null;
+  const gatewayTaskId = textGeneric(external.gatewayTaskId || external.taskId);
+  const conversationId = textGeneric(external.conversationId);
+  const idempotencyKey = textGeneric(external.idempotencyKey);
+  if (!gatewayTaskId || !conversationId || !idempotencyKey) return null;
+  return {
+    ...external,
+    kind: "webqa",
+    gatewayTaskId,
+    recoveredFromRunId: sourceRun.runId,
+    recoveredFromTaskId: sourceTask.taskId,
+  };
+}
+
+async function persistGenericWebQaRecoveryMetadata(db: D1Database, sourceTask: GenericLlmTask, sourceRun: GenericLlmRun, now: number): Promise<void> {
+  const recoveryExternal = genericWebQaRecoveryExternal(sourceTask, sourceRun);
+  if (!recoveryExternal) return;
+  const metadata = sourceTask.metadata && typeof sourceTask.metadata === "object" && !Array.isArray(sourceTask.metadata)
+    ? sourceTask.metadata as Record<string, unknown>
+    : {};
+  await db.prepare("update llm_tasks set metadata_json=?, updated_at=? where task_id=? and status='queued'")
+    .bind(JSON.stringify({
+      ...metadata,
+      recoveryExternal,
+      recoveredFromRunId: sourceRun.runId,
+      recoveryGatewayTaskId: recoveryExternal.gatewayTaskId,
+    }), now, sourceTask.taskId).run();
 }
 
 /**
@@ -1179,7 +1227,12 @@ export async function requeueExpiredGenericLlmTaskRuns(db: D1Database, now = Dat
     if (!runUpdate.meta.changes) continue;
     const taskUpdate = await db.prepare(`update llm_tasks set status='queued', last_error_code='lease_expired', last_error_message=?, completed_at=null, updated_at=?
       where task_id=? and status='running' and last_run_id=?`).bind("generic LLM run lease expired; requeued from the last terminal artifact", now, taskId, runId).run();
-    if (taskUpdate.meta.changes) count += 1;
+    if (taskUpdate.meta.changes) {
+      count += 1;
+      const sourceTask = await loadGenericLlmTask(db, taskId);
+      const sourceRun = await loadGenericLlmRun(db, runId);
+      if (sourceTask && sourceRun) await persistGenericWebQaRecoveryMetadata(db, sourceTask, sourceRun, now);
+    }
     if (await loadGenericLlmExecutionMode(db, taskId) === "model") await releaseLocalJobProviderSlot(db, taskId, attempt, owner, now);
   }
   return count;
@@ -1209,6 +1262,11 @@ export async function requeueExpiredGenericLlmRun(db: D1Database, input: {
   if (!runUpdate.meta.changes) return false;
   const taskUpdate = await db.prepare(`update llm_tasks set status='queued', last_error_code='lease_expired', last_error_message=?, completed_at=null, updated_at=?
     where task_id=? and status='running' and last_run_id=?`).bind(message, now, taskId, runId).run();
+  if (taskUpdate.meta.changes) {
+    const sourceTask = await loadGenericLlmTask(db, taskId);
+    const sourceRun = await loadGenericLlmRun(db, runId);
+    if (sourceTask && sourceRun) await persistGenericWebQaRecoveryMetadata(db, sourceTask, sourceRun, now);
+  }
   if (await loadGenericLlmExecutionMode(db, taskId) === "model") await releaseLocalJobProviderSlot(db, taskId, attempt, leaseOwner, now);
   return Boolean(taskUpdate.meta.changes);
 }

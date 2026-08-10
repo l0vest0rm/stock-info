@@ -1733,7 +1733,7 @@ function parseCompanyReportDiscoveryWithDiagnostics(
     const rawTitle = nonEmptyTextOrUndefined(row.title);
     const institution = nonEmptyTextOrUndefined(row.institution);
     const publishedAt = normalizeCompanyReportDate(text(row.publishedAt)) || undefined;
-    const url = canonicalCompanyReportUrl(text(row.url)) || undefined;
+    const url = canonicalCompanyReportDiscoveryUrl(row.url);
     // A partial search hit is still useful when it has either a title or a
     // valid source URL.  If only the URL is present, derive a deterministic
     // display title from that URL without guessing the report identity.
@@ -1756,6 +1756,13 @@ function parseCompanyReportDiscoveryWithDiagnostics(
     }];
   });
   return { reports, rejected };
+}
+
+/** The structured field expects a URL, but ChatGPT Web can render it as a Markdown link. */
+function canonicalCompanyReportDiscoveryUrl(value: unknown): string | undefined {
+  const raw = text(value);
+  const markdownUrl = raw.match(/^\[[^\]]*\]\((https?:\/\/[^\s)]+)\)$/i)?.[1];
+  return canonicalCompanyReportUrl(markdownUrl || raw) || undefined;
 }
 
 function parseCompanyReportValuation(value: Record<string, unknown>): CompanyReportValuation {

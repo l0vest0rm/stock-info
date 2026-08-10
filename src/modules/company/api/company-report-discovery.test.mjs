@@ -223,6 +223,25 @@ test("parses cited discovery reports with the normal forecast and valuation fiel
   }]);
 });
 
+test("normalizes a Markdown-formatted model URL before validating its citation", () => {
+  const reports = parseCompanyReportDiscovery(JSON.stringify({
+    reports: [{
+      title: "WebQA 研报",
+      institution: "示例证券",
+      publishedAt: "2026-06-20",
+      url: "[报告来源](https://reports.example.com/acme.pdf?utm_source=chatgpt.com)",
+      forecasts: [],
+    }],
+  }), "000001.SZ", citations);
+  assert.deepEqual(reports, [{
+    title: "WebQA 研报",
+    institution: "示例证券",
+    publishedAt: "2026-06-20",
+    url: "https://reports.example.com/acme.pdf",
+    forecasts: [],
+  }]);
+});
+
 test("accepts completed Web Search candidates when citation metadata is unavailable", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify({
     reports: [

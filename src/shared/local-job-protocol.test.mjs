@@ -11,12 +11,41 @@ import {
   createGenericLlmTask,
   evaluateGenericLlmDependencies,
   genericArtifactCompatibilityMatches,
+  genericWebQaRecoveryExternal,
   normalizeGenericLlmExecutionMode,
   normalizeGenericLlmPriority,
   normalizeGenericLlmIdArray,
   reserveGenericEngineeringSlot,
   writeGenericLlmRunArtifact,
 } from "./local-job-protocol.ts";
+
+test("generic WebQA recovery preserves one persisted gateway conversation", () => {
+  const recovered = genericWebQaRecoveryExternal(
+    { taskId: "llm-task:company-report" },
+    {
+      runId: "llm-run:interrupted",
+      progress: {
+        external: {
+          kind: "webqa",
+          gatewayTaskId: "gateway-task:123",
+          conversationId: "chatgpt-conversation:123",
+          idempotencyKey: "webqa-stable-key",
+          gatewayStatus: "streaming",
+        },
+      },
+    },
+  );
+  assert.deepEqual(recovered, {
+    kind: "webqa",
+    gatewayTaskId: "gateway-task:123",
+    conversationId: "chatgpt-conversation:123",
+    idempotencyKey: "webqa-stable-key",
+    gatewayStatus: "streaming",
+    recoveredFromRunId: "llm-run:interrupted",
+    recoveredFromTaskId: "llm-task:company-report",
+  });
+  assert.equal(genericWebQaRecoveryExternal({ taskId: "llm-task:other" }, { runId: "llm-run:other", progress: {} }), null);
+});
 
 test("generic artifact lineage IDs default safely when omitted", () => {
   assert.deepEqual(normalizeGenericLlmIdArray(undefined, "sourceIds"), []);

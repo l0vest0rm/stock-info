@@ -255,7 +255,17 @@ export async function runWebQaJob(job, owner, {
       try {
         latest = normalizeWebQaSnapshot(await client.get(externalTaskId));
       } catch (error) {
-        throw asWebQaError(error, "webqa_poll_failed");
+        const normalized = asWebQaError(error, "webqa_poll_failed");
+        // The gateway persists the external task identity before this loop.
+        // A brief gateway restart can therefore be retried safely: once it is
+        // back, GET resumes the same browser-backed request rather than
+        // creating a second provider turn. Other HTTP/contract failures stay
+        // visible immediately instead of being hidden by a generic retry.
+        if (isTransientGatewayUnavailable(normalized) && now() <= deadline) {
+          await sleep(normalizedConfig.pollIntervalMs);
+          continue;
+        }
+        throw normalized;
       }
       await persistProgress(latest);
       if (latest.status === "completed") {
@@ -492,6 +502,10 @@ function hasGeneratedOutput(raw) {
 function stableGatewayError(message, fallback) {
   const value = slug(message).slice(0, 80);
   return value ? `webqa_${value}` : fallback;
+}
+
+function isTransientGatewayUnavailable(error) {
+  return error instanceof WebQaAdapterError && error.code === "webqa_gateway_unavailable";
 }
 
 function ensureLease(active) {
