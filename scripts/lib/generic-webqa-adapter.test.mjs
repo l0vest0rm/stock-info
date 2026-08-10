@@ -62,7 +62,8 @@ test("WebQA request uses neutral raw input and stable lower-layer identity", () 
   assert.equal(first.provider, "chatgpt-web");
   assert.equal(first.platform, "stock-info-test");
   assert.equal(first.new_session, true);
-  assert.match(first.input, /System instructions:/);
+  assert.match(first.input, /任务要求：/);
+  assert.doesNotMatch(first.input, /System instructions:/);
   assert.match(first.input, /分析这家公司/);
   assert.equal(first.conversation_id, deriveWebQaSession({
     taskType: "research_operating_analysis",

@@ -778,16 +778,7 @@ function buildFinalReportInput({ context, baseInput, artifactsByKey, scopeEnvelo
       status: "unknown",
       note: "本地行业路由尚未确认；不得从证券代码或常识推断主营和行业，必须优先用公司公告、监管披露或交易所资料核实，无法核实时保留未知。",
     };
-  const financial = baseInput?.financialContext && typeof baseInput.financialContext === "object" ? baseInput.financialContext : {};
   const snapshot = context?.marketSnapshot && typeof context.marketSnapshot === "object" ? context.marketSnapshot : {};
-  const sourceCatalog = (Array.isArray(baseInput?.sources) ? baseInput.sources : []).map((source) => ({
-    title: source?.title || null,
-    url: source?.url || null,
-    publishedAt: source?.publishedAt || null,
-    subject: source?.subject || null,
-    role: source?.role || null,
-    limitations: Array.isArray(source?.limitations) ? source.limitations : [],
-  }));
   return {
     researchSubject: {
       company: context?.company || null,
@@ -799,19 +790,18 @@ function buildFinalReportInput({ context, baseInput, artifactsByKey, scopeEnvelo
     },
     businessScope: routingScope,
     analysisTemplate: routing?.analysisTemplate || null,
-    financialSnapshot: financial.descriptor || context?.financialSnapshot || null,
-    financialObservations: {
-      income: financial.financialAnalysis?.incomeStatement || [],
-      balance: financial.financialAnalysis?.balanceSheet || [],
-      cashflow: financial.financialAnalysis?.cashFlowStatement || [],
+    // Historical financial statements and local source catalogs are deliberately
+    // not model input for the final Web Search report. The model must retrieve
+    // and cite those static facts from public disclosures itself. This compact
+    // projection contains only engineering-owned, time-sensitive market facts.
+    marketSnapshot: {
+      asOf: snapshot.asOf || null,
+      source: snapshot.source || null,
+      price: snapshot.price ?? null,
+      tradingCurrency: snapshot.tradingCurrency || context?.security?.tradingCurrency || null,
+      marketCapitalizationYi: snapshot.marketCapitalization ?? null,
+      reportedMultiples: object(snapshot.reportedMultiples),
     },
-    marketSnapshot: snapshot,
-    localSources: sourceCatalog,
-    knownGaps: [
-      ...(Array.isArray(context?.analysisGaps) ? context.analysisGaps : []),
-      ...(Array.isArray(scopeProjection.analysisGaps) ? scopeProjection.analysisGaps : []),
-      ...(scopeBoundary.note ? [scopeBoundary.note] : []),
-    ],
   };
 }
 
@@ -822,6 +812,75 @@ export function buildLowDependencyWorkPackageInput({ packageKey, baseInput, arti
 function packagePrompt(template, input) {
   if (typeof template !== "string" || !template.includes("{{INPUT_DATA}}")) throw new Error("work-package prompt template is unavailable");
   return template.replace("{{INPUT_DATA}}", JSON.stringify(input, null, 2));
+}
+
+function oneLine(value, fallback = "未提供") {
+  const normalized = text(value).replace(/\s+/g, " ");
+  return normalized || fallback;
+}
+
+function textList(value, fallback = "未提供") {
+  if (!Array.isArray(value)) return fallback;
+  const values = value.map((item) => oneLine(item, "")).filter(Boolean);
+  return values.length ? values.join("、") : fallback;
+}
+
+function marketValue(value, suffix = "") {
+  const normalized = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+  return Number.isFinite(normalized) ? `${value}${suffix}` : "未提供";
+}
+
+/**
+ * The final report receives a small, human-readable context instead of a JSON
+ * envelope. It preserves the engineering-owned live quote and reported
+ * valuation multiples, while historical statements remain a Web Search task.
+ */
+export function buildFinalReportPrompt(template, input = {}) {
+  if (typeof template !== "string" || !template.includes("{{INPUT_CONTEXT}}")) throw new Error("final-report prompt template is unavailable");
+  const subject = object(input.researchSubject);
+  const company = object(subject.company);
+  const security = object(subject.security);
+  const scopeBoundary = object(subject.scopeBoundary);
+  const businessScope = object(input.businessScope);
+  const analysisTemplate = object(input.analysisTemplate);
+  const market = object(input.marketSnapshot);
+  const multiples = object(market.reportedMultiples);
+  const context = [
+    "## 研究对象",
+    `- 公司：${oneLine(company.name)}`,
+    `- 证券代码：${oneLine(security.securityCode)}`,
+    `- 报告时点：${oneLine(subject.asOf)}`,
+    "",
+    "## 当前市场快照（工程实时获取）",
+    `- 截至：${oneLine(market.asOf)}`,
+    `- 数据源：${oneLine(market.source)}`,
+    `- 最新价格：${marketValue(market.price)} ${oneLine(market.tradingCurrency, "")}`.trim(),
+    `- 总市值：${marketValue(market.marketCapitalizationYi, "亿元")}`,
+    `- PE（TTM）：${marketValue(multiples.peTtm)}`,
+    `- PB：${marketValue(multiples.pb)}`,
+    `- PS（TTM）：${marketValue(multiples.psTtm)}`,
+    `- PCF（TTM）：${marketValue(multiples.pcfTtm)}`,
+    "",
+    "## 本地业务边界状态",
+    `- 状态：${oneLine(scopeBoundary.status)}`,
+    `- 说明：${oneLine(scopeBoundary.note)}`,
+    `- 已确认产品：${textList(businessScope.products)}`,
+    `- 已确认客户：${textList(businessScope.customers)}`,
+    `- 已确认地区：${textList(businessScope.regions)}`,
+    "",
+    "## 分析框架（工程配置，不是公司事实）",
+    `- 量价成本主公式：${oneLine(analysisTemplate.primaryFormula)}`,
+    `- 优先核验指标：${textList(analysisTemplate.operatingMetrics)}`,
+    `- 可用估值方法：${textList(analysisTemplate.valuationMethods)}`,
+    `- 压力因素：${textList(analysisTemplate.stressFactors)}`,
+  ].join("\n");
+  return template.replace("{{INPUT_CONTEXT}}", context);
+}
+
+export function buildFinalReportModelPrompt({ model, input, template = FINAL_REPORT_WORK_PACKAGE_PROMPT } = {}) {
+  return { model, userPrompt: buildFinalReportPrompt(template, input) };
 }
 
 // Final-report providers may use natural Chinese headings or prose instead of
@@ -969,7 +1028,7 @@ async function callWorkPackageModel({ claim, definition, input, config, client }
 async function callFinalReportModel({ claim, definition, input, config }) {
   const template = promptByWorkPackage[definition.key];
   if (!template) throw new Error(`low-dependency work-package prompt is unavailable for ${definition.key}`);
-  const userPrompt = packagePrompt(template, input);
+  const modelPrompt = buildFinalReportModelPrompt({ model: claim.model || config.model, input, template });
   const scheduler = createGenericLlmSchedulerClient({
     baseUrl,
     pollIntervalMs: Math.min(config.pollIntervalMs, 5_000),
@@ -978,9 +1037,8 @@ async function callFinalReportModel({ claim, definition, input, config }) {
   const requestInput = toGenericRawRequest({
     provider: "openai",
     requestId: `operating-analysis-low-dependency:${claim.securityCode}:attempt-${claim.attempt}:final-report`,
-    model: claim.model || config.model,
-    instructions: INSTRUCTIONS,
-    input: [{ role: "user", content: [{ type: "input_text", text: userPrompt }] }],
+    ...modelPrompt,
+    input: [{ role: "user", content: [{ type: "input_text", text: modelPrompt.userPrompt }] }],
     reasoningEffort: claim.reasoningEffort,
     maxTokens: config.maxOutputTokens,
     tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }],
@@ -1172,7 +1230,9 @@ async function runPackageJob(claim, config, client, interruptedJobs, owner) {
     const input = buildPackageInput({ packageKey, baseInput, artifactsByKey, scopeEnvelopeAvailable });
     const template = promptByWorkPackage[packageKey];
     const modelPrompt = definition.execution === "model"
-      ? { model: claim.model || config.model, instructions: INSTRUCTIONS, userPrompt: packagePrompt(template, input) }
+      ? definition.finalReport
+        ? buildFinalReportModelPrompt({ model: claim.model || config.model, input, template })
+        : { model: claim.model || config.model, instructions: INSTRUCTIONS, userPrompt: packagePrompt(template, input) }
       : null;
     const packageLineage = buildLowDependencyLineage({ stageKey: definition.stageKeys[0], artifactsByKey: Object.fromEntries(artifactsByKey), scopeEnvelopeAvailable });
     await post(`/api/research/operating-analysis-low-dependency-jobs/${encodeURIComponent(claim.securityCode)}/stages/${encodeURIComponent(packageKey)}/start`, {

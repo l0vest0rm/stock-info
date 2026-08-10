@@ -7,6 +7,8 @@ import {
   buildLowDependencyScopeProjection,
   buildLowDependencyStageInput,
   buildLowDependencyWorkPackageInput,
+  buildFinalReportModelPrompt,
+  buildFinalReportPrompt,
   extractLowDependencyManifestLineage,
   LOW_DEPENDENCY_TARGET_STAGE_KEYS,
   lowDependencyInvalidationClosure,
@@ -164,11 +166,23 @@ test("financial quality input carries the deterministic snapshot gate", () => {
   assert.equal(input.financialQualityGate.status, "available");
 });
 
-test("final-report input receives the selected business-economics analysis template", () => {
+test("final-report prompt sends only live market facts as plain text", () => {
   const routingArtifact = { artifactId: "llm-artifact:routing", status: "complete", output: { routingState: "confirmed", industryTemplateId: "consumer-brand.v1", industryKey: "consumer_brand", companyScope: { products: ["白酒"] } } };
   const input = buildLowDependencyWorkPackageInput({
     packageKey: "final_report",
-    baseInput: { context: { company: { name: "贵州茅台" }, security: { securityCode: "600519.SH" }, inputFingerprint: "fp" }, financialContext: {}, sources: [] },
+    baseInput: {
+      context: {
+        company: { name: "贵州茅台" },
+        security: { securityCode: "600519.SH", tradingCurrency: "CNY" },
+        marketSnapshot: { asOf: "2026-08-11T10:00:00+08:00", source: "xueqiu", price: 1420.5, marketCapitalization: 17850, reportedMultiples: { peTtm: 21.8, pb: 8.6 } },
+        inputFingerprint: "fp",
+      },
+      financialContext: {
+        descriptor: { periods: ["2026-03-31"] },
+        financialAnalysis: { incomeStatement: [{ values: { NETPROFIT: 1 } }], balanceSheet: [{ values: { ASSET: 2 } }], cashFlowStatement: [{ values: { NETCASH: 3 } }] },
+      },
+      sources: [{ title: "不应发送的本地财报来源" }],
+    },
     artifactsByKey: new Map([["local_routing_match", routingArtifact]]),
     scopeEnvelopeAvailable: false,
   });
@@ -176,6 +190,16 @@ test("final-report input receives the selected business-economics analysis templ
   assert.ok(input.analysisTemplate.operatingMetrics.includes("终端动销"));
   assert.ok(input.analysisTemplate.valuationMethods.includes("PE"));
   assert.ok(input.analysisTemplate.stressFactors.includes("渠道压货"));
+  assert.deepEqual(input.marketSnapshot, { asOf: "2026-08-11T10:00:00+08:00", source: "xueqiu", price: 1420.5, tradingCurrency: "CNY", marketCapitalizationYi: 17850, reportedMultiples: { peTtm: 21.8, pb: 8.6 } });
+  assert.equal(Object.hasOwn(input, "financialSnapshot"), false);
+  assert.equal(Object.hasOwn(input, "financialObservations"), false);
+  assert.equal(Object.hasOwn(input, "localSources"), false);
+  const prompt = buildFinalReportPrompt("任务\n\n{{INPUT_CONTEXT}}", input);
+  assert.match(prompt, /最新价格：1420\.5 CNY/);
+  assert.match(prompt, /PE（TTM）：21\.8/);
+  assert.doesNotMatch(prompt, /NETPROFIT|不应发送的本地财报来源|<input_data>|\{\s*"/);
+  assert.deepEqual(buildFinalReportModelPrompt({ model: "gpt-5.6-luna", input, template: "任务\n\n{{INPUT_CONTEXT}}" }), { model: "gpt-5.6-luna", userPrompt: prompt });
+  assert.equal(Object.hasOwn(buildFinalReportModelPrompt({ model: "gpt-5.6-luna", input, template: "任务\n\n{{INPUT_CONTEXT}}" }), "instructions"), false);
 });
 
 test("target runner preserves S1-S7 wave shape and keeps Markdown/JSON parsers separate", () => {

@@ -157,7 +157,7 @@ const NEWS_REPORT_CANDIDATE_LIMIT = 40;
 const NEWS_REPORT_ANALYSIS_MAX_CALLS = 5;
 const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v1";
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
-const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v3";
+const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v5";
 const REPORT_DISCOVERY_TASK_TYPE = "company_report_discovery";
 const REPORT_DISCOVERY_REASONING_EFFORT = "xhigh";
 const REPORT_DISCOVERY_MAX_REPORTS = 20;
@@ -912,6 +912,7 @@ export async function prepareCompanyReportDiscoveryExecution(
   const reasoningEffort = normalizeCompanyReportDiscoveryReasoningEffort(task.requestedReasoningEffort ?? undefined);
   const security = await db.prepare("select name from securities where code=?").bind(code).first<{ name?: unknown }>();
   const recentSince = reportDiscoveryRecentSince();
+  const knownReports = await loadCachedCompanyReportDiscoveryKnownReports(db, code);
   return {
     securityCode: code,
     model: REPORT_LLM_MODEL,
@@ -924,8 +925,30 @@ export async function prepareCompanyReportDiscoveryExecution(
       SECURITY_CODE: code,
       COMPANY_NAME: text(security?.name) || code,
       RECENT_SINCE: recentSince,
+      KNOWN_REPORTS_JSON: JSON.stringify(knownReports),
     }),
   };
+}
+
+/**
+ * The report page materializes its current source pool in app_kv before a
+ * discovery job is normally queued. Pass only stable report identity fields
+ * back to the model: forecast/valuation fields neither identify a report nor
+ * help it find a new one.
+ */
+async function loadCachedCompanyReportDiscoveryKnownReports(
+  db: D1Database,
+  code: string,
+): Promise<Array<{ title: string; institution: string; publishedAt: string; url: string }>> {
+  const cacheKey = `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${normalizeSecurityCode(code)}`;
+  const cached = await readAppJson<Array<Record<string, unknown>>>(db, cacheKey);
+  if (!Array.isArray(cached)) return [];
+  return cached.map((item) => ({
+    title: text(item.title),
+    institution: firstNonEmpty([text(item.orgSName), text(item.orgName), text(item.org), text(item.institution)]),
+    publishedAt: firstNonEmpty([text(item.publishDate), text(item.publishedAt)]),
+    url: firstNonEmpty([text(item.url), text(item.detailUrl)]),
+  })).filter((item) => item.title || item.url);
 }
 
 async function completeCompanyReportDiscoveryRun(
@@ -1305,8 +1328,8 @@ type CompanyReportLlmTaskIdentity = {
 };
 
 /**
- * Keep the exact report object returned by the discovery model.  The model's
- * report list is persisted as a terminal artifact; only the one candidate
+ * Keep the exact report object returned by the discovery model. The model's
+ * top-level report array is persisted as a terminal artifact; only the one candidate
  * whose canonical URL/report identity matches this row is returned.
  */
 export function findCompanyReportDiscoveryRawReport(
@@ -1315,8 +1338,7 @@ export function findCompanyReportDiscoveryRawReport(
 ): Record<string, unknown> | null {
   const output = asRecord(artifactOutput);
   const response = asRecord(output?.response);
-  const parsed = parseJsonObjectFromText(text(response?.text));
-  const reports = parsed?.reports;
+  const reports = parseJsonArrayFromText(text(response?.text));
   if (!Array.isArray(reports)) {
     return null;
   }
@@ -1717,14 +1739,14 @@ function parseCompanyReportDiscoveryWithDiagnostics(
   _securityCode: string,
   citations: Array<{ title: string; url: string }>,
 ): { reports: CompanyReportDiscoveryCandidate[]; rejected: number } {
-  const parsed = parseJsonObjectFromText(textBody);
-  if (!parsed || !Array.isArray(parsed.reports)) {
-    throw new Error("company report discovery response did not contain a reports array");
+  const reports = parseJsonArrayFromText(textBody);
+  if (!reports) {
+    throw new Error("company report discovery response was not a JSON array");
   }
   const cited = new Set(compactCompanyReportCitations(citations).map((item) => canonicalCompanyReportUrl(item.url)).filter(Boolean));
   const hasCitationMetadata = cited.size > 0;
   let rejected = 0;
-  const reports = parsed.reports.flatMap((value): CompanyReportDiscoveryCandidate[] => {
+  const accepted = reports.flatMap((value): CompanyReportDiscoveryCandidate[] => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       rejected += 1;
       return [];
@@ -1755,7 +1777,7 @@ function parseCompanyReportDiscoveryWithDiagnostics(
       ...(Object.keys(valuation).length > 0 ? { valuation } : {}),
     }];
   });
-  return { reports, rejected };
+  return { reports: accepted, rejected };
 }
 
 /** The structured field expects a URL, but ChatGPT Web can render it as a Markdown link. */
@@ -2407,6 +2429,20 @@ function parseJsonObjectFromText(value: string): Record<string, unknown> | null 
   try {
     const parsed = JSON.parse(value.slice(start, end + 1));
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseJsonArrayFromText(value: string): unknown[] | null {
+  const start = value.indexOf("[");
+  const end = value.lastIndexOf("]");
+  if (start < 0 || end <= start) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(value.slice(start, end + 1));
+    return Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;
   }

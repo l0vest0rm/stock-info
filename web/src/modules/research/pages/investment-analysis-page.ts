@@ -477,7 +477,7 @@ function reportCard(options: {
 
 function renderWebQaInput(prompt: ModelPrompt): string {
   const pieces: string[] = [];
-  if (text(prompt.instructions)) pieces.push(`System instructions:\n${text(prompt.instructions)}`);
+  if (text(prompt.instructions)) pieces.push(`任务要求：\n${text(prompt.instructions)}`);
   if (text(prompt.userPrompt)) pieces.push(`user:\n${text(prompt.userPrompt)}`);
   return pieces.join("\n\n") || "未记录";
 }

@@ -425,7 +425,10 @@ function genericTaskIdentity(job) {
 
 function renderGenericPrompt(request) {
   const pieces = [];
-  if (text(request.instructions)) pieces.push(`System instructions:\n${text(request.instructions)}`);
+  // WebQA can submit only one ordinary text input, not a native system-role
+  // message. Name this section for what it is instead of implying a privilege
+  // boundary that does not exist in the browser-backed transport.
+  if (text(request.instructions)) pieces.push(`任务要求：\n${text(request.instructions)}`);
   if (Array.isArray(request.input)) {
     for (const message of request.input) {
       if (!message || typeof message !== "object" || Array.isArray(message)) continue;
