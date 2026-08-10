@@ -1,20 +1,12 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from "node:url";
-import { startInformationProcessingRunner } from "./information-processing-runner.mjs";
-import { startResearchOperatingAnalysisLowDependencyRunner } from "./research-operating-analysis-low-dependency-runner.mjs";
-import { startResearchWebSearchPackageRunner } from "./research-web-search-package-runner.mjs";
-import { startCompanyReportDiscoveryRunner } from "./company-report-discovery-runner.mjs";
+import { startGenericLlmDispatcher } from "./generic-llm-dispatcher.mjs";
 import { localRuntimeLog } from "./lib/local-runtime-log.mjs";
 
-/** One process owns all local LLM handlers; DB leases still fence every job. */
+/** One process owns the universal local LLM dispatcher; DB leases fence every job. */
 export function startLocalJobWorker() {
-  const controllers = [
-    startCompanyReportDiscoveryRunner(),
-    startResearchWebSearchPackageRunner(),
-    startResearchOperatingAnalysisLowDependencyRunner(),
-    startInformationProcessingRunner(),
-  ];
+  const controllers = [startGenericLlmDispatcher()];
   return {
     async stop({ gracefulTimeoutMs = 30_000 } = {}) {
       await Promise.allSettled(controllers.map((controller) => controller.stop({ gracefulTimeoutMs })));

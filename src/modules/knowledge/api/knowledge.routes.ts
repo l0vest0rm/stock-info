@@ -6,7 +6,7 @@ import { externalHttpOptions } from '../../../shared/http';
 import { loadGenericLlmRun, loadGenericLlmRunArtifacts, loadGenericLlmTask } from "../../../shared/local-job-protocol";
 import { normalizeSupportedCompanyCode } from "../../../shared/codes";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
-import { extractCompanyReportByLlm, type CompanyReportForecast } from "../../company/api/company.routes";
+import { extractCompanyReportAnalysisByLlm, type CompanyReportForecast } from "../../company/api/company.routes";
 import {
   eastmoneyReportInfoCode,
   isReusableReportAnalysisCache,
@@ -74,6 +74,7 @@ type KnowledgeReportAnalysis = {
   analysisCalled: boolean;
   analysisSucceeded?: boolean;
   forecasts: CompanyReportForecast[];
+  targetPrice?: number | null;
   updatedAt: number;
 };
 
@@ -536,11 +537,15 @@ knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
             if (!content) {
               throw new Error("knowledge report has no converted content and the converter is unavailable");
             }
-            const forecasts = await extractCompanyReportByLlm(c, row.title, content);
+            const extracted = await extractCompanyReportAnalysisByLlm(c, row.title, content, {
+              targetId: id,
+              idempotencyKey: `knowledge-report-forecast:${id}`,
+            });
             const completed = {
               analysisCalled: true,
               analysisSucceeded: true,
-              forecasts,
+              forecasts: extracted.forecasts,
+              targetPrice: extracted.targetPrice,
               updatedAt: Date.now(),
             };
             await Promise.all([
@@ -590,6 +595,7 @@ knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
     latest_price: overview?.latestPrice ?? null,
     market_cap_yi: overview?.marketCapYi ?? null,
     forecasts,
+    target_price: analysis.targetPrice ?? null,
     peg_2026: peg2026,
     peg_2027: peg2027,
     peg_2028: peg2028,

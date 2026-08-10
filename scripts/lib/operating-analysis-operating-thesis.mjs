@@ -1,6 +1,6 @@
 import { projectResearchArtifact } from "./research-artifact-projection.mjs";
 
-export const OPERATING_THESIS_SCHEMA_VERSION = "operating-thesis.v1";
+export const OPERATING_THESIS_SCHEMA_VERSION = "operating-thesis.v2";
 export const OPERATING_THESIS_STAGE_KEY = "operating_thesis";
 
 const domainFields = Object.freeze({

@@ -125,7 +125,8 @@ import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } fr
 import { claimNextResearchWebSearchPackageTaskRun, completeResearchWebSearchPackageRun, enqueueResearchWebSearchPackage, failResearchWebSearchPackageRun, heartbeatResearchWebSearchPackageRun, loadResearchWebSearchPackages } from "../application/research-web-search-packages";
 import { loadLocalJobRuntimeState } from "../../../shared/local-job-protocol";
 import { claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, heartbeatResearchOperatingAnalysisJob, loadResearchOperatingAnalysis, loadResearchOperatingAnalysisRun, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage, type OperatingAnalysisStageKey, type OperatingAnalysisStageStatus } from "../application/research-operating-analysis";
-import { claimLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisStage, enqueueLowDependencyResearchOperatingAnalysis, failLowDependencyResearchOperatingAnalysisJob, heartbeatLowDependencyResearchOperatingAnalysisJob, loadLowDependencyResearchOperatingAnalysis, requeueInterruptedLowDependencyResearchOperatingAnalysisJob, startLowDependencyResearchOperatingAnalysisStage } from "../application/research-operating-analysis-low-dependency";
+import { claimLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisStage, enqueueLowDependencyResearchOperatingAnalysis, failLowDependencyResearchOperatingAnalysisJob, heartbeatLowDependencyResearchOperatingAnalysisJob, loadLowDependencyResearchOperatingAnalysis, requeueInterruptedLowDependencyResearchOperatingAnalysisJob, startLowDependencyResearchOperatingAnalysisStage, unlockLowDependencyRoutingAfterConfirmation } from "../application/research-operating-analysis-low-dependency";
+import { loadResearchOperatingAnalysisRouting, recordResearchOperatingAnalysisRoutingConfirmation, isRegisteredResearchIndustryTemplate } from "../application/research-operating-analysis-routing";
 import { renewResearchOperatingAnalysisRunnerLease } from "../application/research-operating-analysis-runner-lease";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
 import {
@@ -811,8 +812,68 @@ researchRoutes.get("/research/company/:code/operating-analysis", async (c) => {
 researchRoutes.get("/research/company/:code/operating-analysis-low-dependency", async (c) => {
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try { return ok(c, await loadLowDependencyResearchOperatingAnalysis(c.env.DB, code)); }
+  try {
+    const [analysis, routing] = await Promise.all([loadLowDependencyResearchOperatingAnalysis(c.env.DB, code), loadResearchOperatingAnalysisRouting(c.env.DB, code)]);
+    const automaticStage = analysis.stages.find((stage) => stage.stageKey === "local_routing_match");
+    const automatic = automaticStage?.output && typeof automaticStage.output === "object" && !Array.isArray(automaticStage.output) ? automaticStage.output as Record<string, unknown> : null;
+    const effectiveRouting = automatic && !routing.manualConfirmation ? {
+      ...routing,
+      current: {
+        state: automatic.routingState === "confirmed" ? "confirmed" as const : "unconfirmed" as const,
+        selectedTemplateId: typeof automatic.industryTemplateId === "string" ? automatic.industryTemplateId : null,
+        scopeNote: null,
+        companyScope: automatic.companyScope && typeof automatic.companyScope === "object" && !Array.isArray(automatic.companyScope) ? automatic.companyScope as Record<string, unknown> : {},
+        candidateTemplates: Array.isArray(automatic.candidateTemplates) ? automatic.candidateTemplates : [],
+        reasons: automatic.mappingReason ? [automatic.mappingReason] : [],
+      },
+      automatic,
+    } : { ...routing, automatic };
+    return ok(c, { ...analysis, routing: effectiveRouting });
+  }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.get("/research/company/:code/operating-analysis-low-dependency/routing", async (c) => {
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await loadResearchOperatingAnalysisRouting(c.env.DB, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/routing/confirm", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency routing confirmation is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  const selectedTemplateId = requiredText(body.selectedTemplateId, "selectedTemplateId");
+  if (!isRegisteredResearchIndustryTemplate(selectedTemplateId)) return fail(c, 400, `unregistered research industry template: ${selectedTemplateId}`);
+  const scopeNote = stringOrNull(body.scopeNote);
+  if (scopeNote && scopeNote.length > 4000) return fail(c, 400, "routing scopeNote must be at most 4000 characters");
+  const companyScope = body.companyScope && typeof body.companyScope === "object" && !Array.isArray(body.companyScope) ? body.companyScope as Record<string, unknown> : {};
+  try {
+    const current = await loadLowDependencyResearchOperatingAnalysis(c.env.DB, code);
+    const routing = await loadResearchOperatingAnalysisRouting(c.env.DB, code);
+    const security = (await getSecurity(c.env.DB, code)) ?? fallbackResearchSecurity(code);
+    const identity = await loadResearchIdentityFinancials(c.env.DB, security);
+    const companyId = (identity.operatingCompany as { companyId?: string } | null)?.companyId ?? null;
+    const baselineArtifact = current.stages.find((stage) => stage.stageKey === "engineering_baseline");
+    const now = Date.now();
+    const confirmation = await recordResearchOperatingAnalysisRoutingConfirmation(c.env.DB, {
+      confirmationId: `routing-confirmation:${crypto.randomUUID()}`,
+      securityCode: code,
+      companyId,
+      actorKey: stringOrNull(body.actorKey) ?? "local-user",
+      routingStateBefore: routing.current.state,
+      selectedTemplateId,
+      scopeNote,
+      companyScope,
+      candidateTemplates: routing.current.candidateTemplates,
+      sourceArtifactId: baselineArtifact?.artifactId ?? null,
+      createdAt: now,
+    });
+    const unlock = await unlockLowDependencyRoutingAfterConfirmation(c.env.DB, code);
+    return ok(c, { confirmation, unlock, routing: await loadResearchOperatingAnalysisRouting(c.env.DB, code) });
+  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
 researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/refresh", async (c) => {
@@ -853,7 +914,7 @@ researchRoutes.post("/research/operating-analysis-low-dependency-jobs/:code/stag
   if (!body || (body.prompt !== undefined && (!body.prompt || typeof body.prompt !== "object" || Array.isArray(body.prompt)))) return fail(c, 400, "prompt must be an object when provided");
   if (body.lineage !== undefined && (!body.lineage || typeof body.lineage !== "object" || Array.isArray(body.lineage))) return fail(c, 400, "lineage must be an object when provided");
   if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-  try { return ok(c, await startLowDependencyResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey"), body.input, body.prompt, body.runnerInstanceId, body.attempt as number, (body.lineage || {}) as Record<string, unknown>, body.reuse !== false)); }
+  try { return ok(c, await startLowDependencyResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey"), body.input, body.prompt, body.runnerInstanceId, body.attempt as number, (body.lineage || {}) as Record<string, unknown>, body.reuse !== false, typeof body.taskId === "string" ? body.taskId : undefined, typeof body.runId === "string" ? body.runId : undefined)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -865,7 +926,9 @@ researchRoutes.post("/research/operating-analysis-low-dependency-jobs/:code/stag
   if (body.lineage !== undefined && (!body.lineage || typeof body.lineage !== "object" || Array.isArray(body.lineage))) return fail(c, 400, "lineage must be an object when provided");
   if (typeof body.runnerInstanceId !== "string" || typeof body.status !== "string" || !Number.isInteger(body.attempt)) return fail(c, 400, "status, runnerInstanceId and attempt are required");
   if (body.metadata !== undefined && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata))) return fail(c, 400, "metadata must be an object when provided");
-  try { return ok(c, await completeLowDependencyResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey"), body.output, body.status, body.runnerInstanceId, body.attempt as number, (body.lineage || {}) as Record<string, unknown>, body.metadata)); }
+  if (body.errorCode !== undefined && typeof body.errorCode !== "string") return fail(c, 400, "errorCode must be a string when provided");
+  if (body.errorMessage !== undefined && typeof body.errorMessage !== "string") return fail(c, 400, "errorMessage must be a string when provided");
+  try { return ok(c, await completeLowDependencyResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey"), body.output, body.status, body.runnerInstanceId, body.attempt as number, (body.lineage || {}) as Record<string, unknown>, body.metadata, body.errorCode, body.errorMessage, typeof body.taskId === "string" ? body.taskId : undefined, typeof body.runId === "string" ? body.runId : undefined)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

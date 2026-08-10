@@ -16,9 +16,10 @@ import {
   terminalResearchOperatingAnalysisStatuses,
 } from "./research-operating-analysis-stage-registry.mjs";
 
-test("low-dependency registry covers S0-S12 and keeps legacy keys disjoint", () => {
+test("low-dependency registry covers S0 routing plus S1-S12 and keeps legacy keys disjoint", () => {
   assert.deepEqual(RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES.map((stage) => stage.key), [
-    "research_context",
+    "engineering_baseline",
+    "local_routing_match",
     "company_facts",
     "industry_structure",
     "supply_demand_cycle",
@@ -32,18 +33,20 @@ test("low-dependency registry covers S0-S12 and keeps legacy keys disjoint", () 
     "investment_conclusion",
     "report_assembly",
   ]);
-  assert.equal(isResearchOperatingAnalysisTargetStage("research_context"), true);
+  assert.equal(isResearchOperatingAnalysisTargetStage("engineering_baseline"), true);
+  assert.equal(isResearchOperatingAnalysisTargetStage("local_routing_match"), true);
   assert.equal(isResearchOperatingAnalysisLegacyStage("company_baseline"), true);
   assert.equal(isResearchOperatingAnalysisTargetStage("company_baseline"), false);
   assert.equal(isResearchOperatingAnalysisLegacyStage("research_context"), false);
-  assert.equal(RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES.length, 13);
+  assert.equal(RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES.length, 14);
 });
 
-test("scope-envelope waves run S1-S7 together and fallback adds only companyScope edges", () => {
+test("scope-envelope waves run S1-S7 together and fallback keeps S2-S5 on S0", () => {
   const reliable = researchOperatingAnalysisWaves({ scopeEnvelopeAvailable: true });
   const fallback = researchOperatingAnalysisWaves({ scopeEnvelopeAvailable: false });
   assert.deepEqual(reliable.map((wave) => wave.map((stage) => stage.key)), [
-    ["research_context"],
+    ["engineering_baseline"],
+    ["local_routing_match"],
     ["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers", "financial_quality", "market_valuation_facts"],
     ["operating_thesis"],
     ["scenario_valuation"],
@@ -51,10 +54,11 @@ test("scope-envelope waves run S1-S7 together and fallback adds only companyScop
     ["investment_conclusion"],
     ["report_assembly"],
   ]);
-  assert.deepEqual(fallback[2].map((stage) => stage.key), ["industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers"]);
-  assert.deepEqual(researchOperatingAnalysisDependencies("industry_structure", { scopeEnvelopeAvailable: true }), ["research_context"]);
-  assert.deepEqual(researchOperatingAnalysisDependencies("industry_structure", { scopeEnvelopeAvailable: false }), ["company_facts"]);
-  assert.deepEqual(researchOperatingAnalysisDependencies("financial_quality", { scopeEnvelopeAvailable: false }), ["research_context"]);
+  assert.deepEqual(fallback[2].map((stage) => stage.key), ["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers", "financial_quality", "market_valuation_facts"]);
+  assert.deepEqual(fallback[3].map((stage) => stage.key), ["operating_thesis"]);
+  assert.deepEqual(researchOperatingAnalysisDependencies("industry_structure", { scopeEnvelopeAvailable: true }), ["local_routing_match"]);
+  assert.deepEqual(researchOperatingAnalysisDependencies("industry_structure", { scopeEnvelopeAvailable: false }), ["local_routing_match"]);
+  assert.deepEqual(researchOperatingAnalysisDependencies("financial_quality", { scopeEnvelopeAvailable: false }), ["local_routing_match"]);
 });
 
 test("new task identity cannot silently reuse the legacy prompt contract", () => {
@@ -77,12 +81,19 @@ test("every target stage declares a schema and owner", () => {
   }
 });
 
-test("S1-S7 JSON envelopes expose report markdown plus manifest fields", () => {
-  const firstSeven = RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES.slice(1, 8);
-  assert.equal(firstSeven.every((stage) => stage.outputKind === "json"), true);
+test("S1-S7 expose direct report Markdown artifacts", () => {
+  const firstSeven = RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES.slice(2, 9);
+  assert.equal(firstSeven.every((stage) => stage.outputKind === "markdown"), true);
   assert.deepEqual(firstSeven.map((stage) => stage.schemaVersion), [
-    "company-facts.v1", "industry-structure.v1", "supply-demand-cycle.v1", "competition-peers.v1", "company-operating-drivers.v1", "financial-quality.v1", "market-valuation-facts.v1",
+    "company-facts.v3", "industry-structure.v3", "supply-demand-cycle.v3", "competition-peers.v3", "company-operating-drivers.v3", "financial-quality.v3", "market-valuation-facts.v3",
   ]);
+});
+
+test("S8 and S11 are direct Markdown while S9/S10 keep JSON contracts", () => {
+  assert.equal(getResearchOperatingAnalysisStage("operating_thesis").outputKind, "markdown");
+  assert.equal(getResearchOperatingAnalysisStage("scenario_valuation").outputKind, "json");
+  assert.equal(getResearchOperatingAnalysisStage("deterministic_valuation").outputKind, "json");
+  assert.equal(getResearchOperatingAnalysisStage("investment_conclusion").outputKind, "markdown");
 });
 
 test("target terminal statuses and manifest-facing output kinds are explicit", () => {

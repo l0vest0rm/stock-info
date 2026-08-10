@@ -1,6 +1,6 @@
 import packageConfig from "../../../../config/research-web-search-packages.json";
 import {
-  claimGenericLlmTaskRun,
+  claimNextGenericLlmTaskRun,
   completeGenericLlmRun,
   createGenericLlmTask,
   failGenericLlmRun,
@@ -64,6 +64,7 @@ export async function enqueueResearchWebSearchPackage(db: D1Database, securityCo
   const result = await createGenericLlmTask(db, {
     taskType: "research_web_search", targetType: "security", targetId: code,
     idempotencyKey: `web-search-package:${kind}`, promptVersion: promptVersion(kind), model: config.model,
+    handlerKey: "research_web_search",
     reasoningEffort: config.reasoningEffort,
     metadata: { securityCode: code, packageKind: kind, label: config.packages[kind].label, tabs: config.packages[kind].tabs } satisfies ResearchWebSearchTaskMetadata,
     now,
@@ -79,7 +80,7 @@ export async function enqueueResearchWebSearchPackage(db: D1Database, securityCo
 
 /** The local Node runner claims a generic task run before opening a long-lived model stream. */
 export async function claimNextResearchWebSearchPackageTaskRun(db: D1Database, runnerInstanceId: string) {
-  const claimed = await claimGenericLlmTaskRun(db, runnerInstanceId, { taskType: "research_web_search", provider: LOCAL_JOB_PROVIDER_ID, model: config.model, reasoningEffort: config.reasoningEffort });
+  const claimed = await claimNextGenericLlmTaskRun(db, runnerInstanceId, { provider: LOCAL_JOB_PROVIDER_ID, model: config.model, reasoningEffort: config.reasoningEffort });
   if (!claimed) return null;
   try {
     const identity = packageIdentity(claimed.task);

@@ -23,7 +23,7 @@ export const LOW_DEPENDENCY_REPORT_HEADINGS = Object.freeze([
 ]);
 
 const LOW_DEPENDENCY_REPORT_OWNERS = Object.freeze({
-  "1": ["research_context"],
+  "1": ["engineering_baseline", "local_routing_match"],
   "2": ["company_facts", "company_operating_drivers", "operating_thesis"],
   "3": ["industry_structure", "supply_demand_cycle", "operating_thesis"],
   "4": ["competition_peers", "operating_thesis"],
@@ -38,7 +38,7 @@ const LOW_DEPENDENCY_REPORT_OWNERS = Object.freeze({
 });
 
 /**
- * Deterministically concatenate the already-owned Markdown fields from S0-S11.
+ * Deterministically concatenate the already-owned Markdown fields from S0/S1-S11.
  * This function never calls a model, summarizes JSON, or accepts S11 text for
  * chapters 1-8. A blocked/failed dependency returns a non-success result with
  * an explicit visible gate message; callers must persist it as such.
@@ -96,11 +96,39 @@ export function lowDependencyReportOwnerMap() {
 
 function markdownFromStage(stage, chapter) {
   const output = stage?.output;
-  if (typeof output === "string") return output.trim();
+  if (typeof output === "string") {
+    if (stage?.stageKey === "investment_conclusion") return investmentConclusionChapter(output, chapter);
+    return output.trim();
+  }
   if (!output || typeof output !== "object" || Array.isArray(output)) return "";
   if (output.markdownByChapter && typeof output.markdownByChapter === "object" && typeof output.markdownByChapter[chapter] === "string") return output.markdownByChapter[chapter].trim();
   if (typeof output.markdown === "string") return output.markdown.trim();
   return "";
+}
+
+/**
+ * S11 is a direct Markdown artifact but owns four report chapters.  Split only
+ * on the exact chapter headings required by the prompt; this is a deterministic
+ * section boundary, not a general Markdown/JSON parser or content rewrite.
+ */
+function investmentConclusionChapter(markdown, chapter) {
+  const wanted = String(chapter);
+  if (!["9", "10", "11", "12"].includes(wanted)) return "";
+  const sections = new Map();
+  let current = null;
+  for (const line of String(markdown).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    const heading = ["9", "10", "11", "12"].find((key) =>
+      trimmed.startsWith(`## ${key}.`) || trimmed.startsWith(`# ${key}.`) ||
+      trimmed.startsWith(`## ${key}、`) || trimmed.startsWith(`# ${key}、`));
+    if (heading) {
+      current = heading;
+      if (!sections.has(current)) sections.set(current, []);
+      continue;
+    }
+    if (current) sections.get(current).push(line);
+  }
+  return (sections.get(wanted) || []).join("\n").trim();
 }
 
 function renderContextSection(context, manifest) {

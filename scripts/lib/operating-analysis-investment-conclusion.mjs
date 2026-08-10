@@ -1,7 +1,7 @@
 import { projectResearchArtifact } from "./research-artifact-projection.mjs";
 import { validateScenarioValuationOutput } from "./operating-analysis-scenario-valuation.mjs";
 
-export const INVESTMENT_CONCLUSION_SCHEMA_VERSION = "investment-conclusion.v1";
+export const INVESTMENT_CONCLUSION_SCHEMA_VERSION = "investment-conclusion.v2";
 export const INVESTMENT_CONCLUSION_CHAPTERS = Object.freeze(["9", "10", "11", "12"]);
 const ALLOWED_CHAPTERS = INVESTMENT_CONCLUSION_CHAPTERS;
 

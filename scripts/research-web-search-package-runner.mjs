@@ -25,18 +25,18 @@ async function request(path, init) {
 function post(path, body) { return request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); }
 function positiveInteger(value, fallback) { const parsed = Number(value); return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback; }
 
-async function runJob(job) {
+export async function runJob(job, owner = runnerInstanceId) {
   const startedAt = Date.now();
-  const heartbeat = setInterval(() => { void post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/heartbeat`, { taskId: job.taskId, runnerInstanceId, attempt: job.attempt }).catch(() => {}); }, 10_000);
+  const heartbeat = setInterval(() => { void post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/heartbeat`, { taskId: job.taskId, runnerInstanceId: owner, attempt: job.attempt }).catch(() => {}); }, 10_000);
   localRuntimeLog("research-web-search", "started", { task_id: job.taskId, run_id: job.runId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind });
   try {
     const provider = createLocalJobProvider(apiKey);
     const response = await provider.generate({ model: job.model, instructions: job.instructions, input: [{ role: "user", content: [{ type: "input_text", text: job.input }] }], reasoningEffort: job.reasoningEffort, tools: [{ type: "web_search", searchContextSize: "high" }], toolChoice: "required", maxOutputTokens: job.maxOutputTokens, signal: AbortSignal.timeout(job.jobTimeoutMs) });
-    await post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/complete`, { taskId: job.taskId, model: job.model, text: response.text, webSearch: response.webSearch, runnerInstanceId, attempt: job.attempt });
+    await post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/complete`, { taskId: job.taskId, model: job.model, text: response.text, webSearch: response.webSearch, runnerInstanceId: owner, attempt: job.attempt });
     localRuntimeLog("research-web-search", "completed", { task_id: job.taskId, run_id: job.runId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind, duration_ms: Date.now() - startedAt });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    try { await post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/fail`, { taskId: job.taskId, error: message, runnerInstanceId, attempt: job.attempt }); }
+    try { await post(`/api/research/web-search-runs/${encodeURIComponent(job.runId)}/fail`, { taskId: job.taskId, error: message, runnerInstanceId: owner, attempt: job.attempt }); }
     catch (failure) { localRuntimeError("research-web-search", "failure_persist_failed", failure, { task_id: job.taskId, run_id: job.runId, attempt: job.attempt }); }
     localRuntimeLog("research-web-search", "failed", { task_id: job.taskId, run_id: job.runId, attempt: job.attempt, security_code: job.securityCode, package_kind: job.packageKind, duration_ms: Date.now() - startedAt, error: message });
   } finally { clearInterval(heartbeat); }

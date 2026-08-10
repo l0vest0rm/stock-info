@@ -12,11 +12,12 @@ export async function resolveLocalJobApiKey() {
   try { const auth = JSON.parse(await readFile(`${process.env.HOME}/.codex/auth.json`, "utf8")); return typeof auth?.OPENAI_API_KEY === "string" ? auth.OPENAI_API_KEY.trim() : ""; } catch { return ""; }
 }
 
-export function createLocalJobProvider(apiKey, { streamIdleTimeoutMs } = {}) {
+export function createLocalJobProvider(apiKey, { streamIdleTimeoutMs, streamFirstResponseTimeoutMs } = {}) {
   return createResponsesProvider({
     name: "openai",
     baseUrl: String(process.env.OPENAI_BASE_URL || process.env.LLM_BASE_URL || "https://api.m2ai.cc/api/v1/openai").replace(/\/+$/, ""),
     apiKey,
     ...(streamIdleTimeoutMs ? { streamIdleTimeoutMs } : {}),
+    ...(streamFirstResponseTimeoutMs ? { streamFirstResponseTimeoutMs } : {}),
   });
 }

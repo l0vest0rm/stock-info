@@ -26,7 +26,10 @@ export async function syncResearchIndustrySourceSeries(env: Bindings, securityCo
     if (Number(cached?.count) > 0) { outcomes.push({ docId: document.docId, status: "cached", items: Number(cached?.count) }); continue; }
     const content = await documentContent(env.DB, document.contentKey);
     if (!content) { outcomes.push({ docId: document.docId, status: "skipped", items: 0, reason: "imported_content_missing" }); continue; }
-    const response = await requestLlmText(env, { model: config.model, maxTokens: config.maxOutputTokens, reasoningEffort: "low", cacheEnabled: false, messages: [
+    const response = await requestLlmText(env, { model: config.model, maxTokens: config.maxOutputTokens, reasoningEffort: "low", cacheEnabled: false,
+      targetType: "industry_source_document", targetId: document.docId,
+      idempotencyKey: `industry-source-series:${code}:${document.docId}:${config.version}`,
+      promptVersion: config.version, priority: 500, messages: [
       { role: "system", content: config.systemPrompt },
       { role: "user", content: render(config.userTemplate, { SECURITY_CODE: code, TITLE: document.title, CONTENT: content }) },
     ] });

@@ -93,6 +93,18 @@ The automatic result for one document version: extracted, no information, or unr
 
 ## Company Investment Analysis
 
+**Engineering baseline**:
+A deterministic, local/API-only snapshot of the company, listed security, structured financial/market inputs, source candidates, and auditable operating-scope fields used to start an investment-analysis run. It is preparation data, not an industry classification or an investment conclusion.
+_Avoid_: Model-selected template, ticker-derived industry, unverified scope assertion
+
+**Local routing match**:
+A deterministic match between auditable engineering-baseline scope facts and a versioned, controlled industry-template registry. It records candidates, field evidence, mapping reasons, and an explicit `unconfirmed`/`confirmed` state; an unconfirmed match blocks downstream research stages.
+_Avoid_: Web Search routing, model intent classification, registry entry treated as company evidence
+
+**Routing confirmation audit**:
+An immutable, append-only record of a human confirmation of a registered industry template, including the selected template ID, scope note, company scope projection, candidate snapshot, actor and source artifact. It unlocks the confirmed routing projection for subsequent research stages but does not rewrite the engineering baseline.
+_Avoid_: Mutable route flag, inferred confirmation, silent template replacement
+
 **Operating company**:
 The economic business whose products, customers, assets, management, and financial results are being analysed, independent of where or how its equity is listed.
 _Avoid_: Ticker, listing venue, share class
@@ -356,6 +368,14 @@ _Avoid_: Search-result dump, source list without claim linkage, unsupported evid
 **Artifact projection**:
 A validated, queryable read result that references one or more terminal artifacts and their input versions while applying the owning module's schema and quality gates. It is separate from the execution ledger and cannot silently rewrite the artifacts that produced it.
 _Avoid_: Queue status, cache entry, mutable overview summary, projection without source or version lineage
+
+**Generic LLM scheduler**:
+The durable local task queue shared by model and deterministic engineering work. Priority is an integer from 0 to 1000 (default 500); higher priority runs first and equal priorities use the durable FIFO sequence. A task becomes ready only when every declared dependency is completed; failed or blocked dependencies visibly block downstream work.
+_Avoid_: Handler-local queue order, hidden retries, completion inferred from a partial stream
+
+**Generic LLM execution mode**:
+The explicit `model` or `engineering` mode on a generic task. Model work consumes the shared provider cap; engineering work uses the same fenced run lifecycle without reserving a model-provider slot.
+_Avoid_: Provider lease for deterministic work, model judgement deciding queue eligibility
 
 **Valuation model version**:
 An immutable, security-specific calculation record containing its declared operating inputs, calculation rule version, source references, FX/share-rights assumptions, outputs, and sensitivity axes at one as-of time. It is distinct from a narrative valuation case and may not silently refresh from later facts.

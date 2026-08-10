@@ -25,20 +25,20 @@ async function request(path, init) {
 function post(path, body) { return request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); }
 function positiveInteger(value, fallback) { const parsed = Number(value); return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback; }
 
-async function runJob(job) {
+export async function runJob(job, owner = runnerInstanceId) {
   if (!job.request) { localRuntimeLog("information-processing", job.status || "missing_request", { task_id: job.taskId || job.jobId, run_id: job.runId, attempt: job.attempt, document_id: job.documentId }); return; }
   const startedAt = Date.now();
   const taskId = job.taskId || job.jobId;
-  const heartbeat = setInterval(() => { void post(`/api/knowledge/processing-jobs/${encodeURIComponent(taskId)}/heartbeat`, { runId: job.runId, runnerInstanceId, attempt: job.attempt }).catch(() => {}); }, 10_000);
+  const heartbeat = setInterval(() => { void post(`/api/knowledge/processing-jobs/${encodeURIComponent(taskId)}/heartbeat`, { runId: job.runId, runnerInstanceId: owner, attempt: job.attempt }).catch(() => {}); }, 10_000);
   localRuntimeLog("information-processing", "started", { task_id: taskId, run_id: job.runId, attempt: job.attempt, document_id: job.documentId });
   try {
     const provider = createLocalJobProvider(apiKey);
     const response = await provider.generate({ model: job.request.model, instructions: job.request.instructions, input: [{ role: "user", content: [{ type: "input_text", text: job.request.input }] }], reasoningEffort: "low", maxOutputTokens: job.request.maxTokens });
-    const completed = await post(`/api/knowledge/processing-jobs/${encodeURIComponent(taskId)}/complete`, { request: job.request, text: response.text, raw: response.raw, cached: false, runId: job.runId, runnerInstanceId, attempt: job.attempt });
+    const completed = await post(`/api/knowledge/processing-jobs/${encodeURIComponent(taskId)}/complete`, { request: job.request, text: response.text, raw: response.raw, cached: false, runId: job.runId, runnerInstanceId: owner, attempt: job.attempt });
     localRuntimeLog("information-processing", completed.status || "completed", { task_id: taskId, run_id: job.runId, attempt: job.attempt, document_id: job.documentId, duration_ms: Date.now() - startedAt });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    try { await post(`/api/knowledge/processing-jobs/${encodeURIComponent(taskId)}/fail`, { request: job.request, error: message, runId: job.runId, runnerInstanceId, attempt: job.attempt }); }
+    try { await post(`/api/knowledge/processing-jobs/${encodeURIComponent(taskId)}/fail`, { request: job.request, error: message, runId: job.runId, runnerInstanceId: owner, attempt: job.attempt }); }
     catch (failure) { localRuntimeError("information-processing", "failure_persist_failed", failure, { task_id: taskId, run_id: job.runId, attempt: job.attempt }); }
     localRuntimeLog("information-processing", "failed", { task_id: taskId, run_id: job.runId, attempt: job.attempt, document_id: job.documentId, duration_ms: Date.now() - startedAt, error: message });
   } finally { clearInterval(heartbeat); }

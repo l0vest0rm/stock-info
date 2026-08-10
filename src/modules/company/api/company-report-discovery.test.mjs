@@ -4,13 +4,131 @@ import test from "node:test";
 import {
   canonicalCompanyReportUrl,
   companyReportDedupKeys,
+  companyRoutes,
+  COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS,
   mergeCompanyReportsPreferPrimary,
+  normalizeCompanyReportDiscoveryReasoningEffort,
   parseCompanyReportDiscovery,
+  validateCompanyReportDiscoveryWebSearch,
 } from "./company.routes.ts";
 
 const citations = [
   { title: "公开研报", url: "https://reports.example.com/acme.pdf?utm_source=search#page=1" },
 ];
+
+test("hides the discovery capability endpoint outside the local LLM runtime", async () => {
+  const response = await companyRoutes.request(
+    "http://example.test/company/reports/discovery-capability?code=000001.SZ",
+    {},
+    { LLM_RUNTIME: "production" },
+  );
+  assert.equal(response.status, 404);
+});
+
+test("projects the last run model and reasoning effort into local discovery status", async () => {
+  const taskId = "llm-task:company-report-status";
+  const runId = "llm-run:company-report-status";
+  const taskRow = {
+    taskId,
+    taskType: "company_report_discovery",
+    targetType: "security",
+    targetId: "000001.SZ",
+    idempotencyKey: "company-report-discovery:2026-08-10",
+    protocolVersion: "llm-task-protocol.v1",
+    promptVersion: "company-report-discovery.v2",
+    status: "running",
+    requestedModel: "gpt-5.6-luna",
+    requestedReasoningEffort: "max",
+    lastRunId: runId,
+    metadataJson: "{}",
+    lastErrorCode: null,
+    lastErrorMessage: null,
+    createdAt: 1,
+    startedAt: 2,
+    completedAt: null,
+    updatedAt: 3,
+  };
+  const runRow = {
+    runId,
+    taskId,
+    attempt: 2,
+    provider: "openai",
+    model: "gpt-5.6-luna",
+    reasoningEffort: "high",
+    promptVersion: "company-report-discovery.v2",
+    inputFingerprint: null,
+    inputAsOf: null,
+    inputJson: null,
+    promptJson: null,
+    lineageRunId: null,
+    status: "running",
+    leaseOwner: "runner",
+    leaseUntil: Date.now() + 60_000,
+    heartbeatAt: Date.now(),
+    currentStepKey: null,
+    progressJson: null,
+    progressUpdatedAt: null,
+    terminalMetadataJson: null,
+    errorCode: null,
+    errorMessage: null,
+    startedAt: 2,
+    completedAt: null,
+    updatedAt: 3,
+  };
+  const db = {
+    prepare(sql) {
+      return {
+        bind() {
+          return {
+            first: async () => sql.includes("from llm_runs") ? runRow : taskRow,
+          };
+        },
+      };
+    },
+  };
+  const response = await companyRoutes.request(
+    `http://example.test/company/reports/discovery-capability?code=000001.SZ&taskId=${encodeURIComponent(taskId)}`,
+    {},
+    { LLM_RUNTIME: "local", DB: db },
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.deepEqual(payload?.data?.task?.execution, {
+    runId,
+    attempt: 2,
+    status: "running",
+    model: "gpt-5.6-luna",
+    reasoningEffort: "high",
+  });
+});
+
+test("keeps the normal max reasoning default and the prior one-hour timeout", () => {
+  assert.equal(normalizeCompanyReportDiscoveryReasoningEffort(undefined), "max");
+  assert.equal(COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS, 60 * 60 * 1000);
+});
+
+test("accepts explicit provider reasoning values without an enum whitelist", () => {
+  assert.equal(normalizeCompanyReportDiscoveryReasoningEffort("none"), "none");
+  assert.equal(normalizeCompanyReportDiscoveryReasoningEffort("max"), "max");
+  assert.equal(normalizeCompanyReportDiscoveryReasoningEffort("diagnostic-custom"), "diagnostic-custom");
+  assert.throws(() => normalizeCompanyReportDiscoveryReasoningEffort(""), /must be a non-empty string/);
+  assert.throws(() => normalizeCompanyReportDiscoveryReasoningEffort(null), /must be a non-empty string/);
+});
+
+test("rejects only an empty reasoningEffort at the local discovery API boundary", async () => {
+  const response = await companyRoutes.request(
+    "http://example.test/company/reports/discover?code=300308.SZ",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reasoningEffort: "" }),
+    },
+    { LLM_RUNTIME: "local", DB: {} },
+  );
+  assert.equal(response.status, 400);
+  const payload = await response.json();
+  assert.match(String(payload?.msg || ""), /must be a non-empty string/);
+});
 
 test("parses cited discovery reports with the normal forecast and valuation fields", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify({
@@ -33,14 +151,107 @@ test("parses cited discovery reports with the normal forecast and valuation fiel
   }]);
 });
 
-test("rejects candidates missing required metadata or a native citation", () => {
+test("accepts completed Web Search candidates when citation metadata is unavailable", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify({
     reports: [
       { title: "缺机构", publishedAt: "2026-06-20", url: "https://reports.example.com/acme.pdf", forecasts: [] },
       { title: "无 citation", institution: "示例证券", publishedAt: "2026-06-21", url: "https://other.example.com/report.pdf", forecasts: [] },
+      { title: "非网页 URL", institution: "示例证券", publishedAt: "2026-06-22", url: "javascript:alert(1)", forecasts: [] },
     ],
-  }), "000001.SZ", citations);
-  assert.deepEqual(reports, []);
+  }), "000001.SZ", []);
+  assert.deepEqual(reports, [
+    {
+      title: "缺机构",
+      publishedAt: "2026-06-20",
+      url: "https://reports.example.com/acme.pdf",
+      forecasts: [],
+    },
+    {
+      title: "无 citation",
+      institution: "示例证券",
+      publishedAt: "2026-06-21",
+      url: "https://other.example.com/report.pdf",
+      forecasts: [],
+    },
+    {
+      title: "非网页 URL",
+      institution: "示例证券",
+      publishedAt: "2026-06-22",
+      forecasts: [],
+    },
+  ]);
+});
+
+test("accepts URL-only and title-only partial reports without forecasts", () => {
+  const reports = parseCompanyReportDiscovery(JSON.stringify({
+    reports: [
+      { url: "https://reports.example.com/global/acme-q2.pdf" },
+      { title: "机构观点摘要" },
+      { title: "", url: "" },
+      { institution: "没有身份" },
+    ],
+  }), "000001.SZ", []);
+  assert.deepEqual(reports, [
+    {
+      title: "reports.example.com/global/acme-q2.pdf",
+      url: "https://reports.example.com/global/acme-q2.pdf",
+      forecasts: [],
+    },
+    {
+      title: "机构观点摘要",
+      forecasts: [],
+    },
+  ]);
+});
+
+test("keeps missing forecasts and metadata on an otherwise identified candidate", () => {
+  const reports = parseCompanyReportDiscovery(JSON.stringify({
+    reports: [{
+      title: "全球机构更新",
+      url: "https://reports.example.com/global-update",
+      forecasts: null,
+      valuation: null,
+      publishedAt: "not-a-date",
+    }],
+  }), "000001.SZ", []);
+  assert.deepEqual(reports, [{
+    title: "全球机构更新",
+    url: "https://reports.example.com/global-update",
+    forecasts: [],
+  }]);
+});
+
+test("rejects a completely unidentified discovery candidate", () => {
+  assert.deepEqual(parseCompanyReportDiscovery(JSON.stringify({
+    reports: [{ forecasts: [{ year: 2026, eps: 0.4 }] }, { institution: "示例证券", publishedAt: "2026-06-20" }],
+  }), "000001.SZ", []), []);
+});
+
+test("retains a discovered row when deterministic identity fields are unavailable", () => {
+  const merged = mergeCompanyReportsPreferPrimary([], [{
+    code: "000001.SZ",
+    title: "无日期机构的全球更新",
+    forecasts: [],
+    provenance: "web_search",
+  }]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].title, "无日期机构的全球更新");
+});
+
+test("requires a completed Web Search response and tool call", () => {
+  const base = { searched: true, queries: ["中际旭创 研报"], citations: [] };
+  assert.deepEqual(
+    validateCompanyReportDiscoveryWebSearch({ ...base, responseCompleted: true, responseStatus: "completed", webSearchCallCompleted: true }),
+    [],
+  );
+  assert.throws(
+    () => validateCompanyReportDiscoveryWebSearch({ ...base, responseCompleted: false, responseStatus: "in_progress", webSearchCallCompleted: false }),
+    /response was incomplete/,
+  );
+  assert.throws(
+    () => validateCompanyReportDiscoveryWebSearch({ ...base, responseCompleted: true, responseStatus: "completed", webSearchCallCompleted: false }),
+    /Web Search call did not complete/,
+  );
 });
 
 test("canonicalizes tracking URL variants and keeps same-title different-date reports", () => {

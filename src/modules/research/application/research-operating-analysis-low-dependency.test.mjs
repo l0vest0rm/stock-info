@@ -4,6 +4,7 @@ import {
   LOW_DEPENDENCY_RESEARCH_OPERATING_ANALYSIS_PROTOCOL_VERSION,
   LOW_DEPENDENCY_RESEARCH_OPERATING_ANALYSIS_PROMPT_VERSION,
   LOW_DEPENDENCY_RESEARCH_OPERATING_ANALYSIS_TASK_TYPE,
+  effectiveLowDependencyRefreshStageKeys,
   lowDependencyResearchOperatingAnalysisTaskIdentity,
   normalizeLowDependencyRerunStageKeys,
 } from "./research-operating-analysis-low-dependency.ts";
@@ -22,4 +23,13 @@ test("targeted rerun keys reject unknown or duplicate stages and remain determin
   assert.deepEqual(normalizeLowDependencyRerunStageKeys(undefined), []);
   assert.throws(() => normalizeLowDependencyRerunStageKeys(["company_baseline"]), /unsupported low-dependency/);
   assert.throws(() => normalizeLowDependencyRerunStageKeys(["company_facts", "company_facts"]), /duplicate stage/);
+});
+
+test("force refresh invalidates the complete S0-S12 target set before a new run", () => {
+  const keys = effectiveLowDependencyRefreshStageKeys(true, ["engineering_baseline"]);
+  assert.equal(keys[0], "engineering_baseline");
+  assert.equal(keys[1], "local_routing_match");
+  assert.equal(keys.at(-1), "report_assembly");
+  assert.equal(keys.length, 14);
+  assert.deepEqual(effectiveLowDependencyRefreshStageKeys(false, ["local_routing_match"]), ["local_routing_match"]);
 });

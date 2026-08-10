@@ -80,6 +80,11 @@ export async function processInformationDocument(env: Bindings, docId: string): 
         { role: "system", content: prepared.request.instructions },
         { role: "user", content: prepared.request.input },
       ],
+      targetType: "knowledge_document",
+      targetId: prepared.request.versionId,
+      idempotencyKey: `information-document:${prepared.request.versionId}:${INFORMATION_PROCESSING_PROMPT_VERSION}`,
+      promptVersion: INFORMATION_PROCESSING_PROMPT_VERSION,
+      priority: 500,
     });
     return await completeInformationProcessing(env, prepared.request, response.text, response.raw, response.cached);
   } catch (error) {

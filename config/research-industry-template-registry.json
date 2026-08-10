@@ -1,0 +1,24 @@
+{
+  "registryVersion": "research-industry-template-registry.v1",
+  "description": "受控行业模板匹配表。模板只能由程序按 S2 已有来源事实匹配，模型不得选择模板。",
+  "templates": [
+    {
+      "templateId": "optical-transceiver-ai-interconnect.v1",
+      "industryKey": "optical_transceiver_ai_interconnect",
+      "label": "高速光模块与 AI 数据中心光互连",
+      "requiredFields": ["primary_business", "product_boundary", "downstream", "industry"],
+      "minimumMatchedFields": 4,
+      "terms": {
+        "primary_business": ["光模块", "光通信", "光互连", "optical transceiver", "optical interconnect"],
+        "product_boundary": ["高速光模块", "100g", "200g", "400g", "800g", "1.6t", "光收发模块"],
+        "downstream": ["数据中心", "ai数据中心", "云计算", "gpu集群", "交换网络", "人工智能基础设施"],
+        "industry": ["光模块", "光通信", "光互连", "ai光模块", "optical transceiver", "光通信器件"]
+      },
+      "evidencePolicy": {
+        "requiredEvidencePerField": 1,
+        "requireSourceUrl": true,
+        "requireQuote": true
+      }
+    }
+  ]
+}

@@ -14,11 +14,6 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import {
-  SharedLlmClient,
-  SQLiteLlmCacheStore,
-  createResponsesProvider,
-} from "@m2ai/shared-llm-client/sqlite";
 import { parseKnowledgeFilename } from "./lib/knowledge-filename-parser.mjs";
 import {
   KNOWLEDGE_ENRICH_SYSTEM_PROMPT,
@@ -27,6 +22,7 @@ import {
   TOPIC_BATCH_USER_PROMPT,
 } from "./generated/prompt-text.mjs";
 import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
+import { createGenericLlmSchedulerClient, toGenericRawRequest } from "./lib/generic-llm-client.mjs";
 import { executeLocalD1Sql } from "./lib/local-d1-sqlite.mjs";
 import { shouldKeepOriginalReportPdf, topicFilterBypassDecision, topicFilterKeywordDecision } from "./lib/knowledge-topic-filter.mjs";
 import {
@@ -48,9 +44,7 @@ const stateDir = resolve(root, config.stateDir || `${sharedDataRoot}/stock-info/
 const inputDirs = resolveInputDirs(args.inboxDir, config, args.extraInputs);
 const remotePdfCacheDir = join(workDir, "remote-pdf");
 const markdownCacheDir = join(workDir, "markdown-cache");
-const llmCacheDbPath = join(stateDir, "llm-cache.sqlite");
 const llmReviewDir = join(reviewDir, "llm-topic-review");
-const localLlmClients = new Map();
 const localCompanyCodeResolver = loadLocalCompanyCodeResolver(root);
 const importSyncFile = resolve(stateDir, config.importSyncFile || "knowledge-remote-sync.jsonl");
 const now = new Date();
@@ -1031,17 +1025,9 @@ async function reviewTopicBatchWithLlm(items, cfg, context = {}) {
 }
 
 async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user }) {
-  const provider = "openai";
-  const client = getLocalLlmClient(provider, baseUrl, apiKey);
-  const request = {
-    provider,
-    model,
-    instructions: system,
-    input: [{ role: "user", content: [{ type: "input_text", text: user }] }],
-    temperature: 0,
-    maxOutputTokens: maxTokens,
-  };
-  let result = await client.generateText(request);
+  const scheduler = createGenericLlmSchedulerClient({ baseUrl });
+  const request = toGenericRawRequest({ provider: "openai", model, instructions: system, user, maxTokens, temperature: 0, cacheEnabled: false });
+  let result = await scheduler.requestText({ request, targetType: "knowledge_topic_filter", targetId: sha256(JSON.stringify({ model, user })), idempotencyKey: `knowledge-topic-filter:${sha256(JSON.stringify({ model, user }))}`, priority: 500, source: "process-knowledge-once" });
   let parsed = parseJsonObjectFromText(result.text);
   if (!parsed && shouldRetryJsonRequest(result)) {
     logProgress("retrying llm json request after empty or incomplete output", {
@@ -1049,11 +1035,7 @@ async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user 
       model,
       maxTokens,
     });
-    result = await client.generateText({
-      ...request,
-      maxOutputTokens: Math.max(maxTokens * 2, 2400),
-      cacheEnabled: false,
-    });
+    result = await scheduler.requestText({ request: { ...request, maxOutputTokens: Math.max(maxTokens * 2, 2400), cacheEnabled: false }, targetType: "knowledge_topic_filter", targetId: sha256(JSON.stringify({ model, user, retry: true })), idempotencyKey: `knowledge-topic-filter:${sha256(JSON.stringify({ model, user, retry: true }))}`, priority: 500, source: "process-knowledge-once" });
     parsed = parseJsonObjectFromText(result.text);
   }
   if (!parsed) {
@@ -1090,41 +1072,17 @@ function shouldRetryJsonRequest(result) {
     || Boolean(raw?.incomplete_details?.reason);
 }
 
-function getLocalLlmClient(provider, baseUrl, apiKey) {
-  const key = `${provider}::${baseUrl}::${apiKey}`;
-  if (!localLlmClients.has(key)) {
-    localLlmClients.set(
-      key,
-      new SharedLlmClient({
-        cacheStore: new SQLiteLlmCacheStore(llmCacheDbPath),
-        providers: {
-          [provider]: createResponsesProvider({
-            name: provider,
-            baseUrl,
-            apiKey,
-          }),
-        },
-        providerConcurrency: { [provider]: 3 },
-      }),
-    );
-  }
-  return localLlmClients.get(key);
-}
-
 function resolveTopicFilterLlmRequest(cfg) {
   const llm = cfg.llm || {};
   const filter = cfg.topicFilter || {};
   const envModel = process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_MODEL || process.env.KNOWLEDGE_PROCESS_LLM_MODEL;
   const model = text(envModel || filter.llmModel || "gpt-5.6-luna");
   const provider = "openai";
-  const defaultBaseUrl = "https://api.m2ai.cc/api/v1/openai";
   const baseUrl = text(
-    process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_BASE_URL
-      || process.env.LLM_BASE_URL
-      || filter.llmBaseUrl
-      || process.env.OPENAI_BASE_URL
-      || llm.baseUrl
-      || defaultBaseUrl,
+    process.env.KNOWLEDGE_PROCESS_SERVER
+      || process.env.KNOWLEDGE_PROCESS_TOPIC_SCHEDULER_URL
+      || cfg.informationProcessing?.server
+      || "http://127.0.0.1:8000",
   ).replace(/\/$/, "");
   const apiKeyEnv = text(
     process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_API_KEY_ENV
@@ -1134,6 +1092,7 @@ function resolveTopicFilterLlmRequest(cfg) {
   const apiKey = process.env[apiKeyEnv] || process.env.LLM_API_KEY || "";
   return { provider, model, baseUrl, apiKeyEnv, apiKey };
 }
+
 
 function isPdfDoc(doc) {
   return String(doc.accessMethod || "").toLowerCase().includes("pdf")

@@ -25,13 +25,14 @@ import {
   sharedReportAnalysisCacheKey,
 } from "../application/report-analysis-cache";
 import {
-  claimGenericLlmTaskRun,
+  claimNextGenericLlmTaskRun,
   completeGenericLlmRun,
   createGenericLlmTask,
   failGenericLlmRun,
   heartbeatGenericLlmRun,
   loadGenericLlmRun,
   loadGenericLlmTask,
+  loadGenericLlmTaskByIdentity,
   requeueGenericLlmTask,
   writeGenericLlmRunArtifact,
 } from "../../../shared/local-job-protocol";
@@ -67,12 +68,14 @@ type ReportForecastExtraction = {
   source: string;
   updatedAt: number;
   forecasts: CompanyReportForecast[];
+  targetPrice?: number | null;
   analysisSucceeded?: boolean;
 };
 
 type SharedReportAnalysis = {
   analysisCalled: boolean;
   forecasts: CompanyReportForecast[];
+  targetPrice?: number | null;
   updatedAt: number;
   analysisSucceeded?: boolean;
 };
@@ -95,13 +98,16 @@ type ReportForecastProgress = {
 type ReportForecastStreamEvent = {
   progress?: ReportForecastProgress;
   items?: Array<Record<string, unknown>>;
+  delta?: string;
+  status?: "queued" | "running" | "completed" | "failed" | "blocked";
 };
+type LlmExtractionOptions = { onText?: (delta: string) => Promise<void> | void; onStatus?: (status: "queued" | "running" | "completed" | "failed" | "blocked") => Promise<void> | void; targetId?: string; idempotencyKey?: string };
 
 export type CompanyReportDiscoveryCandidate = {
   title: string;
-  institution: string;
-  publishedAt: string;
-  url: string;
+  institution?: string;
+  publishedAt?: string;
+  url?: string;
   forecasts: CompanyReportForecast[];
   valuation?: CompanyReportValuation;
 };
@@ -114,8 +120,17 @@ type CompanyReportDiscoveryRunInput = {
   response: {
     model: string;
     text: string;
-    webSearch?: LlmWebSearchMetadata;
+    webSearch?: CompanyReportDiscoveryWebSearchMetadata;
   };
+};
+
+export type CompanyReportDiscoveryWebSearchMetadata = LlmWebSearchMetadata & {
+  /** The provider reached a terminal `response.completed` event. */
+  responseCompleted?: boolean;
+  /** Terminal Responses status retained for incomplete-stream diagnostics. */
+  responseStatus?: string;
+  /** A Web Search tool call reached its completed event/status. */
+  webSearchCallCompleted?: boolean;
 };
 
 type SinaCompanyReport = {
@@ -131,16 +146,18 @@ const REPORT_SOURCE_CACHE_VERSION = "v5";
 const REPORT_PAGE_SIZE = 10;
 const REPORT_SOURCE_POOL_SIZE = 100;
 const REPORT_FORECAST_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const REPORT_FORECAST_PROMPT_VERSION = "company-report-forecast.v2";
 const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
 const NEWS_REPORT_CANDIDATE_LIMIT = 40;
 const NEWS_REPORT_ANALYSIS_MAX_CALLS = 5;
 const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v1";
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
-const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v1";
+const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v2";
 const REPORT_DISCOVERY_TASK_TYPE = "company_report_discovery";
+const REPORT_DISCOVERY_REASONING_EFFORT = "max";
 const REPORT_DISCOVERY_MAX_REPORTS = 20;
-const REPORT_DISCOVERY_JOB_TIMEOUT_MS = 60 * 60 * 1000;
+export const COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS = 60 * 60 * 1000;
 
 companyRoutes.get("/company/overview", async (c) => {
   const code = requireQuery(c, "code");
@@ -204,6 +221,53 @@ companyRoutes.get("/company/reports", async (c) => {
   return ok(c, items);
 });
 
+// The discovery control is intentionally advertised only by the local LLM
+// runtime.  The page uses this read-only capability/status projection instead
+// of inferring local mode from its hostname or build configuration.
+companyRoutes.get("/company/reports/discovery-capability", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") {
+    return fail(c, 404, "company report discovery is only available in local LLM runtime");
+  }
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) {
+    return code;
+  }
+  const normalized = normalizeSecurityCode(code);
+  if (!isCnCode(normalized)) {
+    return ok(c, { enabled: false, code: normalized, task: null });
+  }
+  const taskId = c.req.query("taskId")?.trim() || "";
+  const task = taskId
+    ? await loadGenericLlmTask(c.env.DB, taskId)
+    : await loadGenericLlmTaskByIdentity(c.env.DB, {
+      taskType: REPORT_DISCOVERY_TASK_TYPE,
+      targetType: "security",
+      targetId: normalized,
+      idempotencyKey: `company-report-discovery:${reportDiscoveryRecentSince()}`,
+      promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
+    });
+  const matchingTask = task && task.taskType === REPORT_DISCOVERY_TASK_TYPE && task.targetType === "security" && task.targetId === normalized
+    ? task
+    : null;
+  const lastRun = matchingTask?.lastRunId
+    ? await loadGenericLlmRun(c.env.DB, matchingTask.lastRunId)
+    : null;
+  const execution = matchingTask
+    ? {
+      runId: lastRun?.taskId === matchingTask.taskId ? lastRun.runId : null,
+      attempt: lastRun?.taskId === matchingTask.taskId ? lastRun.attempt : null,
+      status: lastRun?.taskId === matchingTask.taskId ? lastRun.status : null,
+      model: lastRun?.taskId === matchingTask.taskId ? lastRun.model : matchingTask.requestedModel,
+      reasoningEffort: lastRun?.taskId === matchingTask.taskId ? lastRun.reasoningEffort : matchingTask.requestedReasoningEffort,
+    }
+    : null;
+  return ok(c, {
+    enabled: true,
+    code: normalized,
+    task: matchingTask ? { ...matchingTask, execution } : null,
+  });
+});
+
 companyRoutes.get("/company/reports/stream", async (c) => {
   const code = requireQuery(c, "code");
   if (code instanceof Response) {
@@ -227,6 +291,11 @@ companyRoutes.get("/company/reports/stream", async (c) => {
           if (event.items) {
             controller.enqueue(encodeSseData({ type: "partial", data: event.items }));
           }
+          if (event.delta) {
+            controller.enqueue(encodeSseData({ type: "delta", text: event.delta }));
+          }
+          if (event.status === "queued") controller.enqueue(encodeSseData({ type: "queued" }));
+          if (event.status === "running") controller.enqueue(encodeSseData({ type: "claimed" }));
         });
         controller.enqueue(encodeSseData({ type: "result", data: items }));
       } catch (error) {
@@ -262,7 +331,7 @@ companyRoutes.post("/company/reports/discover", async (c) => {
   }
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try {
-    return ok(c, await enqueueCompanyReportDiscovery(c.env.DB, code, body.force === true));
+    return ok(c, await enqueueCompanyReportDiscovery(c.env.DB, code, body.force === true, Date.now(), body.reasoningEffort));
   } catch (error) {
     return fail(c, 400, error instanceof Error ? error.message : String(error));
   }
@@ -300,7 +369,7 @@ companyRoutes.post("/company/report-discovery-runs/:runId/complete", async (c) =
       text?: unknown;
       runnerInstanceId?: unknown;
       attempt?: unknown;
-      webSearch?: LlmWebSearchMetadata;
+      webSearch?: CompanyReportDiscoveryWebSearchMetadata;
     };
     if (typeof payload.taskId !== "string" || !payload.taskId.trim()
       || typeof payload.runnerInstanceId !== "string" || !payload.runnerInstanceId.trim()
@@ -729,14 +798,29 @@ async function loadCompanyReportSourcePool(
   );
 }
 
+export function normalizeCompanyReportDiscoveryReasoningEffort(value: unknown): string {
+  if (value === undefined) {
+    return REPORT_DISCOVERY_REASONING_EFFORT;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("company report discovery reasoningEffort must be a non-empty string");
+  }
+  // The request is intentionally not restricted to a hard-coded enum. Keep
+  // the selected provider value (apart from surrounding transport whitespace)
+  // so diagnostics can exercise provider-supported efforts such as `none`.
+  return value.trim();
+}
+
 export async function enqueueCompanyReportDiscovery(
   db: D1Database,
   securityCode: string,
   force = false,
   now = Date.now(),
+  requestedReasoningEffort?: unknown,
 ) {
   const code = normalizeSecurityCode(securityCode);
   if (!isCnCode(code)) throw new Error("company report discovery only supports mainland company codes");
+  const reasoningEffort = normalizeCompanyReportDiscoveryReasoningEffort(requestedReasoningEffort);
   const recentSince = reportDiscoveryRecentSince(now);
   const created = await createGenericLlmTask(db, {
     taskType: REPORT_DISCOVERY_TASK_TYPE,
@@ -744,8 +828,9 @@ export async function enqueueCompanyReportDiscovery(
     targetId: code,
     idempotencyKey: `company-report-discovery:${recentSince}`,
     promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
+    handlerKey: REPORT_DISCOVERY_TASK_TYPE,
     model: REPORT_LLM_MODEL,
-    reasoningEffort: null,
+    reasoningEffort,
     metadata: { securityCode: code, recentSince, maxReports: REPORT_DISCOVERY_MAX_REPORTS },
     now,
   });
@@ -755,6 +840,14 @@ export async function enqueueCompanyReportDiscovery(
     requeued = await requeueGenericLlmTask(db, task.taskId, now);
     task = await loadGenericLlmTask(db, task.taskId) || task;
   }
+  // A queued, deduplicated task may receive an explicit diagnostic choice
+  // after it was first created. Persist the choice before the worker claims it;
+  // running/terminal tasks are left untouched unless force requeued them above.
+  if (task.status === "queued") {
+    await db.prepare(`update llm_tasks set requested_model=?, requested_reasoning_effort=?, updated_at=?
+      where task_id=? and status='queued'`).bind(REPORT_LLM_MODEL, reasoningEffort, now, task.taskId).run();
+    task = await loadGenericLlmTask(db, task.taskId) || task;
+  }
   return { accepted: true, task, deduplicated: created.deduplicated && !requeued, requeued };
 }
 
@@ -762,11 +855,9 @@ export async function claimNextCompanyReportDiscoveryTaskRun(
   db: D1Database,
   runnerInstanceId: string,
 ) {
-  const claimed = await claimGenericLlmTaskRun(db, runnerInstanceId, {
-    taskType: REPORT_DISCOVERY_TASK_TYPE,
+  const claimed = await claimNextGenericLlmTaskRun(db, runnerInstanceId, {
     provider: "openai",
     model: REPORT_LLM_MODEL,
-    reasoningEffort: null,
   });
   if (!claimed) return null;
   try {
@@ -795,20 +886,28 @@ export async function claimNextCompanyReportDiscoveryTaskRun(
   }
 }
 
-async function prepareCompanyReportDiscoveryExecution(
+export async function prepareCompanyReportDiscoveryExecution(
   db: D1Database,
   securityCode: string,
-  _taskId: string,
+  taskId: string,
 ) {
   const code = normalizeSecurityCode(securityCode);
+  const task = await loadGenericLlmTask(db, taskId);
+  if (!task || task.taskType !== REPORT_DISCOVERY_TASK_TYPE || task.targetType !== "security" || task.targetId !== code) {
+    throw new Error("company report discovery task was not found while preparing execution");
+  }
+  // Tasks created before the reasoning selector existed have a NULL field;
+  // treat that persisted absence as the default max while still rejecting an
+  // explicit null request at the API boundary.
+  const reasoningEffort = normalizeCompanyReportDiscoveryReasoningEffort(task.requestedReasoningEffort ?? undefined);
   const security = await db.prepare("select name from securities where code=?").bind(code).first<{ name?: unknown }>();
   const recentSince = reportDiscoveryRecentSince();
   return {
     securityCode: code,
     model: REPORT_LLM_MODEL,
-    reasoningEffort: null,
+    reasoningEffort,
     maxOutputTokens: 8192,
-    jobTimeoutMs: REPORT_DISCOVERY_JOB_TIMEOUT_MS,
+    jobTimeoutMs: COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS,
     promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
     instructions: REPORT_DISCOVERY_SYSTEM_PROMPT,
     input: renderCompanyReportDiscoveryPrompt(REPORT_DISCOVERY_USER_PROMPT, {
@@ -833,10 +932,7 @@ async function completeCompanyReportDiscoveryRun(
   if (input.response.model !== REPORT_LLM_MODEL) throw new Error("company report discovery response model mismatch");
   try {
     const webSearch = input.response.webSearch;
-    const citations = compactCompanyReportCitations(webSearch?.citations || []);
-    if (!webSearch?.searched || citations.length === 0) {
-      throw new Error("company report discovery did not return source citations");
-    }
+    const citations = validateCompanyReportDiscoveryWebSearch(webSearch);
     const parsed = parseCompanyReportDiscoveryWithDiagnostics(input.response.text, task.targetId, citations);
     if (parsed.rejected > 0) {
       console.warn("company report discovery rejected candidates", { code: task.targetId, rejected: parsed.rejected });
@@ -905,12 +1001,12 @@ function mapCompanyReportDiscoveryCandidate(
   return {
     code: normalizeSecurityCode(securityCode),
     title: candidate.title,
-    orgName: candidate.institution,
-    orgSName: candidate.institution,
-    publishDate: candidate.publishedAt,
-    url: candidate.url,
     pages: 0,
     forecasts: candidate.forecasts,
+    ...(candidate.valuation?.targetPrice !== undefined ? { targetPrice: candidate.valuation.targetPrice } : {}),
+    ...(candidate.institution ? { orgName: candidate.institution, orgSName: candidate.institution } : {}),
+    ...(candidate.publishedAt ? { publishDate: candidate.publishedAt } : {}),
+    ...(candidate.url ? { url: candidate.url } : {}),
     ...(candidate.valuation && Object.keys(candidate.valuation).length > 0 ? { valuation: candidate.valuation } : {}),
     provenance: "web_search",
   };
@@ -1031,7 +1127,10 @@ async function ensureReportForecastsForItemsWithProgress(
   for (let index = 0; index < candidates.length; index += 1) {
     const item = candidates[index];
     try {
-      await ensureSingleReportForecast(c, normalized, item);
+      await ensureSingleReportForecast(c, normalized, item, {
+        onText: (delta) => onProgress({ delta }),
+        onStatus: (status) => onProgress({ status }),
+      });
     } catch (error) {
       console.error("company report forecast extraction failed", {
         code: normalized,
@@ -1054,10 +1153,11 @@ async function ensureReportForecastsForItemsWithProgress(
 async function ensureSingleReportForecast(
   c: Context<AppEnv>,
   code: string,
-  item: Record<string, unknown>
+  item: Record<string, unknown>,
+  callbacks: Pick<LlmExtractionOptions, "onText" | "onStatus"> = {},
 ): Promise<void> {
   if (isKnowledgeNewsReportCandidate(item)) {
-    await ensureKnowledgeNewsReportAnalysis(c, item);
+    await ensureKnowledgeNewsReportAnalysis(c, item, callbacks);
     return;
   }
   const reportId = companyReportId(item);
@@ -1072,7 +1172,7 @@ async function ensureSingleReportForecast(
   }
   const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, cacheKey);
   if (cached?.forecasts?.length || cached?.analysisSucceeded === true) {
-    await writeSharedReportAnalysis(c.env.DB, item, cached.forecasts, cached.updatedAt);
+    await writeSharedReportAnalysis(c.env.DB, item, cached.forecasts, cached.updatedAt, cached.targetPrice);
     return;
   }
 
@@ -1085,7 +1185,12 @@ async function ensureSingleReportForecast(
     if (!reportContent) {
       return;
     }
-    const forecasts = await extractCompanyReportByLlm(c, text(item.title), reportContent.content);
+    const analysis = await extractCompanyReportAnalysisByLlm(c, text(item.title), reportContent.content, {
+      onText: callbacks.onText,
+      onStatus: callbacks.onStatus,
+      targetId: reportId,
+      idempotencyKey: `company-report-forecast:${reportId}`,
+    });
     const updatedAt = Date.now();
     const extraction: ReportForecastExtraction = {
       reportId,
@@ -1093,12 +1198,13 @@ async function ensureSingleReportForecast(
       title: text(item.title),
       source: reportContent.source,
       updatedAt,
-      forecasts,
+      forecasts: analysis.forecasts,
+      targetPrice: analysis.targetPrice,
       analysisSucceeded: true,
     };
     await Promise.all([
       writeAppJson(c.env.DB, cacheKey, extraction, REPORT_FORECAST_CACHE_TTL_MS),
-      writeSharedReportAnalysis(c.env.DB, item, forecasts, updatedAt),
+      writeSharedReportAnalysis(c.env.DB, item, analysis.forecasts, updatedAt, analysis.targetPrice),
     ]);
   });
 }
@@ -1115,6 +1221,7 @@ function knowledgeNewsReportAnalysisCacheKey(item: Record<string, unknown>): str
 async function ensureKnowledgeNewsReportAnalysis(
   c: Context<AppEnv>,
   item: Record<string, unknown>,
+  callbacks: Pick<LlmExtractionOptions, "onText" | "onStatus"> = {},
 ): Promise<void> {
   const cacheKey = knowledgeNewsReportAnalysisCacheKey(item);
   if (!cacheKey || await readKnowledgeNewsReportAnalysis(c.env.DB, cacheKey)) {
@@ -1128,7 +1235,13 @@ async function ensureKnowledgeNewsReportAnalysis(
     if (!content) {
       return;
     }
-    const analysis = await extractCompanyNewsReportByLlm(c, text(item.title), content);
+    const docId = text(item.knowledgeDocId);
+    const analysis = await extractCompanyNewsReportByLlm(c, text(item.title), content, {
+      onText: callbacks.onText,
+      onStatus: callbacks.onStatus,
+      targetId: docId,
+      idempotencyKey: `company-news-report:${docId}`,
+    });
     await writeAppJson(c.env.DB, cacheKey, {
       ...analysis,
       analysisCalled: true,
@@ -1201,16 +1314,21 @@ async function annotateReportItemsWithForecasts(
       continue;
     }
     const shared = await readSharedReportAnalysis(c.env.DB, sharedReportCacheKeyForItem(item));
-    const cached = shared?.forecasts?.length
+    const cached = hasReportAnalysisValues(shared)
       ? shared
       : await readAppJson<ReportForecastExtraction>(c.env.DB, reportForecastCacheKey(reportId));
-    if (cached?.forecasts?.length) {
+    if (hasReportAnalysisValues(cached)) {
+      const targetPrice = positiveNumberOrUndefined(cached.targetPrice)
+        ?? positiveNumberOrUndefined(item.targetPrice);
       results.push({
         ...item,
         forecastSource: "llm_report_source",
-        forecasts: mergeForecastRows(cached.forecasts, Array.isArray(item.forecasts)
-          ? item.forecasts as CompanyReportForecast[]
-          : []),
+        forecasts: cached.forecasts.length > 0
+          ? mergeForecastRows(cached.forecasts, Array.isArray(item.forecasts)
+            ? item.forecasts as CompanyReportForecast[]
+            : [])
+          : item.forecasts,
+        ...(targetPrice !== undefined ? { targetPrice } : {}),
       });
       continue;
     }
@@ -1221,6 +1339,13 @@ async function annotateReportItemsWithForecasts(
     results.push(item);
   }
   return results;
+}
+
+function hasReportAnalysisValues(
+  value: Pick<ReportForecastExtraction, "forecasts" | "targetPrice"> | SharedReportAnalysis | null | undefined,
+): value is Pick<ReportForecastExtraction, "forecasts" | "targetPrice"> {
+  return Boolean(value && Array.isArray(value.forecasts)
+    && (value.forecasts.length > 0 || positiveNumberOrUndefined(value.targetPrice) !== undefined));
 }
 
 async function loadReportContentForForecast(
@@ -1278,19 +1403,28 @@ async function loadEastmoneyReportPdfText(c: Context<AppEnv>, infoCode: string):
   return textValue;
 }
 
-export async function extractCompanyReportByLlm(
+export type CompanyReportAnalysis = {
+  forecasts: CompanyReportForecast[];
+  targetPrice: number | null;
+};
+
+export async function extractCompanyReportAnalysisByLlm(
   c: Context<AppEnv>,
   title: string,
   content: string,
-): Promise<CompanyReportForecast[]> {
+  options: LlmExtractionOptions = {},
+): Promise<CompanyReportAnalysis> {
   if (c.env.LLM_RUNTIME !== "local") throw new Error("company report LLM extraction is only available in local LLM runtime");
   const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
   if (!trimmed) {
-    return [];
+    return { forecasts: [], targetPrice: null };
   }
   const patternForecasts = extractForecastsByPattern(trimmed);
   if (patternForecasts.length > 0) {
-    return patternForecasts;
+    return {
+      forecasts: patternForecasts,
+      targetPrice: extractCompanyReportTargetPriceByPattern(trimmed),
+    };
   }
   const prompt = REPORT_ANALYZE_USER_PROMPT
     .replace("{{TITLE}}", title)
@@ -1303,14 +1437,33 @@ export async function extractCompanyReportByLlm(
     ],
     maxTokens: 4096,
     cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
+    targetType: "company_report_forecast",
+    targetId: options.targetId || title,
+    idempotencyKey: options.idempotencyKey,
+    promptVersion: REPORT_FORECAST_PROMPT_VERSION,
+    priority: 500,
+    onText: options.onText,
+    onStatus: options.onStatus,
   });
-  return parseCompanyReportForecasts(response.text);
+  return parseCompanyReportAnalysis(response.text);
+}
+
+/** Backward-compatible forecast-only helper used by knowledge processing. */
+export async function extractCompanyReportByLlm(
+  c: Context<AppEnv>,
+  title: string,
+  content: string,
+  options: LlmExtractionOptions = {},
+): Promise<CompanyReportForecast[]> {
+  const analysis = await extractCompanyReportAnalysisByLlm(c, title, content, options);
+  return analysis.forecasts;
 }
 
 export async function extractCompanyNewsReportByLlm(
   c: Context<AppEnv>,
   title: string,
   content: string,
+  options: LlmExtractionOptions = {},
 ): Promise<Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt">> {
   if (c.env.LLM_RUNTIME !== "local") throw new Error("company news report LLM extraction is only available in local LLM runtime");
   const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
@@ -1332,6 +1485,13 @@ export async function extractCompanyNewsReportByLlm(
     ],
     maxTokens: 4096,
     cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
+    targetType: "company_news_report",
+    targetId: options.targetId || title,
+    idempotencyKey: options.idempotencyKey,
+    promptVersion: NEWS_REPORT_ANALYSIS_CACHE_VERSION,
+    priority: 500,
+    onText: options.onText,
+    onStatus: options.onStatus,
   });
   return parseCompanyNewsReportAnalysis(response.text);
 }
@@ -1351,11 +1511,27 @@ export function formatCompanyReportTextForLlm(content: string): string {
 }
 
 export function parseCompanyReportForecasts(textBody: string): CompanyReportForecast[] {
+  return parseCompanyReportAnalysis(textBody).forecasts;
+}
+
+export function parseCompanyReportTargetPrice(value: unknown): number | null {
+  return positiveNumberOrUndefined(value) ?? null;
+}
+
+export function parseCompanyReportAnalysis(textBody: string): CompanyReportAnalysis {
   const parsed = parseJsonObjectFromText(textBody);
   if (!parsed || !Array.isArray(parsed.forecasts)) {
     throw new Error("LLM forecast response did not contain a forecasts array");
   }
-  return parseCompanyReportForecastRows(parsed.forecasts);
+  return {
+    forecasts: parseCompanyReportForecastRows(parsed.forecasts),
+    targetPrice: parseCompanyReportTargetPrice(parsed.targetPrice),
+  };
+}
+
+function extractCompanyReportTargetPriceByPattern(content: string): number | null {
+  const match = content.match(/(?:目标价|目标价格|target\s*price|price\s*target|\bTP\b)\s*(?:由\s*[0-9][0-9,]*(?:\.[0-9]+)?\s*(?:元|人民币|港元|美元|HKD|USD|CNY)?\s*)?(?:上调|下调)?\s*(?:至|为|:|：|到)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  return match ? parseCompanyReportTargetPrice(match[1]) : null;
 }
 
 export function parseCompanyReportDiscovery(
@@ -1376,6 +1552,7 @@ function parseCompanyReportDiscoveryWithDiagnostics(
     throw new Error("company report discovery response did not contain a reports array");
   }
   const cited = new Set(compactCompanyReportCitations(citations).map((item) => canonicalCompanyReportUrl(item.url)).filter(Boolean));
+  const hasCitationMetadata = cited.size > 0;
   let rejected = 0;
   const reports = parsed.reports.flatMap((value): CompanyReportDiscoveryCandidate[] => {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -1383,27 +1560,27 @@ function parseCompanyReportDiscoveryWithDiagnostics(
       return [];
     }
     const row = value as Record<string, unknown>;
-    const title = nonEmptyTextOrUndefined(row.title);
+    const rawTitle = nonEmptyTextOrUndefined(row.title);
     const institution = nonEmptyTextOrUndefined(row.institution);
-    const publishedAt = normalizeCompanyReportDate(text(row.publishedAt));
-    const url = canonicalCompanyReportUrl(text(row.url));
-    if (!title || !institution || !publishedAt || !url || !cited.has(url) || !Array.isArray(row.forecasts)) {
+    const publishedAt = normalizeCompanyReportDate(text(row.publishedAt)) || undefined;
+    const url = canonicalCompanyReportUrl(text(row.url)) || undefined;
+    // A partial search hit is still useful when it has either a title or a
+    // valid source URL.  If only the URL is present, derive a deterministic
+    // display title from that URL without guessing the report identity.
+    const title = rawTitle || (url ? companyReportDiscoveryTitleFromUrl(url) : undefined);
+    if (!title || (hasCitationMetadata && url && !cited.has(url))) {
       rejected += 1;
       return [];
     }
-    if (row.valuation !== undefined && (!row.valuation || typeof row.valuation !== "object" || Array.isArray(row.valuation))) {
-      rejected += 1;
-      return [];
-    }
-    const forecasts = parseCompanyReportForecastRows(row.forecasts);
+    const forecasts = Array.isArray(row.forecasts) ? parseCompanyReportForecastRows(row.forecasts) : [];
     const valuation = row.valuation && typeof row.valuation === "object" && !Array.isArray(row.valuation)
       ? parseCompanyReportValuation(row.valuation as Record<string, unknown>)
       : {};
     return [{
       title,
-      institution,
-      publishedAt,
-      url,
+      ...(institution ? { institution } : {}),
+      ...(publishedAt ? { publishedAt } : {}),
+      ...(url ? { url } : {}),
       forecasts,
       ...(Object.keys(valuation).length > 0 ? { valuation } : {}),
     }];
@@ -1433,6 +1610,25 @@ function compactCompanyReportCitations(
   });
 }
 
+export function validateCompanyReportDiscoveryWebSearch(
+  webSearch: CompanyReportDiscoveryWebSearchMetadata | undefined,
+): Array<{ title: string; url: string }> {
+  if (!webSearch?.searched) {
+    throw new Error("company report discovery Web Search did not run");
+  }
+  if (webSearch.responseCompleted !== true || webSearch.responseStatus !== "completed") {
+    throw new Error("company report discovery Web Search response was incomplete");
+  }
+  if (webSearch.webSearchCallCompleted !== true) {
+    throw new Error("company report discovery Web Search call did not complete");
+  }
+  // Some provider responses expose no URL-citation annotations even though the
+  // completed tool call returned report URLs in the model output.  Keep any
+  // metadata citations for stricter candidate matching when present, but do
+  // not make their availability a terminal success condition.
+  return compactCompanyReportCitations(webSearch.citations || []);
+}
+
 function renderCompanyReportDiscoveryPrompt(template: string, values: Record<string, string>): string {
   return Object.entries(values).reduce((result, [key, value]) => result.replaceAll(`{{${key}}}`, value), template);
 }
@@ -1452,6 +1648,19 @@ function normalizeCompanyReportDate(value: string): string {
   }
   const parsed = Date.parse(raw);
   return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : "";
+}
+
+function companyReportDiscoveryTitleFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.replace(/^\/+|\/+$/g, "");
+    const title = `${parsed.hostname}${path ? `/${path}` : ""}`
+      .replace(/[\u0000-\u001f\u007f]/g, "")
+      .trim();
+    return trimText(title || url, 240);
+  } catch {
+    return trimText(url, 240);
+  }
 }
 
 export function parseCompanyNewsReportAnalysis(textBody: string): Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt"> {
@@ -1479,9 +1688,12 @@ export function parseCompanyNewsReportAnalysis(textBody: string): Omit<CompanyNe
 }
 
 function parseCompanyReportForecastRows(value: unknown[]): CompanyReportForecast[] {
-  const rows = value as Array<Record<string, unknown>>;
-  const forecasts = rows
-    .map((row) => {
+  const forecasts = value
+    .map((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return null;
+      }
+      const row = value as Record<string, unknown>;
       const year = Number(row.year);
       if (!Number.isInteger(year) || year <= 0) {
         return null;
@@ -1563,7 +1775,7 @@ function aggregateForecastsForCode(
 
 
 function reportForecastCacheKey(reportId: string): string {
-  return `report-forecast:v4:${reportId}`;
+  return `report-forecast:v5:${reportId}`;
 }
 
 function sharedReportCacheKeyForItem(item: Record<string, unknown>): string {
@@ -1587,6 +1799,7 @@ async function writeSharedReportAnalysis(
   item: Record<string, unknown>,
   forecasts: CompanyReportForecast[],
   updatedAt: number,
+  targetPrice?: number | null,
 ): Promise<void> {
   const cacheKey = sharedReportCacheKeyForItem(item);
   if (!cacheKey) {
@@ -1596,6 +1809,7 @@ async function writeSharedReportAnalysis(
     analysisCalled: true,
     analysisSucceeded: true,
     forecasts,
+    ...(positiveNumberOrUndefined(targetPrice) !== undefined ? { targetPrice: positiveNumberOrUndefined(targetPrice) } : {}),
     updatedAt,
   } satisfies SharedReportAnalysis, REPORT_FORECAST_CACHE_TTL_MS);
 }
@@ -1609,7 +1823,15 @@ export function mergeCompanyReportsPreferPrimary(
   for (const item of [...primary, ...supplements]) {
     const normalized = normalizeCompanyReportProvenance(item);
     const dedupKeys = companyReportDedupKeys(normalized);
-    if (!dedupKeys.length) continue;
+    if (!dedupKeys.length) {
+      // Do not invent an identity from a partial hit missing URL, date, and
+      // institution. Keep it as an independent row instead of silently
+      // dropping it; keyed rows continue to use the deterministic merge path.
+      if (text(normalized.provenance) === "web_search") {
+        merged.push(normalized);
+      }
+      continue;
+    }
     const priorIndex = merged.findIndex((candidate) => {
       const candidateKeys = new Set(companyReportDedupKeys(candidate));
       return dedupKeys.some((key) => candidateKeys.has(key));
@@ -1628,7 +1850,13 @@ export function mergeCompanyReportsPreferPrimary(
 
 function filterRecentCompanyReports(items: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
   const cutoff = Date.now() - REPORT_RECENT_DAYS * 24 * 60 * 60 * 1000;
-  return items.filter((item) => companyReportSortTime(item) >= cutoff);
+  return items.filter((item) => {
+    const sortTime = companyReportSortTime(item);
+    // Discovery intentionally keeps candidates whose date is unavailable or
+    // unparseable; the prompt treats publication date as optional and the
+    // source can be checked later. Dated rows still obey the recent cutoff.
+    return sortTime === 0 || sortTime >= cutoff;
+  });
 }
 
 function companyReportSortTime(item: Record<string, unknown>): number {

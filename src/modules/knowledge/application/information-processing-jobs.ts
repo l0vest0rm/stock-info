@@ -7,7 +7,7 @@ import {
   type InformationProcessResult,
 } from "./information-processing";
 import {
-  claimGenericLlmTaskRun,
+  claimNextGenericLlmTaskRun,
   completeGenericLlmRun,
   createGenericLlmTask,
   failGenericLlmRun,
@@ -63,6 +63,7 @@ export async function enqueueInformationProcessingTasks(
       targetId: docId,
       idempotencyKey: `${docId}:${INFORMATION_PROCESSING_PROMPT_VERSION}`,
       promptVersion: INFORMATION_PROCESSING_PROMPT_VERSION,
+      handlerKey: INFORMATION_PROCESSING_TASK_TYPE,
       model: INFORMATION_PROCESSING_MODEL,
       reasoningEffort: "low",
       metadata: { documentId: docId, triggerSource },
@@ -96,8 +97,7 @@ export async function claimInformationProcessingJobs(
   const count = Math.max(0, Math.min(100, Number(limit) || 0));
   const claimed: InformationProcessingJob[] = [];
   for (let index = 0; index < count; index += 1) {
-    const claim = await claimGenericLlmTaskRun(db, runner, {
-      taskType: INFORMATION_PROCESSING_TASK_TYPE,
+    const claim = await claimNextGenericLlmTaskRun(db, runner, {
       model: INFORMATION_PROCESSING_MODEL,
       reasoningEffort: "low",
       input: { targetType: INFORMATION_PROCESSING_TARGET_TYPE },
@@ -277,6 +277,11 @@ async function failGenericInformationRun(
 export async function claimAndPrepareInformationProcessingJob(env: AppEnv["Bindings"], runnerInstanceId: string) {
   const [claimed] = await claimInformationProcessingJobs(env.DB, 1, runnerInstanceId);
   if (!claimed) return null;
+  return prepareClaimedInformationProcessingJob(env, claimed);
+}
+
+/** Prepare a run that was already claimed by the universal dispatcher. */
+export async function prepareClaimedInformationProcessingJob(env: AppEnv["Bindings"], claimed: InformationProcessingJob) {
   let request: InformationProcessingModelRequest | undefined;
   try {
     const prepared = await prepareInformationDocument(env, claimed.docId);

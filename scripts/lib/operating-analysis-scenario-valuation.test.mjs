@@ -8,7 +8,7 @@ const s6 = artifact("financial_quality", { observations: [{ observationId: "obse
 const s7 = artifact("market_valuation_facts", { marketFacts: [{ metric: "price", value: 10 }], claimIds: ["claim:market"], evidenceIds: ["evidence:market"], sourceIds: ["source:market"], unknowns: [], analysisGaps: [] });
 
 function dcf(scenario) { return { scenario, openingRevenue: 100, openingNetWorkingCapital: 10, amountScale: "million", currency: "CNY", wacc: 0.1, terminalGrowth: 0.03, netDebt: 5, dilutedShares: 20, years: [{ fiscalYear: 2027, revenueGrowth: 0.1, ebitMargin: 0.2, taxRate: 0.25, depreciationAmortizationMargin: 0.03, capitalExpenditureMargin: 0.04, netWorkingCapitalToRevenue: 0.1 }] }; }
-function scenario(name) { return { scenario: name, assumptions: [{ assumptionId: `assumption:${name}`, scenario: name, variable: "revenueGrowth", value: 0.1, period: "2027FY", unit: "ratio", judgmentIds: ["judgment:1"], claimIds: ["claim:operating_thesis"], evidenceIds: ["evidence:operating_thesis"], sourceIds: ["source:operating_thesis"] }], valuationMethodSelection: [{ method: "dcf", status: "selected", sourceIds: ["source:market"] }] }; }
+function scenario(name) { return { scenario: name, assumptions: [{ assumptionId: `assumption:${name}`, variable: "revenueGrowth", value: 0.1, period: "2027FY", unit: "ratio", judgmentIds: ["judgment:1"], claimIds: ["claim:operating_thesis"], evidenceIds: ["evidence:operating_thesis"], sourceIds: ["source:operating_thesis"] }], valuationMethodSelection: [{ method: "dcf", status: "selected", sourceIds: ["source:market"] }] }; }
 
 test("S9 input projects only S8/S6/S7 manifests and compact S0", () => {
   const input = buildScenarioValuationInput({ context: { contextVersion: "research-context.v1", asOf: "2026-08-09", financialSnapshot: { deterministicMetrics: [{ period: "2026Q1" }] }, marketSnapshot: { source: "xueqiu", price: 10 }, analysisGaps: [] }, artifactsByKey: { operating_thesis: s8, financial_quality: s6, market_valuation_facts: s7 } });
@@ -27,4 +27,16 @@ test("S9 accepts reverse-DCF inputs but keeps deterministic enterprise value own
   const output = { schemaVersion: "scenario-valuation.v1", status: "partial", scenarios: [], valuationMethodSelection: [], valuationCalculationRequest: { dcfScenarios: [] }, reverseValuationSolveTargets: [{ scenario: "base", currency: "CNY", amountScale: "million", enterpriseValue: 500, wacc: 0.1, terminalGrowth: 0.03 }], sensitivityRequests: [], riskRegister: [], invalidationPaths: [], monitoringIndicators: [], blockedValuationItems: [], sourceIds: [], claimIds: [], evidenceIds: [], unknownIds: [], usedUpstreamArtifactIds: [] };
   assert.equal(validateScenarioValuationOutput(output).reverseValuationSolveTargets[0].enterpriseValue, 500);
   assert.throws(() => validateScenarioValuationOutput({ ...output, enterpriseValue: 500 }), /deterministic output/);
+});
+
+test("S9 requires the canonical assumption fields and keeps scenario as outer context", () => {
+  const output = { schemaVersion: "scenario-valuation.v1", status: "partial", scenarios: [scenario("base")], valuationMethodSelection: [], valuationCalculationRequest: { dcfScenarios: [] }, reverseValuationSolveTargets: [], sensitivityRequests: [], riskRegister: [], invalidationPaths: [], monitoringIndicators: [], blockedValuationItems: [], sourceIds: [], claimIds: [], evidenceIds: [], unknownIds: [], usedUpstreamArtifactIds: [] };
+  assert.equal(validateScenarioValuationOutput(output).scenarios[0].assumptions[0].variable, "revenueGrowth");
+  for (const field of ["variable", "value", "period", "unit"]) {
+    const assumption = { ...output.scenarios[0].assumptions[0] };
+    delete assumption[field];
+    assert.throws(() => validateScenarioValuationOutput({ ...output, scenarios: [{ ...output.scenarios[0], assumptions: [assumption] }] }), new RegExp(`missing required fields:.*${field}`));
+  }
+  const nullValue = { ...output.scenarios[0].assumptions[0], value: null };
+  assert.equal(validateScenarioValuationOutput({ ...output, scenarios: [{ ...output.scenarios[0], assumptions: [nullValue] }] }).scenarios[0].assumptions[0].value, null);
 });

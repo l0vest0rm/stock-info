@@ -88,8 +88,10 @@ export function validateScenarioValuationOutput(output, { allowedIds = {} } = {}
 function validateAssumption(value, path) {
   const row = object(value);
   namedId(row.assumptionId, `${path}.assumptionId`);
-  if (!text(row.scenario || row.period || row.unit) || !text(row.variable)) throw new Error(`${path} lacks scenario/period/unit/variable`);
-  if (!Number.isFinite(Number(row.value)) && row.value !== null) throw new Error(`${path}.value must be numeric or null`);
+  const missing = ["variable", "period", "unit"].filter((field) => !text(row[field]));
+  if (!Object.prototype.hasOwnProperty.call(row, "value")) missing.push("value");
+  if (missing.length) throw new Error(`${path} missing required fields: ${missing.join(", ")}`);
+  if (row.value !== null && !Number.isFinite(Number(row.value))) throw new Error(`${path}.value must be numeric or null`);
   ids(row.judgmentIds, `${path}.judgmentIds`); ids(row.claimIds, `${path}.claimIds`); ids(row.evidenceIds, `${path}.evidenceIds`); ids(row.sourceIds, `${path}.sourceIds`);
   if (row.counterEvidenceIds !== undefined) ids(row.counterEvidenceIds, `${path}.counterEvidenceIds`);
 }

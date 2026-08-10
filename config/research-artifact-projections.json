@@ -22,24 +22,11 @@
     "completedAt"
   ],
   "stages": {
-    "research_context": {
-      "allowedFields": [
-        "contextVersion",
-        "researchTaskId",
-        "asOf",
-        "company",
-        "security",
-        "reportingBoundary",
-        "financialSnapshot",
-        "marketSnapshot",
-        "scopeEnvelope",
-        "sourceRegistryId",
-        "knownSourceIds",
-        "sourceRegistry",
-        "inputFingerprint",
-        "analysisGaps",
-        "quality"
-      ]
+    "engineering_baseline": {
+      "allowedFields": ["schemaVersion", "status", "company", "security", "companyScope", "materials", "sourceIds", "candidateTemplates", "unknowns", "analysisGaps", "inputFingerprint", "financialSnapshot", "collectionBasis", "externalConfirmation"]
+    },
+    "local_routing_match": {
+      "allowedFields": ["schemaVersion", "state", "routingState", "industryTemplateId", "industryKey", "industryLabel", "companyScope", "candidateTemplates", "matchedTemplates", "mappingReason", "evidence", "sourceIds", "evidenceIds", "unknowns", "usedUpstreamArtifactIds", "inputFingerprint"]
     },
     "company_facts": {
       "allowedFields": ["status", "markdown", "summary", "companyScope", "formalDisclosureFacts", "managementStatements", "reportingAndAccountingNotes", "governanceAndCapitalAllocationFacts", "financialSnapshotRef", "facts", "claims", "evidence", "unknowns", "analysisGaps", "sourceIds", "claimIds", "evidenceIds", "usedUpstreamArtifactIds"]

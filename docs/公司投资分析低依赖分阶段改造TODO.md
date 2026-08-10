@@ -32,24 +32,24 @@
   - 完成定义：测试覆盖阶段 key/output kind、依赖波次、状态枚举、manifest schema 和旧协议隔离；测试 fixture 不依赖真实模型或生产服务。
   - 验证命令/证据：已新增 `scripts/lib/research-operating-analysis-stage-registry.test.mjs` 与 `scripts/lib/research-artifact-projection.test.mjs`，覆盖 S0-S12 registry、scope/fallback waves、legacy identity 隔离、schema/owner、terminal status、manifest schema/graph 和 projection allow-list；执行命令留待 P7 统一验证（本批未运行）。
 
-## P1：S0 `research_context`、`scopeEnvelope` 与 source registry
+## P1：S0.1 `engineering_baseline`、S0.2 `local_routing_match` 与 source registry
 
-- [x] **P1-01 定义 S0 只读上下文 schema**
+- [x] **P1-01 定义 S0.1 工程基线 schema**
   - 目标文件/模块：新增 `src/modules/research/application/research-context.ts`（或等价模块）、`scripts/lib/research-context.mjs`、`config/research-operating-analysis.json`。
   - 前置依赖：P0；确认现有公司/证券映射、报告边界、财务 read-model 和市场快照 owner。
-  - 完成定义：输出 `contextVersion`、`researchTaskId`、`asOf`、company/security、reportingBoundary、financialSnapshot、marketSnapshot、inputFingerprint 和质量缺口；不输出模型判断。
+  - 完成定义：S0.1 输出 `engineering_baseline`、company/security、asOf、财务/市场快照、source/material IDs、`companyScope`、候选模板、input fingerprint 和质量缺口；不输出模型判断。
   - 验证命令/证据：已新增 `src/modules/research/application/research-context.ts`、`scripts/lib/research-context.mjs` 及其脚本/typed fixtures（`scripts/lib/research-context.test.mjs`、`src/modules/research/application/research-context.test.mjs`）；fixture 覆盖稳定 fingerprint/缺口，但命令执行留待 P7 统一验证（本批未运行）。
 
-- [x] **P1-02 生成并门禁 `scopeEnvelope`**
-  - 目标文件/模块：S0 context builder、公司/证券映射 application、`config/research-*` 行业配置和对应测试。
+- [x] **P1-02 建立并门禁 S0.2 本地路由**
+  - 目标文件/模块：`scripts/lib/research-scope-industry-routing.mjs`、`config/research-industry-template-registry.json`、runner 和研究 API/UI。
   - 前置依赖：P1-01；必须明确公司主体与上市证券映射。
-  - 完成定义：`scopeEnvelope` 包含产品、客户、地区、用途、重要分部和不确定边界；无法确认时为 `null` 并生成 `analysisGap`，不得以 ticker/name 推断行业。
-  - 验证命令/证据：脚本与 typed `research-context` fixtures 已覆盖可靠范围（含 basis source IDs）和 null+`scope_envelope_unreliable`；schema 未从代码猜测 ticker/name；统一测试留待 P7（本批未运行）。
+  - 完成定义：S0.2 只按受控注册表匹配可审计主营、产品、下游和行业事实；unique/zero/ambiguous/insufficient 均显式记录，未确认时阻断 S1–S12；人工模板确认校验注册表 ID 并写入不可变审计。
+  - 验证命令/证据：`scripts/lib/research-scope-industry-routing.test.mjs` 覆盖确定性匹配、四类路由状态、人工确认和禁止模型选模板；API 读写 endpoint、migration 和 low runner 已接入。
 
 - [x] **P1-03 建立 source registry**
   - 目标文件/模块：`src/modules/research/domain` 的 source/provenance 类型、`src/shared/local-job-protocol.ts` 的输入引用、相关 D1 migration（如需要）。
   - 前置依赖：P1-01；来源权限和现有 source package owner 清点完成。
-  - 完成定义：每个来源版本有 `sourceId`、URL、标题、发布日期、主体、来源角色、抓取/可用时间和内容 fingerprint；S0 只注册来源，不把来源变成事实。
+  - 完成定义：每个来源版本有 `sourceId`、URL、标题、发布日期、主体、来源角色、抓取/可用时间和内容 fingerprint；S0.1 只注册来源，不把来源变成事实。
   - 验证命令/证据：已新增 `config/research-source-registry.json` 和 JS/TS `registerResearchSources`，稳定 ID 按来源版本去重、内容 fingerprint 变化生成新 ID；脚本与 typed fixtures 已覆盖重复/版本变化，命令留待 P7（本批未运行）。
 
 ## P2：artifact ID、字段投影与追溯
@@ -83,8 +83,8 @@
 - [x] **P3-02 更新 runner/API stage registry**
   - 目标文件/模块：`scripts/research-operating-analysis-runner.mjs`、`src/modules/research/application/research-operating-analysis.ts`、研究 API 路由和阶段读模型。
   - 前置依赖：P3-01、P2-01；新的 `promptVersion` 已冻结。
-  - 完成定义：三个域不互相读全文；可靠 scope 模式下与 `company_facts` 并行；无 scope 模式只接收 S1 `companyScope`。
-  - 验证命令/证据：`config/research-operating-analysis-stages.json`、`scripts/lib/operating-analysis-stage-plan.mjs`、`scripts/research-operating-analysis-low-dependency-runner.mjs` 和 low-dependency application/API route family 已固定独立 task/protocol、scope/fallback wave 与 companyScope projection；旧六阶段 runner/app/API 未改用新 key。阶段 registry/graph test、`node --check` 与 API 请求验证留待 P7（本批未运行）；当前 low runner 仍是 contract/input-builder，真实 LLM polling wiring 明确留在 P7。
+  - 完成定义：三个域不互相读全文；S0.1/S0.2 与确定性 `scopeProjection` 是唯一范围输入；未确认路由显式 blocked，不解析 S1 Markdown，也不引入 JSON sidecar。
+  - 验证命令/证据：`config/research-operating-analysis-stages.json`、`scripts/lib/operating-analysis-stage-plan.mjs`、`scripts/research-operating-analysis-low-dependency-runner.mjs` 和 low-dependency application/API route family 已固定独立 task/protocol、scope/fallback wave 与 S0 scope projection；旧六阶段 runner/app/API 未改用新 key。阶段 registry/graph test、`node --check` 与 API 请求验证留待 P7（本批未运行）；当前 low runner 仍是 contract/input-builder，真实 LLM polling wiring 明确留在 P7。
 
 - [x] **P3-03 保留行业深度和冲突**
   - 目标文件/模块：三个新 Prompt、manifest validator、报告 projection。
@@ -98,13 +98,13 @@
   - 目标文件/模块：新增两份 Prompt、runner stage definitions、domain schema 和报告 projection。
   - 前置依赖：P1、P2、P3 的 scope/ID 约束。
   - 完成定义：公司正式披露、管理层表述、会计/治理事实与公司特有量价成本/订单/产能/增长驱动分属两个 owner；不重复搜索三表数值。
-  - 验证命令/证据：`company-facts.md` 与 `company-operating-drivers.md` 分离 owner、禁止事项和 manifest；financialSnapshot 仅以 `financialSnapshotRef`/S0 projection 进入 S1，fallback 仅投影 companyScope/analysisGaps，不传 S1 全文。Prompt/build/typecheck、字段 owner matrix 与缺证据 fixture 留待 P7（本批未运行）。
+  - 验证命令/证据：`company-facts.md` 与 `company-operating-drivers.md` 分离 owner、禁止事项和 manifest；financialSnapshot 仅以 `financialSnapshotRef`/S0.1 projection 进入 S1；S2-S5 只接收确认路由和 S0 projection，不传 S1 全文。Prompt/build/typecheck、字段 owner matrix 与缺证据 fixture 留待 P7（本批未运行）。
 
 - [x] **P4-02 建立 `financial_quality`**
   - 目标文件/模块：`scripts/lib/operating-analysis-financial-snapshot.mjs`、财务 Prompt、财务 domain 校验、stage registry。
-  - 前置依赖：P1 S0 financial snapshot、P2 projection；财务来源 policy 不变。
+  - 前置依赖：P1 S0.1 financial snapshot、P1 S0.2 routing、P2 projection；财务来源 policy 不变。
   - 完成定义：只读取结构化三表、确定性指标和授权附注来源；覆盖利润质量、现金转换、营运资本、资本效率、治理、资本配置、债务和行业压力；不读取其他模型判断。
-  - 验证命令/证据：`financial-quality.md` 仅声明 S0 financialSnapshot 输入；`financialSnapshotForStage` 只投影结构化三表与确定性指标；`validateFinancialQualitySnapshot` 已接入 low runner 的 S6 input gate，缺期间/币种/单位/来源为 blocking gap，金融主体返回 `not_applicable`。fixture 与 `npm run test:research` 留待 P7（本批未运行）。
+  - 验证命令/证据：`financial-quality.md` 仅声明 S0.1 financialSnapshot 输入；`financialSnapshotForStage` 只投影结构化三表与确定性指标；`validateFinancialQualitySnapshot` 已接入 low runner 的 S6 input gate，缺期间/币种/单位/来源为 blocking gap，金融主体返回 `not_applicable`。fixture 与 `npm run test:research` 留待 P7（本批未运行）。
 
 - [x] **P4-03 建立 `market_valuation_facts`**
   - 目标文件/模块：市场/证券估值 domain、S0 market snapshot、Prompt 和 stage registry。
@@ -158,7 +158,7 @@
   - 目标文件/模块：`scripts/lib/operating-analysis-report.mjs`、`src/modules/research/application/research-operating-analysis-low-dependency.ts`、低依赖报告 API/read model、研究页面。
   - 前置依赖：P4、P5、P6；章节 owner matrix 已冻结。
   - 完成定义：完整十二章按设计映射组装；S1–S7 详细域正文直接进入对应章节；S11 不重写2–8；报告 projection 记录 run/artifact/source manifest 和门禁。
-  - 验证命令/证据：开发实现与契约 fixture 已写入；S12 章节/来源/状态门禁在 stage-plan/report fixture 中通过。`npm run test:investment-analysis` 已执行但因本地 `300308.SZ` 缺少 operating-company identity 失败（不是 S12 终态成功证据）；真实 low-dependency acceptance 因 S1/S6 incomplete stream 保持 blocked，故不把报告描述为完成。
+  - 验证命令/证据：开发实现与契约 fixture 已写入；S12 章节/来源/状态门禁在 stage-plan/report fixture 中通过。低依赖页面已显示 S0.2 路由状态、候选、理由、采集依据和人工确认表单。`npm run test:investment-analysis` 已执行但因本地 `300308.SZ` 缺少 operating-company identity 失败（不是 S12 终态成功证据）；真实 low-dependency acceptance 因未确认路由或 S1/S6 incomplete stream 保持 blocked，故不把报告描述为完成。
 
 - [x] **P7-02 实现恢复、定向重跑和旧 artifact 隔离**
   - 目标文件/模块：generic task/run/artifact protocol、低依赖 runner recovery、`0107/0108` migration、低依赖 API/UI；旧六阶段 read/write 路径保持独立且不删除。
@@ -170,7 +170,7 @@
   - 目标文件/模块：`./start-local.sh`、`scripts/local-job-worker.mjs`、研究 API、D1/SQLite read model、报告 projection。
   - 前置依赖：P7-01、P7-02；本地凭据、来源和 fixture 已准备；不触碰生产。
   - 完成定义：至少一次本地任务从 enqueue→claim→各波次→S10→S12 完成；API 读到终态、runId、artifact IDs、报告十二章和缺口；中断后从合法边界恢复有证据。
-  - 验证命令/证据（仍未勾选）：本地 supervisor/Node runtime 与 `GET http://127.0.0.1:8000/api/health` 正常（`d1:true`）；真实 refresh→claim→S0/S1–S7→S8–S12 已执行并保存 task `llm-task:ff4a27fe-ca02-46fc-822e-a38af2573b41`、首次 run `llm-run:43e385b0-69c4-46c0-9ff6-69cce6e077f8`、targeted rerun run `llm-run:fe83e1fe-013a-467b-a665-8a22f4fe324c`、attempt 6 及 report artifact `llm-artifact:466c7cb7-2e9f-4d2d-bcca-e991952f0f45`。S0 source registry 有 4 个真实内部来源；但 `company_facts`（HTTP 200、18,967 bytes，无 `response.completed`）与 `financial_quality`（HTTP 200、4,452,278 bytes，44,072 字符后无 `response.completed`）失败，S12 report gate 为 `blocked`，没有完整 S0–S12 成功或合法中断复用证据。
+  - 验证命令/证据（仍未勾选）：本地 supervisor/Node runtime 与 `GET http://127.0.0.1:8000/api/health` 正常（`d1:true`）；真实验证必须先证明 S0.1→S0.2 路由状态和人工确认审计，再执行 refresh→claim→S1–S7→S8–S12。此前 run 的 `company_facts`（HTTP 200、18,967 bytes，无 `response.completed`）与 `financial_quality`（HTTP 200、4,452,278 bytes，44,072 字符后无 `response.completed`）失败，S12 report gate 为 `blocked`，没有完整 S0–S12 成功或合法中断复用证据。
 
 - [ ] **P7-04 完成静态、类型和页面验收记录**
   - 目标文件/模块：全量新旧相关文件、docs、generated Prompt、web read model。

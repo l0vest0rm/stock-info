@@ -6,6 +6,7 @@ type FetchRequest = (request: {
   data?: unknown
   cacheKey?: string
   cacheTtl?: number
+  silent?: boolean
 } | string) => Promise<unknown>
 
 type Callback = (data: unknown) => void
@@ -15,6 +16,33 @@ type AnnualFinancial = {
   revenueGrowth?: number
   profit?: number
   profitGrowth?: number
+}
+
+type CompanyReportDiscoveryStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'blocked'
+type CompanyReportDiscoveryReasoningEffort = 'max' | 'none'
+
+type CompanyReportDiscoveryTask = {
+  taskId: string
+  status: CompanyReportDiscoveryStatus
+  requestedModel?: string | null
+  requestedReasoningEffort?: string | null
+  execution?: {
+    model?: string | null
+    reasoningEffort?: string | null
+  } | null
+  lastErrorMessage?: string | null
+  createdAt?: number | null
+  startedAt?: number | null
+  completedAt?: number | null
+  updatedAt?: number | null
+}
+
+function optionalCompanyReportTimestamp(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 type CompanyPagesRuntimeContext = {
@@ -508,6 +536,17 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   let companyReportStream: EventSource | null = null
   let valuationChart: any | null = null
   let valuationChartResizeBound = false
+  let companyReportDiscoveryEnabled = false
+  let companyReportDiscoveryTaskId: string | null = null
+  let companyReportDiscoveryStatus: CompanyReportDiscoveryStatus = 'idle'
+  let companyReportDiscoveryPollTimer: number | null = null
+  let companyReportDiscoveryPollGeneration = 0
+  let companyReportDiscoveryCreatedAt: number | null = null
+  let companyReportDiscoveryStartedAt: number | null = null
+  let companyReportDiscoveryCompletedAt: number | null = null
+  let companyReportDiscoveryUpdatedAt: number | null = null
+  let companyReportDiscoveryModel: string | null = null
+  let companyReportDiscoveryReasoningEffort: string | null = null
 
   function emitCompanyReportState(patch: any): boolean {
     window.dispatchEvent(new CustomEvent('licai:company-report-state', { detail: patch || {} }))
@@ -516,7 +555,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
 
   function companyReportLoadingStatus(page: number): string {
     if (page <= 1) {
-      return '正在搜索并加载公司研报；如果有新研报，系统会补齐预测数据，可能需要等待几十秒'
+      return '正在加载公司研报；本地近期研报搜索需点击右侧按钮触发'
     }
     return `正在加载第 ${page} 页公司研报...`
   }
@@ -548,6 +587,209 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   function companyReportRequestUrl(code: string, page: number): string {
     const name = getCodeNameMap()[code] || ''
     return `${server}/api/company/reports?code=${code}&name=${name}&page=${page}`
+  }
+
+  function companyReportDiscoveryMessage(status: CompanyReportDiscoveryStatus, error?: string | null): string {
+    if (status === 'queued') {
+      return '已排队，等待本地搜索任务'
+    }
+    if (status === 'running') {
+      return '本地搜索中，完成后会刷新研报列表'
+    }
+    if (status === 'completed') {
+      return '本地搜索完成，研报列表已刷新'
+    }
+    if (status === 'failed' || status === 'blocked') {
+      return error ? `本地搜索失败：${error}` : '本地搜索失败，可再次尝试'
+    }
+    return ''
+  }
+
+  function normalizeCompanyReportDiscoveryStatus(value: unknown): CompanyReportDiscoveryStatus {
+    const status = String(value || '').trim().toLowerCase() as CompanyReportDiscoveryStatus
+    return ['queued', 'running', 'completed', 'failed', 'blocked'].includes(status) ? status : 'idle'
+  }
+
+  function stopCompanyReportDiscoveryPolling(): void {
+    if (companyReportDiscoveryPollTimer !== null) {
+      window.clearTimeout(companyReportDiscoveryPollTimer)
+      companyReportDiscoveryPollTimer = null
+    }
+    companyReportDiscoveryPollGeneration += 1
+  }
+
+  function emitCompanyReportDiscoveryState(message = companyReportDiscoveryMessage(companyReportDiscoveryStatus)): void {
+    emitCompanyReportState({
+      discoveryEnabled: companyReportDiscoveryEnabled,
+      discoveryTaskId: companyReportDiscoveryTaskId,
+      discoveryStatus: companyReportDiscoveryStatus,
+      discoveryMessage: message,
+      discoveryBusy: companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running',
+      discoveryCreatedAt: companyReportDiscoveryCreatedAt,
+      discoveryStartedAt: companyReportDiscoveryStartedAt,
+      discoveryCompletedAt: companyReportDiscoveryCompletedAt,
+      discoveryUpdatedAt: companyReportDiscoveryUpdatedAt,
+      discoveryModel: companyReportDiscoveryModel,
+      discoveryReasoningEffort: companyReportDiscoveryReasoningEffort,
+    })
+  }
+
+  function applyCompanyReportDiscoveryTask(task: CompanyReportDiscoveryTask | null): void {
+    if (!task || !task.taskId) {
+      companyReportDiscoveryTaskId = null
+      companyReportDiscoveryStatus = 'idle'
+      companyReportDiscoveryCreatedAt = null
+      companyReportDiscoveryStartedAt = null
+      companyReportDiscoveryCompletedAt = null
+      companyReportDiscoveryUpdatedAt = null
+      companyReportDiscoveryModel = null
+      companyReportDiscoveryReasoningEffort = null
+      stopCompanyReportDiscoveryPolling()
+      emitCompanyReportDiscoveryState('')
+      return
+    }
+    companyReportDiscoveryTaskId = task.taskId
+    companyReportDiscoveryStatus = normalizeCompanyReportDiscoveryStatus(task.status)
+    companyReportDiscoveryCreatedAt = optionalCompanyReportTimestamp(task.createdAt)
+    companyReportDiscoveryStartedAt = optionalCompanyReportTimestamp(task.startedAt)
+    companyReportDiscoveryCompletedAt = optionalCompanyReportTimestamp(task.completedAt)
+    companyReportDiscoveryUpdatedAt = optionalCompanyReportTimestamp(task.updatedAt)
+    const executionModel = task.execution?.model ?? task.requestedModel
+    const executionReasoningEffort = task.execution?.reasoningEffort ?? task.requestedReasoningEffort
+    companyReportDiscoveryModel = typeof executionModel === 'string' && executionModel.trim()
+      ? executionModel.trim()
+      : null
+    companyReportDiscoveryReasoningEffort = typeof executionReasoningEffort === 'string' && executionReasoningEffort.trim()
+      ? executionReasoningEffort.trim()
+      : null
+    emitCompanyReportDiscoveryState(companyReportDiscoveryMessage(companyReportDiscoveryStatus, task.lastErrorMessage))
+  }
+
+  function isCompanyReportDiscoveryError(data: any): boolean {
+    return Boolean(data && typeof data === 'object' && typeof data.error === 'string' && data.error.trim())
+  }
+
+  function scheduleCompanyReportDiscoveryPoll(code: string, taskId: string): void {
+    if (!companyReportDiscoveryEnabled || !taskId) {
+      return
+    }
+    if (companyReportDiscoveryPollTimer !== null) {
+      window.clearTimeout(companyReportDiscoveryPollTimer)
+    }
+    const generation = ++companyReportDiscoveryPollGeneration
+    companyReportDiscoveryPollTimer = window.setTimeout(() => {
+      companyReportDiscoveryPollTimer = null
+      void pollCompanyReportDiscovery(code, taskId, generation)
+    }, 1500)
+  }
+
+  async function pollCompanyReportDiscovery(code: string, taskId: string, generation: number): Promise<void> {
+    if (generation !== companyReportDiscoveryPollGeneration || taskId !== companyReportDiscoveryTaskId) {
+      return
+    }
+    const data = await fetchRequest({
+      url: `${server}/api/company/reports/discovery-capability`,
+      params: { code, taskId },
+      silent: true,
+    }) as any
+    if (generation !== companyReportDiscoveryPollGeneration || taskId !== companyReportDiscoveryTaskId) {
+      return
+    }
+    if (isCompanyReportDiscoveryError(data)) {
+      companyReportDiscoveryStatus = 'failed'
+      stopCompanyReportDiscoveryPolling()
+      emitCompanyReportDiscoveryState(`本地搜索状态读取失败：${data.error}`)
+      return
+    }
+    const task = data?.task && typeof data.task === 'object' ? data.task as CompanyReportDiscoveryTask : null
+    if (!task) {
+      companyReportDiscoveryStatus = 'failed'
+      stopCompanyReportDiscoveryPolling()
+      emitCompanyReportDiscoveryState('本地搜索任务不存在，可再次尝试')
+      return
+    }
+    applyCompanyReportDiscoveryTask(task)
+    if (companyReportDiscoveryStatus === 'completed') {
+      stopCompanyReportDiscoveryPolling()
+      if (companyReportActualFinancialMap) {
+        genCompanyReportTable(code, companyReportActualFinancialMap)
+      }
+      return
+    }
+    if (companyReportDiscoveryStatus === 'failed' || companyReportDiscoveryStatus === 'blocked') {
+      stopCompanyReportDiscoveryPolling()
+      return
+    }
+    scheduleCompanyReportDiscoveryPoll(code, taskId)
+  }
+
+  async function loadCompanyReportDiscoveryCapability(code: string): Promise<void> {
+    const data = await fetchRequest({
+      url: `${server}/api/company/reports/discovery-capability`,
+      params: { code },
+      silent: true,
+    }) as any
+    if (isCompanyReportDiscoveryError(data) || data?.enabled !== true) {
+      companyReportDiscoveryEnabled = false
+      companyReportDiscoveryTaskId = null
+      companyReportDiscoveryStatus = 'idle'
+      companyReportDiscoveryCreatedAt = null
+      companyReportDiscoveryStartedAt = null
+      companyReportDiscoveryCompletedAt = null
+      companyReportDiscoveryUpdatedAt = null
+      companyReportDiscoveryModel = null
+      companyReportDiscoveryReasoningEffort = null
+      stopCompanyReportDiscoveryPolling()
+      emitCompanyReportDiscoveryState('')
+      return
+    }
+    companyReportDiscoveryEnabled = true
+    const task = data?.task && typeof data.task === 'object' ? data.task as CompanyReportDiscoveryTask : null
+    applyCompanyReportDiscoveryTask(task)
+    if (task && (companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running')) {
+      scheduleCompanyReportDiscoveryPoll(code, task.taskId)
+    }
+  }
+
+  async function triggerCompanyReportDiscovery(code: string, requestedReasoningEffort: CompanyReportDiscoveryReasoningEffort = 'max'): Promise<void> {
+    if (!companyReportDiscoveryEnabled || companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running') {
+      return
+    }
+    const force = ['completed', 'failed', 'blocked'].includes(companyReportDiscoveryStatus)
+    companyReportDiscoveryStatus = 'queued'
+    companyReportDiscoveryTaskId = null
+    companyReportDiscoveryCreatedAt = null
+    companyReportDiscoveryStartedAt = null
+    companyReportDiscoveryCompletedAt = null
+    companyReportDiscoveryUpdatedAt = null
+    companyReportDiscoveryModel = null
+    companyReportDiscoveryReasoningEffort = null
+    emitCompanyReportDiscoveryState('正在提交本地搜索任务…')
+    const data = await fetchRequest({
+      url: `${server}/api/company/reports/discover?code=${encodeURIComponent(code)}`,
+      data: { force, reasoningEffort: requestedReasoningEffort },
+      silent: true,
+    }) as any
+    if (isCompanyReportDiscoveryError(data)) {
+      companyReportDiscoveryStatus = 'failed'
+      emitCompanyReportDiscoveryState(`本地搜索任务提交失败：${data.error}`)
+      return
+    }
+    const task = data?.task && typeof data.task === 'object' ? data.task as CompanyReportDiscoveryTask : null
+    if (!task) {
+      companyReportDiscoveryStatus = 'failed'
+      emitCompanyReportDiscoveryState('本地搜索任务提交失败，可再次尝试')
+      return
+    }
+    applyCompanyReportDiscoveryTask(task)
+    if (companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running') {
+      scheduleCompanyReportDiscoveryPoll(code, task.taskId)
+    } else if (companyReportDiscoveryStatus === 'completed') {
+      // A non-forced, idempotent enqueue may return an already completed task.
+      if (companyReportActualFinancialMap) {
+        genCompanyReportTable(code, companyReportActualFinancialMap)
+      }
+    }
   }
 
   function openExternalUrlWithoutReferrer(url: string): void {
@@ -595,12 +837,16 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       const profitEstimated2027 = isComputedForecastProfit(item, 2027, actualFinancialMap)
       const profitEstimated2028 = isComputedForecastProfit(item, 2028, actualFinancialMap)
       const valuation = formatCompanyReportValuation(item)
+      const targetPrice = formatCompanyReportTargetPrice(item)
 
       return {
         rank: index + 1,
         publishDate: toDateString(ts),
         title: String(item.title || ''),
-        provenance: String(item.provenance || '').trim().toLowerCase() === 'web_search' ? '搜索发现' : '既有来源',
+        // Keep the API provenance value raw until the page renderer maps it to
+        // a user-facing label. This avoids mapping "web_search" to Chinese
+        // here and then losing the distinction in the renderer.
+        provenance: String(item.provenance || '').trim().toLowerCase(),
         reportHref,
         reportInfoCode,
         docId: item.knowledgeNewsReport ? String(item.knowledgeDocId || '') : '',
@@ -633,6 +879,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         profitEstimated2028,
         pe2028: profit2028[2],
         valuation,
+        targetPrice,
         orgName: item.knowledgeNewsReport
           ? `资讯研报 · ${String(item.orgSName || item.org || '资讯')}`
           : String(item.orgSName || item.org || ''),
@@ -658,6 +905,18 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       method ? `方法：${method}` : '',
     ].filter(Boolean)
     return values.join('；') || '-'
+  }
+
+  function formatCompanyReportTargetPrice(item: any): string {
+    const direct = parseReportForecastNumber(item?.targetPrice)
+    if (direct !== undefined) {
+      return String(direct)
+    }
+    const valuation = item?.valuation
+    const fallback = valuation && typeof valuation === 'object'
+      ? parseReportForecastNumber(valuation.targetPrice)
+      : undefined
+    return fallback === undefined ? '' : String(fallback)
   }
 
   function bindCompanyReportActionLinks(): void {
@@ -947,9 +1206,16 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
           void knowledgeDocModal.openByDocId(docId)
         }
       }) as EventListener)
+      window.addEventListener('licai:company-report-discover', ((event: CustomEvent<{ reasoningEffort?: unknown }>) => {
+        const requestedReasoningEffort = event.detail?.reasoningEffort === 'none' ? 'none' : 'max'
+        void triggerCompanyReportDiscovery(code, requestedReasoningEffort)
+      }) as EventListener)
     }
     knowledgeDocModal.bindLifecycle()
     genCompanyReportTable(code, actualFinancialMap)
+    // This is a read-only local capability/status check. It never starts a
+    // discovery task; only the page button dispatches the trigger event above.
+    void loadCompanyReportDiscoveryCapability(code)
   }
 }
 

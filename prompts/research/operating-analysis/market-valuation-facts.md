@@ -2,22 +2,9 @@
 
 只读取 S0 的证券身份、Xueqiu 市场快照、股本/证券权利和授权的结构化估值观察。不得新增 K 线来源，不得使用 Yahoo/Eastmoney 作为股票 K 线来源。记录价格、市值、股本、币种、证券权利、历史估值观察、可比性限制和可用/不适用估值方法；不判断公司质量、不选择最终情景、不输出目标价。
 
-输出唯一 JSON 对象；`markdown` 仅放本域可直接进入报告的正文，不能补充 JSON 中没有来源 ID 的事实：
+只输出本域的完整 Markdown 正文，不要 JSON、YAML、代码围栏或元数据包。使用标题覆盖价格/市值/股本/币种/证券权利、历史估值、可比性、可用与不适用方法、数据限制和未知项。跨证券权利、股本、币种、复权和期间不一致时必须明确 `blocked`/`unknown`；所有事实回链输入 manifest 中真实的 `sourceIds`/`evidenceIds`、URL 和 `usedUpstreamArtifactIds`（只引用 S0）。不得把市场价格变化解释为基本面。
 
-```json
-{
-  "status": "complete|partial|blocked|not_applicable",
-  "markdown": "",
-  "marketFacts": [{"claimId": "claim:...", "evidenceIds": [], "sourceIds": [], "metric": "price|market_cap|shares|multiple", "value": null, "unit": "", "currency": "", "asOf": "", "securityId": "", "rights": "", "limitations": []}],
-  "historicalValuation": [], "shareCapital": {"securityId": "", "shareClass": "", "shares": null, "currency": "", "asOf": "", "sourceIds": [], "limitations": []},
-  "comparability": [{"claimId": "claim:...", "evidenceIds": [], "sourceIds": [], "peerId": "", "status": "comparable|partial|not_comparable", "reason": ""}],
-  "availableMethods": [{"method": "", "status": "available|unavailable|not_applicable", "reason": "", "sourceIds": []}],
-  "unknowns": [{"unknownId": "unknown:...", "reason": "", "impact": ""}], "analysisGaps": [],
-  "sourceIds": [], "claimIds": [], "evidenceIds": [], "usedUpstreamArtifactIds": []
-}
-```
-
-跨证券权利、股本、币种、复权和期间不一致时必须 blocked/unknown；不能把市场价格变化解释为基本面。所有事实回链来源 ID，`usedUpstreamArtifactIds` 只引用 S0。
+正文应可直接进入第 9 章，不要输出公司质量、情景选择或目标价。
 
 <input_data>
 {{INPUT_DATA}}

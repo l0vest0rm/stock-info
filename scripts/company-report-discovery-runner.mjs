@@ -32,12 +32,61 @@ function positiveInteger(value, fallback) {
   return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
 }
 
-async function runJob(job) {
+export function buildCompanyReportDiscoveryWebSearch(response) {
+  const metadata = response?.webSearch && typeof response.webSearch === "object"
+    ? response.webSearch
+    : {};
+  const responseStatus = typeof response?.raw?.status === "string" ? response.raw.status : "";
+  const webSearchCall = inspectWebSearchCall(response?.raw);
+  // The shared Responses parser retains normalized `searched` metadata but
+  // some completed responses omit the final web_search_call item from `raw`.
+  // A completed response plus that provider-normalized signal is still a
+  // completed search; incomplete/no-search responses remain rejected below.
+  const webSearchCallCompleted = webSearchCall.completed
+    || (responseStatus === "completed" && metadata.searched === true);
+  return {
+    searched: metadata.searched === true || webSearchCall.seen,
+    queries: Array.isArray(metadata.queries) ? metadata.queries : [],
+    citations: Array.isArray(metadata.citations) ? metadata.citations : [],
+    responseCompleted: responseStatus === "completed",
+    responseStatus,
+    webSearchCallCompleted,
+  };
+}
+
+function inspectWebSearchCall(value, seen = new WeakSet()) {
+  if (!value || typeof value !== "object") return { seen: false, completed: false };
+  if (seen.has(value)) return { seen: false, completed: false };
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.reduce((result, item) => mergeWebSearchCallState(result, inspectWebSearchCall(item, seen)), { seen: false, completed: false });
+  }
+  const node = value;
+  const type = typeof node.type === "string" ? node.type : "";
+  const isCall = type === "web_search_call" || type.startsWith("response.web_search_call.");
+  const status = typeof node.status === "string" ? node.status : "";
+  const state = {
+    seen: isCall,
+    completed: isCall && (type === "response.web_search_call.completed" || status === "completed" || status === "complete"),
+  };
+  for (const child of Object.values(node)) {
+    mergeWebSearchCallState(state, inspectWebSearchCall(child, seen));
+  }
+  return state;
+}
+
+function mergeWebSearchCallState(target, source) {
+  target.seen ||= source.seen;
+  target.completed ||= source.completed;
+  return target;
+}
+
+export async function runJob(job, owner = runnerInstanceId) {
   const startedAt = Date.now();
   const heartbeat = setInterval(() => {
     void post(`/api/company/report-discovery-runs/${encodeURIComponent(job.runId)}/heartbeat`, {
       taskId: job.taskId,
-      runnerInstanceId,
+      runnerInstanceId: owner,
       attempt: job.attempt,
     }).catch(() => {});
   }, 10_000);
@@ -63,8 +112,8 @@ async function runJob(job) {
       taskId: job.taskId,
       model: job.model,
       text: response.text,
-      webSearch: response.webSearch,
-      runnerInstanceId,
+      webSearch: buildCompanyReportDiscoveryWebSearch(response),
+      runnerInstanceId: owner,
       attempt: job.attempt,
     });
     localRuntimeLog("company-report-discovery", "completed", {
@@ -80,7 +129,7 @@ async function runJob(job) {
       await post(`/api/company/report-discovery-runs/${encodeURIComponent(job.runId)}/fail`, {
         taskId: job.taskId,
         error: message,
-        runnerInstanceId,
+        runnerInstanceId: owner,
         attempt: job.attempt,
       });
     } catch (failure) {

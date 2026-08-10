@@ -1,6 +1,6 @@
 import { ownsResearchOperatingAnalysisRunnerLease } from "./research-operating-analysis-runner-lease";
 import {
-  claimGenericLlmTaskRun,
+  claimNextGenericLlmTaskRun,
   completeGenericLlmRun,
   createGenericLlmTask,
   failGenericLlmRun,
@@ -178,7 +178,7 @@ export async function enqueueResearchOperatingAnalysis(db: D1Database, securityC
   const selectedModel = model(requestedModel);
   const now = Date.now();
   const created = await createGenericLlmTask(db, {
-    ...taskIdentity(code), model: selectedModel, reasoningEffort: effort,
+    ...taskIdentity(code), handlerKey: GENERIC_TASK_TYPE, model: selectedModel, reasoningEffort: effort,
     metadata: { securityCode: code, output: "staged_operating_analysis" }, now,
   });
   let task = created.task;
@@ -197,7 +197,7 @@ export async function enqueueResearchOperatingAnalysis(db: D1Database, securityC
 /** Claim the generic task/run while retaining the runner lease as a local safety gate. */
 export async function claimResearchOperatingAnalysisJob(db: D1Database, runnerInstanceId: string) {
   if (!await ownsResearchOperatingAnalysisRunnerLease(db, runnerInstanceId)) return null;
-  const claim = await claimGenericLlmTaskRun(db, runnerInstanceId.trim(), { taskType: GENERIC_TASK_TYPE });
+  const claim = await claimNextGenericLlmTaskRun(db, runnerInstanceId.trim());
   if (!claim || claim.task.targetType !== GENERIC_TARGET_TYPE) return null;
   const code = claim.task.targetId;
   return {

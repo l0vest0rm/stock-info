@@ -43,6 +43,11 @@ export async function createForecastSynthesisDraft(
     reasoningEffort: "low",
     maxTokens: 2400,
     cacheEnabled: false,
+    targetType: "forecast_workspace",
+    targetId: code,
+    idempotencyKey: `forecast-synthesis:${code}:${workspace.consolidation.consolidationId}:${FORECAST_SYNTHESIS_PROMPT_VERSION}`,
+    promptVersion: FORECAST_SYNTHESIS_PROMPT_VERSION,
+    priority: 500,
     messages: [
       { role: "system", content: RESEARCH_FORECAST_SYNTHESIS_SYSTEM_PROMPT },
       { role: "user", content: render(RESEARCH_FORECAST_SYNTHESIS_USER_PROMPT, {

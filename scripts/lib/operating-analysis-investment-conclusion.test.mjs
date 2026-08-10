@@ -48,7 +48,7 @@ test("S11 input is limited to S9/S10 outputs and provenance IDs", () => {
 });
 
 test("S11 owns only chapters 9-12 and requires source-backed calculation IDs", () => {
-  const output = { schemaVersion: "investment-conclusion.v1", status: "complete", markdownByChapter: { "9": "估值解释", "10": "风险", "11": "跟踪", "12": "结论" }, calculationIds: ["calculation:base:dcf"], judgmentIds: [], assumptionIds: [], riskIds: [], claimIds: [], evidenceIds: [], sourceIds: [], unknownIds: [] };
+  const output = { schemaVersion: "investment-conclusion.v2", status: "complete", markdownByChapter: { "9": "估值解释", "10": "风险", "11": "跟踪", "12": "结论" }, calculationIds: ["calculation:base:dcf"], judgmentIds: [], assumptionIds: [], riskIds: [], claimIds: [], evidenceIds: [], sourceIds: [], unknownIds: [] };
   assert.equal(validateInvestmentConclusionOutput(output, { calculationIds: ["calculation:base:dcf"], deterministicStatus: "complete" }).status, "complete");
   assert.throws(() => validateInvestmentConclusionOutput({ ...output, markdownByChapter: { ...output.markdownByChapter, "8": "不允许" } }, { calculationIds: ["calculation:base:dcf"], deterministicStatus: "complete" }), /cannot own chapter 8/);
   assert.throws(() => validateInvestmentConclusionOutput({ ...output, markdown: "# 2. 公司概况\n不可重写" }, { calculationIds: ["calculation:base:dcf"], deterministicStatus: "complete" }), /cannot rewrite chapters/);

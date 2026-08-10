@@ -33,6 +33,17 @@ test("S10 blocks invalid S9 instead of adding replacement assumptions", () => {
   assert.equal(result.results.length, 0);
 });
 
+test("S10 retains blocking when S9 has a malformed canonical assumption", () => {
+  const result = calculateDeterministicValuation({ scenarioOutput: {
+    status: "partial",
+    scenarios: [{ scenario: "base", assumptions: [{ assumptionId: "assumption:base", period: "2027FY", unit: "ratio", value: 0.1 }] }],
+    valuationCalculationRequest: { dcfScenarios: [] },
+    reverseValuationSolveTargets: [], sensitivityRequests: [], blockedValuationItems: [], sourceIds: [], claimIds: [], evidenceIds: [], unknownIds: [], usedUpstreamArtifactIds: [],
+  } });
+  assert.equal(result.status, "blocked");
+  assert.match(result.blockedValuationItems[0].reason, /missing required fields:.*variable/);
+});
+
 test("S10 marks a financial entity not applicable instead of applying an industrial DCF", () => {
   const result = calculateDeterministicValuation({ context: { entityType: "bank" }, scenarioOutput: { status: "complete" } });
   assert.equal(result.status, "not_applicable");
