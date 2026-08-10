@@ -157,6 +157,16 @@ export type GenericLlmTaskCreateResult = {
   deduplicated: boolean;
 };
 
+export type GenericWebQaRecoveryResult = {
+  sourceTask: GenericLlmTask;
+  sourceRun: GenericLlmRun;
+  recoveryTask: GenericLlmTask;
+  recoveryTaskId: string;
+  gatewayTaskId: string;
+  finalReportTaskId: string | null;
+  coordinatorTaskId: string | null;
+};
+
 export type GenericLlmTaskRunClaim = {
   task: GenericLlmTask;
   run: GenericLlmRun;
@@ -164,6 +174,8 @@ export type GenericLlmTaskRunClaim = {
 
 export type GenericLlmTaskClaimOptions = {
   taskType?: string;
+  /** Global-dispatcher admission filter used when a handler-local lane is full. */
+  excludeHandlerKeys?: string[];
   protocolVersion?: string;
   promptVersion?: string;
   provider?: string;
@@ -637,6 +649,102 @@ export async function requeueGenericLlmTask(db: D1Database, taskId: string, now 
   return Boolean(result.meta.changes);
 }
 
+/**
+ * Adopt one already-completed WebQA-backed final-report request without
+ * submitting another provider prompt. The source task/run and its old
+ * citation-only artifact remain immutable evidence; requeueing the same
+ * durable task creates the next fenced run, whose metadata tells the Node
+ * adapter to GET the previously persisted gateway task instead of POSTing.
+ */
+export async function recoverGenericWebQaFinalReport(db: D1Database, input: {
+  taskId: string;
+  now?: number;
+}): Promise<GenericWebQaRecoveryResult> {
+  const sourceTaskId = requiredGeneric(input.taskId, "taskId");
+  const now = finiteTimestamp(input.now) ?? Date.now();
+  const sourceTask = await loadGenericLlmTask(db, sourceTaskId);
+  if (!sourceTask) throw new Error("generic WebQA recovery source task not found");
+  if (sourceTask.taskType !== GENERIC_LLM_RAW_MODEL_TASK_TYPE || sourceTask.handlerKey !== GENERIC_LLM_RAW_MODEL_HANDLER_KEY) {
+    throw new Error("generic WebQA recovery only supports generic_raw_model tasks");
+  }
+  if (sourceTask.targetType !== "research_operating_analysis_low_dependency_final_report") {
+    throw new Error("generic WebQA recovery only supports low-dependency final-report tasks");
+  }
+  if (!sourceTask.lastRunId || sourceTask.status !== "completed") {
+    throw new Error("generic WebQA recovery requires a completed source task run");
+  }
+  const sourceRun = await loadGenericLlmRun(db, sourceTask.lastRunId);
+  if (!sourceRun || sourceRun.status !== "completed") throw new Error("generic WebQA recovery source run is not completed");
+  const progress = sourceRun.progress && typeof sourceRun.progress === "object" && !Array.isArray(sourceRun.progress)
+    ? sourceRun.progress as Record<string, unknown>
+    : {};
+  const external = progress.external && typeof progress.external === "object" && !Array.isArray(progress.external)
+    ? progress.external as Record<string, unknown>
+    : null;
+  if (external?.kind !== "webqa") throw new Error("generic WebQA recovery source run has no WebQA progress identity");
+  const gatewayTaskId = textGeneric(external.gatewayTaskId);
+  const conversationId = textGeneric(external.conversationId);
+  const idempotencyKey = textGeneric(external.idempotencyKey);
+  if (!gatewayTaskId || !conversationId || !idempotencyKey) throw new Error("generic WebQA recovery source progress is incomplete");
+
+  const sourceMetadata = sourceTask.metadata && typeof sourceTask.metadata === "object" && !Array.isArray(sourceTask.metadata)
+    ? sourceTask.metadata as Record<string, unknown>
+    : {};
+  const recoveryExternal = {
+    ...external,
+    kind: "webqa",
+    recoveredFromRunId: sourceRun.runId,
+    recoveredFromTaskId: sourceTask.taskId,
+  };
+  const recoveryMetadata = {
+    ...sourceMetadata,
+    recoveryExternal,
+    recoveredFromRunId: sourceRun.runId,
+    recoveryGatewayTaskId: gatewayTaskId,
+  };
+
+  const requeued = await requeueGenericLlmTask(db, sourceTask.taskId, now);
+  if (!requeued) throw new Error("generic WebQA recovery source task could not be requeued");
+  await db.prepare("update llm_tasks set metadata_json=?, updated_at=? where task_id=? and status='queued'")
+    .bind(JSON.stringify(recoveryMetadata), now, sourceTask.taskId).run();
+
+  let finalReportTaskId: string | null = null;
+  let coordinatorTaskId: string | null = null;
+  try {
+    const childRows = await db.prepare(`select task_id as taskId, parent_task_id as parentTaskId, status, metadata_json as metadataJson
+      from llm_tasks where task_type='research_operating_analysis_low_dependency_work_package'
+        and target_id=? and stage_key='final_report'
+      order by created_at desc limit 1`).bind(sourceTask.targetId).all<Record<string, unknown>>();
+    const child = childRows.results[0];
+    if (child) {
+      finalReportTaskId = textGeneric(child.taskId) || null;
+      coordinatorTaskId = textGeneric(child.parentTaskId) || null;
+      if (!finalReportTaskId) throw new Error("low-dependency final-report recovery child task id is missing");
+      const childMetadata = parseGenericJson(child.metadataJson);
+      const nextChildMetadata = childMetadata && typeof childMetadata === "object" && !Array.isArray(childMetadata)
+        ? childMetadata as Record<string, unknown>
+        : {};
+      nextChildMetadata.recoveryRawTaskId = sourceTask.taskId;
+      nextChildMetadata.recoveredFromRunId = sourceRun.runId;
+      nextChildMetadata.recoveryGatewayTaskId = gatewayTaskId;
+      await db.prepare("update llm_tasks set metadata_json=?, updated_at=? where task_id=?")
+        .bind(JSON.stringify(nextChildMetadata), now, finalReportTaskId).run();
+      if (["failed", "blocked", "completed"].includes(textGeneric(child.status))) await requeueGenericLlmTask(db, finalReportTaskId, now);
+      if (coordinatorTaskId) {
+        const parent = await loadGenericLlmTask(db, coordinatorTaskId);
+        if (parent && ["failed", "blocked", "completed"].includes(parent.status)) await requeueGenericLlmTask(db, coordinatorTaskId, now);
+      }
+      await reconcileGenericLlmTaskDependencies(db, now);
+    }
+  } catch (error) {
+    if (!/no such table|no such column/i.test(String(error))) throw error;
+  }
+
+  const recoveryTask = await loadGenericLlmTask(db, sourceTask.taskId);
+  if (!recoveryTask) throw new Error("generic WebQA recovery task disappeared after requeue");
+  return { sourceTask, sourceRun, recoveryTask, recoveryTaskId: recoveryTask.taskId, gatewayTaskId, finalReportTaskId, coordinatorTaskId };
+}
+
 export async function loadGenericLlmRun(db: D1Database, runId: string): Promise<GenericLlmRun | null> {
   const id = requiredGeneric(runId, "runId");
   return normalizeGenericRun(await db.prepare(`select run_id as runId, task_id as taskId, attempt, provider, model,
@@ -722,6 +830,9 @@ async function claimGenericLlmTaskRunInternal(db: D1Database, runnerInstanceId: 
   const globalQueue = options.globalQueue === true;
   if (globalQueue) await reconcileGenericLlmTaskDependencies(db, now);
   const taskType = nullableGeneric(options.taskType);
+  const excludeHandlerKeys = Array.isArray(options.excludeHandlerKeys)
+    ? [...new Set(options.excludeHandlerKeys.map((value) => nullableGeneric(value)).filter((value): value is string => Boolean(value)))]
+    : [];
   const protocolVersion = nullableGeneric(options.protocolVersion);
   const promptVersion = nullableGeneric(options.promptVersion);
   const requestedExecutionMode = options.executionMode ? normalizeGenericLlmExecutionMode(options.executionMode) : null;
@@ -740,6 +851,10 @@ async function claimGenericLlmTaskRunInternal(db: D1Database, runnerInstanceId: 
     claimBindings.push(taskType);
   }
   if (globalQueue && requestedExecutionMode) { claimConditions.push("execution_mode=?"); claimBindings.push(requestedExecutionMode); }
+  if (globalQueue && excludeHandlerKeys.length) {
+    claimConditions.push(`handler_key not in (${excludeHandlerKeys.map(() => "?").join(",")})`);
+    claimBindings.push(...excludeHandlerKeys);
+  }
   if (protocolVersion) { claimConditions.push("protocol_version=?"); claimBindings.push(protocolVersion); }
   if (promptVersion) { claimConditions.push("prompt_version=?"); claimBindings.push(promptVersion); }
   if (!globalQueue && requestedExecutionMode) { claimConditions.push("execution_mode=?"); claimBindings.push(requestedExecutionMode); }

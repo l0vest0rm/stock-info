@@ -6,15 +6,52 @@ import {
   companyReportDedupKeys,
   companyRoutes,
   COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS,
+  findCompanyReportDiscoveryRawReport,
   mergeCompanyReportsPreferPrimary,
   normalizeCompanyReportDiscoveryReasoningEffort,
+  normalizeCompanyReportLlmRawResponse,
   parseCompanyReportDiscovery,
+  prepareCompanyReportDiscoveryExecution,
   validateCompanyReportDiscoveryWebSearch,
 } from "./company.routes.ts";
 
 const citations = [
   { title: "公开研报", url: "https://reports.example.com/acme.pdf?utm_source=search#page=1" },
 ];
+
+test("keeps only the exact discovery-model report object for a matching source URL", () => {
+  const targetUrl = "https://stock.finance.sina.com.cn/stock/go.php/vReport_Show/kind/search/rptid/836910213940/index.phtml";
+  const artifactOutput = {
+    response: {
+      text: JSON.stringify({
+        reports: [
+          { title: "目标研报", url: targetUrl, revenue_forecast: [327.97, 540.53, 766.89], extraModelField: "keep" },
+          { title: "其他研报", url: "https://reports.example.com/other.pdf", revenue_forecast: [1, 2, 3] },
+        ],
+      }),
+    },
+    projection: { reportsFound: 2 },
+  };
+  assert.deepEqual(findCompanyReportDiscoveryRawReport(artifactOutput, { code: "300476.SZ", url: `${targetUrl}#page=1` }), {
+    title: "目标研报",
+    url: targetUrl,
+    revenue_forecast: [327.97, 540.53, 766.89],
+    extraModelField: "keep",
+  });
+  assert.equal(findCompanyReportDiscoveryRawReport(artifactOutput, { code: "300476.SZ", url: "https://reports.example.com/other.pdf" })?.title, "其他研报");
+  assert.equal(findCompanyReportDiscoveryRawReport(artifactOutput, { code: "300476.SZ", url: "https://reports.example.com/missing.pdf" }), null);
+});
+
+test("normalizes a raw forecast artifact without discarding model fields", () => {
+  assert.deepEqual(normalizeCompanyReportLlmRawResponse({
+    text: '{"forecasts":[],"revenue_forecast":[327.97],"rating":"买入"}',
+  }), {
+    forecasts: [],
+    revenue_forecast: [327.97],
+    rating: "买入",
+  });
+  assert.equal(normalizeCompanyReportLlmRawResponse({ text: "" }), null);
+});
 
 test("hides the discovery capability endpoint outside the local LLM runtime", async () => {
   const response = await companyRoutes.request(
@@ -35,7 +72,7 @@ test("projects the last run model and reasoning effort into local discovery stat
     targetId: "000001.SZ",
     idempotencyKey: "company-report-discovery:2026-08-10",
     protocolVersion: "llm-task-protocol.v1",
-    promptVersion: "company-report-discovery.v2",
+    promptVersion: "company-report-discovery.v3",
     status: "running",
     requestedModel: "gpt-5.6-luna",
     requestedReasoningEffort: "max",
@@ -55,7 +92,7 @@ test("projects the last run model and reasoning effort into local discovery stat
     provider: "openai",
     model: "gpt-5.6-luna",
     reasoningEffort: "high",
-    promptVersion: "company-report-discovery.v2",
+    promptVersion: "company-report-discovery.v3",
     inputFingerprint: null,
     inputAsOf: null,
     inputJson: null,
@@ -102,17 +139,52 @@ test("projects the last run model and reasoning effort into local discovery stat
   });
 });
 
-test("keeps the normal max reasoning default and the prior one-hour timeout", () => {
-  assert.equal(normalizeCompanyReportDiscoveryReasoningEffort(undefined), "max");
+test("defaults discovery to xhigh reasoning and retains the prior one-hour timeout", () => {
+  assert.equal(normalizeCompanyReportDiscoveryReasoningEffort(undefined), "xhigh");
   assert.equal(COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS, 60 * 60 * 1000);
 });
 
 test("accepts explicit provider reasoning values without an enum whitelist", () => {
   assert.equal(normalizeCompanyReportDiscoveryReasoningEffort("none"), "none");
-  assert.equal(normalizeCompanyReportDiscoveryReasoningEffort("max"), "max");
+  assert.equal(normalizeCompanyReportDiscoveryReasoningEffort("xhigh"), "xhigh");
   assert.equal(normalizeCompanyReportDiscoveryReasoningEffort("diagnostic-custom"), "diagnostic-custom");
   assert.throws(() => normalizeCompanyReportDiscoveryReasoningEffort(""), /must be a non-empty string/);
   assert.throws(() => normalizeCompanyReportDiscoveryReasoningEffort(null), /must be a non-empty string/);
+});
+
+test("prepares the structured discovery prompt without a report-count placeholder", async () => {
+  const taskId = "llm-task:company-report-prompt";
+  const taskRow = {
+    taskId,
+    taskType: "company_report_discovery",
+    targetType: "security",
+    targetId: "000001.SZ",
+    idempotencyKey: "company-report-discovery:2026-08-10",
+    protocolVersion: "llm-task-protocol.v1",
+    promptVersion: "company-report-discovery.v3",
+    status: "queued",
+    requestedModel: "gpt-5.6-luna",
+    requestedReasoningEffort: "max",
+    metadataJson: "{}",
+  };
+  const db = {
+    prepare(sql) {
+      return {
+        bind() {
+          return {
+            first: async () => sql.includes("from securities") ? { name: "示例公司" } : taskRow,
+          };
+        },
+      };
+    },
+  };
+  const prepared = await prepareCompanyReportDiscoveryExecution(db, "000001.SZ", taskId);
+  assert.equal(prepared.promptVersion, "company-report-discovery.v3");
+  assert.match(prepared.input, /证券代码：000001\.SZ/);
+  assert.match(prepared.input, /公司名称：示例公司/);
+  assert.match(prepared.input, /"forecasts"/);
+  assert.match(prepared.input, /"valuation"/);
+  assert.doesNotMatch(prepared.input, /MAX_REPORTS|最多返回报告数|\{\{MAX_REPORTS\}\}/);
 });
 
 test("rejects only an empty reasoningEffort at the local discovery API boundary", async () => {

@@ -41,7 +41,7 @@
   - 验证命令/证据：已新增 `src/modules/research/application/research-context.ts`、`scripts/lib/research-context.mjs` 及其脚本/typed fixtures（`scripts/lib/research-context.test.mjs`、`src/modules/research/application/research-context.test.mjs`）；fixture 覆盖稳定 fingerprint/缺口，但命令执行留待 P7 统一验证（本批未运行）。
 
 - [x] **P1-02 建立并门禁 S0.2 本地路由**
-  - 目标文件/模块：`scripts/lib/research-scope-industry-routing.mjs`、`config/research-industry-template-registry.json`、runner 和研究 API/UI。
+  - 目标文件/模块：`scripts/lib/research-scope-industry-routing.mjs`、`config/research-analysis-template-registry.json`、runner 和研究 API/UI。
   - 前置依赖：P1-01；必须明确公司主体与上市证券映射。
   - 完成定义：S0.2 只按受控注册表匹配可审计主营、产品、下游和行业事实；unique/zero/ambiguous/insufficient 均显式记录，未确认时阻断 S1–S12；人工模板确认校验注册表 ID 并写入不可变审计。
   - 验证命令/证据：`scripts/lib/research-scope-industry-routing.test.mjs` 覆盖确定性匹配、四类路由状态、人工确认和禁止模型选模板；API 读写 endpoint、migration 和 low runner 已接入。

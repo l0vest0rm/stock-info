@@ -1,5 +1,5 @@
 const sharedReportAnalysisInFlight = new Map<string, Promise<void>>();
-const SHARED_REPORT_ANALYSIS_CACHE_VERSION = "v7";
+const SHARED_REPORT_ANALYSIS_CACHE_VERSION = "v8";
 
 export function isReusableReportAnalysisCache(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

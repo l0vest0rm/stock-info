@@ -4,6 +4,22 @@ export type ResearchAnalysisOutputKind = "json" | "markdown";
 export type ResearchAnalysisExecution = "model" | "deterministic";
 export type ResearchAnalysisStageKey = string;
 export type ResearchAnalysisStageStatus = "complete" | "partial" | "blocked" | "not_applicable" | "failed";
+export type ResearchAnalysisWorkPackageExecution = "model" | "deterministic";
+export type ResearchAnalysisWorkPackageDefinition = {
+  key: string;
+  label: string;
+  execution: ResearchAnalysisWorkPackageExecution;
+  outputKind: string;
+  promptVersion: string | null;
+  stageKeys: readonly ResearchAnalysisStageKey[];
+  reportReadyStageKeys: readonly ResearchAnalysisStageKey[];
+  dependsOn: readonly string[];
+  inputPackageKeys: readonly string[];
+  webSearch: boolean;
+  finalReport?: boolean;
+  bypassed?: boolean;
+  inputProjection: string;
+};
 
 export type ResearchAnalysisStageDefinition = {
   key: ResearchAnalysisStageKey;
@@ -23,8 +39,10 @@ type Registry = {
   targetProtocolVersion: string;
   targetPromptVersion: string;
   targetTaskType: string;
+  workPackageVersion: string;
   legacy: { protocolVersion: string; promptVersion: string; taskType: string; stageKeys: string[] };
   stages: ResearchAnalysisStageDefinition[];
+  workPackages: ResearchAnalysisWorkPackageDefinition[];
   waves: Record<"scopeEnvelope" | "companyScopeFallback", string[][]>;
 };
 
@@ -47,7 +65,20 @@ export const RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES: readonly ResearchAnalysi
   fallbackDependsOn: Object.freeze([...stage.fallbackDependsOn]),
   reportHeadings: Object.freeze([...stage.reportHeadings]),
 })));
+export const RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES_VERSION = registry.workPackageVersion;
+export const RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES: readonly ResearchAnalysisWorkPackageDefinition[] = Object.freeze(registry.workPackages.map((definition) => Object.freeze({
+  ...definition,
+  promptVersion: definition.promptVersion || null,
+  stageKeys: Object.freeze([...definition.stageKeys]),
+  reportReadyStageKeys: Object.freeze([...(definition.reportReadyStageKeys || [])]),
+  dependsOn: Object.freeze([...definition.dependsOn]),
+  inputPackageKeys: Object.freeze([...(definition.inputPackageKeys || definition.dependsOn || [])]),
+  finalReport: definition.finalReport === true,
+  bypassed: definition.bypassed === true,
+})));
 const stageMap = new Map(RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES.map((stage) => [stage.key, stage]));
+const workPackageMap = new Map(RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES.map((definition) => [definition.key, definition]));
+const workPackageByStage = new Map(RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES.flatMap((definition) => definition.stageKeys.map((key) => [key, definition])));
 
 export function getResearchOperatingAnalysisStage(key: string): ResearchAnalysisStageDefinition {
   const stage = stageMap.get(String(key));
@@ -92,8 +123,48 @@ export function terminalResearchOperatingAnalysisStatuses(): readonly ResearchAn
   return ["complete", "partial", "blocked", "not_applicable", "failed"];
 }
 
+export const RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_ENVELOPE_VERSION = "research-operating-analysis.work-package-envelope.v1";
+
+export function getResearchOperatingAnalysisWorkPackage(key: string): ResearchAnalysisWorkPackageDefinition {
+  const definition = workPackageMap.get(String(key));
+  if (!definition) throw new Error(`unsupported research-analysis work package: ${key}`);
+  return definition;
+}
+
+export function isResearchOperatingAnalysisWorkPackage(key: string): boolean {
+  return workPackageMap.has(String(key));
+}
+
+export function workPackageForStage(stageKey: string): ResearchAnalysisWorkPackageDefinition | null {
+  return workPackageByStage.get(String(stageKey)) || null;
+}
+
+export function researchOperatingAnalysisGenerativeWorkPackages(): readonly ResearchAnalysisWorkPackageDefinition[] {
+  return RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES.filter((definition) => definition.execution === "model" && !definition.bypassed);
+}
+
+export function isFinalReportWorkPackage(key: string): boolean {
+  return getResearchOperatingAnalysisWorkPackage(key).finalReport === true;
+}
+
+export function researchOperatingAnalysisWorkPackageStageKeys(key: string): readonly string[] {
+  return getResearchOperatingAnalysisWorkPackage(key).stageKeys;
+}
+
+export function researchOperatingAnalysisWorkPackageWaves(): readonly (readonly ResearchAnalysisWorkPackageDefinition[])[] {
+  const remaining = new Set(RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES.map((definition) => definition.key));
+  const waves: ResearchAnalysisWorkPackageDefinition[][] = [];
+  while (remaining.size) {
+    const ready = RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES.filter((definition) => remaining.has(definition.key) && definition.dependsOn.every((dependency) => !remaining.has(dependency)));
+    if (!ready.length) throw new Error("research-analysis work package dependency graph contains a cycle");
+    waves.push(ready);
+    ready.forEach((definition) => remaining.delete(definition.key));
+  }
+  return waves;
+}
+
 function validateRegistry(value: Registry): void {
-  if (!value.registryVersion || !value.targetProtocolVersion || !value.targetPromptVersion || !value.targetTaskType) throw new Error("research-analysis stage registry versions are required");
+  if (!value.registryVersion || !value.targetProtocolVersion || !value.targetPromptVersion || !value.targetTaskType || !value.workPackageVersion) throw new Error("research-analysis stage registry versions are required");
   if (!value.legacy || !value.legacy.protocolVersion || !value.legacy.promptVersion || !value.legacy.taskType || !Array.isArray(value.legacy.stageKeys)) throw new Error("research-analysis legacy registry boundary is invalid");
   const seen = new Set<string>();
   for (const stage of value.stages) {
@@ -112,4 +183,22 @@ function validateRegistry(value: Registry): void {
     if (waveKeys.length !== seen.size || new Set(waveKeys).size !== seen.size || waveKeys.some((key) => !seen.has(key))) throw new Error(`research-analysis ${name} waves must cover every target stage exactly once`);
   }
   if (value.legacy.stageKeys.some((key) => seen.has(key))) throw new Error("legacy and low-dependency stage keys must remain disjoint");
+  const packageStageKeys = new Set<string>();
+  for (const definition of value.workPackages) {
+    if (!definition.key || !definition.label || !["model", "deterministic"].includes(definition.execution)) throw new Error(`invalid research-analysis work package: ${definition.key}`);
+    if (!definition.stageKeys.length) throw new Error(`work package ${definition.key} must own at least one stage`);
+    if (definition.finalReport && definition.execution !== "model") throw new Error(`final-report work package ${definition.key} must use model execution`);
+    if (definition.bypassed && definition.execution !== "deterministic") throw new Error(`bypassed work package ${definition.key} must be deterministic`);
+    if (definition.finalReport && (!definition.stageKeys.includes("report_assembly") || definition.outputKind !== "final_markdown")) throw new Error(`final-report work package ${definition.key} must own report_assembly as final_markdown`);
+    for (const stageKey of definition.stageKeys) {
+      if (!seen.has(stageKey)) throw new Error(`unknown work-package stage ${stageKey}`);
+      if (packageStageKeys.has(stageKey)) throw new Error(`work-package stage is duplicated: ${stageKey}`);
+      packageStageKeys.add(stageKey);
+    }
+    if (definition.execution === "model" && !definition.promptVersion) throw new Error(`model work package ${definition.key} requires promptVersion`);
+    if (definition.execution === "deterministic" && definition.promptVersion) throw new Error(`deterministic work package ${definition.key} cannot declare promptVersion`);
+    for (const dependency of definition.dependsOn) if (!value.workPackages.some((candidate) => candidate.key === dependency)) throw new Error(`unknown work package dependency ${dependency}`);
+    for (const reportKey of definition.reportReadyStageKeys || []) if (!seen.has(reportKey)) throw new Error(`unknown work-package report-ready stage ${reportKey}`);
+  }
+  if (packageStageKeys.size !== seen.size) throw new Error("work packages must cover every target stage exactly once");
 }

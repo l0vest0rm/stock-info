@@ -1,0 +1,25 @@
+{
+  "version": "generic-llm-execution.v1",
+  "executionTransport": "openai",
+  "handlerTransports": {
+    "generic_raw_model": "openai",
+    "company_report_discovery": "webqa"
+  },
+  "taskTypeTransports": {},
+  "originTaskTypeTransports": {
+    "research_operating_analysis_low_dependency*": "webqa"
+  },
+  "webqa": {
+    "gatewayBaseUrl": "http://127.0.0.1:8766",
+    "provider": "chatgpt-web",
+    "platform": "stock-info",
+    "pollIntervalMs": 1200,
+    "taskTimeoutMs": 1200000,
+    "cancelGraceMs": 30000,
+    "heartbeatIntervalMs": 10000,
+    "reasoningEffort": "high",
+    "newSession": true,
+    "singleTabMode": false,
+    "attachments": []
+  }
+}

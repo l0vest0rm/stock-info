@@ -4,6 +4,11 @@
     "id": "openai",
     "globalConcurrency": 5
   },
+  "genericDispatcher": {
+    "handlerConcurrency": {
+      "research_operating_analysis_low_dependency_stage": 1
+    }
+  },
   "lease": {
     "durationMs": 30000,
     "heartbeatIntervalMs": 10000,

@@ -56,6 +56,29 @@ export function validateInvestmentConclusionOutput(output, { calculationIds = []
   return { ...value, schemaVersion: INVESTMENT_CONCLUSION_SCHEMA_VERSION, markdownByChapter: chapters, calculationIds: references };
 }
 
+/** Validate the direct-Markdown S11 contract while reusing the structured
+ * validator's calculation/provenance and chapter-boundary checks.  The model
+ * stage intentionally remains Markdown so S12 can splice its four chapters;
+ * this adapter supplies the status/calculation manifest that the structured
+ * validator requires without persisting a second representation. */
+export function validateInvestmentConclusionMarkdown(markdown, { stageStatus = null, calculationIds = [], deterministicStatus = null } = {}) {
+  const body = text(markdown);
+  if (!body) throw new Error("investment conclusion markdown is required");
+  const references = extractCalculationIds(body);
+  const status = text(stageStatus) || (deterministicStatus === "complete" ? "complete" : "blocked");
+  validateInvestmentConclusionOutput({ status, markdown: body, calculationIds: references }, {
+    calculationIds,
+    requiredCalculationIds: status === "complete" ? calculationIds : [],
+    deterministicStatus,
+  });
+  if (status === "complete") {
+    for (const chapter of ALLOWED_CHAPTERS) {
+      if (!new RegExp(`(?:^|\\n)\\s*#{1,2}\\s+${chapter}(?:[.、\\s]|$)`, "m").test(body)) throw new Error(`complete investment conclusion markdown is missing chapter ${chapter}`);
+    }
+  }
+  return body;
+}
+
 export function projectInvestmentConclusionForReport(output, options = {}) {
   const value = validateInvestmentConclusionOutput(output, options);
   return { schemaVersion: INVESTMENT_CONCLUSION_SCHEMA_VERSION, status: value.status, markdownByChapter: Object.fromEntries(ALLOWED_CHAPTERS.map((key) => [key, value.markdownByChapter[key] || ""])), calculationIds: value.calculationIds, judgmentIds: ids(value.judgmentIds, "output.judgmentIds"), assumptionIds: ids(value.assumptionIds, "output.assumptionIds"), riskIds: ids(value.riskIds, "output.riskIds"), claimIds: ids(value.claimIds, "output.claimIds"), evidenceIds: ids(value.evidenceIds, "output.evidenceIds"), sourceIds: ids(value.sourceIds, "output.sourceIds"), unknownIds: ids(value.unknownIds, "output.unknownIds"), analysisGaps: Array.isArray(value.analysisGaps) ? value.analysisGaps : [] };
@@ -69,6 +92,9 @@ function collectCalculationIds(value) {
     if (id) result.add(id);
   }
   return [...result].sort();
+}
+function extractCalculationIds(markdown) {
+  return [...new Set(String(markdown).match(/calculation:[A-Za-z0-9:_-]+/g) || [])].sort();
 }
 function collectIdsFromObject(value, fields, result = {}) {
   const sets = Object.fromEntries(fields.map((field) => [field, new Set()]));

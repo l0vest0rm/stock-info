@@ -125,7 +125,7 @@ import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } fr
 import { claimNextResearchWebSearchPackageTaskRun, completeResearchWebSearchPackageRun, enqueueResearchWebSearchPackage, failResearchWebSearchPackageRun, heartbeatResearchWebSearchPackageRun, loadResearchWebSearchPackages } from "../application/research-web-search-packages";
 import { loadLocalJobRuntimeState } from "../../../shared/local-job-protocol";
 import { claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, heartbeatResearchOperatingAnalysisJob, loadResearchOperatingAnalysis, loadResearchOperatingAnalysisRun, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage, type OperatingAnalysisStageKey, type OperatingAnalysisStageStatus } from "../application/research-operating-analysis";
-import { claimLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisStage, enqueueLowDependencyResearchOperatingAnalysis, failLowDependencyResearchOperatingAnalysisJob, heartbeatLowDependencyResearchOperatingAnalysisJob, loadLowDependencyResearchOperatingAnalysis, requeueInterruptedLowDependencyResearchOperatingAnalysisJob, startLowDependencyResearchOperatingAnalysisStage, unlockLowDependencyRoutingAfterConfirmation } from "../application/research-operating-analysis-low-dependency";
+import { claimLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisStage, enqueueLowDependencyResearchOperatingAnalysis, failLowDependencyResearchOperatingAnalysisJob, heartbeatLowDependencyResearchOperatingAnalysisJob, loadLowDependencyResearchOperatingAnalysis, requeueInterruptedLowDependencyResearchOperatingAnalysisJob, resumeLowDependencyResearchOperatingAnalysis, startLowDependencyResearchOperatingAnalysisStage, unlockLowDependencyRoutingAfterConfirmation } from "../application/research-operating-analysis-low-dependency";
 import { loadResearchOperatingAnalysisRouting, recordResearchOperatingAnalysisRoutingConfirmation, isRegisteredResearchIndustryTemplate } from "../application/research-operating-analysis-routing";
 import { renewResearchOperatingAnalysisRunnerLease } from "../application/research-operating-analysis-runner-lease";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
@@ -846,7 +846,7 @@ researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/r
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   const selectedTemplateId = requiredText(body.selectedTemplateId, "selectedTemplateId");
-  if (!isRegisteredResearchIndustryTemplate(selectedTemplateId)) return fail(c, 400, `unregistered research industry template: ${selectedTemplateId}`);
+  if (!isRegisteredResearchIndustryTemplate(selectedTemplateId)) return fail(c, 400, `unregistered research analysis template: ${selectedTemplateId}`);
   const scopeNote = stringOrNull(body.scopeNote);
   if (scopeNote && scopeNote.length > 4000) return fail(c, 400, "routing scopeNote must be at most 4000 characters");
   const companyScope = body.companyScope && typeof body.companyScope === "object" && !Array.isArray(body.companyScope) ? body.companyScope as Record<string, unknown> : {};
@@ -882,6 +882,15 @@ researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/r
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try { return ok(c, await enqueueLowDependencyResearchOperatingAnalysis(c.env.DB, code, body.force === true, body.reasoningEffort, body.model, body.stageKeys)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/resume", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis resume is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  try { return ok(c, await resumeLowDependencyResearchOperatingAnalysis(c.env.DB, code, body.reasoningEffort, body.model, body.runId)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

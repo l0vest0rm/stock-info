@@ -12,9 +12,19 @@ export function createGenericLlmSchedulerClient({ baseUrl = "http://127.0.0.1:80
   async function post(path, body) {
     return request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   }
-  async function requestText({ request: rawRequest, targetType = "llm_script", targetId, idempotencyKey, promptVersion = "generic-raw-model.v1", priority = 500, source, onText } = {}) {
-    if (!rawRequest || typeof rawRequest !== "object") throw new Error("generic LLM request is required");
-    const queued = await post("/api/llm-tasks", { request: rawRequest, targetType, targetId, idempotencyKey, promptVersion, priority, source });
+  async function requestText({ request: rawRequest, existingTaskId, targetType = "llm_script", targetId, idempotencyKey, promptVersion = "generic-raw-model.v1", priority = 500, source, originTaskType, onText } = {}) {
+    if (!existingTaskId && (!rawRequest || typeof rawRequest !== "object")) throw new Error("generic LLM request is required");
+    const normalizedOriginTaskType = typeof originTaskType === "string" ? originTaskType.trim() : "";
+    const queued = existingTaskId ? { task: { taskId: existingTaskId } } : await post("/api/llm-tasks", {
+      request: rawRequest,
+      targetType,
+      targetId,
+      idempotencyKey,
+      promptVersion,
+      priority,
+      source,
+      ...(normalizedOriginTaskType ? { originTaskType: normalizedOriginTaskType } : {}),
+    });
     const taskId = queued?.task?.taskId;
     if (!taskId) throw new Error("generic LLM scheduler did not return a task id");
     const deadline = Date.now() + waitTimeoutMs;
@@ -38,7 +48,16 @@ export function createGenericLlmSchedulerClient({ baseUrl = "http://127.0.0.1:80
         if (status !== "completed") throw new Error(state?.task?.lastErrorMessage || state?.run?.errorMessage || `generic LLM task ${status}`);
         const terminal = artifacts.find((item) => item?.stepKey === "raw_model" && item?.status === "complete");
         const output = terminal?.output || {};
-        return { ...output, text: typeof output.text === "string" && output.text ? output.text : emitted, taskId, task: state.task, run: state.run };
+        return {
+          ...output,
+          text: typeof output.text === "string" && output.text ? output.text : emitted,
+          taskId,
+          // Keep the generic response provider-neutral while retaining the
+          // durable raw artifact identity for downstream evidence projections.
+          rawArtifactId: terminal?.artifactId || null,
+          task: state.task,
+          run: state.run,
+        };
       }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }

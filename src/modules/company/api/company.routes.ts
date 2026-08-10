@@ -31,10 +31,12 @@ import {
   failGenericLlmRun,
   heartbeatGenericLlmRun,
   loadGenericLlmRun,
+  loadGenericLlmRunArtifacts,
   loadGenericLlmTask,
   loadGenericLlmTaskByIdentity,
   requeueGenericLlmTask,
   writeGenericLlmRunArtifact,
+  GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP,
 } from "../../../shared/local-job-protocol";
 
 export const companyRoutes = new Hono<AppEnv>();
@@ -131,6 +133,8 @@ export type CompanyReportDiscoveryWebSearchMetadata = LlmWebSearchMetadata & {
   responseStatus?: string;
   /** A Web Search tool call reached its completed event/status. */
   webSearchCallCompleted?: boolean;
+  /** The local WebQA gateway completed the browser-backed request. */
+  transport?: "webqa";
 };
 
 type SinaCompanyReport = {
@@ -153,9 +157,9 @@ const NEWS_REPORT_CANDIDATE_LIMIT = 40;
 const NEWS_REPORT_ANALYSIS_MAX_CALLS = 5;
 const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v1";
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
-const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v2";
+const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v3";
 const REPORT_DISCOVERY_TASK_TYPE = "company_report_discovery";
-const REPORT_DISCOVERY_REASONING_EFFORT = "max";
+const REPORT_DISCOVERY_REASONING_EFFORT = "xhigh";
 const REPORT_DISCOVERY_MAX_REPORTS = 20;
 export const COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS = 60 * 60 * 1000;
 
@@ -862,17 +866,23 @@ export async function claimNextCompanyReportDiscoveryTaskRun(
   if (!claimed) return null;
   try {
     const prepared = await prepareCompanyReportDiscoveryExecution(db, claimed.task.targetId, claimed.task.taskId);
-    return {
-      task: claimed.task,
-      run: claimed.run,
-      request: {
-        ...prepared,
-        taskId: claimed.task.taskId,
-        runId: claimed.run.runId,
-        attempt: claimed.run.attempt,
-        runnerInstanceId,
-      },
-    };
+  return {
+    task: claimed.task,
+    run: claimed.run,
+    request: {
+      ...prepared,
+      taskId: claimed.task.taskId,
+      runId: claimed.run.runId,
+      attempt: claimed.run.attempt,
+      runnerInstanceId,
+      taskType: claimed.task.taskType,
+      targetType: claimed.task.targetType,
+      targetId: claimed.task.targetId,
+      idempotencyKey: claimed.task.idempotencyKey,
+      protocolVersion: claimed.task.protocolVersion,
+      progress: claimed.run.progress,
+    },
+  };
   } catch (error) {
     await failGenericLlmRun(db, {
       taskId: claimed.task.taskId,
@@ -914,7 +924,6 @@ export async function prepareCompanyReportDiscoveryExecution(
       SECURITY_CODE: code,
       COMPANY_NAME: text(security?.name) || code,
       RECENT_SINCE: recentSince,
-      MAX_REPORTS: String(REPORT_DISCOVERY_MAX_REPORTS),
     }),
   };
 }
@@ -1170,11 +1179,6 @@ async function ensureSingleReportForecast(
   if (shared?.analysisCalled) {
     return;
   }
-  const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, cacheKey);
-  if (cached?.forecasts?.length || cached?.analysisSucceeded === true) {
-    await writeSharedReportAnalysis(c.env.DB, item, cached.forecasts, cached.updatedAt, cached.targetPrice);
-    return;
-  }
 
   await runSharedReportAnalysisTask(sharedCacheKey, async () => {
     const completedByAnotherRequest = await readSharedReportAnalysis(c.env.DB, sharedCacheKey);
@@ -1290,6 +1294,180 @@ async function readKnowledgeNewsReportAnalysis(
     : null;
 }
 
+type CompanyReportLlmRawResponse = Record<string, unknown> | string | null;
+
+type CompanyReportLlmTaskIdentity = {
+  taskType: string;
+  targetType: string;
+  targetId: string;
+  idempotencyKey: string;
+  promptVersion: string;
+};
+
+/**
+ * Keep the exact report object returned by the discovery model.  The model's
+ * report list is persisted as a terminal artifact; only the one candidate
+ * whose canonical URL/report identity matches this row is returned.
+ */
+export function findCompanyReportDiscoveryRawReport(
+  artifactOutput: unknown,
+  item: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const output = asRecord(artifactOutput);
+  const response = asRecord(output?.response);
+  const parsed = parseJsonObjectFromText(text(response?.text));
+  const reports = parsed?.reports;
+  if (!Array.isArray(reports)) {
+    return null;
+  }
+  return reports.find((candidate) => (
+    isRecord(candidate) && companyReportRawIdentityMatches(candidate, item)
+  )) as Record<string, unknown> | undefined || null;
+}
+
+function companyReportLlmTaskIdentity(item: Record<string, unknown>): CompanyReportLlmTaskIdentity | null {
+  if (isKnowledgeNewsReportCandidate(item)) {
+    const docId = text(item.knowledgeDocId);
+    return docId ? {
+      taskType: "generic_raw_model",
+      targetType: "company_news_report",
+      targetId: docId,
+      idempotencyKey: `company-news-report:${docId}`,
+      promptVersion: NEWS_REPORT_ANALYSIS_CACHE_VERSION,
+    } : null;
+  }
+  const reportId = companyReportId(item);
+  return reportId ? {
+    taskType: "generic_raw_model",
+    targetType: "company_report_forecast",
+    targetId: reportId,
+    idempotencyKey: `company-report-forecast:${reportId}`,
+    promptVersion: REPORT_FORECAST_PROMPT_VERSION,
+  } : null;
+}
+
+export function normalizeCompanyReportLlmRawResponse(output: unknown): CompanyReportLlmRawResponse {
+  const record = asRecord(output);
+  const outputText = text(record?.text);
+  if (!outputText) {
+    return null;
+  }
+  return parseJsonObjectFromText(outputText) || outputText;
+}
+
+async function loadCompanyReportLlmRawResponse(
+  c: Context<AppEnv>,
+  item: Record<string, unknown>,
+): Promise<CompanyReportLlmRawResponse | undefined> {
+  if (c.env.LLM_RUNTIME !== "local") {
+    return undefined;
+  }
+  try {
+    const discovery = await loadCompanyReportDiscoveryRawReport(c.env.DB, item);
+    if (discovery) {
+      return discovery;
+    }
+    const identity = companyReportLlmTaskIdentity(item);
+    if (!identity) {
+      return undefined;
+    }
+    const task = await loadGenericLlmTaskByIdentity(c.env.DB, identity);
+    if (!task || task.status !== "completed" || !task.lastRunId) {
+      return null;
+    }
+    const run = await loadGenericLlmRun(c.env.DB, task.lastRunId);
+    if (!run || run.taskId !== task.taskId || run.status !== "completed") {
+      return null;
+    }
+    const artifact = (await loadGenericLlmRunArtifacts(c.env.DB, run.runId))
+      .find((candidate) => candidate.stepKey === GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP && candidate.status === "complete");
+    return artifact ? normalizeCompanyReportLlmRawResponse(artifact.output) : null;
+  } catch (error) {
+    console.warn("company report raw model response unavailable", {
+      title: text(item.title),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function loadCompanyReportDiscoveryRawReport(
+  db: D1Database,
+  item: Record<string, unknown>,
+): Promise<Record<string, unknown> | null> {
+  const code = normalizeSecurityCode(text(item.code));
+  if (!code) {
+    return null;
+  }
+  const row = await db.prepare(`
+    select task_id as taskId
+      from llm_tasks
+     where task_type=? and target_type='security' and target_id=?
+       and prompt_version=? and status='completed'
+     order by coalesce(completed_at, updated_at) desc, updated_at desc
+     limit 1
+  `).bind(REPORT_DISCOVERY_TASK_TYPE, code, REPORT_DISCOVERY_PROMPT_VERSION).first<{ taskId?: unknown }>();
+  const taskId = text(row?.taskId);
+  if (!taskId) {
+    return null;
+  }
+  const task = await loadGenericLlmTask(db, taskId);
+  if (!task || task.taskType !== REPORT_DISCOVERY_TASK_TYPE || task.targetType !== "security"
+    || task.targetId !== code || task.status !== "completed" || !task.lastRunId) {
+    return null;
+  }
+  const run = await loadGenericLlmRun(db, task.lastRunId);
+  if (!run || run.taskId !== task.taskId || run.status !== "completed") {
+    return null;
+  }
+  const artifact = (await loadGenericLlmRunArtifacts(db, run.runId))
+    .find((candidate) => candidate.stepKey === REPORT_DISCOVERY_TASK_TYPE && candidate.status === "complete");
+  return artifact ? findCompanyReportDiscoveryRawReport(artifact.output, item) : null;
+}
+
+function companyReportRawIdentityMatches(
+  candidate: Record<string, unknown>,
+  item: Record<string, unknown>,
+): boolean {
+  const candidateUrls = companyReportRawUrls(candidate);
+  const itemUrls = companyReportRawUrls(item);
+  if (candidateUrls.length > 0 && itemUrls.length > 0 && candidateUrls.some((url) => itemUrls.includes(url))) {
+    return true;
+  }
+  const candidateIds = companyReportRawIds(candidate);
+  const itemIds = companyReportRawIds(item);
+  return candidateIds.length > 0 && itemIds.some((id) => candidateIds.includes(id));
+}
+
+function companyReportRawUrls(value: Record<string, unknown>): string[] {
+  return ["url", "detailUrl", "sourceUrl", "reportUrl"].flatMap((key) => {
+    const url = canonicalCompanyReportUrl(text(value[key]));
+    return url ? [url] : [];
+  });
+}
+
+function companyReportRawIds(value: Record<string, unknown>): string[] {
+  const values = ["infoCode", "reportId", "rptid", "rptId", "id"].map((key) => text(value[key])).filter(Boolean);
+  const urls = companyReportRawUrls(value);
+  const ids = new Set<string>();
+  for (const raw of [...values, ...urls]) {
+    const infoCode = raw.match(/AP\d{12,}/i)?.[0];
+    if (infoCode) ids.add(infoCode.toUpperCase());
+    const rptid = raw.match(/(?:rptid|reportid)[\/_-]?([A-Za-z0-9_-]+)/i)?.[1];
+    if (rptid) ids.add(rptid.toLowerCase());
+    if (/^\d{8,}$/.test(raw)) ids.add(raw);
+  }
+  return [...ids];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
 async function annotateReportItemsWithForecasts(
   c: Context<AppEnv>,
   items: Array<Record<string, unknown>>
@@ -1299,11 +1477,13 @@ async function annotateReportItemsWithForecasts(
     if (isKnowledgeNewsReportCandidate(item)) {
       const analysis = await readKnowledgeNewsReportAnalysis(c.env.DB, knowledgeNewsReportAnalysisCacheKey(item));
       if (analysis?.isCompanyReport) {
+        const llmRawResponse = await loadCompanyReportLlmRawResponse(c, item);
         results.push({
           ...item,
           forecastSource: "llm_news_report",
           forecasts: analysis.forecasts,
           valuation: analysis.valuation,
+          llmRawResponse,
         });
       }
       continue;
@@ -1313,6 +1493,7 @@ async function annotateReportItemsWithForecasts(
       results.push(item);
       continue;
     }
+    const llmRawResponse = await loadCompanyReportLlmRawResponse(c, item);
     const shared = await readSharedReportAnalysis(c.env.DB, sharedReportCacheKeyForItem(item));
     const cached = hasReportAnalysisValues(shared)
       ? shared
@@ -1323,6 +1504,7 @@ async function annotateReportItemsWithForecasts(
       results.push({
         ...item,
         forecastSource: "llm_report_source",
+        llmRawResponse,
         forecasts: cached.forecasts.length > 0
           ? mergeForecastRows(cached.forecasts, Array.isArray(item.forecasts)
             ? item.forecasts as CompanyReportForecast[]
@@ -1333,10 +1515,10 @@ async function annotateReportItemsWithForecasts(
       continue;
     }
     if (Array.isArray(item.forecasts) && item.forecasts.length > 0) {
-      results.push(item);
+      results.push({ ...item, llmRawResponse });
       continue;
     }
-    results.push(item);
+    results.push({ ...item, llmRawResponse });
   }
   return results;
 }
@@ -1418,13 +1600,6 @@ export async function extractCompanyReportAnalysisByLlm(
   const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
   if (!trimmed) {
     return { forecasts: [], targetPrice: null };
-  }
-  const patternForecasts = extractForecastsByPattern(trimmed);
-  if (patternForecasts.length > 0) {
-    return {
-      forecasts: patternForecasts,
-      targetPrice: extractCompanyReportTargetPriceByPattern(trimmed),
-    };
   }
   const prompt = REPORT_ANALYZE_USER_PROMPT
     .replace("{{TITLE}}", title)
@@ -1527,11 +1702,6 @@ export function parseCompanyReportAnalysis(textBody: string): CompanyReportAnaly
     forecasts: parseCompanyReportForecastRows(parsed.forecasts),
     targetPrice: parseCompanyReportTargetPrice(parsed.targetPrice),
   };
-}
-
-function extractCompanyReportTargetPriceByPattern(content: string): number | null {
-  const match = content.match(/(?:目标价|目标价格|target\s*price|price\s*target|\bTP\b)\s*(?:由\s*[0-9][0-9,]*(?:\.[0-9]+)?\s*(?:元|人民币|港元|美元|HKD|USD|CNY)?\s*)?(?:上调|下调)?\s*(?:至|为|:|：|到)?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
-  return match ? parseCompanyReportTargetPrice(match[1]) : null;
 }
 
 export function parseCompanyReportDiscovery(
@@ -1775,7 +1945,7 @@ function aggregateForecastsForCode(
 
 
 function reportForecastCacheKey(reportId: string): string {
-  return `report-forecast:v5:${reportId}`;
+  return `report-forecast:v6:${reportId}`;
 }
 
 function sharedReportCacheKeyForItem(item: Record<string, unknown>): string {
@@ -2114,131 +2284,6 @@ function normalizeReportOrgName(value: string): string {
       .replace(/(股份)?有限责任公司|股份有限公司|有限公司/g, "")
   );
 }
-
-/**
- * Deterministic extraction for converted public-report tables and prose.
- * It is deliberately attempted before the local-only LLM path so normal
- * forecast fields retain their original table/prose provenance.
- */
-export function extractForecastsByPattern(content: string): CompanyReportForecast[] {
-  const tableForecasts = extractForecastsFromMarkdownTable(content);
-  const sentence = content.match(/(?:预计|我们预计)[^。；\n]{0,220}?(\d{4})\s*[-—–至]\s*(\d{4})\s*年[^。；\n]{0,220}?归母\s*净利润(?:分别)?(?:为|达)?\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*\/\s*([0-9]+(?:\.[0-9]+)?)\s*(?:亿元|亿)/i);
-  const values = sentence ? [Number(sentence[3]), Number(sentence[4]), Number(sentence[5])] : [];
-  const startYear = sentence ? Number(sentence[1]) : NaN;
-  const endYear = sentence ? Number(sentence[2]) : NaN;
-  const sentenceForecasts = Number.isInteger(startYear) && endYear === startYear + 2 && values.every(Number.isFinite)
-    ? values.map((netProfit, index) => ({ year: startYear + index, netProfit: round2(netProfit) }))
-    : [];
-  return mergeForecastRows(mergeForecastRows(tableForecasts, sentenceForecasts), extractForecastsFromAnnualSentence(content));
-}
-
-function extractForecastsFromAnnualSentence(content: string): CompanyReportForecast[] {
-  const normalized = content.replace(/[`*]/g, "").replace(/\s+/g, " ");
-  const range = normalized.match(/(?:预计|预期|我们预计)[^。；]{0,120}?(20\d{2})\s*[-—–至]\s*(20\d{2})\s*年/);
-  if (!range || range.index === undefined) return [];
-  const startYear = Number(range[1]);
-  const endYear = Number(range[2]);
-  if (!Number.isInteger(startYear) || endYear !== startYear + 2) return [];
-  const stop = normalized.indexOf("。", range.index);
-  const sentence = normalized.slice(range.index, stop > 0 ? stop : range.index + 500);
-  const netProfits = annualMetricTriplet(sentence, /(?:归母\s*)?净利润/i);
-  const epsValues = annualMetricTriplet(sentence, /EPS|每股收益/i);
-  const peValues = annualMetricTriplet(sentence, /P\s*\/?\s*E|市盈率/i);
-  if (!netProfits && !epsValues && !peValues) return [];
-  return [0, 1, 2].map((index) => ({
-    year: startYear + index,
-    ...(netProfits?.[index] !== undefined ? { netProfit: netProfits[index] } : {}),
-    ...(epsValues?.[index] !== undefined ? { eps: epsValues[index] } : {}),
-    ...(peValues?.[index] !== undefined ? { pe: peValues[index] } : {}),
-  })).filter(hasForecastMetric);
-}
-
-function annualMetricTriplet(sentence: string, label: RegExp): number[] | null {
-  const match = label.exec(sentence);
-  if (!match || match.index === undefined) return null;
-  const values = [...sentence.slice(match.index + match[0].length, match.index + match[0].length + 160).matchAll(/[-+]?\d+(?:\.\d+)?/g)]
-    .slice(0, 3).map((item) => Number(item[0]));
-  return values.length === 3 && values.every(Number.isFinite) ? values : null;
-}
-
-function extractForecastsFromMarkdownTable(content: string): CompanyReportForecast[] {
-  let best: CompanyReportForecast[] = [];
-  for (const table of markdownTables(content)) {
-    for (let headerIndex = 0; headerIndex < table.length; headerIndex += 1) {
-      const years = forecastYearColumns(table[headerIndex]);
-      if (years.length < 2) continue;
-      const rows = table.slice(headerIndex, headerIndex + 20);
-      const first = years[0].columnIndex;
-      const metricRow = (pattern: RegExp) => rows.find((cells) => pattern.test(tableRowLabel(cells, first)) && cells.slice(first).some((value) => tableNumber(value) !== undefined));
-      const revenue = metricRow(/营业(?:总)?收入|营业额|营收|主营业务收入|销售收入/i);
-      const profit = metricRow(/归母\s*净利润|归属于母公司.*净利润|母公司股东.*净利润/i);
-      const eps = metricRow(/EPS|每股收益/i);
-      const pe = metricRow(/P\s*\/?\s*E|市盈率/i);
-      if (!revenue && !profit && !eps && !pe) continue;
-      const growthRow = (row: string[] | undefined) => row ? rows.slice(rows.indexOf(row) + 1, rows.indexOf(row) + 4).find((cells) => /同比|YOY|增长率|增速/i.test(tableRowLabel(cells, first))) : undefined;
-      const revenueGrowth = growthRow(revenue);
-      const profitGrowth = growthRow(profit);
-      const revenueDivisor = tableValueDivisor(tableRowLabel(revenue ?? [], first));
-      const profitDivisor = tableValueDivisor(tableRowLabel(profit ?? [], first));
-      const forecasts = years.map(({ year, columnIndex }) => ({
-        year,
-        ...(tableNumber(revenue?.[columnIndex]) !== undefined ? { revenue: round2(tableNumber(revenue?.[columnIndex])! / revenueDivisor) } : {}),
-        ...(tableNumber(revenueGrowth?.[columnIndex]) !== undefined ? { revenueGrowth: tableNumber(revenueGrowth?.[columnIndex]) } : {}),
-        ...(tableNumber(profit?.[columnIndex]) !== undefined ? { netProfit: round2(tableNumber(profit?.[columnIndex])! / profitDivisor) } : {}),
-        ...(tableNumber(profitGrowth?.[columnIndex]) !== undefined ? { profitGrowth: tableNumber(profitGrowth?.[columnIndex]) } : {}),
-        ...(tableNumber(eps?.[columnIndex]) !== undefined ? { eps: tableNumber(eps?.[columnIndex]) } : {}),
-        ...(tableNumber(pe?.[columnIndex]) !== undefined ? { pe: tableNumber(pe?.[columnIndex]) } : {}),
-      })).filter(hasForecastMetric);
-      if (forecastCompletenessScore(forecasts) > forecastCompletenessScore(best)) best = forecasts;
-    }
-  }
-  return best;
-}
-
-function markdownTables(content: string): string[][][] {
-  const tables: string[][][] = [];
-  let current: string[][] = [];
-  for (const line of content.split(/\r?\n/)) {
-    if (line.trim().startsWith("|")) current.push(line.split("|").slice(1, -1).map((cell) => cell.replace(/<br\s*\/?>/gi, "").replace(/\*\*/g, "").trim()));
-    else if (current.length) { tables.push(current); current = []; }
-  }
-  if (current.length) tables.push(current);
-  return tables;
-}
-
-function forecastYearColumns(cells: string[]): Array<{ year: number; columnIndex: number }> {
-  return cells.flatMap((cell, columnIndex) => {
-    const year = Number(cell.match(/(20\d{2})\s*(?:E|预测|预计)/i)?.[1] ?? 0);
-    return Number.isInteger(year) && year > 0 ? [{ year, columnIndex }] : [];
-  });
-}
-
-function tableRowLabel(cells: string[], firstYearColumn: number): string {
-  return cells.slice(0, Math.max(firstYearColumn, 1)).join(" ").replace(/\s+/g, " ").trim();
-}
-
-function tableNumber(value: string | undefined): number | undefined {
-  const parsed = Number(String(value ?? "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/)?.[0]);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function tableValueDivisor(label: string): number {
-  if (/百万元|百万(?:元)?/.test(label)) return 100;
-  if (/千万元/.test(label)) return 10;
-  if (/万元/.test(label)) return 10000;
-  if (/千元/.test(label)) return 100000;
-  if (/(?:^|\W)元(?:$|\W)/.test(label)) return 100000000;
-  return 1;
-}
-
-function hasForecastMetric(forecast: CompanyReportForecast): boolean {
-  return forecast.revenue !== undefined || forecast.netProfit !== undefined || forecast.eps !== undefined || forecast.pe !== undefined;
-}
-
-function forecastCompletenessScore(forecasts: CompanyReportForecast[]): number {
-  return forecasts.reduce((score, forecast) => score + [forecast.revenue, forecast.revenueGrowth, forecast.netProfit, forecast.profitGrowth, forecast.eps, forecast.pe].filter((value) => value !== undefined).length, 0);
-}
-
 
 function mergeForecastRows(
   preferred: CompanyReportForecast[],

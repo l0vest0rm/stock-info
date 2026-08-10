@@ -6,6 +6,7 @@ import {
   buildLowDependencyLineage,
   buildLowDependencyScopeProjection,
   buildLowDependencyStageInput,
+  buildLowDependencyWorkPackageInput,
   extractLowDependencyManifestLineage,
   LOW_DEPENDENCY_TARGET_STAGE_KEYS,
   lowDependencyInvalidationClosure,
@@ -15,6 +16,8 @@ import {
   stageArtifact,
   buildFailedStagePersistencePayload,
   sanitizeValidationFailureOutput,
+  validateFinalReportMarkdown,
+  projectFinalReportEvidence,
 } from "./research-operating-analysis-low-dependency-runner.mjs";
 import {
   RESEARCH_OPERATING_ANALYSIS_COMPANY_FACTS_PROMPT,
@@ -32,6 +35,56 @@ test("deterministic stage starts omit the optional model prompt", () => {
   assert.equal(Object.hasOwn(deterministic, "prompt"), false);
   const model = buildLowDependencyStageStartPayload({ input: { key: "company_facts" }, prompt: { instructions: "i", userPrompt: "u" }, lineage: {}, runnerInstanceId: "runner", attempt: 1 });
   assert.deepEqual(model.prompt, { instructions: "i", userPrompt: "u" });
+});
+
+test("final report evidence projects only stable WebQA provenance", () => {
+  const evidence = projectFinalReportEvidence({
+    provider: "chatgpt-web",
+    taskId: "llm-task:raw",
+    rawArtifactId: "llm-artifact:raw",
+    answer: { formatVersion: "webqa.answer.v1", content: { markdown: "# report" }, citations: [{ id: "c1", text: "", title: "", url: "https://example.test/source" }], sources: [{ url: "https://example.test/source" }], rawSnapshot: { status: "completed" } },
+    run: { runId: "llm-run:raw", terminalMetadata: { transport: "webqa", provider: "chatgpt-web", gatewayTaskId: "gateway-1", providerUrl: "https://chatgpt.com/c/conversation", providerConversationId: "conversation-1" } },
+  });
+  assert.deepEqual(evidence, {
+    schemaVersion: "research-operating-analysis-webqa-evidence.v1",
+    transport: "webqa",
+    provider: "chatgpt-web",
+    providerUrl: "https://chatgpt.com/c/conversation",
+    providerConversationId: "conversation-1",
+    gatewayTaskId: "gateway-1",
+    rawTaskId: "llm-task:raw",
+    rawRunId: "llm-run:raw",
+    rawArtifactId: "llm-artifact:raw",
+    citationCount: 1,
+    sourceCount: 1,
+    structuredAnswerAvailable: true,
+    citations: [{ text: "", title: "", url: "https://example.test/source" }],
+    sources: [{ text: "", title: "", url: "https://example.test/source" }],
+  });
+  const unavailable = projectFinalReportEvidence({ text: "plain Markdown", run: { runId: "llm-run:plain", terminalMetadata: { providerUrl: "http://not-safe" } } });
+  assert.equal(unavailable.providerUrl, null);
+  assert.equal(unavailable.structuredAnswerAvailable, null);
+  assert.equal(Object.hasOwn(unavailable, "raw"), false);
+});
+
+test("final report evidence bounds structured links and rejects unsafe URLs", () => {
+  const evidence = projectFinalReportEvidence({
+    provider: "chatgpt-web",
+    answer: {
+      formatVersion: "webqa.answer.v1",
+      content: { markdown: "# report" },
+      citations: [
+        { text: "safe", title: "Safe", url: "https://example.test/safe" },
+        { text: "unsafe", title: "Unsafe", url: "http://example.test/nope" },
+      ],
+      sources: [{ text: "source", title: "Source", url: "https://example.test/source" }],
+      rawSnapshot: { status: "completed" },
+    },
+    run: { runId: "llm-run:raw", terminalMetadata: { providerUrl: "https://chatgpt.com/c/conversation" } },
+  });
+  assert.equal(evidence.citationCount, 2);
+  assert.deepEqual(evidence.citations, [{ text: "safe", title: "Safe", url: "https://example.test/safe" }]);
+  assert.deepEqual(evidence.sources, [{ text: "source", title: "Source", url: "https://example.test/source" }]);
 });
 
 test("low-dependency context registers real market and statement payload provenance", () => {
@@ -69,11 +122,13 @@ test("runner dependency lookup reads normalized output from its Map artifact sto
 
 test("S1-S5 input uses only the confirmed local routing projection, never Markdown", () => {
   const context = { contextVersion: "research-context.v1", company: { name: "测试公司" }, security: { securityCode: "000001.SZ" }, financialSnapshot: { schemaVersion: "financial.v1" }, inputFingerprint: "fp" };
-  const routingArtifact = { artifactId: "llm-artifact:routing", stepKey: "local_routing_match", status: "complete", output: { routingState: "confirmed", industryTemplateId: "template:1", industryKey: "industry:1", companyScope: { products: ["产品"], downstream: ["客户"] }, sourceIds: ["source:routing"], evidenceIds: ["evidence:routing"] }, sourceIds: ["source:routing"] };
+  const routingArtifact = { artifactId: "llm-artifact:routing", stepKey: "local_routing_match", status: "complete", output: { routingState: "confirmed", industryTemplateId: "technology-equipment.v1", industryKey: "technology_equipment", companyScope: { products: ["产品"], downstream: ["客户"] }, sourceIds: ["source:routing"], evidenceIds: ["evidence:routing"] }, sourceIds: ["source:routing"] };
   const companyMarkdownArtifact = { artifactId: "llm-artifact:s1", stepKey: "company_facts", status: "complete", output: "# 公司事实\n\n正文", sourceIds: ["source:s1"], claimIds: ["claim:s1"], evidenceIds: ["evidence:s1"], unknownIds: [] };
   for (const stageKey of ["industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers"]) {
     const input = buildLowDependencyStageInput({ context, financialContext: { descriptor: { schemaVersion: "financial.v1" } }, stageKey, artifactsByKey: { local_routing_match: routingArtifact, company_facts: companyMarkdownArtifact }, scopeEnvelopeAvailable: true });
     assert.deepEqual(input.companyScope.products, ["产品"]);
+    assert.equal(input.routing.analysisTemplate.templateId, "technology-equipment.v1");
+    assert.ok(input.routing.analysisTemplate.operatingMetrics.includes("book-to-bill"));
     assert.equal(input.scopeProjection.status, "available");
     assert.deepEqual(input.scopeProjection.upstreamArtifactIds, ["llm-artifact:routing"]);
     assert.equal("output" in input, false);
@@ -96,7 +151,7 @@ test("unconfirmed local routing remains an explicit blocker for S1+ input", () =
 
 test("financial quality input carries the deterministic snapshot gate", () => {
   const contextArtifact = { artifactId: "llm-artifact:baseline", stepKey: "engineering_baseline", status: "complete", output: { contextVersion: "research-context.v1", financialSnapshot: { asOf: "2026-08-09", schemaVersion: "financial.v1", source: "structured_financial" } }, sourceIds: [] };
-  const routingArtifact = { artifactId: "llm-artifact:routing", stepKey: "local_routing_match", status: "complete", output: { routingState: "confirmed", industryTemplateId: "template:1", industryKey: "industry:1", companyScope: {}, sourceIds: [], evidenceIds: [] } };
+  const routingArtifact = { artifactId: "llm-artifact:routing", stepKey: "local_routing_match", status: "complete", output: { routingState: "confirmed", industryTemplateId: "technology-equipment.v1", industryKey: "technology_equipment", companyScope: {}, sourceIds: [], evidenceIds: [] } };
   const financialContext = {
     descriptor: contextArtifact.output.financialSnapshot,
     financialAnalysis: {
@@ -109,12 +164,45 @@ test("financial quality input carries the deterministic snapshot gate", () => {
   assert.equal(input.financialQualityGate.status, "available");
 });
 
+test("final-report input receives the selected business-economics analysis template", () => {
+  const routingArtifact = { artifactId: "llm-artifact:routing", status: "complete", output: { routingState: "confirmed", industryTemplateId: "consumer-brand.v1", industryKey: "consumer_brand", companyScope: { products: ["白酒"] } } };
+  const input = buildLowDependencyWorkPackageInput({
+    packageKey: "final_report",
+    baseInput: { context: { company: { name: "贵州茅台" }, security: { securityCode: "600519.SH" }, inputFingerprint: "fp" }, financialContext: {}, sources: [] },
+    artifactsByKey: new Map([["local_routing_match", routingArtifact]]),
+    scopeEnvelopeAvailable: false,
+  });
+  assert.equal(input.analysisTemplate.templateId, "consumer-brand.v1");
+  assert.ok(input.analysisTemplate.operatingMetrics.includes("终端动销"));
+  assert.ok(input.analysisTemplate.valuationMethods.includes("PE"));
+  assert.ok(input.analysisTemplate.stressFactors.includes("渠道压货"));
+});
+
 test("target runner preserves S1-S7 wave shape and keeps Markdown/JSON parsers separate", () => {
   const waves = lowDependencyTargetWaves(true);
   assert.deepEqual(waves[2].map((stage) => stage.key), ["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers", "financial_quality", "market_valuation_facts"]);
   assert.equal(parseLowDependencyStageOutput("company_facts", "# 公司事实\n\n正文"), "# 公司事实\n\n正文");
   assert.equal(parseLowDependencyStageOutput("scenario_valuation", '{"status":"blocked"}').status, "blocked");
   assert.equal(parseLowDependencyStageOutput("company_facts", "{\"status\":\"complete\"}"), "{\"status\":\"complete\"}");
+});
+
+test("work-package input projects only declared upstream package artifacts", () => {
+  const baseInput = {
+    context: { contextVersion: "research-context.v1", inputFingerprint: "fp", company: { name: "测试公司" }, security: { securityCode: "300308.SZ" }, financialSnapshot: { schemaVersion: "financial.v1" } },
+    financialContext: { descriptor: { schemaVersion: "financial.v1" }, financialAnalysis: { incomeStatement: [], balanceSheet: [], cashFlowStatement: [] } },
+  };
+  const artifacts = new Map([
+    ["engineering_baseline", { artifactId: "llm-artifact:s0", status: "complete", output: { schemaVersion: "engineering-baseline.v1" } }],
+    ["local_routing_match", { artifactId: "llm-artifact:routing", status: "complete", output: { routingState: "confirmed", industryTemplateId: "technology-equipment.v1", industryKey: "technology_equipment", companyScope: {} } }],
+    ["company_facts", { artifactId: "llm-artifact:s1", stepKey: "company_facts", status: "complete", output: "# facts" }],
+    ["financial_quality", { artifactId: "llm-artifact:s6", stepKey: "financial_quality", status: "complete", output: "# quality" }],
+    ["stale_unrelated", { artifactId: "llm-artifact:stale", status: "complete", output: "should not leak" }],
+  ]);
+  const external = buildLowDependencyWorkPackageInput({ packageKey: "external_evidence", baseInput, artifactsByKey: artifacts });
+  assert.deepEqual(Object.keys(external.upstreamArtifacts).sort(), ["engineering_baseline", "local_routing_match"]);
+  const synthesis = buildLowDependencyWorkPackageInput({ packageKey: "investment_synthesis", baseInput, artifactsByKey: artifacts });
+  assert.deepEqual(Object.keys(synthesis.upstreamArtifacts).sort(), ["company_facts", "financial_quality"]);
+  assert.equal(synthesis.inputFingerprint, "fp");
 });
 
 test("targeted rerun invalidates only selected stages and dependency descendants", () => {
@@ -175,4 +263,15 @@ test("failed structured output keeps a redacted parsed payload and error metadat
   assert.equal(failure.metadata.validationFailure.parsedOutput.apiKey, "[REDACTED_SECRET]");
   assert.match(failure.metadata.validationFailure.parsedOutput.note, /REDACTED_SECRET/);
   assert.equal(sanitizeValidationFailureOutput({ value: "safe" }).value, "safe");
+});
+
+test("final report validator accepts natural Chinese sections without numbered headings", () => {
+  const themes = ["研究范围与事实边界", "公司概况与商业模式", "行业与产业链", "竞争地位", "增长与经营驱动", "利润质量与现金转换", "资本效率与治理", "资产负债表与压力测试", "估值与市场隐含要求", "风险与反面证据", "后续跟踪仪表盘", "最终结论"];
+  const markdown = themes.map((theme) => `## ${theme}\n结论：报告期间和数据口径、主营业务、产品客户、行业产业链供需、同行竞争地位与竞争优势共同解释增长、销量价格和经营驱动。利润质量、现金流、营运资本、资本效率、资本配置、公司治理、管理层、资产负债表、压力测试、偿债、负债和资产均已核对。估值覆盖悲观基准乐观情景、PE和市场隐含要求；风险、反面证据、失效触发与后续跟踪指标的频率和阈值形成仪表盘，最终结论给出投资逻辑、下一步和观察重点。`).join("\n\n");
+  assert.equal(validateFinalReportMarkdown(markdown), markdown);
+});
+
+test("final report validator rejects source-link-only output", () => {
+  const links = Array.from({ length: 12 }, (_, index) => `[来源${index + 1}](https://example.com/${index + 1})`).join("");
+  assert.throws(() => validateFinalReportMarkdown(`# 1${links}`), /source links without human-readable analysis/);
 });

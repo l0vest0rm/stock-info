@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { fetchLocalRuntime } from "./lib/local-runtime-request.mjs";
 import { createLocalJobProvider, resolveLocalJobApiKey } from "./lib/local-job-provider-registry.mjs";
+import { loadGenericLlmExecutionConfig, selectGenericLlmExecutionTransport } from "./lib/generic-llm-execution-config.mjs";
+import { runWebQaJob } from "./lib/generic-webqa-adapter.mjs";
 import { localRuntimeError, localRuntimeLog } from "./lib/local-runtime-log.mjs";
 
 const baseUrl = String(process.env.GENERIC_LLM_RAW_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -26,6 +28,41 @@ function post(path, body) {
 export async function runJob(job, owner = runnerInstanceId) {
   const requestInput = job?.request?.rawModelRequest || job?.rawModelRequest || job?.request;
   if (!requestInput || typeof requestInput !== "object") throw new Error("generic raw model request is missing");
+  const execution = await loadGenericLlmExecutionConfig();
+  const handlerKey = String(job?.handlerKey || job?.task?.handlerKey || "generic_raw_model").trim();
+  const taskType = job?.taskType || job?.task?.taskType;
+  const originTaskType = job?.originTaskType || job?.task?.originTaskType;
+  if (selectGenericLlmExecutionTransport(execution, { handlerKey, taskType, originTaskType }) === "webqa") {
+    try {
+      return await runWebQaJob(job, owner, { config: execution.webqa, runtimePost: post });
+    } catch (error) {
+      // The adapter persists provider-reported failed/cancelled terminal
+      // states itself. Transport/configuration errors are thrown instead;
+      // fence those through the same generic failure endpoint so the durable
+      // ledger keeps a stable WebQA code and transport metadata rather than
+      // letting the dispatcher relabel them as `handler_failed`.
+      const message = error instanceof Error ? error.message : String(error);
+      const errorCode = typeof error?.code === "string" && error.code.startsWith("webqa_") ? error.code : "webqa_provider_failed";
+      if (errorCode !== "webqa_lease_lost") {
+        await post(`/api/llm-tasks/${encodeURIComponent(job.runId)}/fail`, {
+          taskId: job.taskId,
+          runnerInstanceId: owner,
+          attempt: job.attempt,
+          errorCode,
+          error: message,
+          metadata: {
+            transport: "webqa",
+            errorCode,
+            ...(job?.run?.progress && typeof job.run.progress === "object" && !Array.isArray(job.run.progress)
+              ? { recoveredProgress: job.run.progress }
+              : {}),
+          },
+        }).catch((failure) => localRuntimeError("generic-llm-raw", "webqa_failure_persist_failed", failure, { task_id: job.taskId, run_id: job.runId }));
+      }
+      localRuntimeLog("generic-llm-raw", "failed", { task_id: job.taskId, run_id: job.runId, attempt: job.attempt, error_code: errorCode, error: message });
+      return undefined;
+    }
+  }
   if (!apiKey) throw new Error("generic raw model runner requires OPENAI_API_KEY or ~/.codex/auth.json");
   const startedAt = Date.now();
   let text = "";
@@ -94,7 +131,7 @@ export async function runJob(job, owner = runnerInstanceId) {
       taskId: job.taskId,
       runnerInstanceId: owner,
       attempt: job.attempt,
-      errorCode: "provider_failed",
+      errorCode: typeof error?.code === "string" && error.code.startsWith("webqa_") ? error.code : "provider_failed",
       error: message,
     }).catch((failure) => localRuntimeError("generic-llm-raw", "failure_persist_failed", failure, { task_id: job.taskId, run_id: job.runId }));
     localRuntimeLog("generic-llm-raw", "failed", { task_id: job.taskId, run_id: job.runId, attempt: job.attempt, duration_ms: Date.now() - startedAt, error: message });

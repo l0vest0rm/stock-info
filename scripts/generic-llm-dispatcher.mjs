@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { fetchLocalRuntime } from "./lib/local-runtime-request.mjs";
 import { localRuntimeError, localRuntimeLog } from "./lib/local-runtime-log.mjs";
@@ -9,6 +10,20 @@ import { runGenericLlmHandler, selectGenericLlmHandler } from "./lib/generic-llm
 const baseUrl = String(process.env.GENERIC_LLM_DISPATCHER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const pollIntervalMs = positiveInteger(process.env.GENERIC_LLM_DISPATCHER_POLL_INTERVAL_MS, 1_000);
 const runnerInstanceId = `generic-llm-dispatcher:${randomUUID()}`;
+const handlerConcurrency = loadHandlerConcurrency();
+
+function loadHandlerConcurrency() {
+  try {
+    const config = JSON.parse(readFileSync(new URL("../config/local-job-runtime.json", import.meta.url), "utf8"));
+    const values = config?.genericDispatcher?.handlerConcurrency;
+    if (!values || typeof values !== "object" || Array.isArray(values)) return new Map();
+    return new Map(Object.entries(values)
+      .map(([key, value]) => [String(key).trim(), positiveInteger(value, 0)])
+      .filter(([key, value]) => key && value > 0));
+  } catch {
+    return new Map();
+  }
+}
 
 async function request(path, init) {
   const response = await fetchLocalRuntime(`${baseUrl}${path}`, init);
@@ -66,18 +81,34 @@ export function startGenericLlmDispatcher() {
   let accepting = true;
   let polling = false;
   const active = new Set();
+  const activeByHandler = new Map();
   const poll = async () => {
     if (!accepting || polling) return;
     polling = true;
     try {
       // The database provider ledger is the only model concurrency gate. Do
-      // not add family caps or a local active-size admission check here.
+      // not add a global active-size admission check here. Handler-local caps
+      // are explicit in config and are enforced before claim selection so a
+      // saturated low-dependency lane never consumes a provider slot.
       while (accepting) {
-        const claim = await post("/api/llm-tasks/claim-next", { runnerInstanceId });
+        const excludeHandlerKeys = [...handlerConcurrency.entries()]
+          .filter(([key, limit]) => (activeByHandler.get(key) || 0) >= limit)
+          .map(([key]) => key);
+        const claim = await post("/api/llm-tasks/claim-next", {
+          runnerInstanceId,
+          ...(excludeHandlerKeys.length ? { excludeHandlerKeys } : {}),
+        });
         if (!claim?.task || !claim?.run) break;
         if (["completed", "failed", "blocked"].includes(claim.request?.status)) continue;
+        const handlerKey = String(claim.handlerKey || claim.task.handlerKey || claim.task.taskType || "").trim();
+        activeByHandler.set(handlerKey, (activeByHandler.get(handlerKey) || 0) + 1);
         let work;
-        work = runClaim(claim).finally(() => { active.delete(work); });
+        work = runClaim(claim).finally(() => {
+          active.delete(work);
+          const next = (activeByHandler.get(handlerKey) || 1) - 1;
+          if (next > 0) activeByHandler.set(handlerKey, next);
+          else activeByHandler.delete(handlerKey);
+        });
         active.add(work);
       }
     } catch (error) {

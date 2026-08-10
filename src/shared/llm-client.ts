@@ -41,6 +41,9 @@ export type LlmTextRequest = {
   promptVersion?: string;
   requestId?: string;
   priority?: number | null;
+  /** Immutable caller identity for a nested generic raw task. It selects only
+   * the lower transport; provider/business request fields remain unchanged. */
+  originTaskType?: string;
   /** Polling bounds apply to the request waiter only.  They never cancel the
    * queued/running task or its provider stream. */
   pollIntervalMs?: number;
@@ -93,6 +96,7 @@ export async function requestLlmText(
   const targetId = text(request.targetId) || text(request.requestId) || `request:${crypto.randomUUID()}`;
   const promptVersion = text(request.promptVersion) || "generic-raw-model.v1";
   const idempotencyKey = text(request.idempotencyKey) || `generic-raw:${targetId}:${crypto.randomUUID()}`;
+  const originTaskType = text(request.originTaskType);
   const created = await createGenericLlmTask(env.DB, {
     taskType: GENERIC_LLM_RAW_MODEL_TASK_TYPE,
     targetType,
@@ -103,7 +107,7 @@ export async function requestLlmText(
     model: request.model,
     reasoningEffort: request.reasoningEffort ?? null,
     priority: normalizeGenericLlmPriority(request.priority),
-    metadata: { rawModelRequest: rawRequest },
+    metadata: { rawModelRequest: rawRequest, ...(originTaskType ? { originTaskType } : {}) },
   });
   return await awaitGenericLlmText(env.DB, created.task.taskId, {
     model: request.model,

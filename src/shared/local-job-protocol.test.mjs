@@ -197,3 +197,88 @@ test("global dispatcher is the only new model claim path and uses the shared cap
   assert.match(protocol, /order by priority desc, queue_sequence asc/);
   assert.doesNotMatch(protocol.slice(protocol.indexOf("export async function claimNextGenericLlmTaskRun"), protocol.indexOf("async function claimGenericLlmTaskRunInternal")), /taskType=\?/);
 });
+
+test("global claim excludes a saturated handler before reserving a provider slot", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "stock-info-generic-claim-filter-"));
+  try {
+    const db = new LocalD1Database(join(dir, "fixture.sqlite"));
+    await db.exec(`
+      create table local_job_provider_slots (
+        provider_id text primary key,
+        active_count integer not null default 0,
+        concurrency_limit integer not null,
+        updated_at integer not null
+      );
+      insert into local_job_provider_slots (provider_id, active_count, concurrency_limit, updated_at)
+        values ('openai', 0, 5, 0);
+      create table local_job_provider_leases (
+        provider_id text not null,
+        job_id text not null,
+        job_type text not null,
+        attempt integer not null,
+        lease_owner text not null,
+        acquired_at integer not null,
+        primary key (provider_id, job_id, attempt),
+        unique (job_id, attempt)
+      );
+      create table research_web_search_package_jobs (
+        job_id text, job_type text, status text, attempt integer, lease_owner text, lease_until integer
+      );
+      create table research_operating_analysis_jobs (
+        job_id text, job_type text, status text, attempt integer, lease_owner text, lease_until integer
+      );
+      create table information_processing_jobs (
+        job_id text, job_type text, status text, attempt integer, lease_owner text, lease_until integer
+      );
+    `);
+    for (const filename of [
+      "0107_generic_llm_task_protocol.sql",
+      "0108_research_operating_analysis_artifact_contract.sql",
+      "0110_generic_llm_scheduler_foundation.sql",
+    ]) await db.exec(await readFile(join(process.cwd(), "migrations", filename), "utf8"));
+
+    const now = Date.now();
+    await createGenericLlmTask(db, {
+      taskId: "llm-task:claim-filter-stage",
+      taskType: "research_operating_analysis_low_dependency_stage",
+      targetType: "security",
+      targetId: "300308.SZ",
+      idempotencyKey: "claim-filter-stage",
+      promptVersion: "fixture.v1",
+      handlerKey: "research_operating_analysis_low_dependency_stage",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "none",
+      now,
+    });
+    await createGenericLlmTask(db, {
+      taskId: "llm-task:claim-filter-other",
+      taskType: "fixture_other",
+      targetType: "fixture",
+      targetId: "other",
+      idempotencyKey: "claim-filter-other",
+      promptVersion: "fixture.v1",
+      handlerKey: "fixture_other",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "none",
+      now: now + 1,
+    });
+    const claim = await claimNextGenericLlmQueueTaskRun(db, "claim-filter-runner", {
+      now: now + 2,
+      excludeHandlerKeys: ["research_operating_analysis_low_dependency_stage"],
+    });
+    assert.ok(claim);
+    assert.equal(claim?.task.handlerKey, "fixture_other");
+    await completeGenericLlmRun(db, {
+      runId: claim.run.runId,
+      taskId: claim.task.taskId,
+      attempt: claim.run.attempt,
+      leaseOwner: claim.run.leaseOwner,
+      status: "completed",
+      completedAt: now + 3,
+    });
+    const stageClaim = await claimNextGenericLlmQueueTaskRun(db, "claim-filter-runner", { now: now + 4 });
+    assert.equal(stageClaim?.task.handlerKey, "research_operating_analysis_low_dependency_stage");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

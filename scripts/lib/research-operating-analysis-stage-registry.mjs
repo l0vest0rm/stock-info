@@ -1,4 +1,20 @@
 import stageRegistry from "../../config/research-operating-analysis-stages.json" with { type: "json" };
+import {
+  RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_ENVELOPE_VERSION,
+  RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_VERSION,
+  RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES as WORK_PACKAGE_DEFINITIONS,
+  getResearchOperatingAnalysisWorkPackage,
+  isResearchOperatingAnalysisWorkPackage,
+  researchOperatingAnalysisGenerativeWorkPackages,
+  researchOperatingAnalysisWorkPackageStageKeys,
+  researchOperatingAnalysisWorkPackageWaves,
+  workPackageForStage,
+  isFinalReportWorkPackage,
+  normalizeFinalReportMarkdown,
+  parseWorkPackageEnvelopeJson,
+  projectWorkPackageStages,
+  normalizeWorkPackageEnvelope,
+} from "./research-operating-analysis-work-packages.mjs";
 
 const terminalStatuses = ["complete", "partial", "blocked", "not_applicable", "failed"];
 const stageKeys = new Set(stageRegistry.stages.map((stage) => stage.key));
@@ -14,6 +30,9 @@ export const RESEARCH_OPERATING_ANALYSIS_LEGACY_PROTOCOL_VERSION = stageRegistry
 export const RESEARCH_OPERATING_ANALYSIS_LEGACY_PROMPT_VERSION = stageRegistry.legacy.promptVersion;
 export const RESEARCH_OPERATING_ANALYSIS_LEGACY_TASK_TYPE = stageRegistry.legacy.taskType;
 export const RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES = Object.freeze(stageRegistry.stages.map((stage) => freezeStage(stage)));
+export const RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_ENVELOPE = RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_ENVELOPE_VERSION;
+export const RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES_VERSION = RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_VERSION;
+export const RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES = WORK_PACKAGE_DEFINITIONS;
 
 const byKey = new Map(RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES.map((stage) => [stage.key, stage]));
 
@@ -58,6 +77,20 @@ export function terminalResearchOperatingAnalysisStatuses() {
   return [...terminalStatuses];
 }
 
+export {
+  getResearchOperatingAnalysisWorkPackage,
+  isResearchOperatingAnalysisWorkPackage,
+  researchOperatingAnalysisGenerativeWorkPackages,
+  researchOperatingAnalysisWorkPackageStageKeys,
+  researchOperatingAnalysisWorkPackageWaves,
+  workPackageForStage,
+  isFinalReportWorkPackage,
+  normalizeFinalReportMarkdown,
+  parseWorkPackageEnvelopeJson,
+  projectWorkPackageStages,
+  normalizeWorkPackageEnvelope,
+};
+
 function validateRegistry(value) {
   if (!value || typeof value !== "object" || !Array.isArray(value.stages)) throw new Error("research-analysis stage registry is invalid");
   if (!String(value.registryVersion || "").trim() || !String(value.targetProtocolVersion || "").trim() || !String(value.targetPromptVersion || "").trim() || !String(value.targetTaskType || "").trim()) throw new Error("research-analysis stage registry versions are required");
@@ -83,6 +116,16 @@ function validateRegistry(value) {
     if (waveKeys.length !== seen.size || new Set(waveKeys).size !== seen.size || waveKeys.some((key) => !seen.has(key))) throw new Error(`research-analysis ${name} waves must cover every target stage exactly once`);
   }
   if (value.legacy.stageKeys.some((key) => seen.has(key))) throw new Error("legacy and low-dependency stage keys must remain disjoint");
+  const packageStageKeys = new Set();
+  for (const definition of WORK_PACKAGE_DEFINITIONS) {
+    for (const stageKey of definition.stageKeys) {
+      if (!seen.has(stageKey)) throw new Error(`unknown work-package stage ${stageKey}`);
+      if (packageStageKeys.has(stageKey)) throw new Error(`work-package stage is duplicated: ${stageKey}`);
+      packageStageKeys.add(stageKey);
+    }
+    for (const reportKey of definition.reportReadyStageKeys) if (!seen.has(reportKey)) throw new Error(`unknown work-package report-ready stage ${reportKey}`);
+  }
+  if (packageStageKeys.size !== seen.size) throw new Error("work packages must cover every target stage exactly once");
 }
 
 function freezeStage(stage) {

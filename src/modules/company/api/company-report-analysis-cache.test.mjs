@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   calculateCurrentForecastNetProfit,
   calculateCurrentForecastPe,
-  extractCompanyReportAnalysisByLlm,
   parseCompanyNewsReportAnalysis,
   parseCompanyReportAnalysis,
   parseCompanyReportForecasts,
@@ -42,20 +41,6 @@ test("parses one optional numeric target price without adding valuation fields",
   });
   assert.equal(parseCompanyReportTargetPrice(null), null);
   assert.equal(parseCompanyReportTargetPrice("1,650元"), null);
-});
-
-test("keeps a deterministic target price when pattern extraction avoids an LLM call", async () => {
-  const analysis = await extractCompanyReportAnalysisByLlm(
-    { env: { LLM_RUNTIME: "local" } },
-    "示例研报",
-    "预计 2026-2028 年归母净利润为 7.74/9.45/11.41 亿元；目标价由 1400 元上调至 1650 元。",
-  );
-  assert.equal(analysis.targetPrice, 1650);
-  assert.deepEqual(analysis.forecasts.map(({ year, netProfit }) => ({ year, netProfit })), [
-    { year: 2026, netProfit: 7.74 },
-    { year: 2027, netProfit: 9.45 },
-    { year: 2028, netProfit: 11.41 },
-  ]);
 });
 
 test("calculates current forecast PE from market cap before falling back to price and EPS", () => {

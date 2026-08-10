@@ -1,12 +1,19 @@
-import registry from "../../config/research-industry-template-registry.json" with { type: "json" };
+import registry from "../../config/research-analysis-template-registry.json" with { type: "json" };
 
-export const RESEARCH_INDUSTRY_TEMPLATE_REGISTRY_VERSION = registry.registryVersion;
-export const RESEARCH_INDUSTRY_TEMPLATE_REGISTRY = Object.freeze(registry.templates.map((template) => Object.freeze({
+export const RESEARCH_ANALYSIS_TEMPLATE_REGISTRY_VERSION = registry.registryVersion;
+export const RESEARCH_ANALYSIS_TEMPLATE_REGISTRY = Object.freeze(registry.templates.map((template) => Object.freeze({
   ...template,
   requiredFields: Object.freeze([...template.requiredFields]),
   terms: Object.freeze(Object.fromEntries(Object.entries(template.terms).map(([field, terms]) => [field, Object.freeze([...terms])]))),
+  operatingMetrics: Object.freeze([...template.operatingMetrics]),
+  valuationMethods: Object.freeze([...template.valuationMethods]),
+  stressFactors: Object.freeze([...template.stressFactors]),
   evidencePolicy: Object.freeze({ ...template.evidencePolicy }),
 })));
+export const RESEARCH_ANALYSIS_TEMPLATE_ALIASES = Object.freeze({ ...(registry.templateAliases || {}) });
+// Compatibility exports for callers that still use the pre-v3 symbol names.
+export const RESEARCH_INDUSTRY_TEMPLATE_REGISTRY_VERSION = RESEARCH_ANALYSIS_TEMPLATE_REGISTRY_VERSION;
+export const RESEARCH_INDUSTRY_TEMPLATE_REGISTRY = RESEARCH_ANALYSIS_TEMPLATE_REGISTRY;
 
 const ROUTING_FIELDS = Object.freeze(["primary_business", "product_boundary", "downstream", "industry"]);
 const FIELD_ALIASES = Object.freeze({
@@ -48,7 +55,7 @@ export function normalizeEngineeringBaseline(value, { inputFingerprint = null } 
  * Evaluate only locally controlled rules. The S1 facts remain the only basis;
  * this function never fetches, searches, or asks a model to choose a template.
  */
-export function matchLocalIndustryTemplate(baseline, { templates = RESEARCH_INDUSTRY_TEMPLATE_REGISTRY, upstreamArtifactIds = [] } = {}) {
+export function matchLocalIndustryTemplate(baseline, { templates = RESEARCH_ANALYSIS_TEMPLATE_REGISTRY, upstreamArtifactIds = [] } = {}) {
   const normalized = normalizeEngineeringBaseline(baseline);
   const fields = fieldsFromBaseline(normalized);
   const evidenceByField = Object.fromEntries(ROUTING_FIELDS.map((field) => [field, fields[field].filter((item) => hasEvidence(item))]));
@@ -67,15 +74,17 @@ export function matchLocalIndustryTemplate(baseline, { templates = RESEARCH_INDU
         ? { code: "ambiguous_match", message: `受控模板匹配不唯一：${qualified.map((item) => item.templateId).join("、")}`, fields: [] }
         : null;
   const selected = qualified.length === 1 && !routingReason ? qualified[0] : null;
+  const selectedTemplate = selected ? resolveAnalysisTemplate(selected.templateId, { templates }) : null;
   const sourceIds = uniqueStrings([...normalized.sourceIds, ...ROUTING_FIELDS.flatMap((field) => evidenceByField[field].flatMap((item) => item.sourceIds))]);
   const evidenceIds = uniqueStrings(ROUTING_FIELDS.flatMap((field) => evidenceByField[field].map((item) => item.factId)));
   return {
     schemaVersion: "local-routing-match.v1",
     state: selected ? "confirmed" : "unconfirmed",
     routingState: selected ? "confirmed" : "unconfirmed",
-    industryTemplateId: selected?.templateId || null,
-    industryKey: selected?.industryKey || null,
-    industryLabel: selected?.label || null,
+    industryTemplateId: selectedTemplate?.templateId || null,
+    industryKey: selectedTemplate?.industryKey || null,
+    industryLabel: selectedTemplate?.label || null,
+    analysisTemplate: selectedTemplate ? analysisTemplateProjection(selectedTemplate) : null,
     companyScope: normalized.companyScope,
     candidateTemplates: candidates,
     matchedTemplates: qualified,
@@ -90,12 +99,12 @@ export function matchLocalIndustryTemplate(baseline, { templates = RESEARCH_INDU
 }
 
 /** S0.1 exposes explainable candidates without declaring a route. */
-export function evaluateLocalTemplateCandidates(baseline, { templates = RESEARCH_INDUSTRY_TEMPLATE_REGISTRY } = {}) {
+export function evaluateLocalTemplateCandidates(baseline, { templates = RESEARCH_ANALYSIS_TEMPLATE_REGISTRY } = {}) {
   const normalized = normalizeEngineeringBaseline(baseline);
   const fields = fieldsFromBaseline(normalized);
   return Array.isArray(templates) ? templates.filter(validTemplate).map((template) => {
     const matchedFields = ROUTING_FIELDS.filter((field) => fieldMatchesTemplate(field, fields[field], template));
-    return { templateId: text(template.templateId), industryKey: text(template.industryKey), label: text(template.label), matchedFields, score: matchedFields.length, reason: matchedFields.length ? `命中字段：${matchedFields.join("、")}` : "没有命中受控事实谓词" };
+    return { templateId: text(template.templateId), industryKey: text(template.industryKey), label: text(template.label), frameworkCategory: text(template.frameworkCategory), matchedFields, score: matchedFields.length, reason: matchedFields.length ? `命中字段：${matchedFields.join("、")}` : "没有命中受控事实谓词" };
   }) : [];
 }
 
@@ -104,11 +113,14 @@ export function confirmedRoutingProjection(artifact) {
   if (text(source.routingState) !== "confirmed" || !text(source.industryTemplateId) || !text(source.industryKey)) {
     throw new Error("S3+ requires a confirmed local routing projection");
   }
+  const template = resolveAnalysisTemplate(source.industryTemplateId);
+  if (!template) throw new Error(`confirmed routing template is not registered: ${text(source.industryTemplateId)}`);
   return {
     routingState: "confirmed",
-    industryTemplateId: text(source.industryTemplateId),
-    industryKey: text(source.industryKey),
-    industryLabel: text(source.industryLabel) || null,
+    industryTemplateId: template.templateId,
+    industryKey: template.industryKey,
+    industryLabel: template.label,
+    analysisTemplate: analysisTemplateProjection(template),
     companyScope: normalizeCompanyScope(source.companyScope),
     sourceIds: uniqueStrings(source.sourceIds),
     evidenceIds: uniqueStrings(source.evidenceIds),
@@ -119,7 +131,7 @@ export function confirmedRoutingProjection(artifact) {
 export function applyManualRoutingConfirmation(matchResult, confirmation) {
   const source = object(confirmation);
   const templateId = text(source.selectedTemplateId || source.industryTemplateId);
-  const template = RESEARCH_INDUSTRY_TEMPLATE_REGISTRY.find((item) => item.templateId === templateId);
+  const template = resolveAnalysisTemplate(templateId);
   if (!template) throw new Error(`manual routing template is not registered: ${templateId || "(empty)"}`);
   const baseline = object(matchResult);
   const scope = { ...normalizeCompanyScope(baseline.companyScope), ...normalizeCompanyScope(source.companyScope) };
@@ -133,6 +145,7 @@ export function applyManualRoutingConfirmation(matchResult, confirmation) {
     industryTemplateId: template.templateId,
     industryKey: template.industryKey,
     industryLabel: template.label,
+    analysisTemplate: analysisTemplateProjection(template),
     companyScope: scope,
     mappingReason: { code: "manual_confirmation", message: scopeNote ? `人工确认模板 ${template.templateId}；范围说明已记录` : `人工确认模板 ${template.templateId}`, fields: ROUTING_FIELDS, auditId: text(source.confirmationId) || null },
     unknowns: (baseline.unknowns || []).filter((item) => item?.code !== "insufficient_evidence" && item?.code !== "zero_match" && item?.code !== "ambiguous_match"),
@@ -214,6 +227,24 @@ function normalizeSourceReference(value) {
 function normalizeUnknowns(value) { return Array.isArray(value) ? value.map((item, index) => { const source = object(item); const message = text(source.message || source.reason || item); return message ? { unknownId: text(source.unknownId) || `unknown:${index + 1}`, code: text(source.code) || "unknown", message, blocking: source.blocking === true } : null; }).filter(Boolean) : []; }
 function hasEvidence(fact) { return Boolean(fact?.evidence && fact.sourceReferences?.length); }
 function validTemplate(template) { return Boolean(template && text(template.templateId) && text(template.industryKey) && Array.isArray(template.requiredFields) && object(template.terms)); }
+function resolveAnalysisTemplate(templateId, { templates = RESEARCH_ANALYSIS_TEMPLATE_REGISTRY } = {}) {
+  const requested = text(templateId);
+  const canonical = text(RESEARCH_ANALYSIS_TEMPLATE_ALIASES[requested]) || requested;
+  return templates.find((item) => text(item.templateId) === canonical) || null;
+}
+function analysisTemplateProjection(template) {
+  return {
+    templateId: text(template.templateId),
+    profileKey: text(template.industryKey),
+    label: text(template.label),
+    frameworkCategory: text(template.frameworkCategory),
+    businessModel: text(template.businessModel),
+    primaryFormula: text(template.primaryFormula),
+    operatingMetrics: stringArray(template.operatingMetrics),
+    valuationMethods: stringArray(template.valuationMethods),
+    stressFactors: stringArray(template.stressFactors),
+  };
+}
 function containsForbiddenTemplateSelection(value) { if (!value || typeof value !== "object") return false; if (Array.isArray(value)) return value.some(containsForbiddenTemplateSelection); return Object.entries(value).some(([key, item]) => key === "industryTemplateId" || key === "templateId" && object(value).routingState === "confirmed" || containsForbiddenTemplateSelection(item)); }
 function text(value) { return typeof value === "string" ? value.trim() : ""; }
 function object(value) { return value && typeof value === "object" && !Array.isArray(value) ? value : {}; }

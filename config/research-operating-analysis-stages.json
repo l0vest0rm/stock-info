@@ -1,8 +1,9 @@
 {
-  "registryVersion": "investment-analysis.stage-registry.v1",
+  "registryVersion": "investment-analysis.stage-registry.v2",
   "targetProtocolVersion": "investment-analysis.low-dependency.v1",
   "targetPromptVersion": "investment-analysis.low-dependency.v1",
   "targetTaskType": "research_operating_analysis_low_dependency",
+  "workPackageVersion": "investment-analysis.work-packages.v1",
   "legacy": {
     "protocolVersion": "llm-task-protocol.v1",
     "promptVersion": "investment-analysis.staged.v1",
@@ -225,6 +226,61 @@
         "# 11. 后续跟踪仪表盘",
         "# 12. 最终结论"
       ]
+    }
+  ],
+  "workPackages": [
+    {
+      "key": "foundation",
+      "label": "S0 确定性基础",
+      "execution": "deterministic",
+      "outputKind": "stage_artifacts",
+      "promptVersion": null,
+      "stageKeys": ["engineering_baseline", "local_routing_match"],
+      "reportReadyStageKeys": [],
+      "dependsOn": [],
+      "inputPackageKeys": [],
+      "webSearch": false,
+      "inputProjection": "local_inputs_only"
+    },
+    {
+      "key": "final_report",
+      "label": "投资分析最终报告",
+      "execution": "model",
+      "outputKind": "final_markdown",
+      "promptVersion": "investment-analysis.work-package.final-report.v1",
+      "stageKeys": [
+        "company_facts",
+        "industry_structure",
+        "supply_demand_cycle",
+        "competition_peers",
+        "company_operating_drivers",
+        "financial_quality",
+        "market_valuation_facts",
+        "operating_thesis",
+        "scenario_valuation",
+        "investment_conclusion",
+        "report_assembly"
+      ],
+      "reportReadyStageKeys": [],
+      "dependsOn": ["foundation"],
+      "inputPackageKeys": ["foundation"],
+      "webSearch": true,
+      "finalReport": true,
+      "inputProjection": "final_report_context_and_market_snapshot"
+    },
+    {
+      "key": "deterministic_valuation",
+      "label": "S10 确定性估值计算",
+      "execution": "deterministic",
+      "outputKind": "stage_artifacts",
+      "promptVersion": null,
+      "stageKeys": ["deterministic_valuation"],
+      "reportReadyStageKeys": [],
+      "dependsOn": [],
+      "inputPackageKeys": [],
+      "webSearch": false,
+      "bypassed": true,
+      "inputProjection": "scenario_calculation_request"
     }
   ],
   "waves": {

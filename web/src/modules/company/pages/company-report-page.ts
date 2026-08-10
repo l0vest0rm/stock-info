@@ -45,10 +45,27 @@ type CompanyReportRow = {
   targetPrice: string
   orgName: string
   pages: string
+  llmRawResponse?: unknown | null
 }
 
 function companyReportProvenanceLabel(value: unknown): string {
   return String(value || '').trim().toLowerCase() === 'web_search' ? '搜索发现' : '既有来源'
+}
+
+function companyReportRawResponseTitle(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+  if (value === null) {
+    return '模型原始返回：未找到该报告对应的完整模型输出（任务或 artifact 缺失）'
+  }
+  let rendered = ''
+  try {
+    rendered = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+  } catch {
+    rendered = String(value)
+  }
+  return `模型原始返回：\n${rendered || '（空）'}`
 }
 
 type CompanyReportStateEvent = CustomEvent<{
@@ -82,7 +99,17 @@ function emitCompanyReportOpenDoc(docId: string) {
   }))
 }
 
-function emitCompanyReportDiscovery(reasoningEffort: 'max' | 'none' = 'max') {
+type CompanyReportDiscoveryReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'pro'
+
+const companyReportDiscoveryReasoningOptions: Array<{ value: CompanyReportDiscoveryReasoningEffort, label: string }> = [
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'xhigh', label: '超高' },
+  { value: 'pro', label: '专业' },
+]
+
+function emitCompanyReportDiscovery(reasoningEffort: CompanyReportDiscoveryReasoningEffort = 'xhigh') {
   window.dispatchEvent(new CustomEvent('licai:company-report-discover', {
     detail: { reasoningEffort },
   }))
@@ -192,6 +219,7 @@ const CompanyReportPage = defineComponent({
     const discoveryElapsedEndAt = ref<number | null>(null)
     const discoveryModel = ref<string | null>(null)
     const discoveryReasoningEffort = ref<string | null>(null)
+    const selectedDiscoveryReasoningEffort = ref<CompanyReportDiscoveryReasoningEffort>('xhigh')
     let discoveryElapsedTimer: number | null = null
 
     const clearDiscoveryElapsedTimer = () => {
@@ -365,10 +393,22 @@ const CompanyReportPage = defineComponent({
               type: 'button',
               class: 'btn btn-sm btn-outline-primary',
               disabled: discoveryBusy.value,
-              onClick: () => emitCompanyReportDiscovery(),
+              onClick: () => emitCompanyReportDiscovery(selectedDiscoveryReasoningEffort.value),
             }, discoveryBusy.value
               ? '正在搜索近期研报…'
               : discoveryStatus.value === 'completed' ? '再次搜索研报' : '搜索近期研报'),
+            h('select', {
+              class: 'form-select form-select-sm',
+              'aria-label': '近期研报搜索推理深度',
+              value: selectedDiscoveryReasoningEffort.value,
+              disabled: discoveryBusy.value,
+              onChange: (event: Event) => {
+                const value = (event.target as HTMLSelectElement).value
+                if (companyReportDiscoveryReasoningOptions.some((option) => option.value === value)) {
+                  selectedDiscoveryReasoningEffort.value = value as CompanyReportDiscoveryReasoningEffort
+                }
+              },
+            }, companyReportDiscoveryReasoningOptions.map((option) => h('option', { value: option.value }, option.label))),
             discoveryMessage.value
               ? h('span', {
                 class: `small ${['failed', 'blocked'].includes(discoveryStatus.value) ? 'text-danger' : 'text-muted'}`,
@@ -412,48 +452,54 @@ const CompanyReportPage = defineComponent({
             ]),
           ]),
           h('tbody', rows.value.length > 0
-            ? rows.value.map((row) => h('tr', { key: `${row.publishDate}-${row.title}-${row.rank}` }, [
-              h('td', row.rank),
-              h('td', row.publishDate),
-              h('td', row.reportInfoCode
-                ? h('a', {
-                  href: `#${row.reportInfoCode}`,
-                  name: 'infoCode',
-                  'data-code': row.reportInfoCode,
-                }, row.title)
-                : row.reportHref
+            ? rows.value.map((row) => {
+              const rawResponseTitle = companyReportRawResponseTitle(row.llmRawResponse)
+              return h('tr', {
+                key: `${row.publishDate}-${row.title}-${row.rank}`,
+                ...(rawResponseTitle ? { title: rawResponseTitle, 'aria-label': rawResponseTitle } : {}),
+              }, [
+                h('td', row.rank),
+                h('td', row.publishDate),
+                h('td', row.reportInfoCode
                   ? h('a', {
-                    href: row.reportHref,
-                    target: '_blank',
-                    rel: 'noreferrer noopener',
+                    href: `#${row.reportInfoCode}`,
+                    name: 'infoCode',
+                    'data-code': row.reportInfoCode,
                   }, row.title)
-                  : row.docId
+                  : row.reportHref
                     ? h('a', {
-                      href: `#knowledge:${row.docId}`,
-                      onClick: (event: Event) => {
-                        event.preventDefault()
-                        emitCompanyReportOpenDoc(row.docId)
-                      },
+                      href: row.reportHref,
+                      target: '_blank',
+                      rel: 'noreferrer noopener',
                     }, row.title)
-                  : h('span', row.title)),
-              h('td', companyReportProvenanceLabel(row.provenance)),
-              h('td', { title: growthTitle('营收', row.revenueGrowth2025) }, growthCell(row.revenue2025, row.revenueGrowth2025)),
-              h('td', { title: profitTitle(row.growth2025, row.profitMargin2025, row.profitEstimated2025) }, growthCell(row.profit2025, row.growth2025)),
-              h('td', row.pe2025),
-              h('td', { title: growthTitle('营收', row.revenueGrowth2026) }, growthCell(row.revenue2026, row.revenueGrowth2026)),
-              h('td', { title: profitTitle(row.growth2026, row.profitMargin2026, row.profitEstimated2026) }, growthCell(row.profit2026, row.growth2026)),
-              h('td', row.pe2026),
-              h('td', { title: growthTitle('营收', row.revenueGrowth2027) }, growthCell(row.revenue2027, row.revenueGrowth2027)),
-              h('td', { title: profitTitle(row.growth2027, row.profitMargin2027, row.profitEstimated2027) }, growthCell(row.profit2027, row.growth2027)),
-              h('td', row.pe2027),
-              h('td', { title: growthTitle('营收', row.revenueGrowth2028) }, growthCell(row.revenue2028, row.revenueGrowth2028)),
-              h('td', { title: profitTitle(row.growth2028, row.profitMargin2028, row.profitEstimated2028) }, growthCell(row.profit2028, row.growth2028)),
-              h('td', row.pe2028),
-              h('td', row.valuation),
-              h('td', row.targetPrice),
-              h('td', row.orgName),
-              h('td', row.pages),
-            ]))
+                    : row.docId
+                      ? h('a', {
+                        href: `#knowledge:${row.docId}`,
+                        onClick: (event: Event) => {
+                          event.preventDefault()
+                          emitCompanyReportOpenDoc(row.docId)
+                        },
+                      }, row.title)
+                      : h('span', row.title)),
+                h('td', companyReportProvenanceLabel(row.provenance)),
+                h('td', { title: growthTitle('营收', row.revenueGrowth2025) }, growthCell(row.revenue2025, row.revenueGrowth2025)),
+                h('td', { title: profitTitle(row.growth2025, row.profitMargin2025, row.profitEstimated2025) }, growthCell(row.profit2025, row.growth2025)),
+                h('td', row.pe2025),
+                h('td', { title: growthTitle('营收', row.revenueGrowth2026) }, growthCell(row.revenue2026, row.revenueGrowth2026)),
+                h('td', { title: profitTitle(row.growth2026, row.profitMargin2026, row.profitEstimated2026) }, growthCell(row.profit2026, row.growth2026)),
+                h('td', row.pe2026),
+                h('td', { title: growthTitle('营收', row.revenueGrowth2027) }, growthCell(row.revenue2027, row.revenueGrowth2027)),
+                h('td', { title: profitTitle(row.growth2027, row.profitMargin2027, row.profitEstimated2027) }, growthCell(row.profit2027, row.growth2027)),
+                h('td', row.pe2027),
+                h('td', { title: growthTitle('营收', row.revenueGrowth2028) }, growthCell(row.revenue2028, row.revenueGrowth2028)),
+                h('td', { title: profitTitle(row.growth2028, row.profitMargin2028, row.profitEstimated2028) }, growthCell(row.profit2028, row.growth2028)),
+                h('td', row.pe2028),
+                h('td', row.valuation),
+                h('td', row.targetPrice),
+                h('td', row.orgName),
+                h('td', row.pages),
+              ])
+            })
             : [
               h('tr', { key: 'company-report-empty' }, [
                 h('td', {

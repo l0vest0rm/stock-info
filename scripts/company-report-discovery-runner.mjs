@@ -5,16 +5,21 @@ import { pathToFileURL } from "node:url";
 import { fetchLocalRuntime } from "./lib/local-runtime-request.mjs";
 import { createLocalJobProvider, loadLocalJobRuntimeConfig, resolveLocalJobApiKey } from "./lib/local-job-provider-registry.mjs";
 import { localRuntimeError, localRuntimeLog } from "./lib/local-runtime-log.mjs";
+import { loadGenericLlmExecutionConfig, selectGenericLlmExecutionTransport } from "./lib/generic-llm-execution-config.mjs";
+import { runWebQaJob } from "./lib/generic-webqa-adapter.mjs";
 
 const baseUrl = String(process.env.COMPANY_REPORT_DISCOVERY_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const apiKey = await resolveLocalJobApiKey();
 const runtimeConfig = await loadLocalJobRuntimeConfig();
+const executionConfig = await loadGenericLlmExecutionConfig();
 const handlerConfig = runtimeConfig?.handlers?.researchWebSearch;
 const pollIntervalMs = positiveInteger(process.env.COMPANY_REPORT_DISCOVERY_RUNNER_POLL_INTERVAL_MS, handlerConfig?.pollIntervalMs || 2_000);
 const concurrency = positiveInteger(process.env.COMPANY_REPORT_DISCOVERY_RUNNER_CONCURRENCY, handlerConfig?.concurrency || 1);
 const runnerInstanceId = `company-report-discovery-runner:${randomUUID()}`;
 
-if (!apiKey) throw new Error("local company report discovery runner requires OPENAI_API_KEY or ~/.codex/auth.json");
+if (selectCompanyReportDiscoveryTransport() === "openai" && !apiKey) {
+  throw new Error("local company report discovery runner requires OPENAI_API_KEY or ~/.codex/auth.json when its transport is openai");
+}
 
 async function request(path, init) {
   const response = await fetchLocalRuntime(`${baseUrl}${path}`, init);
@@ -81,6 +86,63 @@ function mergeWebSearchCallState(target, source) {
   return target;
 }
 
+function selectCompanyReportDiscoveryTransport() {
+  return selectGenericLlmExecutionTransport(executionConfig, {
+    handlerKey: "company_report_discovery",
+    taskType: "company_report_discovery",
+  });
+}
+
+function webQaAnswerText(snapshot) {
+  return typeof snapshot?.answer?.content?.markdown === "string" ? snapshot.answer.content.markdown : "";
+}
+
+/** WebQA exposes browser answer sources instead of Responses tool events. */
+export function buildCompanyReportDiscoveryWebQaSearch(snapshot) {
+  const answer = snapshot?.answer && typeof snapshot.answer === "object" ? snapshot.answer : {};
+  const records = [
+    ...(Array.isArray(answer.citations) ? answer.citations : []),
+    ...(Array.isArray(answer.sources) ? answer.sources : []),
+  ];
+  const seen = new Set();
+  const citations = records.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const url = String(item.url || item.href || item.source_url || "").trim();
+    if (!/^https?:\/\//i.test(url) || seen.has(url)) return [];
+    seen.add(url);
+    const title = String(item.title || item.name || url).trim() || url;
+    return [{ title, url }];
+  });
+  return {
+    // WebQA is the requested browser-backed research transport.  It does not
+    // expose Responses `web_search_call` events, so its completed task is the
+    // terminal provider signal for this explicit discovery operation.
+    searched: snapshot?.status === "completed",
+    queries: [],
+    citations,
+    responseCompleted: snapshot?.status === "completed",
+    responseStatus: snapshot?.status || "",
+    webSearchCallCompleted: snapshot?.status === "completed",
+    transport: "webqa",
+  };
+}
+
+export function webQaJob(job) {
+  return {
+    ...job,
+    // A user-triggered force requeue is a new discovery attempt. Reusing a
+    // gateway task that has already reached failed/cancelled would only replay
+    // its old terminal error and never send the requested new search.
+    idempotencyKey: `${job.idempotencyKey}:attempt:${job.attempt}`,
+    rawModelRequest: {
+      model: job.model,
+      reasoningEffort: job.reasoningEffort,
+      instructions: job.instructions,
+      input: [{ role: "user", content: [{ type: "input_text", text: job.input }] }],
+    },
+  };
+}
+
 export async function runJob(job, owner = runnerInstanceId) {
   const startedAt = Date.now();
   const heartbeat = setInterval(() => {
@@ -97,25 +159,41 @@ export async function runJob(job, owner = runnerInstanceId) {
     security_code: job.securityCode,
   });
   try {
-    const provider = createLocalJobProvider(apiKey);
-    const response = await provider.generate({
-      model: job.model,
-      instructions: job.instructions,
-      input: [{ role: "user", content: [{ type: "input_text", text: job.input }] }],
-      ...(job.reasoningEffort ? { reasoningEffort: job.reasoningEffort } : {}),
-      tools: [{ type: "web_search", searchContextSize: "high" }],
-      toolChoice: "required",
-      maxOutputTokens: job.maxOutputTokens,
-      signal: AbortSignal.timeout(job.jobTimeoutMs),
-    });
-    await post(`/api/company/report-discovery-runs/${encodeURIComponent(job.runId)}/complete`, {
-      taskId: job.taskId,
-      model: job.model,
-      text: response.text,
-      webSearch: buildCompanyReportDiscoveryWebSearch(response),
-      runnerInstanceId: owner,
-      attempt: job.attempt,
-    });
+    const transport = selectCompanyReportDiscoveryTransport();
+    if (transport === "webqa") {
+      await runWebQaJob(webQaJob(job), owner, {
+        config: { ...executionConfig.webqa, taskTimeoutMs: job.jobTimeoutMs },
+        runtimePost: post,
+        onCompleted: async ({ snapshot }) => post(`/api/company/report-discovery-runs/${encodeURIComponent(job.runId)}/complete`, {
+          taskId: job.taskId,
+          model: job.model,
+          text: webQaAnswerText(snapshot),
+          webSearch: buildCompanyReportDiscoveryWebQaSearch(snapshot),
+          runnerInstanceId: owner,
+          attempt: job.attempt,
+        }),
+      });
+    } else {
+      const provider = createLocalJobProvider(apiKey);
+      const response = await provider.generate({
+        model: job.model,
+        instructions: job.instructions,
+        input: [{ role: "user", content: [{ type: "input_text", text: job.input }] }],
+        ...(job.reasoningEffort ? { reasoningEffort: job.reasoningEffort } : {}),
+        tools: [{ type: "web_search", searchContextSize: "high" }],
+        toolChoice: "required",
+        maxOutputTokens: job.maxOutputTokens,
+        signal: AbortSignal.timeout(job.jobTimeoutMs),
+      });
+      await post(`/api/company/report-discovery-runs/${encodeURIComponent(job.runId)}/complete`, {
+        taskId: job.taskId,
+        model: job.model,
+        text: response.text,
+        webSearch: buildCompanyReportDiscoveryWebSearch(response),
+        runnerInstanceId: owner,
+        attempt: job.attempt,
+      });
+    }
     localRuntimeLog("company-report-discovery", "completed", {
       task_id: job.taskId,
       run_id: job.runId,

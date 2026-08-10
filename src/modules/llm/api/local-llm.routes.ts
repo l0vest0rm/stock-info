@@ -13,6 +13,7 @@ import {
   loadGenericWorkflowArtifacts,
   loadGenericLlmTask,
   normalizeGenericLlmPriority,
+  recoverGenericWebQaFinalReport,
   recordGenericLlmRunProgress,
   requeueExpiredGenericLlmRun,
   writeGenericLlmRunArtifact,
@@ -39,6 +40,7 @@ localLlmRoutes.post("/llm-tasks", async (c) => {
     const request = body.request && typeof body.request === "object" && !Array.isArray(body.request) ? body.request as Record<string, unknown> : null;
     if (!request || typeof request.model !== "string" || !request.model.trim()) return fail(c, 400, "request.model is required");
     if (!Array.isArray(request.input)) return fail(c, 400, "request.input is required");
+    const originTaskType = typeof body.originTaskType === "string" ? body.originTaskType.trim() : "";
     const task = await createGenericLlmTask(c.env.DB, {
       taskType: GENERIC_LLM_RAW_MODEL_TASK_TYPE,
       targetType: typeof body.targetType === "string" && body.targetType.trim() ? body.targetType : "llm_request",
@@ -49,7 +51,7 @@ localLlmRoutes.post("/llm-tasks", async (c) => {
       model: request.model,
       reasoningEffort: typeof request.reasoningEffort === "string" ? request.reasoningEffort : null,
       priority: normalizeGenericLlmPriority(body.priority),
-      metadata: { rawModelRequest: request, source: body.source ?? null },
+      metadata: { rawModelRequest: request, source: body.source ?? null, ...(originTaskType ? { originTaskType } : {}) },
     });
     return ok(c, task);
   } catch (error) {
@@ -70,6 +72,21 @@ localLlmRoutes.get("/llm-tasks/:taskId", async (c) => {
 });
 
 /**
+ * Recover one persisted low-dependency final-report WebQA task in place. The
+ * operation only requeues the existing generic task and carries its saved
+ * gateway identity into the next run; the Node adapter performs GET-only
+ * recovery and never submits another WebQA prompt.
+ */
+localLlmRoutes.post("/llm-tasks/:taskId/recover-webqa", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") return fail(c, 404, "generic WebQA recovery is only available in local LLM runtime");
+  try {
+    return ok(c, await recoverGenericWebQaFinalReport(c.env.DB, { taskId: c.req.param("taskId") }));
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+/**
  * Universal local Node boundary. It owns claim ordering; handler-specific
  * routes remain completion adapters for the rollout and old run recovery.
  */
@@ -81,6 +98,9 @@ localLlmRoutes.post("/llm-tasks/claim-next", async (c) => {
   try {
     claim = await claimNextGenericLlmQueueTaskRun(c.env.DB, body.runnerInstanceId, {
       executionMode: body.executionMode === "model" || body.executionMode === "engineering" ? body.executionMode : undefined,
+      excludeHandlerKeys: Array.isArray(body.excludeHandlerKeys)
+        ? body.excludeHandlerKeys.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        : undefined,
     });
     if (!claim) return ok(c, null);
     const prepared = await prepareGenericTask(c.env, claim);
@@ -171,6 +191,7 @@ localLlmRoutes.post("/llm-tasks/:runId/fail", async (c) => {
       runId: c.req.param("runId"), taskId: body.taskId, attempt: body.attempt as number,
       leaseOwner: body.runnerInstanceId, errorCode: typeof body.errorCode === "string" ? body.errorCode : "provider_failed",
       errorMessage: typeof body.error === "string" ? body.error : "generic handler failed",
+      terminalMetadata: body.metadata ?? null,
     }));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
@@ -208,7 +229,22 @@ async function prepareGenericTask(env: AppEnv["Bindings"], claim: GenericLlmTask
   switch (handler) {
     case "company_report_discovery": {
       const request = await prepareCompanyReportDiscoveryExecution(env.DB, claim.task.targetId, claim.task.taskId);
-      return { handlerKey: handler, request: { ...request, taskId: claim.task.taskId, runId: claim.run.runId, attempt: claim.run.attempt, runnerInstanceId: claim.run.leaseOwner } };
+      return {
+        handlerKey: handler,
+        request: {
+          ...request,
+          taskId: claim.task.taskId,
+          runId: claim.run.runId,
+          attempt: claim.run.attempt,
+          runnerInstanceId: claim.run.leaseOwner,
+          taskType: claim.task.taskType,
+          targetType: claim.task.targetType,
+          targetId: claim.task.targetId,
+          idempotencyKey: claim.task.idempotencyKey,
+          protocolVersion: claim.task.protocolVersion,
+          progress: claim.run.progress,
+        },
+      };
     }
     case "research_web_search": {
       const metadata = claim.task.metadata && typeof claim.task.metadata === "object" && !Array.isArray(claim.task.metadata) ? claim.task.metadata as Record<string, unknown> : {};
@@ -226,6 +262,8 @@ async function prepareGenericTask(env: AppEnv["Bindings"], claim: GenericLlmTask
     case "research_operating_analysis_low_dependency":
     case "research_operating_analysis_low_dependency_coordinator":
     case "research_operating_analysis_low_dependency_stage":
+      {
+        const metadata = readTaskMetadata(claim.task.metadata);
       return {
         handlerKey: handler,
         request: {
@@ -233,11 +271,16 @@ async function prepareGenericTask(env: AppEnv["Bindings"], claim: GenericLlmTask
           runnerInstanceId: claim.run.leaseOwner, securityCode: claim.task.targetId,
           parentTaskId: claim.task.parentTaskId, stageKey: claim.task.stageKey,
           executionMode: claim.task.executionMode,
-          forceStage: Boolean(readTaskMetadata(claim.task.metadata).rerun),
+          forceStage: Boolean(metadata.rerun),
           model: claim.run.model, reasoningEffort: claim.run.reasoningEffort,
           promptVersion: claim.task.promptVersion, rerunStageKeys: readRerunStageKeys(claim.task.metadata),
+          ...(typeof metadata.recoveryRawTaskId === "string" && metadata.recoveryRawTaskId.trim() ? { recoveryRawTaskId: metadata.recoveryRawTaskId.trim() } : {}),
+          // Preserve the business task identity for any nested generic raw
+          // request; the lower runner may use it for transport routing.
+          originTaskType: claim.task.taskType,
         },
       };
+      }
     case GENERIC_LLM_RAW_MODEL_HANDLER_KEY: {
       const metadata = claim.task.metadata && typeof claim.task.metadata === "object" && !Array.isArray(claim.task.metadata) ? claim.task.metadata as Record<string, unknown> : {};
       const rawModelRequest = metadata.rawModelRequest;
@@ -247,6 +290,21 @@ async function prepareGenericTask(env: AppEnv["Bindings"], claim: GenericLlmTask
         request: {
           taskId: claim.task.taskId, runId: claim.run.runId, attempt: claim.run.attempt,
           runnerInstanceId: claim.run.leaseOwner, rawModelRequest,
+          // The Node raw runner uses these provider-neutral identity fields to
+          // select a lower transport and derive a stable external idempotency
+          // tuple. Business stages do not select or name WebQA.
+          handlerKey: handler,
+          taskType: claim.task.taskType,
+          targetType: claim.task.targetType,
+          targetId: claim.task.targetId,
+          idempotencyKey: claim.task.idempotencyKey,
+          protocolVersion: claim.task.protocolVersion,
+          promptVersion: claim.task.promptVersion,
+          progress: claim.run.progress,
+          ...(readOriginTaskType(metadata) ? { originTaskType: readOriginTaskType(metadata) } : {}),
+          ...(metadata.recoveryExternal && typeof metadata.recoveryExternal === "object" && !Array.isArray(metadata.recoveryExternal)
+            ? { recoveryExternal: metadata.recoveryExternal }
+            : {}),
         },
       };
     }
@@ -263,4 +321,9 @@ function readRerunStageKeys(metadata: unknown): string[] {
 
 function readTaskMetadata(metadata: unknown): Record<string, unknown> {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata as Record<string, unknown> : {};
+}
+
+function readOriginTaskType(metadata: unknown): string {
+  const value = readTaskMetadata(metadata).originTaskType;
+  return typeof value === "string" ? value.trim() : "";
 }

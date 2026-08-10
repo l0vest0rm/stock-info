@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
@@ -17,21 +18,23 @@ import {
 } from "./generated/prompt-text.mjs";
 import { fetchLocalRuntime } from "./lib/local-runtime-request.mjs";
 import { createLocalJobProvider, loadLocalJobRuntimeConfig, resolveLocalJobApiKey } from "./lib/local-job-provider-registry.mjs";
+import { createGenericLlmSchedulerClient, toGenericRawRequest } from "./lib/generic-llm-client.mjs";
 import { localRuntimeError, localRuntimeLog } from "./lib/local-runtime-log.mjs";
 import { buildOperatingAnalysisFinancialContext, buildOperatingAnalysisMarketSnapshot, financialSnapshotForStage, validateFinancialQualitySnapshot } from "./lib/operating-analysis-financial-snapshot.mjs";
 import { buildResearchContext, stableHash } from "./lib/research-context.mjs";
 import { buildOperatingThesisInput, validateOperatingThesisOutput } from "./lib/operating-analysis-operating-thesis.mjs";
 import { buildScenarioValuationInput, validateScenarioValuationOutput } from "./lib/operating-analysis-scenario-valuation.mjs";
-import { buildInvestmentConclusionInput, validateInvestmentConclusionOutput } from "./lib/operating-analysis-investment-conclusion.mjs";
+import { buildInvestmentConclusionInput, validateInvestmentConclusionMarkdown, validateInvestmentConclusionOutput } from "./lib/operating-analysis-investment-conclusion.mjs";
 import { calculateDeterministicValuation } from "./lib/operating-analysis-deterministic-valuation.mjs";
 import { assembleLowDependencyOperatingAnalysisReport } from "./lib/operating-analysis-report.mjs";
-import { getResearchOperatingAnalysisStage, researchOperatingAnalysisDependencies, RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES } from "./lib/research-operating-analysis-stage-registry.mjs";
+import { getResearchOperatingAnalysisStage, getResearchOperatingAnalysisWorkPackage, isFinalReportWorkPackage, isResearchOperatingAnalysisWorkPackage, normalizeFinalReportMarkdown, parseWorkPackageEnvelopeJson, projectWorkPackageStages, researchOperatingAnalysisDependencies, RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES, RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES, RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES_VERSION } from "./lib/research-operating-analysis-stage-registry.mjs";
 import { applyManualRoutingConfirmation, evaluateLocalTemplateCandidates, matchLocalIndustryTemplate, normalizeEngineeringBaseline, confirmedRoutingProjection } from "./lib/research-scope-industry-routing.mjs";
 import { researchOperatingAnalysisStageWaves, runResearchOperatingAnalysisStageWaves } from "./lib/operating-analysis-stage-plan.mjs";
 
 const baseUrl = String(process.env.OPERATING_ANALYSIS_LOW_DEPENDENCY_RUNNER_BASE_URL || process.env.OPERATING_ANALYSIS_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const runnerInstanceId = `operating-analysis-low-dependency-runner:${randomUUID()}`;
 const INSTRUCTIONS = "你是严谨的投资研究员。只使用本阶段允许的证据；不以模型记忆填补缺口；严格按输出格式返回。";
+const FINAL_REPORT_WORK_PACKAGE_PROMPT = readFileSync(new URL("../prompts/research/operating-analysis/final-report-work-package.md", import.meta.url), "utf8");
 
 export const LOW_DEPENDENCY_RESEARCH_STAGE_KEYS = Object.freeze([
   "company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers", "financial_quality", "market_valuation_facts",
@@ -52,6 +55,10 @@ const promptByStage = Object.freeze({
   operating_thesis: RESEARCH_OPERATING_ANALYSIS_OPERATING_THESIS_PROMPT,
   scenario_valuation: RESEARCH_OPERATING_ANALYSIS_SCENARIO_VALUATION_PROMPT,
   investment_conclusion: RESEARCH_OPERATING_ANALYSIS_INVESTMENT_CONCLUSION_PROMPT,
+});
+
+const promptByWorkPackage = Object.freeze({
+  final_report: FINAL_REPORT_WORK_PACKAGE_PROMPT,
 });
 
 const terminalStatuses = new Set(["complete", "partial", "blocked", "not_applicable", "failed"]);
@@ -559,13 +566,14 @@ async function loadJobState(code) {
   return request(`/api/research/company/${encodeURIComponent(code)}/operating-analysis-low-dependency`);
 }
 
-function initialArtifacts(state) {
+function initialArtifacts(state, { currentRunId = null, ownedStageKeys = [] } = {}) {
   const result = new Map();
+  const owned = new Set(Array.isArray(ownedStageKeys) ? ownedStageKeys.map(text).filter(Boolean) : []);
+  const runId = text(currentRunId);
   for (const stage of Array.isArray(state?.stages) ? state.stages : []) {
-    if (stage?.artifactId || stage?.status === "running") {
-      const stageKey = text(stage.stageKey) || text(stage.stepKey);
-      if (stageKey) result.set(stageKey, { ...stage, stageKey, stepKey: text(stage.stepKey) || stageKey });
-    }
+    const stageKey = text(stage?.stageKey) || text(stage?.stepKey);
+    if (!stageKey || (runId && owned.has(stageKey) && text(stage?.runId || stage?.childRunId) !== runId)) continue;
+    if (stage?.artifactId || stage?.status === "running") result.set(stageKey, { ...stage, stageKey, stepKey: text(stage.stepKey) || stageKey });
   }
   return result;
 }
@@ -606,6 +614,11 @@ function validateModelOutput(stageKey, output, artifactsByKey) {
       .map((dependency) => text(artifactsByKey?.[dependency]?.status))
       .filter(Boolean);
     const status = upstreamStatuses.includes("partial") ? "partial" : "complete";
+    if (stageKey === "investment_conclusion") {
+      const deterministic = lowDependencyArtifactByKey(artifactsByKey, "deterministic_valuation")?.output;
+      const calculationIds = Array.isArray(deterministic?.calculationTrace) ? deterministic.calculationTrace.map((trace) => text(trace?.calculationId)).filter(Boolean) : [];
+      validateInvestmentConclusionMarkdown(markdown, { stageStatus: status, calculationIds, deterministicStatus: deterministic?.status || null });
+    }
     return { output: markdown, status };
   }
   if (!output || typeof output !== "object" || Array.isArray(output)) throw new Error(`${stageKey} returned a non-object JSON output`);
@@ -614,10 +627,53 @@ function validateModelOutput(stageKey, output, artifactsByKey) {
   if (stageKey === "scenario_valuation") return { output: validateScenarioValuationOutput(output), status };
   if (stageKey === "investment_conclusion") {
     const deterministic = lowDependencyArtifactByKey(artifactsByKey, "deterministic_valuation")?.output;
-    const calculationIds = Array.isArray(deterministic?.calculationTrace) ? deterministic.calculationTrace.map((trace) => trace?.calculationId).filter(Boolean) : [];
+    const calculationIds = Array.isArray(deterministic?.calculationTrace) ? deterministic.calculationTrace.map((trace) => text(trace?.calculationId)).filter(Boolean) : [];
     return { output: validateInvestmentConclusionOutput(output, { calculationIds, deterministicStatus: deterministic?.status || null }), status };
   }
   return { output, status };
+}
+
+/** Apply the stage-owned validators after a strict package envelope has been
+ * parsed. Envelope shape validation alone cannot reject a valid JSON object
+ * with an invalid S9 schema or an S11 conclusion that cites a stale/unknown
+ * S10 calculation. */
+function validateProjectedPackageStages({ definition, projected, artifactsByKey, envelope }) {
+  const deterministic = lowDependencyArtifactByKey(artifactsByKey, "deterministic_valuation")?.output;
+  const calculationIds = Array.isArray(deterministic?.calculationTrace)
+    ? deterministic.calculationTrace.map((trace) => text(trace?.calculationId)).filter(Boolean)
+    : [];
+  const deterministicStatus = text(deterministic?.status) || null;
+  const validated = {};
+  for (const stageKey of definition.stageKeys) {
+    const value = projected?.[stageKey];
+    if (!value) throw new Error(`${definition.key} projection is missing ${stageKey}`);
+    const status = text(value.status);
+    if (status === "failed") {
+      validated[stageKey] = value;
+      continue;
+    }
+    let output = value.output;
+    if (stageKey === "scenario_valuation") {
+      output = validateScenarioValuationOutput(output);
+      if (text(output.status) !== status) throw new Error(`scenario_valuation envelope status ${status} does not match output status ${output.status}`);
+    } else if (stageKey === "investment_conclusion") {
+      if (typeof output !== "string") throw new Error("investment_conclusion package stage must provide Markdown output");
+      output = validateInvestmentConclusionMarkdown(output, { stageStatus: status, calculationIds, deterministicStatus });
+    } else {
+      const stageDefinition = getResearchOperatingAnalysisStage(stageKey);
+      if (stageDefinition.outputKind === "markdown" && !text(output)) throw new Error(`${stageKey} package Markdown output is empty`);
+      if (stageDefinition.outputKind === "json" && (!output || typeof output !== "object" || Array.isArray(output))) throw new Error(`${stageKey} package JSON output is invalid`);
+    }
+    validated[stageKey] = { ...value, output };
+  }
+  if (definition.reportReadyStageKeys?.length) {
+    const reportReady = envelope?.reportReadySection;
+    if (!reportReady || typeof reportReady.markdown !== "string" || !reportReady.markdown.trim()) throw new Error(`${definition.key} reportReadySection markdown is required`);
+    if (definition.key === "investment_conclusion") {
+      validateInvestmentConclusionMarkdown(reportReady.markdown, { stageStatus: validated.investment_conclusion.status, calculationIds, deterministicStatus });
+    }
+  }
+  return validated;
 }
 
 function buildStageInput(stageKey, baseInput, artifactsByKey, scopeEnvelopeAvailable) {
@@ -635,6 +691,311 @@ function buildStageInput(stageKey, baseInput, artifactsByKey, scopeEnvelopeAvail
     marketArtifact: lowDependencyArtifactByKey(artifactsByKey, "market_valuation_facts"),
   }), routing: confirmedRoutingProjection(lowDependencyArtifactByKey(artifactsByKey, "local_routing_match")) };
   throw new Error(`no model input builder for ${stageKey}`);
+}
+
+function packageArtifactManifest(artifactsByKey, allowedStageKeys = null) {
+  const allowed = allowedStageKeys ? new Set(allowedStageKeys) : null;
+  return Object.fromEntries([...artifactsByKey.entries()].filter(([stageKey]) => !allowed || allowed.has(stageKey)).map(([stageKey, artifact]) => [stageKey, {
+    artifactId: artifact?.artifactId || null,
+    status: artifact?.status || null,
+    stageVersion: artifact?.stageVersion || null,
+    projectionVersion: artifact?.projectionVersion || null,
+    upstreamArtifactIds: Array.isArray(artifact?.upstreamArtifactIds) ? artifact.upstreamArtifactIds : [],
+    sourceIds: Array.isArray(artifact?.sourceIds) ? artifact.sourceIds : [],
+    claimIds: Array.isArray(artifact?.claimIds) ? artifact.claimIds : [],
+    evidenceIds: Array.isArray(artifact?.evidenceIds) ? artifact.evidenceIds : [],
+    unknownIds: Array.isArray(artifact?.unknownIds) ? artifact.unknownIds : [],
+    // S8-S11 need the deterministic projection produced by the previous
+    // package, never a raw provider response or an unrelated Markdown body.
+    output: artifact?.output ?? null,
+  }]));
+}
+
+function packageDependencyStageKeys(definition) {
+  const packageKeys = Array.isArray(definition.inputPackageKeys) ? definition.inputPackageKeys : definition.dependsOn;
+  return packageKeys.flatMap((dependency) => getResearchOperatingAnalysisWorkPackage(dependency).stageKeys);
+}
+
+/** Build one provider-neutral input projection for a package request. The
+ * single final-report package uses a compact human-facing projection; legacy
+ * envelope packages retain their stage-specific projections for recovery. */
+function buildPackageInput({ packageKey, baseInput, artifactsByKey, scopeEnvelopeAvailable }) {
+  const definition = getResearchOperatingAnalysisWorkPackage(packageKey);
+  const context = effectiveContext(baseInput, artifactsByKey);
+  if (definition.finalReport === true) return buildFinalReportInput({ context, baseInput, artifactsByKey, scopeEnvelopeAvailable });
+  const stageInputs = Object.fromEntries(definition.stageKeys.map((stageKey) => {
+    if (["engineering_baseline", "local_routing_match", "deterministic_valuation", "report_assembly"].includes(stageKey)) {
+      return [stageKey, { stage: getResearchOperatingAnalysisStage(stageKey), inputFingerprint: context.inputFingerprint || null }];
+    }
+    return [stageKey, buildStageInput(stageKey, baseInput, artifactsByKey, scopeEnvelopeAvailable)];
+  }));
+  const routingArtifact = lowDependencyArtifactByKey(artifactsByKey, "local_routing_match");
+  // Foundation owns S0.1/S0.2 and must be able to persist an explicit
+  // unconfirmed S0.2 result.  Do not project it through the S3+ confirmed
+  // routing guard while constructing the package input; that guard belongs to
+  // downstream model/deterministic stages.  The final-report workflow then
+  // receives the visible `routingState: "unconfirmed"` output and records the
+  // unknown boundary instead of failing before S0.2 can complete.
+  const routing = definition.key === "foundation"
+    ? (routingArtifact?.output ?? null)
+    : confirmedRoutingProjection(routingArtifact);
+  return {
+    workPackage: {
+      key: definition.key,
+      label: definition.label,
+      version: definition.promptVersion,
+      workPackageVersion: RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES_VERSION,
+      stageKeys: definition.stageKeys,
+      inputProjection: definition.inputProjection,
+    },
+    context,
+    routing,
+    stageInputs,
+    upstreamArtifacts: packageArtifactManifest(artifactsByKey, packageDependencyStageKeys(definition)),
+    inputFingerprint: context.inputFingerprint || null,
+  };
+}
+
+/**
+ * The single provider request receives the useful local facts directly.  It
+ * intentionally omits legacy stage names, artifact IDs and provenance arrays
+ * from the model-visible projection; evidence links are discovered and used
+ * naturally in the final Markdown instead of being emitted as an appendix.
+ */
+function buildFinalReportInput({ context, baseInput, artifactsByKey, scopeEnvelopeAvailable }) {
+  const routingArtifact = lowDependencyArtifactByKey(artifactsByKey, "local_routing_match");
+  const routingOutput = object(routingArtifact?.output);
+  const routing = routingOutput.routingState === "confirmed" && routingOutput.industryTemplateId && routingOutput.industryKey
+    ? confirmedRoutingProjection(routingArtifact)
+    : null;
+  const scopeProjection = routing
+    ? { companyScope: routing.companyScope, analysisGaps: [] }
+    : buildLowDependencyScopeProjection({ context, routingArtifact, scopeEnvelopeAvailable });
+  const routingScope = object(scopeProjection.companyScope);
+  const scopeBoundary = routing
+    ? { status: "confirmed", note: null }
+    : {
+      status: "unknown",
+      note: "本地行业路由尚未确认；不得从证券代码或常识推断主营和行业，必须优先用公司公告、监管披露或交易所资料核实，无法核实时保留未知。",
+    };
+  const financial = baseInput?.financialContext && typeof baseInput.financialContext === "object" ? baseInput.financialContext : {};
+  const snapshot = context?.marketSnapshot && typeof context.marketSnapshot === "object" ? context.marketSnapshot : {};
+  const sourceCatalog = (Array.isArray(baseInput?.sources) ? baseInput.sources : []).map((source) => ({
+    title: source?.title || null,
+    url: source?.url || null,
+    publishedAt: source?.publishedAt || null,
+    subject: source?.subject || null,
+    role: source?.role || null,
+    limitations: Array.isArray(source?.limitations) ? source.limitations : [],
+  }));
+  return {
+    researchSubject: {
+      company: context?.company || null,
+      security: context?.security || null,
+      reportingBoundary: context?.reportingBoundary || null,
+      asOf: context?.asOf || null,
+      scopeEnvelopeAvailable: Boolean(scopeEnvelopeAvailable),
+      scopeBoundary,
+    },
+    businessScope: routingScope,
+    analysisTemplate: routing?.analysisTemplate || null,
+    financialSnapshot: financial.descriptor || context?.financialSnapshot || null,
+    financialObservations: {
+      income: financial.financialAnalysis?.incomeStatement || [],
+      balance: financial.financialAnalysis?.balanceSheet || [],
+      cashflow: financial.financialAnalysis?.cashFlowStatement || [],
+    },
+    marketSnapshot: snapshot,
+    localSources: sourceCatalog,
+    knownGaps: [
+      ...(Array.isArray(context?.analysisGaps) ? context.analysisGaps : []),
+      ...(Array.isArray(scopeProjection.analysisGaps) ? scopeProjection.analysisGaps : []),
+      ...(scopeBoundary.note ? [scopeBoundary.note] : []),
+    ],
+  };
+}
+
+export function buildLowDependencyWorkPackageInput({ packageKey, baseInput, artifactsByKey = new Map(), scopeEnvelopeAvailable = true } = {}) {
+  return buildPackageInput({ packageKey, baseInput, artifactsByKey: artifactsByKey instanceof Map ? artifactsByKey : new Map(Object.entries(artifactsByKey || {})), scopeEnvelopeAvailable });
+}
+
+function packagePrompt(template, input) {
+  if (typeof template !== "string" || !template.includes("{{INPUT_DATA}}")) throw new Error("work-package prompt template is unavailable");
+  return template.replace("{{INPUT_DATA}}", JSON.stringify(input, null, 2));
+}
+
+// Final-report providers may use natural Chinese headings or prose instead of
+// reproducing the numbered prompt headings.  Keep the terminal gate focused
+// on the user-visible contract: substantial analysis, coverage of every
+// required subject, and no machine/source-link-only envelope.
+const FINAL_REPORT_THEME_REQUIREMENTS = Object.freeze([
+  Object.freeze({ label: "研究范围与事实边界", terms: ["研究范围", "事实边界", "报告期间", "数据口径", "研究对象"] }),
+  Object.freeze({ label: "公司概况与商业模式", terms: ["公司概况", "商业模式", "主营业务", "产品", "客户"] }),
+  Object.freeze({ label: "行业与产业链", terms: ["行业", "产业链", "供需", "竞争格局", "同行"] }),
+  Object.freeze({ label: "竞争地位", terms: ["竞争地位", "竞争优势", "市场份额", "护城河", "竞争力"] }),
+  Object.freeze({ label: "增长与经营驱动", terms: ["增长", "经营驱动", "可持续", "需求", "销量", "价格"] }),
+  Object.freeze({ label: "利润质量与现金转换", terms: ["利润质量", "现金转换", "营运资本", "现金流", "盈利质量"] }),
+  Object.freeze({ label: "资本效率与治理", terms: ["资本效率", "资本配置", "公司治理", "管理层", "ROE"] }),
+  Object.freeze({ label: "资产负债表与压力测试", terms: ["资产负债表", "压力测试", "偿债", "负债", "资产"] }),
+  Object.freeze({ label: "估值与市场隐含要求", terms: ["估值", "市场隐含", "市盈率", "PE", "悲观", "基准", "乐观"] }),
+  Object.freeze({ label: "风险与反面证据", terms: ["风险", "反面证据", "失效", "触发", "不确定"] }),
+  Object.freeze({ label: "后续跟踪仪表盘", terms: ["跟踪", "仪表盘", "指标", "频率", "阈值", "后续观察"] }),
+  Object.freeze({ label: "最终结论", terms: ["最终结论", "投资逻辑", "下一步", "观察重点", "结论"] }),
+]);
+
+export function validateFinalReportMarkdown(value) {
+  const markdown = normalizeFinalReportMarkdown(value, "final_report");
+  if (/```(?:json|yaml|javascript)?\s*\{/i.test(markdown)) throw new Error("final_report must be human-readable Markdown, not a machine envelope");
+  const links = markdown.match(/\[[^\]]*\]\([^)]*\)/g) || [];
+  const visible = markdown
+    .replace(/\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/[\\`*_>#|~\[\]{}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (links.length >= 8 && visible.length < Math.max(600, Math.floor(markdown.length * 0.2))) {
+    throw new Error("final_report contains only source links without human-readable analysis");
+  }
+  if (visible.length < 600) throw new Error("final_report is not substantial human-readable analysis");
+  const lower = visible.toLocaleLowerCase();
+  const missing = FINAL_REPORT_THEME_REQUIREMENTS
+    .filter((theme) => !theme.terms.some((term) => lower.includes(term.toLocaleLowerCase())))
+    .map((theme) => theme.label);
+  if (missing.length) throw new Error(`final_report is missing required content themes: ${missing.join(",")}`);
+  return markdown;
+}
+
+const WEBQA_EVIDENCE_MAX_ITEMS = 100;
+const WEBQA_EVIDENCE_TEXT_MAX_LENGTH = 1_200;
+const WEBQA_EVIDENCE_TITLE_MAX_LENGTH = 500;
+const WEBQA_EVIDENCE_URL_MAX_LENGTH = 2_048;
+
+function safeEvidenceUrl(value) {
+  try {
+    const parsed = new URL(text(value));
+    if (parsed.protocol !== "https:") return null;
+    const href = parsed.href;
+    return href.length <= WEBQA_EVIDENCE_URL_MAX_LENGTH ? href : null;
+  } catch { return null; }
+}
+
+/** Keep only bounded, HTTPS-linked citation/source descriptors. The raw WebQA
+ * snapshot and answer body remain on the generic raw artifact. */
+function normalizeFinalReportEvidenceItems(value) {
+  if (!Array.isArray(value)) return [];
+  const items = [];
+  for (const candidate of value.slice(0, WEBQA_EVIDENCE_MAX_ITEMS)) {
+    const source = object(candidate);
+    const url = safeEvidenceUrl(source.url);
+    if (!url) continue;
+    items.push({
+      text: text(source.text).slice(0, WEBQA_EVIDENCE_TEXT_MAX_LENGTH),
+      title: text(source.title).slice(0, WEBQA_EVIDENCE_TITLE_MAX_LENGTH),
+      url,
+    });
+  }
+  return items;
+}
+
+/**
+ * Project the provider-neutral scheduler response into the small provenance
+ * contract consumed by the research read model. The raw WebQA snapshot and
+ * answer bodies stay on the generic artifact; only stable IDs, a safe provider
+ * link, bounded citation/source descriptors, and complete-answer counts cross
+ * the report boundary.
+ */
+export function projectFinalReportEvidence(response) {
+  const run = object(response?.run);
+  const terminal = object(run.terminalMetadata);
+  const answer = object(response?.answer);
+  const content = object(answer.content);
+  const citations = Array.isArray(answer.citations) ? answer.citations : null;
+  const sources = Array.isArray(answer.sources) ? answer.sources : null;
+  const normalizedCitations = normalizeFinalReportEvidenceItems(citations);
+  const normalizedSources = normalizeFinalReportEvidenceItems(sources);
+  const rawSnapshot = object(answer.rawSnapshot);
+  const structuredAnswerAvailable = Object.keys(answer).length > 0
+    ? answer.formatVersion === "webqa.answer.v1"
+      && typeof content.markdown === "string"
+      && citations !== null
+      && sources !== null
+      && Object.keys(rawSnapshot).length > 0
+    : null;
+  let providerUrl = "";
+  try {
+    const parsed = new URL(text(terminal.providerUrl));
+    if (parsed.protocol === "https:") providerUrl = parsed.href;
+  } catch { /* provider URL remains visibly unavailable */ }
+  const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+  return {
+    schemaVersion: "research-operating-analysis-webqa-evidence.v1",
+    transport: text(terminal.transport) || null,
+    provider: text(terminal.provider) || text(response?.provider) || null,
+    providerUrl: providerUrl || null,
+    providerConversationId: text(terminal.providerConversationId) || null,
+    gatewayTaskId: text(terminal.gatewayTaskId) || null,
+    rawTaskId: text(response?.taskId) || null,
+    rawRunId: text(run.runId) || null,
+    rawArtifactId: text(response?.rawArtifactId) || null,
+    citationCount: count(citations?.length),
+    sourceCount: count(sources?.length),
+    structuredAnswerAvailable,
+    citations: normalizedCitations,
+    sources: normalizedSources,
+  };
+}
+
+async function callWorkPackageModel({ claim, definition, input, config, client }) {
+  const template = promptByWorkPackage[definition.key];
+  if (!template) throw new Error(`low-dependency work-package prompt is unavailable for ${definition.key}`);
+  const requestInput = {
+    provider: "openai",
+    requestId: `operating-analysis-low-dependency:${claim.securityCode}:attempt-${claim.attempt}:work-package:${definition.key}`,
+    model: claim.model || config.model,
+    instructions: INSTRUCTIONS,
+    input: [{ role: "user", content: [{ type: "input_text", text: packagePrompt(template, input) }] }],
+    allowReasoning: true,
+    reasoningEffort: claim.reasoningEffort,
+    maxOutputTokens: config.maxOutputTokens,
+    cacheEnabled: false,
+    signal: AbortSignal.timeout(definition.webSearch ? config.webSearchJobTimeoutMs : config.jobTimeoutMs),
+    ...(definition.webSearch ? { tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }], toolChoice: "required" } : {}),
+  };
+  if (definition.webSearch) return client.generateText(requestInput);
+  let streamed = "";
+  const response = await client.streamText({ ...requestInput, onText: async (delta) => { streamed += delta; } });
+  return { ...response, text: text(response?.text) || streamed };
+}
+
+async function callFinalReportModel({ claim, definition, input, config }) {
+  const template = promptByWorkPackage[definition.key];
+  if (!template) throw new Error(`low-dependency work-package prompt is unavailable for ${definition.key}`);
+  const userPrompt = packagePrompt(template, input);
+  const scheduler = createGenericLlmSchedulerClient({
+    baseUrl,
+    pollIntervalMs: Math.min(config.pollIntervalMs, 5_000),
+    waitTimeoutMs: definition.webSearch ? config.webSearchJobTimeoutMs : config.jobTimeoutMs,
+  });
+  const requestInput = toGenericRawRequest({
+    provider: "openai",
+    requestId: `operating-analysis-low-dependency:${claim.securityCode}:attempt-${claim.attempt}:final-report`,
+    model: claim.model || config.model,
+    instructions: INSTRUCTIONS,
+    input: [{ role: "user", content: [{ type: "input_text", text: userPrompt }] }],
+    reasoningEffort: claim.reasoningEffort,
+    maxTokens: config.maxOutputTokens,
+    tools: [{ type: "web_search", searchContextSize: config.webSearch.searchContextSize }],
+    toolChoice: "required",
+    cacheEnabled: false,
+  });
+  return scheduler.requestText({
+    ...(claim.recoveryRawTaskId ? { existingTaskId: claim.recoveryRawTaskId } : { request: requestInput }),
+    targetType: "research_operating_analysis_low_dependency_final_report",
+    targetId: claim.securityCode,
+    idempotencyKey: `research-operating-analysis-low-dependency:${claim.securityCode}:run:${claim.runId}:final-report`,
+    promptVersion: definition.promptVersion || "investment-analysis.final-report.v1",
+    priority: 500,
+    originTaskType: claim.originTaskType || "research_operating_analysis_low_dependency",
+  });
 }
 
 async function persistBlockedStage({ claim, stage, value, baseInput, artifactsByKey, scopeEnvelopeAvailable, reason, owner = runnerInstanceId }) {
@@ -658,7 +1019,7 @@ async function persistBlockedStage({ claim, stage, value, baseInput, artifactsBy
   return normalized;
 }
 
-async function runStage({ claim, stage, baseInput, artifactsByKey, scopeEnvelopeAvailable, config, client, owner = runnerInstanceId }) {
+async function runStage({ claim, stage, baseInput, artifactsByKey, scopeEnvelopeAvailable, config, client, owner = runnerInstanceId, allowUnconfirmedRouting = false }) {
   const existing = artifactsByKey.get(stage.key);
   const forcedStage = Array.isArray(claim.forceStageKeys) ? claim.forceStageKeys.includes(stage.key) : Array.isArray(claim.rerunStageKeys) && claim.rerunStageKeys.includes(stage.key);
   // A child run may see the previous workflow projection. Only an artifact
@@ -679,10 +1040,10 @@ async function runStage({ claim, stage, baseInput, artifactsByKey, scopeEnvelope
   } else if (stage.key === "local_routing_match") {
     const baseline = lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline")?.output;
     if (!baseline) throw new Error("local routing match requires engineering_baseline output");
-    input = { engineeringBaselineArtifactId: lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline")?.artifactId || null, baseline: normalizeEngineeringBaseline(baseline), registryVersion: "research-industry-template-registry.v1" };
+    input = { engineeringBaselineArtifactId: lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline")?.artifactId || null, baseline: normalizeEngineeringBaseline(baseline), registryVersion: "research-analysis-template-registry.v1" };
     output = matchLocalIndustryTemplate(baseline, { upstreamArtifactIds: lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline")?.artifactId ? [lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline").artifactId] : [] });
     if (baseInput.manualRouting?.selectedTemplateId) output = applyManualRoutingConfirmation(output, baseInput.manualRouting);
-    status = output.routingState === "confirmed" ? "complete" : "blocked";
+    status = output.routingState === "confirmed" || allowUnconfirmedRouting ? "complete" : "blocked";
   } else if (stage.key === "deterministic_valuation") {
     input = { context: { contextVersion: context.contextVersion, inputFingerprint: context.inputFingerprint, security: context.security, marketSnapshot: context.marketSnapshot }, routing: confirmedRoutingProjection(lowDependencyArtifactByKey(artifactsByKey, "local_routing_match")), scenario: lowDependencyArtifactByKey(artifactsByKey, "scenario_valuation")?.output || null, inputFingerprint: context.inputFingerprint || null };
     output = calculateDeterministicValuation({ scenarioOutput: lowDependencyArtifactByKey(artifactsByKey, "scenario_valuation")?.output, context });
@@ -758,6 +1119,164 @@ async function persistFailedStage({ claim, stage, artifactsByKey, baseInput, sco
     artifactsByKey.set(stage.key, stageArtifact(completed, { stageKey: stage.key, status: failure.status, output: failure.output, ...lineage, lastError: failure.errorMessage, validationFailure: failure.metadata?.validationFailure || null }));
   } catch (persistError) {
     localRuntimeError("research-operating-analysis-low-dependency", "stage_failure_persist_failed", persistError, { stage_key: stage.key, attempt: claim.attempt });
+  }
+}
+
+async function persistPackageFailureStages({ claim, definition, reason, owner, existingArtifacts = new Map() }) {
+  const message = String(reason || "work-package failed").slice(0, 1600);
+  const results = [];
+  for (const stageKey of definition.stageKeys) {
+    if (existingArtifacts.get(stageKey)?.status && terminalStatuses.has(existingArtifacts.get(stageKey).status)) continue;
+    const stage = getResearchOperatingAnalysisStage(stageKey);
+    const output = stage.outputKind === "markdown"
+      ? `# ${stage.label}\n\n（工作包阻断：${message}）`
+      : { status: "blocked", blockedItems: [{ code: "work_package_failed", stageKey, reason: message }], analysisGaps: [{ gapId: `analysis-gap:work-package-${definition.key}-${stageKey}`, code: "work_package_failed", blocking: true }] };
+    const lineage = { upstreamArtifactIds: [], sourceIds: [], claimIds: [], evidenceIds: [], unknownIds: [] };
+    const completed = await post(`/api/research/operating-analysis-low-dependency-jobs/${encodeURIComponent(claim.securityCode)}/stages/${encodeURIComponent(stageKey)}/complete`, {
+      output,
+      status: "failed",
+      errorCode: "low_dependency_work_package_failed",
+      errorMessage: message,
+      lineage,
+      metadata: { workPackageKey: definition.key, workPackageVersion: RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES_VERSION },
+      runnerInstanceId: owner,
+      attempt: claim.attempt,
+      taskId: claim.taskId,
+      runId: claim.runId,
+    });
+    results.push(stageArtifact(completed, { stageKey, status: "failed", output, ...lineage, lastError: message }));
+  }
+  return results;
+}
+
+async function runPackageJob(claim, config, client, interruptedJobs, owner) {
+  const packageKey = text(claim.stageKey);
+  const definition = getResearchOperatingAnalysisWorkPackage(packageKey);
+  const startedAt = Date.now();
+  const heartbeat = setInterval(() => {
+    void post(`/api/llm-tasks/${encodeURIComponent(claim.runId)}/heartbeat`, { taskId: claim.taskId, attempt: claim.attempt, runnerInstanceId: owner }).catch(() => {});
+  }, 10_000);
+  let packageStarted = false;
+  let baseInput = null;
+  let artifactsByKey = new Map();
+  try {
+    baseInput = await fetchJobInput(claim.securityCode);
+    const state = await loadJobState(claim.securityCode);
+    baseInput.manualRouting = state?.routing?.manualConfirmation || null;
+    // Upstream package artifacts from an earlier run remain valid inputs, but
+    // artifacts owned by this package must belong to the claimed run. A
+    // stale owned artifact can otherwise make failure persistence skip the
+    // current stage or feed a previous projection into deterministic steps.
+    artifactsByKey = initialArtifacts(state, { currentRunId: claim.runId, ownedStageKeys: definition.stageKeys });
+    const scopeEnvelopeAvailable = scopeAvailable(baseInput.context);
+    const input = buildPackageInput({ packageKey, baseInput, artifactsByKey, scopeEnvelopeAvailable });
+    const template = promptByWorkPackage[packageKey];
+    const modelPrompt = definition.execution === "model"
+      ? { model: claim.model || config.model, instructions: INSTRUCTIONS, userPrompt: packagePrompt(template, input) }
+      : null;
+    const packageLineage = buildLowDependencyLineage({ stageKey: definition.stageKeys[0], artifactsByKey: Object.fromEntries(artifactsByKey), scopeEnvelopeAvailable });
+    await post(`/api/research/operating-analysis-low-dependency-jobs/${encodeURIComponent(claim.securityCode)}/stages/${encodeURIComponent(packageKey)}/start`, {
+      input,
+      ...(modelPrompt ? { prompt: modelPrompt } : {}),
+      lineage: packageLineage,
+      reuse: false,
+      runnerInstanceId: owner,
+      attempt: claim.attempt,
+      taskId: claim.taskId,
+      runId: claim.runId,
+    });
+    packageStarted = true;
+    let projected = null;
+    let packageStatus = "complete";
+    let packageMetadata = { workPackageKey: packageKey, workPackageVersion: RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES_VERSION };
+    if (definition.execution === "model") {
+      if (isFinalReportWorkPackage(packageKey)) {
+        const response = await callFinalReportModel({ claim, definition, input, config });
+        const markdown = validateFinalReportMarkdown(response?.text);
+        const evidence = projectFinalReportEvidence(response);
+        projected = Object.fromEntries(definition.stageKeys.map((stageKey) => [stageKey, {
+          stageKey,
+          status: stageKey === "report_assembly" ? "complete" : "not_applicable",
+          output: stageKey === "report_assembly" ? markdown : null,
+          lineage: { upstreamArtifactIds: [], sourceIds: [], claimIds: [], evidenceIds: [], unknownIds: [] },
+        }]));
+        packageMetadata = { ...packageMetadata, finalReport: true, packageStatus: "complete", evidence };
+      } else {
+        const response = await callWorkPackageModel({ claim, definition, input, config, client });
+        const envelope = parseWorkPackageEnvelopeJson(response?.text, packageKey);
+        projected = validateProjectedPackageStages({
+          definition,
+          projected: projectWorkPackageStages(envelope, packageKey),
+          artifactsByKey,
+          envelope,
+        });
+        packageStatus = envelope.status;
+        packageMetadata = { ...packageMetadata, packageStatus, packageLineage: envelope.packageLineage, reportReadySection: envelope.reportReadySection || null };
+      }
+    } else {
+      // Deterministic packages retain the existing stage calculators and
+      // report assembler; only their queue ownership changes to one package.
+      const childClaim = { ...claim, forceStageKeys: claim.forceStage ? definition.stageKeys : [] };
+      for (const stageKey of definition.stageKeys) {
+        const stage = getResearchOperatingAnalysisStage(stageKey);
+        const result = await runStage({
+          claim: childClaim,
+          stage,
+          baseInput,
+          artifactsByKey,
+          scopeEnvelopeAvailable,
+          config,
+          client,
+          owner,
+          // The final-report workflow may proceed with an explicitly unknown
+          // S0.2 route. Other staged workflows retain the blocking contract.
+          allowUnconfirmedRouting: definition.key === "foundation" && RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES.some((item) => item.finalReport === true),
+        });
+        artifactsByKey.set(stageKey, result);
+      }
+    }
+    if (projected) {
+      for (const stageKey of definition.stageKeys) {
+        const stage = getResearchOperatingAnalysisStage(stageKey);
+        const value = projected[stageKey];
+        // A final-report package owns the legacy model stages only as a
+        // compatibility projection. Persist the single human-readable report
+        // under S12; non-report stages remain read-model not_applicable rows
+        // without synthetic placeholder bodies.
+        if (definition.finalReport && stageKey !== "report_assembly") continue;
+        const stageMetadata = { ...(value.metadata || {}), ...packageMetadata };
+        const completed = await post(`/api/research/operating-analysis-low-dependency-jobs/${encodeURIComponent(claim.securityCode)}/stages/${encodeURIComponent(stageKey)}/complete`, {
+          output: value.output,
+          status: value.status,
+          lineage: value.lineage,
+          metadata: stageMetadata,
+          runnerInstanceId: owner,
+          attempt: claim.attempt,
+          taskId: claim.taskId,
+          runId: claim.runId,
+        });
+        artifactsByKey.set(stageKey, stageArtifact(completed, { stageKey, status: value.status, output: value.output, ...value.lineage }));
+      }
+    }
+    const finalStageStatuses = definition.stageKeys.map((stageKey) => text(artifactsByKey.get(stageKey)?.status) || text(projected?.[stageKey]?.status));
+    const hasFailure = finalStageStatuses.some((status) => status === "failed");
+    const hasIncomplete = finalStageStatuses.some((status) => !["complete", "not_applicable"].includes(status));
+    if (hasFailure) {
+      await failClaimRun(claim, owner, new Error(`${packageKey} work-package failed`));
+    } else {
+      await completeClaimRun(claim, owner, hasIncomplete ? "blocked" : "completed", { ...packageMetadata, stageKeys: definition.stageKeys, artifactStatuses: Object.fromEntries(definition.stageKeys.map((key) => [key, artifactsByKey.get(key)?.status || projected?.[key]?.status || null])), durationMs: Date.now() - startedAt });
+    }
+    localRuntimeLog("research-operating-analysis-low-dependency", "package_completed", { task_id: claim.taskId, run_id: claim.runId, package_key: packageKey, status: hasFailure ? "failed" : hasIncomplete ? "blocked" : "completed", duration_ms: Date.now() - startedAt });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/local Node runtime is unavailable|fetch failed|ECONN|UND_ERR/i.test(message)) interruptedJobs.set(claim.securityCode, { message, attempt: claim.attempt, taskId: claim.taskId, runId: claim.runId });
+    else {
+      if (packageStarted) await persistPackageFailureStages({ claim, definition, reason: message, owner, existingArtifacts: artifactsByKey }).catch((persistError) => localRuntimeError("research-operating-analysis-low-dependency", "package_failure_persist_failed", persistError, { task_id: claim.taskId, package_key: packageKey }));
+      await failClaimRun(claim, owner, error).catch((failure) => localRuntimeError("research-operating-analysis-low-dependency", "package_failure_terminalize_failed", failure, { task_id: claim.taskId, package_key: packageKey }));
+    }
+    localRuntimeLog("research-operating-analysis-low-dependency", "package_failed", { task_id: claim.taskId, run_id: claim.runId, package_key: packageKey, duration_ms: Date.now() - startedAt, error: message });
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
@@ -851,14 +1370,17 @@ async function runCoordinatorJob(claim, interruptedJobs, owner) {
         const report = stages.find((stage) => stage.stageKey === "report_assembly");
         const failed = stages.some((stage) => ["blocked", "failed", "partial"].includes(stage.status));
         const success = report?.status === "complete" && !failed;
-        await completeClaimRun(claim, owner, success ? "completed" : "blocked", {
+        const metadata = {
           coordinator: true,
           reportArtifactId: report?.artifactId || null,
           reportStatus: report?.status || null,
           stageCount: stages.length,
           durationMs: Date.now() - startedAt,
-        }, success ? null : new Error("low-dependency child stage/report gate blocked"));
-        localRuntimeLog("research-operating-analysis-low-dependency", "coordinator_completed", { task_id: claim.taskId, run_id: claim.runId, status: success ? "completed" : "blocked", duration_ms: Date.now() - startedAt });
+        };
+        if (success) await completeClaimRun(claim, owner, "completed", metadata);
+        else if (stages.some((stage) => stage.status === "failed")) await failClaimRun(claim, owner, new Error("low-dependency child stage failed"));
+        else await completeClaimRun(claim, owner, "blocked", metadata, new Error("low-dependency child stage/report gate blocked"));
+        localRuntimeLog("research-operating-analysis-low-dependency", "coordinator_completed", { task_id: claim.taskId, run_id: claim.runId, status: success ? "completed" : stages.some((stage) => stage.status === "failed") ? "failed" : "blocked", duration_ms: Date.now() - startedAt });
         return;
       }
       await sleep(2_000);
@@ -873,6 +1395,7 @@ async function runCoordinatorJob(claim, interruptedJobs, owner) {
 }
 
 export async function runJob(claim, config, client, interruptedJobs = new Map(), owner = claim.runnerInstanceId || runnerInstanceId) {
+  if (claim?.stageKey && isResearchOperatingAnalysisWorkPackage(claim.stageKey)) return runPackageJob(claim, config, client, interruptedJobs, owner);
   if (claim?.stageKey) return runChildStageJob(claim, config, client, interruptedJobs, owner);
   if (claim?.handlerKey === "research_operating_analysis_low_dependency_coordinator" || claim?.coordinator === true || claim?.executionMode === "engineering") return runCoordinatorJob(claim, interruptedJobs, owner);
   const startedAt = Date.now();
@@ -928,8 +1451,10 @@ async function recoverInterruptedJobs(interruptedJobs) {
 
 export function startResearchOperatingAnalysisLowDependencyRunner() {
   const ready = Promise.all([loadConfig(), resolveLocalJobApiKey()]).then(([config, apiKey]) => {
-    if (!apiKey) throw new Error("local low-dependency operating-analysis runner requires OPENAI_API_KEY or ~/.codex/auth.json");
-    return { config, client: createProviderAdapter(createLocalJobProvider(apiKey, { streamIdleTimeoutMs: config.streamIdleTimeoutMs, streamFirstResponseTimeoutMs: config.jobTimeoutMs })) };
+    // Final-report generation is submitted through the provider-neutral
+    // generic task bridge (and therefore does not require a local API key).
+    // Keep the direct client only for legacy child-stage recovery paths.
+    return { config, client: apiKey ? createProviderAdapter(createLocalJobProvider(apiKey, { streamIdleTimeoutMs: config.streamIdleTimeoutMs, streamFirstResponseTimeoutMs: config.jobTimeoutMs })) : null };
   });
   let accepting = true;
   let polling = false;

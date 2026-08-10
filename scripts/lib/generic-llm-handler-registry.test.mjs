@@ -38,6 +38,7 @@ test("local runtime provider and legacy research cap are the generic model cap",
   const config = JSON.parse(await readFile(new URL("../../config/local-job-runtime.json", import.meta.url), "utf8"));
   assert.equal(config.provider.globalConcurrency, 5);
   assert.equal(config.handlers.researchOperatingAnalysis.concurrency, 5);
+  assert.equal(config.genericDispatcher.handlerConcurrency.research_operating_analysis_low_dependency_stage, 1);
 });
 
 test("materialized low-dependency stage handlers receive runner config and provider client", async () => {

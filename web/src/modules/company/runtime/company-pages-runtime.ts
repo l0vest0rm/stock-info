@@ -19,7 +19,7 @@ type AnnualFinancial = {
 }
 
 type CompanyReportDiscoveryStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'blocked'
-type CompanyReportDiscoveryReasoningEffort = 'max' | 'none'
+type CompanyReportDiscoveryReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'pro'
 
 type CompanyReportDiscoveryTask = {
   taskId: string
@@ -751,7 +751,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     }
   }
 
-  async function triggerCompanyReportDiscovery(code: string, requestedReasoningEffort: CompanyReportDiscoveryReasoningEffort = 'max'): Promise<void> {
+  async function triggerCompanyReportDiscovery(code: string, requestedReasoningEffort: CompanyReportDiscoveryReasoningEffort = 'xhigh'): Promise<void> {
     if (!companyReportDiscoveryEnabled || companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running') {
       return
     }
@@ -884,6 +884,9 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
           ? `资讯研报 · ${String(item.orgSName || item.org || '资讯')}`
           : String(item.orgSName || item.org || ''),
         pages: String(item.attachPages || item.pages || ''),
+        ...(Object.prototype.hasOwnProperty.call(item, 'llmRawResponse')
+          ? { llmRawResponse: item.llmRawResponse }
+          : {}),
       }
     })
   }
@@ -1207,7 +1210,9 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         }
       }) as EventListener)
       window.addEventListener('licai:company-report-discover', ((event: CustomEvent<{ reasoningEffort?: unknown }>) => {
-        const requestedReasoningEffort = event.detail?.reasoningEffort === 'none' ? 'none' : 'max'
+        const requestedReasoningEffort = ['low', 'medium', 'high', 'xhigh', 'pro'].includes(String(event.detail?.reasoningEffort || ''))
+          ? String(event.detail?.reasoningEffort) as CompanyReportDiscoveryReasoningEffort
+          : 'xhigh'
         void triggerCompanyReportDiscovery(code, requestedReasoningEffort)
       }) as EventListener)
     }

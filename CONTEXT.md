@@ -1,5 +1,23 @@
 # Investment Backtest Vocabulary
 
+## Generic Research Execution Vocabulary
+
+**Research work package**:
+A bounded, ordered group of research stages that shares one declared input projection and produces normalized stage artifacts for downstream owners. A work package is an execution boundary, not a new research conclusion or evidence type.
+_Avoid_: Provider-specific task, merged report text, unbounded stage bundle
+
+**Generic execution run**:
+A durable attempt to execute one research work package under a model/provider-neutral task contract. It records lifecycle, ownership, timing, terminal status, and artifact lineage without defining how an external provider is reached.
+_Avoid_: HTTP request, page session, model transcript, successful-looking partial text
+
+**External provider adapter**:
+An implementation boundary that translates a generic execution request into one configured external capability and returns normalized output plus transport diagnostics. It does not own research-stage semantics or report assembly.
+_Avoid_: Business-stage implementation, fallback source, hidden retry policy
+
+**Stage artifact**:
+A terminal, source-bound output for one named research stage, with its schema/version, status, provenance identifiers, and upstream artifact identifiers. A work package may produce several stage artifacts; downstream stages consume the declared projections rather than assuming the package transcript.
+_Avoid_: Raw stream buffer, unversioned Markdown, provider response cache
+
 ## Asset sleeve
 
 A named tradable price series held by a strategy. The four built-in sleeve roles are `growth`, `dividend`, `bond`, and `cash`; a configured stock code can replace either stock sleeve.
@@ -98,8 +116,16 @@ A deterministic, local/API-only snapshot of the company, listed security, struct
 _Avoid_: Model-selected template, ticker-derived industry, unverified scope assertion
 
 **Local routing match**:
-A deterministic match between auditable engineering-baseline scope facts and a versioned, controlled industry-template registry. It records candidates, field evidence, mapping reasons, and an explicit `unconfirmed`/`confirmed` state; an unconfirmed match blocks downstream research stages.
+A deterministic match between auditable engineering-baseline scope facts and a versioned, controlled analysis-template registry. It records candidates, field evidence, mapping reasons, and an explicit `unconfirmed`/`confirmed` state; an unconfirmed match blocks downstream research stages.
 _Avoid_: Web Search routing, model intent classification, registry entry treated as company evidence
+
+**Industry classification**:
+An external taxonomy assignment, such as a Shenwan level-one industry, used for grouping, navigation, and comparison-universe discovery; it does not select research questions or valuation methods.
+_Avoid_: Analysis template, valuation method, business-model inference
+
+**Analysis template**:
+A versioned business-economics profile that supplies the primary operating formula, priority metrics, applicable valuation methods, and stress factors for research. Companies in the same industry classification may require different templates, and one template may apply across several classifications.
+_Avoid_: Shenwan industry label, concept tag, static report outline
 
 **Routing confirmation audit**:
 An immutable, append-only record of a human confirmation of a registered industry template, including the selected template ID, scope note, company scope projection, candidate snapshot, actor and source artifact. It unlocks the confirmed routing projection for subsequent research stages but does not rewrite the engineering baseline.

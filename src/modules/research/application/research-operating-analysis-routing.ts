@@ -1,6 +1,13 @@
-import industryTemplateRegistry from "../../../../config/research-industry-template-registry.json";
+import analysisTemplateRegistry from "../../../../config/research-analysis-template-registry.json";
 
 type Row = Record<string, unknown>;
+export type ResearchIndustryTemplateOption = {
+  templateId: string;
+  industryKey: string;
+  label: string;
+  frameworkCategory: string;
+  legacyTemplateIds: string[];
+};
 export type ResearchOperatingAnalysisRoutingConfirmation = {
   confirmationId: string;
   securityCode: string;
@@ -18,6 +25,7 @@ export type ResearchOperatingAnalysisRoutingConfirmation = {
 
 export type ResearchOperatingAnalysisRoutingReadModel = {
   availability: "available" | "empty" | "unavailable";
+  templates: ResearchIndustryTemplateOption[];
   current: {
     state: "unconfirmed" | "confirmed";
     selectedTemplateId: string | null;
@@ -31,12 +39,24 @@ export type ResearchOperatingAnalysisRoutingReadModel = {
 };
 
 export function registeredResearchIndustryTemplateIds(): string[] {
-  return industryTemplateRegistry.templates.map((template) => String(template.templateId));
+  return analysisTemplateRegistry.templates.map((template) => String(template.templateId));
+}
+
+export function registeredResearchIndustryTemplates(): ResearchIndustryTemplateOption[] {
+  const aliases = analysisTemplateRegistry.templateAliases as Record<string, string>;
+  return analysisTemplateRegistry.templates.map((template) => ({
+    templateId: String(template.templateId),
+    industryKey: String(template.industryKey),
+    label: String(template.label),
+    frameworkCategory: String(template.frameworkCategory),
+    legacyTemplateIds: Object.entries(aliases).filter(([, canonical]) => canonical === template.templateId).map(([legacy]) => legacy),
+  }));
 }
 
 export function isRegisteredResearchIndustryTemplate(templateId: unknown): boolean {
   const normalized = typeof templateId === "string" ? templateId.trim() : "";
-  return Boolean(normalized && industryTemplateRegistry.templates.some((template) => template.templateId === normalized));
+  const canonical = (analysisTemplateRegistry.templateAliases as Record<string, string>)[normalized] ?? normalized;
+  return Boolean(canonical && analysisTemplateRegistry.templates.some((template) => template.templateId === canonical));
 }
 
 export async function loadResearchOperatingAnalysisRouting(db: D1Database, securityCode: string): Promise<ResearchOperatingAnalysisRoutingReadModel> {
@@ -50,12 +70,13 @@ export async function loadResearchOperatingAnalysisRouting(db: D1Database, secur
     const latest = history[0] ?? null;
     return {
       availability: history.length ? "available" : "empty",
+      templates: registeredResearchIndustryTemplates(),
       current: latest ? { state: latest.routingStateAfter, selectedTemplateId: latest.selectedTemplateId, scopeNote: latest.scopeNote, companyScope: latest.companyScope, candidateTemplates: latest.candidateTemplates, reasons: [{ code: "manual_confirmation", message: latest.scopeNote || `人工确认模板 ${latest.selectedTemplateId}` }] } : { state: "unconfirmed", selectedTemplateId: null, scopeNote: null, companyScope: {}, candidateTemplates: [], reasons: [{ code: "awaiting_local_routing", message: "尚未产生本地受控模板匹配或人工确认" }] },
       manualConfirmation: latest,
       history,
     };
   } catch (error) {
-    if (/no such table/i.test(String(error))) return { availability: "unavailable", current: { state: "unconfirmed", selectedTemplateId: null, scopeNote: null, companyScope: {}, candidateTemplates: [], reasons: [{ code: "routing_storage_unavailable", message: "路由确认审计表尚未初始化" }] }, manualConfirmation: null, history: [] };
+    if (/no such table/i.test(String(error))) return { availability: "unavailable", templates: registeredResearchIndustryTemplates(), current: { state: "unconfirmed", selectedTemplateId: null, scopeNote: null, companyScope: {}, candidateTemplates: [], reasons: [{ code: "routing_storage_unavailable", message: "路由确认审计表尚未初始化" }] }, manualConfirmation: null, history: [] };
     throw error;
   }
 }
@@ -74,7 +95,7 @@ export async function recordResearchOperatingAnalysisRoutingConfirmation(db: D1D
   createdAt: number;
 }): Promise<ResearchOperatingAnalysisRoutingConfirmation> {
   const selectedTemplateId = input.selectedTemplateId.trim();
-  if (!isRegisteredResearchIndustryTemplate(selectedTemplateId)) throw new Error(`unregistered research industry template: ${selectedTemplateId || "(empty)"}`);
+  if (!isRegisteredResearchIndustryTemplate(selectedTemplateId)) throw new Error(`unregistered research analysis template: ${selectedTemplateId || "(empty)"}`);
   const scopeNote = input.scopeNote?.trim() || null;
   if (scopeNote && scopeNote.length > 4000) throw new Error("routing scopeNote must be at most 4000 characters");
   const record: ResearchOperatingAnalysisRoutingConfirmation = { ...input, selectedTemplateId, routingStateAfter: "confirmed", scopeNote, companyScope: input.companyScope ?? {}, candidateTemplates: Array.isArray(input.candidateTemplates) ? input.candidateTemplates : [], sourceArtifactId: input.sourceArtifactId || null };

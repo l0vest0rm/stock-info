@@ -6,33 +6,36 @@ const COMPANY_INFO_MOUNTED_EVENT = "stock-info:company-info-mounted";
 type Json = Record<string, unknown>;
 type StreamStats = { webSearch?: { searched?: boolean; queryCount?: number; citedPageCount?: number }; usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; reasoningTokens?: number } };
 type ModelPrompt = { model?: string; instructions?: string; userPrompt?: string };
-type ReportRun = { runId?: string; promptVersion?: string; reportMarkdown?: string; reasoningMarkdown?: string; totalDurationMs?: number | null; provider?: string; generatedAt?: number; input?: Json | null; prompt?: ModelPrompt | null; streamStats?: StreamStats | null };
+type ReportEvidenceItem = { text?: string | null; title?: string | null; url?: string | null };
+type ReportEvidence = { schemaVersion?: string | null; transport?: string | null; provider?: string | null; providerUrl?: string | null; providerConversationId?: string | null; gatewayTaskId?: string | null; rawTaskId?: string | null; rawRunId?: string | null; rawArtifactId?: string | null; citationCount?: number | null; sourceCount?: number | null; structuredAnswerAvailable?: boolean | null; citations?: ReportEvidenceItem[] | null; sources?: ReportEvidenceItem[] | null };
+type ReportRun = { runId?: string; promptVersion?: string; reportMarkdown?: string; reasoningMarkdown?: string; totalDurationMs?: number | null; provider?: string; generatedAt?: number; input?: Json | null; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; status?: LowDependencyReport["status"]; evidence?: ReportEvidence | null };
 type ReportVersion = Pick<ReportRun, "runId" | "promptVersion" | "provider" | "generatedAt" | "totalDurationMs">;
-type ReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
+type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 type AnalysisStage = { stageKey: string; label?: string; status?: "queued" | "running" | "complete" | "partial" | "blocked" | "not_applicable" | "failed"; attempt?: number; attemptCount?: number; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; elapsedMs?: number | null; lastError?: string | null; blocked?: unknown; outputKind?: "json" | "markdown"; reused?: boolean; sourceRunId?: string | null; prompt?: ModelPrompt | null };
-type ReportJob = { status?: "queued" | "running" | "completed" | "failed" | "blocked"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attempt?: number; attemptCount?: number; lineageRunId?: string | null; rerunStageKeys?: string[]; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; stages?: AnalysisStage[] };
+type AnalysisWorkPackage = { key: string; label?: string; execution?: "model" | "deterministic"; webSearch?: boolean; finalReport?: boolean; bypassed?: boolean; stageKeys?: string[]; status?: "queued" | "running" | "complete" | "blocked" | "failed" | "not_applicable"; taskId?: string | null; runId?: string | null; model?: string | null; reasoningEffort?: ReasoningEffort | null; prompt?: ModelPrompt | null; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; elapsedMs?: number | null; lastError?: string | null };
+type ReportJob = { taskId?: string | null; runId?: string | null; status?: "queued" | "running" | "completed" | "failed" | "blocked"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attempt?: number; attemptCount?: number; lineageRunId?: string | null; rerunStageKeys?: string[]; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; stages?: AnalysisStage[]; workflowPackages?: AnalysisWorkPackage[] };
 type LowDependencyRun = { runId?: string; attempt?: number; lineageRunId?: string | null; model?: string | null; reasoningEffort?: ReasoningEffort | null; status?: string; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; currentStepKey?: string | null };
-type LowDependencyReport = { status?: "complete" | "partial" | "blocked" | "not_applicable" | "failed"; artifactId?: string | null; markdown?: string | null; blockers?: unknown[]; projectionFingerprint?: string | null };
+type LowDependencyReport = { status?: "complete" | "partial" | "blocked" | "not_applicable" | "failed"; artifactId?: string | null; markdown?: string | null; blockers?: unknown[]; projectionFingerprint?: string | null; evidence?: ReportEvidence | null };
 type LowDependencyTask = ReportJob & { taskId?: string; jobId?: string; runId?: string | null; protocolVersion?: string; promptVersion?: string; securityCode?: string; currentStepKey?: string | null };
-type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; protocolVersion?: string; promptVersion?: string; run?: LowDependencyRun | null; task?: LowDependencyTask | null; report?: LowDependencyReport | null; stages?: AnalysisStage[]; finalArtifactId?: string | null; scopeEnvelopeAvailable?: boolean };
+type ResumeEligibility = { available?: boolean; reason?: string; runId?: string | null; failedStageKeys?: string[]; reusableStageKeys?: string[]; promptVersion?: string | null; codeVersion?: string | null; currentPromptVersion?: string; currentCodeVersion?: string };
+type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; protocolVersion?: string; promptVersion?: string; run?: LowDependencyRun | null; task?: LowDependencyTask | null; report?: LowDependencyReport | null; stages?: AnalysisStage[]; workflowPackages?: AnalysisWorkPackage[]; finalArtifactId?: string | null; scopeEnvelopeAvailable?: boolean; resume?: ResumeEligibility | null; resumeAvailable?: boolean };
 type RoutingReason = { code?: string; message?: string; fields?: string[] };
-type RoutingCandidate = { templateId?: string; industryKey?: string; label?: string; matchedFields?: string[]; score?: number; reason?: string; sourceIds?: string[] };
+type RoutingCandidate = { templateId?: string; industryKey?: string; label?: string; frameworkCategory?: string; legacyTemplateIds?: string[]; matchedFields?: string[]; score?: number; reason?: string; sourceIds?: string[] };
 type RoutingCurrent = { state?: "unconfirmed" | "confirmed"; selectedTemplateId?: string | null; scopeNote?: string | null; companyScope?: Json; candidateTemplates?: RoutingCandidate[]; reasons?: RoutingReason[] };
 type RoutingConfirmation = { confirmationId?: string; selectedTemplateId?: string; scopeNote?: string | null; actorKey?: string; createdAt?: number; companyScope?: Json };
-type OperatingRouting = { availability?: "available" | "empty" | "unavailable"; current?: RoutingCurrent; manualConfirmation?: RoutingConfirmation | null; history?: RoutingConfirmation[]; automatic?: Json | null };
+type RegisteredTemplate = { templateId?: string; industryKey?: string; label?: string; frameworkCategory?: string; legacyTemplateIds?: string[] };
+type OperatingRouting = { availability?: "available" | "empty" | "unavailable"; templates?: RegisteredTemplate[]; current?: RoutingCurrent; manualConfirmation?: RoutingConfirmation | null; history?: RoutingConfirmation[]; automatic?: Json | null };
 type OperatingAnalysisWithRouting = OperatingAnalysis & { routing?: OperatingRouting | null };
 type CompanyOverview = { name?: string; latestPrice?: number | null; pctChange?: number | null; marketCapYi?: number | null; peTtm?: number | null };
 type KlineBar = { date?: string; close?: number | null };
 type IncomeStatement = { parentNetprofit?: number | null };
 type ShareChange = { totalShares?: number | null };
-const reasoningEffortOptions: ReasoningEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
+const reasoningEffortOptions: ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
 const reasoningEffortLabels: Record<ReasoningEffort, string> = {
-  none: "不主动推理",
   low: "低",
   medium: "中",
   high: "高",
   xhigh: "超高",
-  max: "极限",
 };
 
 function securityCodeFromUrl(): string {
@@ -95,23 +98,28 @@ function projectLowDependencyJob(model: OperatingAnalysis | null): ReportJob | n
   const task = model?.task;
   if (!task) return null;
   const run = model?.run;
-  const prompt = model?.stages?.find((stage) => stage.status === "running")?.prompt || null;
+  const activePackage = model?.workflowPackages?.find((item) => item.status === "running");
+  const finalReportPackage = model?.workflowPackages?.find((item) => item.finalReport);
+  const prompt = activePackage?.prompt || finalReportPackage?.prompt || model?.stages?.find((stage) => stage.status === "running")?.prompt || null;
   return {
+    taskId: task.taskId || task.jobId || null, runId: run?.runId || task.runId || null,
     status: lowDependencyTaskStatus(task.status), reasoningEffort: task.reasoningEffort, lastError: task.lastError,
     createdAt: task.createdAt, startedAt: run?.startedAt ?? task.startedAt, completedAt: run?.completedAt ?? task.completedAt,
     updatedAt: task.updatedAt, attempt: run?.attempt ?? task.attempt, attemptCount: run?.attempt ?? task.attemptCount,
     lineageRunId: run?.lineageRunId ?? task.lineageRunId ?? null, rerunStageKeys: task.rerunStageKeys || [], prompt,
-    stages: model.stages || [],
+    stages: model.stages || [], workflowPackages: model.workflowPackages || [],
   };
 }
 function projectLowDependencyReport(model: OperatingAnalysis | null): ReportRun | null {
   const report = model?.report;
   if (!report?.markdown) return null;
   const run = model?.run;
+  const finalReportPackage = model?.workflowPackages?.find((item) => item.finalReport);
   return {
     runId: run?.runId, promptVersion: model?.promptVersion, reportMarkdown: report.markdown,
-    provider: "local-generic-llm", generatedAt: run?.completedAt || undefined,
+    status: report.status, artifactId: report.artifactId || null, provider: report.evidence?.provider || "local-generic-llm", evidence: report.evidence || null, generatedAt: run?.completedAt || undefined,
     totalDurationMs: run?.startedAt && run?.completedAt ? run.completedAt - run.startedAt : null,
+    prompt: finalReportPackage?.prompt || null,
   };
 }
 function duration(ms: unknown): string {
@@ -288,6 +296,85 @@ function versionLabel(versions: ReportVersion[], runId: string | null | undefine
   return `${semanticVersion} · ${date(index >= 0 ? versions[index].generatedAt : undefined)}`;
 }
 
+function reportStatusLabel(status: ReportRun["status"], running: boolean): string {
+  if (running) return status === "queued" ? "已排队" : "生成中";
+  return ({ complete: "已完成", partial: "部分完成", blocked: "已阻断", failed: "失败", not_applicable: "不适用" } as Record<string, string>)[status || ""] || "未生成";
+}
+
+function reportStatusClass(status: ReportRun["status"], running: boolean): string {
+  if (running) return "running";
+  if (status === "complete") return "complete";
+  if (status === "failed" || status === "blocked" || status === "partial") return "attention";
+  return "unknown";
+}
+
+function evidenceCountLabel(value: unknown, label: string): string {
+  return Number.isSafeInteger(value) && Number(value) >= 0 ? `${Number(value).toLocaleString("zh-CN")} ${label}` : `${label}未记录`;
+}
+
+function normalizedEvidenceItems(value: unknown): Array<{ text: string; title: string; url: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.map((candidate) => {
+    const item = asRecord(candidate);
+    const url = httpsUrl(item.url);
+    if (!url) return null;
+    return { text: text(item.text), title: text(item.title), url };
+  }).filter((item): item is { text: string; title: string; url: string } => item !== null);
+}
+
+function reportEvidenceDetails(label: string, count: unknown, value: unknown): VNodeChild {
+  const items = normalizedEvidenceItems(value);
+  return h("details", { class: "ia-provenance-evidence" }, [
+    h("summary", evidenceCountLabel(count, label)),
+    items.length
+      ? h("ol", { class: "ia-provenance-evidence-list" }, items.map((item, index) => h("li", { key: `${item.url}-${index}` }, [
+        item.title ? h("strong", item.title) : null,
+        item.text ? h("span", item.title && item.text !== item.title ? `：${item.text}` : item.text) : null,
+        h("a", { href: item.url, target: "_blank", rel: "noopener noreferrer" }, item.url),
+      ])))
+      : h("p", { class: "ia-unavailable" }, "未记录/无结构化来源"),
+  ]);
+}
+
+function reportProvenanceCard(evidence: ReportEvidence | null | undefined): VNodeChild {
+  const provider = text(evidence?.provider) || "提供方未记录";
+  const providerUrl = httpsUrl(evidence?.providerUrl);
+  const structured = evidence?.structuredAnswerAvailable === true ? "已提供（webqa.answer.v1）" : evidence?.structuredAnswerAvailable === false ? "未提供" : "未记录";
+  return h("section", { class: "ia-provenance", "aria-label": "报告来源与证据" }, [
+    h("div", { class: "ia-provenance-head" }, [
+      h("div", [h("h3", "来源与可审计性"), h("p", provider)]),
+      providerUrl ? h("a", { href: providerUrl, target: "_blank", rel: "noopener noreferrer" }, "打开提供方会话") : h("span", { class: "ia-unavailable" }, "提供方会话链接：未记录"),
+    ]),
+    h("div", { class: "ia-provenance-grid" }, [
+      h("div", [h("strong", evidenceCountLabel(evidence?.citationCount, "条引用")), h("span", "模型回答中的 citations")]),
+      h("div", [h("strong", evidenceCountLabel(evidence?.sourceCount, "个来源")), h("span", "模型回答中的 sources")]),
+      h("div", [h("strong", structured), h("span", "结构化回答")]),
+    ]),
+    reportEvidenceDetails("模型引用（citations）", evidence?.citationCount, evidence?.citations),
+    reportEvidenceDetails("模型来源（sources）", evidence?.sourceCount, evidence?.sources),
+  ]);
+}
+
+function reportRunDetails(report: ReportRun | null | undefined, job: ReportJob | null | undefined): VNodeChild {
+  const evidence = report?.evidence;
+  const fields: Array<[string, unknown]> = [
+    ["任务 ID", job?.taskId],
+    ["运行 ID", report?.runId || job?.runId],
+    ["报告产物 ID", report?.artifactId],
+    ["原始模型任务 ID", evidence?.rawTaskId],
+    ["原始模型运行 ID", evidence?.rawRunId],
+    ["原始模型产物 ID", evidence?.rawArtifactId],
+    ["创建时间", job?.createdAt ? date(job.createdAt) : null],
+    ["开始时间", job?.startedAt ? date(job.startedAt) : null],
+    ["完成时间", job?.completedAt ? date(job.completedAt) : report?.generatedAt ? date(report.generatedAt) : null],
+    ["更新时间", job?.updatedAt ? date(job.updatedAt) : null],
+  ];
+  return h("details", { class: "ia-run-details" }, [
+    h("summary", "任务、运行与产物详情"),
+    h("dl", fields.map(([label, value]) => h("div", { key: label }, [h("dt", label), h("dd", text(value) || "未记录")]))),
+  ]);
+}
+
 function reportCard(options: {
   title: string;
   description: string;
@@ -300,6 +387,8 @@ function reportCard(options: {
   onReasoningEffortChange?: (value: ReasoningEffort) => void;
   buttonLabel?: string;
   onRefresh?: () => void;
+  onResume?: () => void;
+  resumeAvailable?: boolean;
   onStageRerun?: (stageKey: string) => void;
   disabled?: boolean;
   versions?: ReportVersion[];
@@ -311,6 +400,7 @@ function reportCard(options: {
   const completedMarkdown = text(options.report?.reportMarkdown);
   const prompt = options.report?.prompt || options.job?.prompt;
   const sessionUrl = httpsUrl(asRecord(asRecord(options.report?.input).webqaSession).sessionUrl);
+  const providerUrl = httpsUrl(options.report?.evidence?.providerUrl) || sessionUrl;
   const recordedModelRun = asRecord(asRecord(options.report?.input).modelRun);
   const model = running ? text(prompt?.model) || text(recordedModelRun.model) : text(recordedModelRun.model) || text(prompt?.model);
   const effort = running ? text(options.job?.reasoningEffort) || text(recordedModelRun.reasoningEffort) : text(recordedModelRun.reasoningEffort) || text(options.job?.reasoningEffort);
@@ -323,6 +413,7 @@ function reportCard(options: {
   const qualityIssues = completedMarkdown && !running ? reportQualityIssues(completedMarkdown) : [];
   const elapsed = running ? runningDuration(options.job, options.now) : completedDuration(options.report, options.job);
   const streamStats = streamStatsSummary(running ? options.job?.streamStats : options.report?.streamStats);
+  const reportStatus = running ? options.job?.status : options.report?.status || options.job?.status;
   // A polling transport error only means the local Node runtime is temporarily
   // unreachable. It must never overwrite an already-persisted queued/running
   // job with a false "generation failed" state.
@@ -330,18 +421,18 @@ function reportCard(options: {
   return h("section", { class: "ia-report" }, [
     h("div", { class: "ia-report-head" }, [
       h("div", [
-        h("h2", options.title),
+        h("div", { class: "ia-report-title" }, [h("h2", options.title), h("span", { class: `ia-report-status ${reportStatusClass(reportStatus, running)}`, role: "status" }, reportStatusLabel(reportStatus, running))]),
         h("p", options.description),
         running ? h("div", { class: "ia-meta ia-running-meta", role: "status" }, [
           h("span", `任务已运行 ${elapsed}；页面每 5 秒读取一次阶段状态。`),
           ...executionMetadata.map((item) => h("span", item)),
           ...streamStats.map((item) => h("span", item)),
-          sessionUrl ? h("a", { href: sessionUrl, target: "_blank", rel: "noopener noreferrer" }, "打开 ChatGPT 会话") : null,
+          providerUrl ? h("a", { href: providerUrl, target: "_blank", rel: "noopener noreferrer" }, "打开提供方会话") : null,
         ]) : showExecutionMetadata ? h("div", { class: "ia-meta" }, [
           h("span", `生成于 ${date(options.report?.generatedAt)} · 整体耗时 ${elapsed} · ${options.report?.provider || "提供方未记录"} · ${options.report?.promptVersion || "模板未记录"}`),
           ...executionMetadata.map((item) => h("span", item)),
           ...streamStats.map((item) => h("span", item)),
-          sessionUrl ? h("a", { href: sessionUrl, target: "_blank", rel: "noopener noreferrer" }, "打开 ChatGPT 会话") : null,
+          providerUrl ? h("a", { href: providerUrl, target: "_blank", rel: "noopener noreferrer" }, "打开提供方会话") : null,
         ]) : null,
       ]),
       options.onRefresh && options.buttonLabel ? h("div", { class: "ia-generation-controls" }, [
@@ -361,33 +452,76 @@ function reportCard(options: {
           }, reasoningEffortOptions.map((item) => h("option", { value: item }, item))),
         ]),
         (options.versions?.length || 0) > 1 ? h("button", { class: "ia-compare", type: "button", onClick: options.onCompare }, "比较版本") : null,
+        options.onResume && options.resumeAvailable ? h("button", { class: "ia-resume", disabled: Boolean(options.disabled || running), onClick: options.onResume }, "从失败阶段继续") : null,
         h("button", { class: "ia-refresh", disabled: Boolean(options.disabled || running), onClick: options.onRefresh }, running ? (options.job?.status === "queued" ? `已排队（${elapsed}）` : `正在生成（${elapsed}）`) : options.buttonLabel),
       ]) : null,
     ]),
     markdown || prompt ? [
-      stageProgress(options.job, options.now, options.onStageRerun),
+      reportProvenanceCard(options.report?.evidence),
+      reportRunDetails(options.report, options.job),
+      workflowProgress(options.job, options.now, options.onStageRerun),
       failure ? h("div", { class: "ia-message error", role: "status" }, [h("strong", "生成未完成"), h("span", failure)]) : null,
       qualityIssues.length ? h("div", { class: "ia-quality-warning", role: "status", style: "margin-top:17px;border:1px solid #e6cb82;border-radius:10px;background:#fff9e7;padding:10px 12px;color:#745300;font-size:12px;line-height:1.6" }, [h("strong", "报告已生成，但需注意："), h("span", qualityIssues.join("；"))]) : null,
       prompt ? h("details", { class: "ia-prompt" }, [
-        h("summary", "查看实际发送给大模型的 Prompt"),
+        h("summary", "查看实际发送给 WebQA 的 Prompt"),
         h("div", { class: "ia-prompt-body" }, [
-          h("h4", "Instructions（系统级指令）"),
-          h("pre", prompt.instructions || "未记录"),
-          h("h4", "User Prompt（已替换变量的最终文本）"),
-          h("pre", prompt.userPrompt || "未记录"),
+          h("h4", "WebQA input（实际提交文本）"),
+          h("pre", renderWebQaInput(prompt)),
         ]),
       ]) : null,
-      markdown ? h("article", { class: "ia-markdown" }, renderMarkdown(markdown)) : h("div", { class: "ia-message" }, "阶段终态完成并通过报告门禁后，正文才会显示。"),
+      markdown ? h("article", { class: "ia-markdown" }, renderMarkdown(markdown)) : h("div", { class: "ia-message" }, "实际工作包完成并通过报告门禁后，正文才会显示。"),
     ]
-      : h("div", { class: failure ? "ia-message error" : "ia-message" }, failure ? [h("strong", "生成失败"), h("span", failure), stageProgress(options.job, options.now, options.onStageRerun)] : running ? [`任务已运行 ${elapsed}；页面会每 5 秒读取一次阶段状态。可以离开或刷新页面。`, stageProgress(options.job, options.now, options.onStageRerun), options.requestError ? h("span", { class: "ia-connection-warning" }, `本地 Worker 暂时无法连接（${options.requestError}）；恢复后将继续读取任务状态。`) : null] : options.emptyMessage),
+      : h("div", { class: failure ? "ia-message error" : "ia-message" }, failure ? [h("strong", "生成失败"), h("span", failure), workflowProgress(options.job, options.now, options.onStageRerun)] : running ? [`任务已运行 ${elapsed}；页面会每 5 秒读取一次工作包状态。可以离开或刷新页面。`, workflowProgress(options.job, options.now, options.onStageRerun), options.requestError ? h("span", { class: "ia-connection-warning" }, `本地 Worker 暂时无法连接（${options.requestError}）；恢复后将继续读取任务状态。`) : null] : options.emptyMessage),
   ]);
 }
 
+function renderWebQaInput(prompt: ModelPrompt): string {
+  const pieces: string[] = [];
+  if (text(prompt.instructions)) pieces.push(`System instructions:\n${text(prompt.instructions)}`);
+  if (text(prompt.userPrompt)) pieces.push(`user:\n${text(prompt.userPrompt)}`);
+  return pieces.join("\n\n") || "未记录";
+}
+
+function workflowProgress(job: ReportJob | null | undefined, now: number, onRerun?: (stageKey: string) => void): VNodeChild | null {
+  const packages = job?.workflowPackages || [];
+  if (!packages.length) return stageProgress(job, now, onRerun);
+  const counts = packages.reduce((result, item) => {
+    if (item.status === "complete") result.complete += 1;
+    else if (item.status === "not_applicable") result.notApplicable += 1;
+    else if (item.status === "failed" || item.status === "blocked") result.attention += 1;
+    return result;
+  }, { complete: 0, notApplicable: 0, attention: 0 });
+  const summary = `实际工作流 · ${counts.complete} 已完成 · ${counts.notApplicable} 已合并/未单独执行 · ${counts.attention} 失败/阻断`;
+  return h("details", { class: "ia-stage-progress ia-workflow-details", "aria-label": "实际执行工作流", open: isRunning(job) ? true : undefined }, [
+    h("summary", summary),
+    h("div", { class: "ia-stage-recovery" }, "工作包与实际子任务一一对应；兼容 S0-S12 阶段仅用于恢复和产物读取，不代表独立模型调用。"),
+    h("ol", packages.map((item) => {
+      const active = item.status === "running";
+      const detail = active ? `已运行 ${duration(now - Number(item.startedAt || item.updatedAt || now))}` : item.elapsedMs !== null && item.elapsedMs !== undefined ? `耗时 ${duration(item.elapsedMs)}` : item.completedAt && item.startedAt ? `耗时 ${duration(Number(item.completedAt) - Number(item.startedAt))}` : "";
+      const execution = item.bypassed ? "已合并，不单独执行" : item.execution === "model" ? `一次模型/WebQA 调用${item.webSearch ? "（含 Web Search）" : ""}` : "确定性执行";
+      const coverage = item.stageKeys?.length ? `覆盖：${item.stageKeys.join("、")}` : "";
+      const rerun = onRerun && item.stageKeys?.length && (item.status === "failed" || item.status === "blocked") ? h("button", { class: "ia-stage-rerun", type: "button", onClick: () => onRerun(item.stageKeys![0]) }, "重跑此工作包") : null;
+      return h("li", { class: `ia-stage ${item.status || "queued"}` }, [h("span", { class: "ia-stage-dot" }), h("div", [h("strong", item.label || item.key), h("span", `${stageStatusLabel(item.status)}${detail ? ` · ${detail}` : ""} · ${execution}`), coverage ? h("small", { style: "color:#6b817d" }, coverage) : null, text(item.lastError) ? h("small", text(item.lastError)) : null, rerun])]);
+    })),
+  ]);
+}
+
+/** Legacy task rows had one child per S0-S12 stage. Keep their historical
+ * progress readable, but never use this compatibility projection for the
+ * current package-based workflow. */
 function stageProgress(job: ReportJob | null | undefined, now: number, onRerun?: (stageKey: string) => void): VNodeChild | null {
   if (!job?.stages?.length) return null;
   const recovery = job.lineageRunId ? `恢复自 ${job.lineageRunId}；本次 attempt ${job.attempt || job.attemptCount || 0}` : `本次 attempt ${job.attempt || job.attemptCount || 0}`;
-  return h("section", { class: "ia-stage-progress", "aria-label": "S0-S12处理进度" }, [
-    h("h3", "S0-S12处理进度"),
+  const counts = job.stages.reduce((result, stage) => {
+    const status = stage.status || "queued";
+    if (status === "complete") result.complete += 1;
+    else if (status === "not_applicable") result.notApplicable += 1;
+    else if (status === "failed" || status === "blocked" || status === "partial") result.attention += 1;
+    return result;
+  }, { complete: 0, notApplicable: 0, attention: 0 });
+  const summary = `历史阶段详情 · ${counts.complete} 已完成 · ${counts.notApplicable} 不适用 · ${counts.attention} 失败/阻断`;
+  return h("details", { class: "ia-stage-progress ia-workflow-details", "aria-label": "历史阶段详情", open: isRunning(job) ? true : undefined }, [
+    h("summary", summary),
     h("div", { class: "ia-stage-recovery" }, recovery),
     h("ol", job.stages.map((stage) => {
       const active = stage.status === "running";
@@ -419,19 +553,20 @@ function routingPanel(options: {
   routing?: OperatingRouting | null;
   confirming: boolean;
   selectedTemplateId: string;
-  scopeNote: string;
   requestError?: string | null;
   success?: string | null;
   onTemplateChange: (value: string) => void;
-  onScopeNoteChange: (value: string) => void;
   onConfirm: () => void;
 }): VNodeChild {
   const routing = options.routing;
   const current = routing?.current || {};
   const automatic = asRecord(routing?.automatic);
-  const candidates = [...(Array.isArray(current.candidateTemplates) ? current.candidateTemplates : []), ...(Array.isArray(automatic.candidateTemplates) ? automatic.candidateTemplates as RoutingCandidate[] : [])]
-    .filter((candidate): candidate is RoutingCandidate => Boolean(candidate && typeof candidate === "object" && text(candidate.templateId)))
-    .reduce<RoutingCandidate[]>((result, candidate) => result.some((item) => text(item.templateId) === text(candidate.templateId)) ? result : [...result, candidate], []);
+  const observedCandidates = [...(Array.isArray(current.candidateTemplates) ? current.candidateTemplates : []), ...(Array.isArray(automatic.candidateTemplates) ? automatic.candidateTemplates as RoutingCandidate[] : [])];
+  const candidates = (Array.isArray(routing?.templates) ? routing.templates : []).map((template) => {
+    const ids = [text(template.templateId), ...(Array.isArray(template.legacyTemplateIds) ? template.legacyTemplateIds.map(text) : [])];
+    const observed = observedCandidates.find((candidate) => ids.includes(text(candidate.templateId)));
+    return { ...observed, ...template };
+  }).filter((candidate): candidate is RoutingCandidate => Boolean(text(candidate.templateId)));
   const selectedTemplateId = options.selectedTemplateId || text(current.selectedTemplateId);
   const scope = asRecord(current.companyScope || automatic.companyScope);
   const scopeEntries = Object.entries(scope).filter(([field, value]) => field !== "facts" && field !== "basisSourceIds" && field !== "collectionStatus" && field !== "confirmation" && routingValues(value).length);
@@ -442,28 +577,18 @@ function routingPanel(options: {
   const confirmed = current.state === "confirmed";
   const confirmation = routing?.manualConfirmation || null;
   const availabilityMessage = routing?.availability === "unavailable" ? "路由确认审计表尚未初始化；当前只能查看自动匹配结果。" : null;
-  return h("section", { class: "ia-routing", "aria-label": "S0.2本地行业路由" }, [
+  return h("section", { class: "ia-routing", "aria-label": "S0.2本地分析模板路由" }, [
     h("div", { class: "ia-routing-head" }, [
-      h("div", [h("h3", "S0.2 本地行业路由"), h("p", "只使用本地工程基线和受控注册表做确定性匹配，不调用大模型或 Web Search。未确认时，S1 之后的研究阶段保持阻断。")]),
+      h("div", [h("h3", "S0.2 本地分析模板路由"), h("p", "依据有来源的主营、产品、下游和行业事实，选择匹配业务经济性的分析模板；申万行业分类不直接决定模板。未确认时，后续研究保持阻断。")]),
       h("span", { class: `ia-routing-state ${confirmed ? "confirmed" : "unconfirmed"}` }, routingStateLabel(current.state)),
     ]),
     availabilityMessage ? h("div", { class: "ia-routing-warning", role: "status" }, availabilityMessage) : null,
     scopeEntries.length ? h("div", { class: "ia-routing-scope" }, [h("strong", "已收集的范围事实"), h("dl", scopeEntries.map(([field, value]) => h("div", { key: field }, [h("dt", routingFieldLabel(field)), h("dd", routingValues(value).join("、"))])))]) : h("div", { class: "ia-routing-empty" }, "本地输入尚未提供可审计的主营、产品、下游或行业范围；需要人工确认并留下范围说明。"),
     collectionBasis.length ? h("p", { class: "ia-routing-basis" }, [h("strong", "采集依据："), collectionBasis.join("、")]) : null,
     reasons.length ? h("ul", { class: "ia-routing-reasons" }, reasons.map((reason) => h("li", { key: `${reason.code || "reason"}:${reason.message}` }, [h("strong", reason.code || "路由原因"), h("span", reason.message), Array.isArray(reason.fields) && reason.fields.length ? h("small", `涉及字段：${reason.fields.join("、")}`) : null]))) : null,
-    h("div", { class: "ia-routing-candidates" }, [
-      h("strong", "受控模板候选"),
-      candidates.length ? h("ul", candidates.map((candidate) => h("li", { key: candidate.templateId }, [
-        h("label", { class: "ia-routing-candidate" }, [
-          h("input", { type: "radio", name: "ia-routing-template", value: candidate.templateId, checked: selectedTemplateId === candidate.templateId, onChange: () => options.onTemplateChange(text(candidate.templateId)) }),
-          h("span", [h("b", candidate.label || candidate.templateId), h("small", `${candidate.templateId}${candidate.score !== undefined ? ` · 命中 ${candidate.score} 个字段` : ""}${candidate.matchedFields?.length ? ` · ${candidate.matchedFields.join("、")}` : ""}`), candidate.reason ? h("em", candidate.reason) : null]),
-        ]),
-      ]))) : h("p", { class: "ia-routing-empty" }, "当前读模型没有候选模板；确认时仍会由 API 校验注册表 ID。"),
-    ]),
     h("form", { class: "ia-routing-form", onSubmit: (event: Event) => { event.preventDefault(); options.onConfirm(); } }, [
-      h("label", [h("span", "确认模板"), h("select", { value: selectedTemplateId, disabled: options.confirming || routing?.availability === "unavailable", onChange: (event: Event) => options.onTemplateChange((event.target as HTMLSelectElement).value) }, [h("option", { value: "" }, "请选择受控模板"), ...candidates.map((candidate) => h("option", { value: candidate.templateId }, `${candidate.label || candidate.templateId}（${candidate.templateId}）`))])]),
-      h("label", { class: "ia-routing-note" }, [h("span", "范围说明（写入不可变审计）"), h("textarea", { value: options.scopeNote, maxLength: 4000, disabled: options.confirming || routing?.availability === "unavailable", placeholder: "例如：主营高速光模块，主要下游为 AI 数据中心；本次确认依据……", onInput: (event: Event) => options.onScopeNoteChange((event.target as HTMLTextAreaElement).value) })]),
-      h("button", { class: "ia-routing-confirm", type: "submit", disabled: options.confirming || !selectedTemplateId || routing?.availability === "unavailable" }, options.confirming ? "正在写入审计…" : confirmed ? "再次确认并记录" : "确认模板并解锁后续研究"),
+      h("label", [h("span", "分析模板（按业务经济性）"), h("select", { value: selectedTemplateId, disabled: options.confirming || routing?.availability === "unavailable", onChange: (event: Event) => options.onTemplateChange((event.target as HTMLSelectElement).value) }, [h("option", { value: "", disabled: true }, "请选择与公司商业模式相符的分析模板"), ...candidates.map((candidate) => h("option", { value: candidate.templateId }, `${candidate.frameworkCategory ? `${candidate.frameworkCategory} / ` : ""}${candidate.label || candidate.templateId}`))])]),
+      h("button", { class: "ia-routing-confirm", type: "submit", disabled: options.confirming || !selectedTemplateId || routing?.availability === "unavailable" }, options.confirming ? "正在确认…" : confirmed ? "确认并切换模板" : "确认模板并继续研究"),
     ]),
     confirmation ? h("p", { class: "ia-routing-audit" }, `最近确认：${confirmation.selectedTemplateId || "—"} · ${confirmation.actorKey || "local-user"} · ${date(confirmation.createdAt)}${confirmation.confirmationId ? ` · ${confirmation.confirmationId}` : ""}`) : null,
     options.success ? h("div", { class: "ia-routing-success", role: "status" }, options.success) : null,
@@ -472,13 +597,14 @@ function routingPanel(options: {
 }
 
 const styles = `
+.ia-resume{flex:none;border:1px solid #08786c;border-radius:9px;background:#effaf6;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-resume:disabled{opacity:.58;cursor:wait}
 .ia{--ink:#183a37;--muted:#637c78;--line:#d8e8e4;--paper:#fff;--ground:#f4f8f7;--teal:#08786c;--deep:#075d57;min-height:calc(100vh - 7rem);padding:26px 0 56px;background:var(--ground);color:var(--ink)}.ia *{box-sizing:border-box}.ia-shell{max-width:1180px}.ia-hero{padding:28px;border-radius:20px;background:linear-gradient(125deg,#143c47,#08786c);color:#fff;box-shadow:0 16px 38px #143d3926}.ia-kicker{font-size:11px;font-weight:850;letter-spacing:.12em;color:#c0e8df}.ia-hero h1{margin:9px 0 7px;font-size:30px;letter-spacing:-.025em}.ia-hero p{max-width:760px;margin:0;color:#d2ebe5;font-size:14px;line-height:1.65}.ia-document{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;margin-top:16px;align-items:start}.ia-document-empty{display:block}.ia-outline{position:sticky;top:16px;padding:16px 13px;border:1px solid var(--line);border-radius:15px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-outline h2{margin:0 0 9px;padding:0;border:0;color:#315b55;font-size:13px}.ia-outline button{display:block;width:100%;border:0;border-radius:6px;background:transparent;padding:6px 7px;color:#476762;font:600 12px/1.45 inherit;text-align:left;cursor:pointer}.ia-outline button:hover{background:#edf8f4;color:var(--deep)}.ia-outline .l1{font-weight:850;color:#1c4d46}.ia-outline .l2{padding-left:16px}.ia-outline .l3{padding-left:27px}.ia-outline .l4{padding-left:38px}.ia-report{padding:23px 25px;border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-report-head{display:block}.ia-report h2{margin:0;font-size:20px;letter-spacing:-.01em}.ia-report-head p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.ia-generation-controls{display:flex;align-items:end;gap:9px;flex-wrap:nowrap;justify-content:flex-end;width:100%;margin-top:16px}.ia-reasoning-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800}.ia-reasoning-control select{max-width:220px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-reasoning-control select:disabled{opacity:.58}.ia-refresh{flex:none;border:1px solid #b6dcd3;border-radius:9px;background:#fff;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-refresh:disabled{opacity:.58;cursor:wait}.ia-message{margin-top:17px;border:1px dashed #c7dad5;border-radius:12px;padding:15px;color:#58716d;font-size:13px;line-height:1.65}.ia-message.error{border-style:solid;border-color:#edc8c2;background:#fff5f3;color:#983e34}.ia-message strong,.ia-message span{display:block}.ia-message span{margin-top:5px}.ia-connection-warning{color:#9c6500}.ia-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:9px;color:#738783;font-size:11px;line-height:1.5}.ia-running-meta{color:#076b60;font-weight:750}.ia-reasoning{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:14px 16px}.ia-reasoning h3{margin:0;color:#174b45;font-size:14px}.ia-reasoning-markdown{margin-top:10px;font-size:13px;line-height:1.7}.ia-reasoning-markdown h1,.ia-reasoning-markdown h2{font-size:17px}.ia-reasoning-empty{margin:8px 0 0;color:#637c78;font-size:12px;line-height:1.6}.ia-markdown{margin-top:22px;color:#203d39;font-size:15px;line-height:1.8}.ia-markdown h1,.ia-markdown h2{scroll-margin-top:18px;margin:31px 0 11px;padding-top:21px;border-top:1px solid #dceae6;color:var(--deep);font-size:22px}.ia-markdown h1:first-child,.ia-markdown h2:first-child{margin-top:0;padding-top:0;border-top:0}.ia-markdown h3{scroll-margin-top:18px;margin:22px 0 8px;color:#174b45;font-size:17px}.ia-markdown h4{scroll-margin-top:18px;margin:17px 0 7px;color:#285852;font-size:15px}.ia-markdown p{margin:11px 0}.ia-markdown ul,.ia-markdown ol{margin:10px 0;padding-left:24px}.ia-markdown li{margin:5px 0}.ia-markdown blockquote{margin:14px 0;padding:10px 15px;border-left:3px solid #8bc8bb;background:#f1faf7;color:#315951}.ia-markdown strong{font-weight:800;color:#123f3a}.ia-markdown code{padding:1px 4px;border-radius:4px;background:#eaf4f1;color:#08645a;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.ia-markdown a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}.ia-table-wrap{overflow-x:auto;margin:14px 0}.ia-table{width:100%;border-collapse:collapse;font-size:12px;line-height:1.55}.ia-table th,.ia-table td{border:1px solid #dce9e6;padding:8px 9px;text-align:left;vertical-align:top}.ia-table th{background:#eff8f5;color:#305b55;font-weight:850}@media(max-width:800px){.ia-document{display:block}.ia-outline{position:static;margin-bottom:16px}.ia-outline button{display:inline-block;width:auto;margin-right:3px}.ia-outline .l2,.ia-outline .l3,.ia-outline .l4{padding-left:7px}}@media(max-width:650px){.ia{padding:13px 0 34px}.ia-hero,.ia-report{padding:18px;border-radius:15px}.ia-hero h1{font-size:25px}.ia-report-head{flex-direction:column}.ia-generation-controls{align-items:start;flex-wrap:wrap;flex:0 1 auto;width:100%}.ia-markdown{font-size:14px}.ia-markdown h1,.ia-markdown h2{font-size:20px}}
 .ia-outline{max-height:calc(100vh - 32px);overflow-y:auto;overscroll-behavior:contain}
 @media(max-width:800px){.ia-outline{max-height:none;overflow:visible}}
 .ia-prompt{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#fff;padding:12px 15px}.ia-prompt summary{cursor:pointer;color:#174b45;font-size:13px;font-weight:800}.ia-prompt-body{margin-top:12px}.ia-prompt-body h4{margin:13px 0 6px;color:#476762;font-size:12px}.ia-prompt-body h4:first-child{margin-top:0}.ia-prompt-body pre{max-height:420px;overflow:auto;margin:0;padding:11px;border:1px solid #dce9e6;border-radius:8px;background:#f6faf9;color:#234640;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}
 .ia-version-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800;flex:none}.ia-version-control select{max-width:250px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-compare{flex:none;border:1px solid #69a99d;border-radius:9px;background:#f1faf7;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}@media(max-width:650px){.ia-generation-controls{justify-content:flex-start}}
 .ia-stage-progress{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:13px 15px}.ia-stage-progress h3{margin:0 0 4px;color:#174b45;font-size:13px}.ia-stage-recovery{margin-bottom:9px;color:#6b817d;font-size:11px}.ia-stage-progress ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:0;padding:0;list-style:none}.ia-stage{display:flex;gap:8px;min-width:0;color:#6b817d;font-size:12px;line-height:1.45}.ia-stage-dot{width:8px;height:8px;flex:none;margin-top:4px;border-radius:50%;background:#b6c9c5}.ia-stage strong,.ia-stage span,.ia-stage small{display:block}.ia-stage strong{color:#365a54}.ia-stage small{margin-top:2px;color:#a24337;overflow-wrap:anywhere}.ia-stage-rerun{margin-top:4px;border:1px solid #e3b9b0;border-radius:6px;background:#fff5f3;color:#98463d;padding:3px 7px;font:700 10px inherit;cursor:pointer}.ia-stage.running .ia-stage-dot{background:#08786c;box-shadow:0 0 0 4px #08786c22}.ia-stage.complete .ia-stage-dot,.ia-stage.partial .ia-stage-dot,.ia-stage.not_applicable .ia-stage-dot{background:#34a27d}.ia-stage.blocked .ia-stage-dot,.ia-stage.failed .ia-stage-dot{background:#c76854}@media(max-width:650px){.ia-stage-progress ol{grid-template-columns:1fr}}
-.ia-routing{margin-top:17px;border:1px solid #cde4de;border-radius:12px;background:#fbfefd;padding:15px 16px;color:#315951;font-size:12px;line-height:1.55}.ia-routing-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.ia-routing-head h3{margin:0;color:#174b45;font-size:15px}.ia-routing-head p{margin:5px 0 0;color:#637c78}.ia-routing-state{flex:none;border-radius:999px;padding:4px 9px;background:#fff4e5;color:#98631c;font-size:11px;font-weight:850}.ia-routing-state.confirmed{background:#e6f7ee;color:#15734f}.ia-routing-warning,.ia-routing-error{margin-top:11px;border:1px solid #edc8c2;border-radius:8px;background:#fff5f3;padding:9px 10px;color:#983e34}.ia-routing-success{margin-top:11px;border:1px solid #b9e2d2;border-radius:8px;background:#effbf5;padding:9px 10px;color:#15734f}.ia-routing-scope{margin-top:12px;padding:10px 11px;border-radius:8px;background:#f1faf7}.ia-routing-scope strong,.ia-routing-candidates>strong{color:#174b45}.ia-routing-scope dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 14px;margin:8px 0 0}.ia-routing-scope dl div{min-width:0}.ia-routing-scope dt{color:#6a8580;font-size:11px}.ia-routing-scope dd{margin:1px 0 0;color:#234e48;overflow-wrap:anywhere}.ia-routing-basis{margin:10px 0 0;color:#637c78}.ia-routing-reasons{margin:10px 0 0;padding-left:18px;color:#6b5148}.ia-routing-reasons li{margin:4px 0}.ia-routing-reasons strong,.ia-routing-reasons span,.ia-routing-reasons small{display:block}.ia-routing-reasons strong{color:#9a5b2b;font-size:11px}.ia-routing-reasons small{color:#8d7770}.ia-routing-candidates{margin-top:13px}.ia-routing-candidates>ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:8px 0 0;padding:0;list-style:none}.ia-routing-candidate{display:flex;align-items:flex-start;gap:7px;padding:8px 9px;border:1px solid #d7e8e3;border-radius:8px;background:#fff;cursor:pointer}.ia-routing-candidate:has(input:checked){border-color:#65ae9e;background:#effbf7}.ia-routing-candidate input{margin-top:3px}.ia-routing-candidate span{min-width:0}.ia-routing-candidate b,.ia-routing-candidate small,.ia-routing-candidate em{display:block;overflow-wrap:anywhere}.ia-routing-candidate b{color:#1f544c}.ia-routing-candidate small{margin-top:2px;color:#718681;font:10px ui-monospace,SFMono-Regular,Menlo,monospace}.ia-routing-candidate em{margin-top:2px;color:#78918c;font-style:normal;font-size:11px}.ia-routing-empty{margin:7px 0 0;color:#738783}.ia-routing-form{display:grid;grid-template-columns:minmax(180px,.75fr) minmax(240px,1.4fr) auto;align-items:end;gap:9px;margin-top:13px;padding-top:12px;border-top:1px solid #dcece8}.ia-routing-form label{display:grid;gap:4px;color:#476762;font-size:11px;font-weight:800}.ia-routing-form select,.ia-routing-form textarea{width:100%;border:1px solid #b6dcd3;border-radius:7px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-routing-form textarea{min-height:58px;resize:vertical;font-weight:500;line-height:1.5}.ia-routing-confirm{border:1px solid #0a786b;border-radius:8px;background:#08786c;color:#fff;padding:8px 11px;font:800 11px inherit;cursor:pointer}.ia-routing-confirm:disabled{opacity:.56;cursor:not-allowed}.ia-routing-audit{margin:10px 0 0;color:#6c817d;font-size:11px;overflow-wrap:anywhere}@media(max-width:760px){.ia-routing-scope dl,.ia-routing-candidates>ul{grid-template-columns:1fr}.ia-routing-form{grid-template-columns:1fr}.ia-routing-confirm{justify-self:start}}
+.ia-routing{margin-top:17px;border:1px solid #cde4de;border-radius:12px;background:#fbfefd;padding:15px 16px;color:#315951;font-size:12px;line-height:1.55}.ia-routing-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.ia-routing-head h3{margin:0;color:#174b45;font-size:15px}.ia-routing-head p{margin:5px 0 0;color:#637c78}.ia-routing-state{flex:none;border-radius:999px;padding:4px 9px;background:#fff4e5;color:#98631c;font-size:11px;font-weight:850}.ia-routing-state.confirmed{background:#e6f7ee;color:#15734f}.ia-routing-warning,.ia-routing-error{margin-top:11px;border:1px solid #edc8c2;border-radius:8px;background:#fff5f3;padding:9px 10px;color:#983e34}.ia-routing-success{margin-top:11px;border:1px solid #b9e2d2;border-radius:8px;background:#effbf5;padding:9px 10px;color:#15734f}.ia-routing-scope{margin-top:12px;padding:10px 11px;border-radius:8px;background:#f1faf7}.ia-routing-scope strong{color:#174b45}.ia-routing-scope dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 14px;margin:8px 0 0}.ia-routing-scope dl div{min-width:0}.ia-routing-scope dt{color:#6a8580;font-size:11px}.ia-routing-scope dd{margin:1px 0 0;color:#234e48;overflow-wrap:anywhere}.ia-routing-basis{margin:10px 0 0;color:#637c78}.ia-routing-reasons{margin:10px 0 0;padding-left:18px;color:#6b5148}.ia-routing-reasons li{margin:4px 0}.ia-routing-reasons strong,.ia-routing-reasons span,.ia-routing-reasons small{display:block}.ia-routing-reasons strong{color:#9a5b2b;font-size:11px}.ia-routing-reasons small{color:#8d7770}.ia-routing-form{display:grid;grid-template-columns:minmax(260px,1fr) auto;align-items:end;gap:9px;margin-top:13px;padding-top:12px;border-top:1px solid #dcece8}.ia-routing-form label{display:grid;gap:4px;color:#476762;font-size:11px;font-weight:800}.ia-routing-form select{width:100%;border:1px solid #b6dcd3;border-radius:7px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-routing-confirm{border:1px solid #0a786b;border-radius:8px;background:#08786c;color:#fff;padding:8px 11px;font:800 11px inherit;cursor:pointer}.ia-routing-confirm:disabled{opacity:.56;cursor:not-allowed}.ia-routing-audit{margin:10px 0 0;color:#6c817d;font-size:11px;overflow-wrap:anywhere}@media(max-width:760px){.ia-routing-scope dl,.ia-routing-form{grid-template-columns:1fr}.ia-routing-confirm{justify-self:start}}
 `;
 
 const App = defineComponent({
@@ -490,11 +616,10 @@ const App = defineComponent({
     const loading = ref(true);
     const operatingError = ref<string | null>(null);
     const routingTemplateId = ref("");
-    const routingScopeNote = ref("");
     const routingConfirming = ref(false);
     const routingSuccess = ref<string | null>(null);
     const elapsedNow = ref(Date.now());
-    const selectedReasoningEffort = ref<ReasoningEffort>("max");
+    const selectedReasoningEffort = ref<ReasoningEffort>("xhigh");
     let pollTimer: number | null = null;
     let elapsedTimer: number | null = null;
     let companyInfoRequested = false;
@@ -507,8 +632,8 @@ const App = defineComponent({
         selectedRunId.value = next.run?.runId || null;
         const currentRouting = next.routing?.current;
         const rememberedTemplate = text(next.routing?.manualConfirmation?.selectedTemplateId || currentRouting?.selectedTemplateId);
-        if (rememberedTemplate) routingTemplateId.value = rememberedTemplate;
-        if (next.routing?.manualConfirmation && routingScopeNote.value === "") routingScopeNote.value = text(next.routing.manualConfirmation.scopeNote);
+        const canonicalTemplate = next.routing?.templates?.find((template) => text(template.templateId) === rememberedTemplate || template.legacyTemplateIds?.map(text).includes(rememberedTemplate));
+        if (!routingTemplateId.value) routingTemplateId.value = text(canonicalTemplate?.templateId) || rememberedTemplate;
         const recordedEffort = text(next.task?.reasoningEffort || next.run?.reasoningEffort);
         if (recordedEffort && reasoningEffortOptions.includes(recordedEffort as ReasoningEffort)) selectedReasoningEffort.value = recordedEffort as ReasoningEffort;
         operatingError.value = null;
@@ -529,10 +654,17 @@ const App = defineComponent({
         await load();
       } catch (reason) { operatingError.value = reason instanceof Error ? reason.message : String(reason); }
     };
+    const resumeOperatingAnalysis = async () => {
+      operatingError.value = null;
+      try {
+        await request(`/api/research/company/${encodeURIComponent(code)}/operating-analysis-low-dependency/resume`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runId: operating.value?.resume?.runId, reasoningEffort: selectedReasoningEffort.value }) });
+        await load();
+      } catch (reason) { operatingError.value = reason instanceof Error ? reason.message : String(reason); }
+    };
     const confirmRouting = async () => {
       const selectedTemplateId = routingTemplateId.value.trim();
       if (!selectedTemplateId) {
-        operatingError.value = "请选择一个已注册的行业模板";
+        operatingError.value = "请选择一个已注册的分析模板";
         return;
       }
       routingConfirming.value = true;
@@ -541,9 +673,9 @@ const App = defineComponent({
       try {
         await request(`/api/research/company/${encodeURIComponent(code)}/operating-analysis-low-dependency/routing/confirm`, {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ selectedTemplateId, scopeNote: routingScopeNote.value.trim() || null }),
+          body: JSON.stringify({ selectedTemplateId }),
         });
-        routingSuccess.value = "模板确认已写入不可变审计；请重新生成研究以继续 S1–S12。";
+        routingSuccess.value = "分析模板确认已写入不可变审计；请重新生成研究。";
         await load();
       } catch (reason) {
         operatingError.value = reason instanceof Error ? reason.message : String(reason);
@@ -617,8 +749,8 @@ const App = defineComponent({
               ...documentOutline(markdown).map((item) => h("button", { class: `l${item.level}`, onClick: () => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth", block: "start" }) }, item.text)),
             ]) : null,
             h("div", [
-              routingPanel({ routing: operating.value?.routing, confirming: routingConfirming.value, selectedTemplateId: routingTemplateId.value, scopeNote: routingScopeNote.value, requestError: operatingError.value, success: routingSuccess.value, onTemplateChange: (value) => { routingTemplateId.value = value; }, onScopeNoteChange: (value) => { routingScopeNote.value = value; }, onConfirm: () => { void confirmRouting(); } }),
-              reportCard({ title: "完整投资研究", description: "S0.1 工程基线和 S0.2 本地路由完成后，按 S1-S12 阶段组装研究报告；页面只读取低依赖 read model，生成由本地任务 worker 执行。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地任务会按 S1-S12 完成研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.report?.markdown ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, onStageRerun: (stageKey) => { void rerunStage(stageKey); }, disabled: isRunning(displayJob) }),
+              routingPanel({ routing: operating.value?.routing, confirming: routingConfirming.value, selectedTemplateId: routingTemplateId.value, requestError: operatingError.value, success: routingSuccess.value, onTemplateChange: (value) => { routingTemplateId.value = value; }, onConfirm: () => { void confirmRouting(); } }),
+              reportCard({ title: "完整投资研究", description: "S0.1 工程基线和 S0.2 本地路由完成后，由实际工作包执行确定性基础与一份完整投资研究报告；页面只读取低依赖 read model，生成由本地任务 worker 执行。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地任务会执行实际工作包并生成完整研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.report?.markdown ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, onResume: () => { void resumeOperatingAnalysis(); }, resumeAvailable: operating.value?.resume?.available === true, onStageRerun: (stageKey) => { void rerunStage(stageKey); }, disabled: isRunning(displayJob) }),
             ]),
           ]),
         ]),
