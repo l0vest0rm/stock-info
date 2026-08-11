@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
+  RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_COMPANY_FACTS_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_COMPANY_OPERATING_DRIVERS_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_COMPETITION_PEERS_PROMPT,
@@ -33,7 +34,7 @@ import { researchOperatingAnalysisStageWaves, runResearchOperatingAnalysisStageW
 
 const baseUrl = String(process.env.OPERATING_ANALYSIS_LOW_DEPENDENCY_RUNNER_BASE_URL || process.env.OPERATING_ANALYSIS_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const runnerInstanceId = `operating-analysis-low-dependency-runner:${randomUUID()}`;
-const INSTRUCTIONS = "你是严谨的投资研究员。只使用本阶段允许的证据；不以模型记忆填补缺口；严格按输出格式返回。";
+const INSTRUCTIONS = RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT;
 const FINAL_REPORT_WORK_PACKAGE_PROMPT = readFileSync(new URL("../prompts/research/operating-analysis/final-report-work-package.md", import.meta.url), "utf8");
 
 export const LOW_DEPENDENCY_RESEARCH_STAGE_KEYS = Object.freeze([

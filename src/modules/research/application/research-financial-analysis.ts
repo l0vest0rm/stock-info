@@ -1,4 +1,5 @@
 import type { AppEnv } from "../../../types";
+import { RESEARCH_FINANCIAL_ANALYSIS_SYSTEM_PROMPT } from "../../../generated/prompt-text";
 import {
   createGenericLlmTask,
   genericWebQaRecoveryExternal,
@@ -50,7 +51,7 @@ export async function enqueueResearchFinancialAnalysis(env: AppEnv["Bindings"], 
         provider: "openai",
         model: MODEL,
         requestId: `research-financial-analysis:${securityCode}:${versionKey}`,
-        instructions: "你是严谨的投资研究员。只使用给定证据，不得用模型记忆补齐缺口；严格按输出标题返回。",
+        instructions: RESEARCH_FINANCIAL_ANALYSIS_SYSTEM_PROMPT,
         input: [{ role: "user", content: [{ type: "input_text", text: prompt }] }],
         // This is a caller-owned artifact contract, deliberately separate
         // from the WebQA provider-terminal contract. The generic adapter can

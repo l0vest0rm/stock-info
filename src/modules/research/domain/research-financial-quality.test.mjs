@@ -159,6 +159,29 @@ test("keeps missing values missing and never turns them into zero", () => {
   assert.ok(result.gaps.some((gap) => gap.observationId === margin.id));
 });
 
+test("uses a derived gross profit fact to recover gross margin when direct gross profit is absent", () => {
+  const period = annual(2025);
+  const result = buildResearchFinancialQuality({
+    facts: [
+      fact("revenue", period, 100, { id: "revenue" }),
+      fact("gross_profit", period, 40, {
+        id: "gross-profit-derived",
+        derivationFormula: "revenue - cost_of_revenue",
+        inputReferences: [
+          { factId: "revenue", provenance: { sourceId: "income", sourceType: "eastmoney", locator: "revenue" } },
+          { factId: "cost", provenance: { sourceId: "income", sourceType: "eastmoney", locator: "cost_of_revenue" } },
+        ],
+      }),
+      fact("cost_of_revenue", period, 60, { id: "cost" }),
+    ],
+  });
+  const grossProfit = result.series.find((item) => item.metric === "gross_profit" && item.frequency === "annual")?.points[0];
+  assert.equal(grossProfit?.status, "available");
+  assert.equal(grossProfit?.value, 40);
+  assert.equal(grossProfit?.formula, "revenue - cost_of_revenue");
+  assert.equal(observation(result, "gross_margin", "annual", period.endDate).value, 40);
+});
+
 test("marks cross-basis inputs incomparable instead of combining currencies or accounting scope", () => {
   const usdBasis = { ...basis, id: "parent-usd-gaap", currency: "USD", accountingStandard: "US-GAAP", scope: "parent" };
   const period = annual(2025);

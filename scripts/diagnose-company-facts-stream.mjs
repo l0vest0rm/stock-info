@@ -17,6 +17,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
+import { RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT } from "./generated/prompt-text.mjs";
 
 const ROOT = resolve(new URL(".", import.meta.url).pathname, "..");
 const DEFAULT_DB = resolve(ROOT, "data/local/stock-info.sqlite");
@@ -24,7 +25,7 @@ const DEFAULT_CONFIG = resolve(ROOT, "config/research-operating-analysis.json");
 const DEFAULT_BASE_URL = "https://api.m2ai.cc/api/v1/openai";
 const STAGE_KEY = "company_facts";
 const DEFAULT_CODE = "300308.SZ";
-const INSTRUCTIONS_FALLBACK = "你是严谨的投资研究员。只使用本阶段允许的证据；不以模型记忆填补缺口；严格按输出格式返回。";
+const INSTRUCTIONS_FALLBACK = RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT;
 
 function parseArgs(argv) {
   // Keep the default experiment to the fixed prompt/model/streaming contract

@@ -65,6 +65,18 @@ const promptEntries = [
     source: "prompts/research/forecast-synthesis-user.md",
   },
   {
+    exportName: "RESEARCH_FINANCIAL_ANALYSIS_SYSTEM_PROMPT",
+    source: "prompts/research/financial-analysis-system.md",
+  },
+  {
+    exportName: "RESEARCH_FINANCIAL_ANALYSIS_USER_PROMPT",
+    source: "prompts/research/financial-analysis-user.md",
+  },
+  {
+    exportName: "RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT",
+    source: "prompts/research/operating-analysis-system.md",
+  },
+  {
     exportName: "RESEARCH_OPERATING_ANALYSIS_PROMPT",
     source: "prompts/research/operating-analysis.md",
   },

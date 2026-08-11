@@ -176,7 +176,7 @@ export function normalizeStatementRows(statementType: StatementType, rows: Finan
       canonicalComparisonKey: canonicalFinancialComparisonKey({ source: row.source, securityCode: row.code, statementType, metric, period, basis }),
       metric, period, value, basis,
       provenance: { sourceId, sourceType: row.source, publishedAt: text(payload.NOTICE_DATE) ?? row.reportDate, locator: metric },
-    }));
+    })).map((fact, _, facts) => deriveGrossProfitFact(facts, fact, { securityCode: row.code, source: row.source, statementType, sourceId, period, basis, publishedAt: text(payload.NOTICE_DATE) ?? row.reportDate }));
   });
 }
 
@@ -434,6 +434,51 @@ function parsePeriod(payload: Record<string, unknown>, fallback: string, source?
 function numberOf(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function deriveGrossProfitFact(
+  facts: StandardizedResearchFinancialFact[],
+  fact: StandardizedResearchFinancialFact,
+  options: {
+    securityCode: string;
+    source: string;
+    statementType: StatementType;
+    sourceId: string;
+    period: ResearchFinancialPeriod;
+    basis: StandardizedResearchFinancialFact["basis"];
+    publishedAt: string;
+  },
+): StandardizedResearchFinancialFact {
+  if (options.statementType !== "income" || fact.metric !== "gross_profit" || fact.value !== null) return fact;
+  const revenue = facts.find((item) => item.metric === "revenue" && item.value !== null);
+  const cost = facts.find((item) => item.metric === "cost_of_revenue" && item.value !== null);
+  if (!revenue || !cost) return fact;
+  return {
+    id: `${options.sourceId}:gross_profit:derived`,
+    canonicalComparisonKey: canonicalFinancialComparisonKey({
+      source: options.source,
+      securityCode: options.securityCode,
+      statementType: options.statementType,
+      metric: "gross_profit",
+      period: options.period,
+      basis: options.basis,
+    }),
+    metric: "gross_profit",
+    period: options.period,
+    value: revenue.value! - cost.value!,
+    basis: options.basis,
+    provenance: {
+      sourceId: options.sourceId,
+      sourceType: options.source,
+      publishedAt: options.publishedAt,
+      locator: "gross_profit",
+    },
+    derivationFormula: "revenue - cost_of_revenue",
+    inputReferences: [
+      { factId: revenue.id, provenance: revenue.provenance },
+      { factId: cost.id, provenance: cost.provenance },
+    ],
+  };
 }
 /** Cash-allocation metrics use the explicit normalized convention: non-negative absolute cash amount.
  * A signed source field is not reinterpreted here; its upstream adapter must normalize it first. */

@@ -82,6 +82,24 @@ test("financial statement share fields never infer diluted shares from issued/co
   assert.equal(rows.some((item) => item.metric === "diluted_shares"), false);
 });
 
+test("income normalizer deterministically derives gross profit from revenue and cost when the source omits it", () => {
+  const rows = normalizeStatementRows("income", [{
+    code: "300308.SZ", source: "eastmoney", reportDate: "2026-03-31", fiscalPeriod: "一季度",
+    payload: {
+      REPORT_DATE: "2026-03-31",
+      TOTAL_OPERATE_INCOME: 700,
+      OPERATE_COST: 420,
+    },
+  }]);
+  const grossProfit = rows.find((item) => item.metric === "gross_profit");
+  assert.equal(grossProfit?.value, 280);
+  assert.equal(grossProfit?.derivationFormula, "revenue - cost_of_revenue");
+  assert.deepEqual(grossProfit?.inputReferences?.map((item) => item.factId), [
+    "eastmoney:300308.SZ:income:2026-03-31:一季度:0:revenue",
+    "eastmoney:300308.SZ:income:2026-03-31:一季度:0:cost_of_revenue",
+  ]);
+});
+
 test("coverage gate joins a reloaded 300308 fact by canonical key, never its display-derived source id", async () => {
   const statements = [];
   const db = {

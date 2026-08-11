@@ -24,6 +24,7 @@ import {
   projectFinalReportEvidence,
 } from "./research-operating-analysis-low-dependency-runner.mjs";
 import {
+  RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_COMPANY_FACTS_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_COMPANY_OPERATING_DRIVERS_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_COMPETITION_PEERS_PROMPT,
@@ -230,7 +231,7 @@ test("final-report prompt sends only live market facts as plain text", () => {
   assert.doesNotMatch(prompt, /NETPROFIT|不应发送的本地财报来源|<input_data>|\{\s*"/);
   assert.deepEqual(buildFinalReportModelPrompt({ model: "gpt-5.6-luna", input, template: "任务\n\n{{INPUT_CONTEXT}}" }), {
     model: "gpt-5.6-luna",
-    instructions: "你是严谨的投资研究员。只使用本阶段允许的证据；不以模型记忆填补缺口；严格按输出格式返回。",
+    instructions: RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT,
     userPrompt: prompt,
   });
 });

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
+  RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_COMPANY_BASELINE_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_FINANCIAL_STAGE_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_INDUSTRY_VALIDATION_PROMPT,
@@ -24,7 +25,7 @@ const runtimeConfig = await loadLocalJobRuntimeConfig();
 const runtimeHandler = runtimeConfig?.handlers?.researchOperatingAnalysis;
 const apiKey = await resolveLocalJobApiKey();
 const runnerInstanceId = `operating-analysis-runner:${randomUUID()}`;
-const INSTRUCTIONS = "你是严谨的投资研究员。只使用本阶段允许的证据；不以模型记忆填补缺口；严格按输出格式返回。";
+const INSTRUCTIONS = RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT;
 const stages = [
   { key: "company_baseline", label: "公司事实基线", format: "json", webSearch: true, template: RESEARCH_OPERATING_ANALYSIS_COMPANY_BASELINE_PROMPT, dependsOn: [] },
   { key: "industry_validation", label: "行业、产业链与外部验证", format: "json", webSearch: true, template: RESEARCH_OPERATING_ANALYSIS_INDUSTRY_VALIDATION_PROMPT, dependsOn: ["company_baseline"] },
