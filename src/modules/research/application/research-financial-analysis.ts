@@ -1,5 +1,13 @@
 import type { AppEnv } from "../../../types";
-import { createGenericLlmTask, loadGenericLlmRun, loadGenericLlmRunArtifacts, loadGenericLlmTask, type GenericLlmTask } from "../../../shared/local-job-protocol";
+import {
+  createGenericLlmTask,
+  genericWebQaRecoveryExternal,
+  loadGenericLlmRun,
+  loadGenericLlmRunArtifacts,
+  loadGenericLlmTask,
+  requeueGenericLlmTask,
+  type GenericLlmTask,
+} from "../../../shared/local-job-protocol";
 import { loadResearchFinancialQuality } from "./research-financials";
 import { loadResearchFinancialProfile } from "./research-financial-profile";
 import {
@@ -63,6 +71,7 @@ export async function loadResearchFinancialAnalysis(env: AppEnv["Bindings"], sec
   const task = await loadLatestFinancialAnalysisTask(env.DB, securityCode);
   if (!task) return { availability: "empty" as const, task: null, run: null, report: null, snapshot: null, resume: { available: false, reason: "no_report" } };
   const run = task.lastRunId ? await loadGenericLlmRun(env.DB, task.lastRunId) : null;
+  const recoveryExternal = task.status === "failed" && run ? genericWebQaRecoveryExternal(task, run) : null;
   const artifacts = run ? await loadGenericLlmRunArtifacts(env.DB, run.runId) : [];
   const terminal = artifacts.filter((item) => item.stepKey === "raw_model" && item.status === "complete").at(-1) ?? null;
   const output = terminal?.output && typeof terminal.output === "object" && !Array.isArray(terminal.output) ? terminal.output as Record<string, unknown> : {};
@@ -85,10 +94,8 @@ export async function loadResearchFinancialAnalysis(env: AppEnv["Bindings"], sec
       terminalMetadata: terminal?.terminalMetadata ?? null,
     } : null,
     resume: {
-      // Failed WebQA tasks own no completed report artifact. Requeueing would
-      // only poll the already terminal gateway task and replay its failure.
-      available: false,
-      reason: task.status === "failed" ? "rerun_required" : "latest_run_not_failed",
+      available: Boolean(recoveryExternal),
+      reason: recoveryExternal ? "gateway_recovery_available" : task.status === "failed" ? "rerun_required" : "latest_run_not_failed",
     },
   };
 }
@@ -96,7 +103,18 @@ export async function loadResearchFinancialAnalysis(env: AppEnv["Bindings"], sec
 export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], securityCode: string) {
   const task = await loadLatestFinancialAnalysisTask(env.DB, securityCode);
   if (!task || task.status !== "failed") throw new Error("only the latest failed financial-analysis run can resume");
-  throw new Error("financial-analysis WebQA failure has no reusable report artifact; use refresh to create a new request");
+  const run = task.lastRunId ? await loadGenericLlmRun(env.DB, task.lastRunId) : null;
+  const recoveryExternal = run ? genericWebQaRecoveryExternal(task, run) : null;
+  if (!recoveryExternal) throw new Error("financial-analysis WebQA failure has no reusable gateway identity; use refresh to create a new request");
+  const shouldStart = await requeueGenericLlmTask(env.DB, task.taskId);
+  const requeuedTask = await loadGenericLlmTask(env.DB, task.taskId);
+  if (!requeuedTask) throw new Error("financial-analysis task disappeared while resuming");
+  return {
+    task: requeuedTask,
+    resumedFromRunId: run?.runId || null,
+    gatewayTaskId: String(recoveryExternal.gatewayTaskId || ""),
+    shouldStart,
+  };
 }
 
 async function buildSnapshot(env: AppEnv["Bindings"], securityCode: string): Promise<FinancialAnalysisSnapshot> {
