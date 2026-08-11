@@ -23,10 +23,30 @@ test("financial risk rules trigger only from available deterministic observation
 });
 
 test("financial prompt makes deterministic risk signals and data gaps mandatory", () => {
-  const prompt = financialAnalysisPrompt({ schemaVersion: "financial-analysis-input.v1", codeVersion: "financial-analysis-code.v3", securityCode: "300308.SZ", asOf: "2026-03-31", entityType: "non_financial", dataQuality: { status: "partial", sourcePolicy: "Eastmoney", statutoryVerification: { status: "partial", verifiedMetrics: [], reason: "missing" }, statements: [], gaps: [] }, periodCoverage: { annual: [], quarterly: [], ttmEndDate: null }, reportedFacts: [], derivedObservations: [], deterministicFlags: [], lineage: { factIds: [], sourceIds: [], inputFingerprint: "test" } });
+  const prompt = financialAnalysisPrompt({ schemaVersion: "financial-analysis-input.v1", codeVersion: "financial-analysis-code.v4", securityCode: "300308.SZ", asOf: "2026-03-31", entityType: "non_financial", dataQuality: { status: "partial", sourcePolicy: "Eastmoney", statutoryVerification: { status: "partial", verifiedMetrics: [], reason: "missing" }, statements: [], gaps: [] }, periodCoverage: { annual: [], quarterly: [], ttmEndDate: null }, reportedFacts: [], derivedObservations: [], deterministicFlags: [], lineage: { factIds: [], sourceIds: [], inputFingerprint: "test" } });
   assert.match(prompt, /不得使用模型记忆/);
   assert.match(prompt, /财务风险隐患/);
   assert.match(prompt, /不得输出目标价/);
+  assert.match(prompt, /不得出现“依据：”/);
+  assert.doesNotMatch(prompt, /每项判断均写/);
+});
+
+test("financial prompt keeps audit evidence out of the model-facing report data and compacts numeric displays", () => {
+  const prompt = financialAnalysisPrompt({
+    schemaVersion: "financial-analysis-input.v1", codeVersion: "financial-analysis-code.v4", securityCode: "300308.SZ", asOf: "2026-03-31", entityType: "non_financial",
+    dataQuality: { status: "partial", sourcePolicy: "Eastmoney", statutoryVerification: { status: "partial", verifiedMetrics: [], reason: "missing" }, statements: [], gaps: [] },
+    periodCoverage: { annual: ["FY2025"], quarterly: ["2026Q1"], ttmEndDate: "2026-03-31" },
+    reportedFacts: [{ metric: "revenue", frequency: "annual", basisId: "CNY:CAS:consolidated:reported", unit: "CNY", points: [{ period: "FY2025", status: "available", value: 1_234_567_890.12, formula: "reported", reasonCodes: [], factIds: ["fact:revenue:annual:FY2025"], sources: [{ sourceId: "eastmoney:income:2025", sourceType: "eastmoney" }] }] }],
+    derivedObservations: [{ id: "net-margin", kind: "net_margin", metric: "net_profit", frequency: "quarterly", period: "2026Q1", comparisonPeriod: null, status: "available", value: 34.66515, unit: "percent", formula: "net_profit / revenue", reasonCodes: [], factIds: ["fact:net-profit"], sources: [{ sourceId: "eastmoney:income:2026Q1", sourceType: "eastmoney" }] }],
+    deterministicFlags: [], lineage: { factIds: ["fact:revenue:annual:FY2025"], sourceIds: ["eastmoney:income:2025"], inputFingerprint: "test" },
+  });
+  const input = JSON.parse(prompt.match(/<input_data>\n(.+)\n<\/input_data>/s)?.[1] ?? "");
+  assert.deepEqual(input.reportedFacts[0].points[0], { period: "FY2025", status: "available", value: 12.35, unit: "亿元" });
+  assert.equal(input.reportedFacts[0].unit, "亿元");
+  assert.equal(input.derivedObservations[0].value, 34.67);
+  assert.equal(input.derivedObservations[0].unit, "percent");
+  assert.deepEqual(input.numericDisplay, { amountUnit: "亿元", shareUnit: "亿股", percentageDecimals: 2 });
+  assert.doesNotMatch(JSON.stringify(input), /fact:|obs:|sourceId/);
 });
 
 test("financial risk rules include cash-flow deterioration and liquidity pressure", () => {
@@ -58,7 +78,7 @@ test("financial analysis snapshot keeps bounded source provenance beside reporte
 
 test("financial analysis refuses a model run when a primary statement is unavailable", () => {
   assert.throws(() => assertFinancialAnalysisSnapshotCanRun({
-    schemaVersion: "financial-analysis-input.v1", codeVersion: "financial-analysis-code.v3", securityCode: "600519.SH", asOf: "unknown", entityType: "unknown",
+    schemaVersion: "financial-analysis-input.v1", codeVersion: "financial-analysis-code.v4", securityCode: "600519.SH", asOf: "unknown", entityType: "unknown",
     dataQuality: { status: "blocked", sourcePolicy: "Eastmoney", statutoryVerification: { status: "partial", verifiedMetrics: [], reason: "missing" }, statements: [{ statementType: "income", rows: 0, sourceHealth: { status: "failed" } }], gaps: [] },
     periodCoverage: { annual: [], quarterly: [], ttmEndDate: null }, reportedFacts: [], derivedObservations: [], deterministicFlags: [], lineage: { factIds: [], sourceIds: [], inputFingerprint: "test" },
   }), /income/);

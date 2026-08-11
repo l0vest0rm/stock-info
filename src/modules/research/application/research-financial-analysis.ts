@@ -1,5 +1,5 @@
 import type { AppEnv } from "../../../types";
-import { createGenericLlmTask, loadGenericLlmRun, loadGenericLlmRunArtifacts, loadGenericLlmTask, requeueGenericLlmTask, type GenericLlmTask } from "../../../shared/local-job-protocol";
+import { createGenericLlmTask, loadGenericLlmRun, loadGenericLlmRunArtifacts, loadGenericLlmTask, type GenericLlmTask } from "../../../shared/local-job-protocol";
 import { loadResearchFinancialQuality } from "./research-financials";
 import { loadResearchFinancialProfile } from "./research-financial-profile";
 import {
@@ -85,8 +85,10 @@ export async function loadResearchFinancialAnalysis(env: AppEnv["Bindings"], sec
       terminalMetadata: terminal?.terminalMetadata ?? null,
     } : null,
     resume: {
-      available: task.status === "failed" && Boolean(financialAnalysis.inputFingerprint) && task.promptVersion === FINANCIAL_ANALYSIS_PROMPT_VERSION,
-      reason: task.status === "failed" ? "available" : "latest_run_not_failed",
+      // Failed WebQA tasks own no completed report artifact. Requeueing would
+      // only poll the already terminal gateway task and replay its failure.
+      available: false,
+      reason: task.status === "failed" ? "rerun_required" : "latest_run_not_failed",
     },
   };
 }
@@ -94,12 +96,7 @@ export async function loadResearchFinancialAnalysis(env: AppEnv["Bindings"], sec
 export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], securityCode: string) {
   const task = await loadLatestFinancialAnalysisTask(env.DB, securityCode);
   if (!task || task.status !== "failed") throw new Error("only the latest failed financial-analysis run can resume");
-  const metadata = task.metadata && typeof task.metadata === "object" && !Array.isArray(task.metadata) ? task.metadata as Record<string, unknown> : {};
-  const version = metadata.financialAnalysis && typeof metadata.financialAnalysis === "object" && !Array.isArray(metadata.financialAnalysis)
-    ? String((metadata.financialAnalysis as Record<string, unknown>).codeVersion || "") : "";
-  if (task.promptVersion !== FINANCIAL_ANALYSIS_PROMPT_VERSION || version !== "financial-analysis-code.v3") throw new Error("financial-analysis prompt or code version changed; resume is not eligible");
-  if (!await requeueGenericLlmTask(env.DB, task.taskId)) throw new Error("financial-analysis task could not be requeued");
-  return loadResearchFinancialAnalysis(env, securityCode);
+  throw new Error("financial-analysis WebQA failure has no reusable report artifact; use refresh to create a new request");
 }
 
 async function buildSnapshot(env: AppEnv["Bindings"], securityCode: string): Promise<FinancialAnalysisSnapshot> {

@@ -1,7 +1,6 @@
 {
   "version": 4,
   "batchLimit": 20,
-  "autoEvaluateLimit": 300,
   "evaluationConcurrency": 2,
   "evaluationCache": {
     "version": 4,

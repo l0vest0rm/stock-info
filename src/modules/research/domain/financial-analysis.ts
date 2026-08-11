@@ -2,8 +2,8 @@ import riskRulesJson from "../../../../config/research-financial-analysis-risk-r
 import type { ResearchFinancialFrequency, ResearchFinancialMetric, ResearchFinancialObservation, ResearchFinancialQuality, ResearchFinancialSeries, ResearchFinancialSeriesPoint } from "./research-financial-quality";
 
 export const FINANCIAL_ANALYSIS_PROTOCOL_VERSION = "financial-analysis-input.v1";
-export const FINANCIAL_ANALYSIS_PROMPT_VERSION = "financial-analysis.webqa.v3";
-export const FINANCIAL_ANALYSIS_CODE_VERSION = "financial-analysis-code.v3";
+export const FINANCIAL_ANALYSIS_PROMPT_VERSION = "financial-analysis.webqa.v4";
+export const FINANCIAL_ANALYSIS_CODE_VERSION = "financial-analysis-code.v4";
 export const FINANCIAL_ANALYSIS_ORIGIN_TASK_TYPE = "research_financial_analysis";
 export const FINANCIAL_ANALYSIS_TARGET_TYPE = "research_financial_analysis";
 
@@ -143,7 +143,7 @@ export function buildFinancialAnalysisRiskFlags(observations: ResearchFinancialO
 }
 
 export function financialAnalysisPrompt(snapshot: FinancialAnalysisSnapshot): string {
-  return `你是严谨的上市公司财务研究员。只使用 <input_data> 内的事实、确定性指标、风险触发与附注证据；不得使用模型记忆、搜索结果或常识补齐数字，也不得重新计算任何数值。\n\n数据数值以 reportedFacts 与 derivedObservations 为唯一主来源。deterministicFlags 是工程规则触发，不等于造假或最终结论；你必须解释可能原因、反证和下期验证项。status 为 missing、incomparable、not_applicable 的指标必须如实说明，不得当作零或安全。dataQuality 为 partial/blocked 时，先说明受影响的核验范围。不得输出目标价、交易建议或总分。\n\n只输出中文 Markdown，并且只包含以下八个 H1：\n# 1. 数据覆盖、口径与可信度\n# 2. 收入增长、同比环比与盈利能力\n# 3. 利润质量、现金流与营运资本\n# 4. 资本效率、再投资与 ROIC\n# 5. 资产负债表、债务与流动性压力\n# 6. 每股价值、稀释与资本配置\n# 7. 财务风险隐患、反证与下期监控\n# 8. 条件化财务综合结论\n\n每项判断均写“依据：observationId/factId”；不得把缺失项隐去。\n\n<input_data>\n${JSON.stringify(compactFinancialAnalysisPromptInput(snapshot))}\n</input_data>`;
+  return `你是严谨的上市公司财务研究员。只使用 <input_data> 内的事实、确定性指标、风险触发与附注证据；不得使用模型记忆、搜索结果或常识补齐数字，也不得重新计算任何数值。\n\n数据数值以 reportedFacts 与 derivedObservations 为唯一主来源。deterministicFlags 是工程规则触发，不等于造假或最终结论；你必须解释可能原因、反证和下期验证项。status 为 missing、incomparable、not_applicable 的指标必须如实说明，不得当作零或安全。dataQuality 为 partial/blocked 时，先说明受影响的核验范围。不得输出目标价、交易建议或总分。\n\n<input_data> 内的金额已统一为亿元、股数已统一为亿股、百分比已保留两位小数。直接使用给定的数值和单位，不得自行换算。\n\n只输出中文 Markdown，并且只包含以下八个 H1：\n# 1. 数据覆盖、口径与可信度\n# 2. 收入增长、同比环比与盈利能力\n# 3. 利润质量、现金流与营运资本\n# 4. 资本效率、再投资与 ROIC\n# 5. 资产负债表、债务与流动性压力\n# 6. 每股价值、稀释与资本配置\n# 7. 财务风险隐患、反证与下期监控\n# 8. 条件化财务综合结论\n\n报告正文不得出现“依据：”、fact:、obs:、sourceId 或其他内部数据标识；不得把缺失项隐去。\n\n<input_data>\n${JSON.stringify(compactFinancialAnalysisPromptInput(snapshot))}\n</input_data>`;
 }
 
 /** Do not spend a model run on a report that lacks one of the primary
@@ -179,7 +179,7 @@ function compactFinancialAnalysisPromptInput(snapshot: FinancialAnalysisSnapshot
       latestBySeries.set(key, rank - 1);
       return rank <= 2 || flagObservationIds.has(item.id);
     })
-    .map(({ id, kind, metric, frequency, period, comparisonPeriod, status, value, unit, formula }) => ({ reference: compactObservationReference(id), kind, metric, frequency, period, comparisonPeriod, status, value, unit, formula }));
+    .map(({ kind, metric, frequency, period, comparisonPeriod, status, value, unit, formula }) => ({ kind, metric, frequency, period, comparisonPeriod, status, ...compactPromptNumber(value, unit), formula }));
   return {
     schemaVersion: snapshot.schemaVersion,
     codeVersion: snapshot.codeVersion,
@@ -197,6 +197,7 @@ function compactFinancialAnalysisPromptInput(snapshot: FinancialAnalysisSnapshot
     reportedFacts: snapshot.reportedFacts.flatMap(compactReportedFactSeries),
     derivedObservations: promptObservations,
     deterministicFlags: snapshot.deterministicFlags.map(compactRiskFlag),
+    numericDisplay: { amountUnit: "亿元", shareUnit: "亿股", percentageDecimals: 2 },
     lineage: { inputFingerprint: snapshot.lineage.inputFingerprint, factCount: snapshot.lineage.factIds.length, sourceCount: snapshot.lineage.sourceIds.length, fullSnapshotPersisted: true },
   };
 }
@@ -210,8 +211,8 @@ function compactReportedFactSeries(series: FinancialAnalysisSnapshot["reportedFa
     : quarterlyFlowPromptMetrics.has(series.metric) || quarterlyBalancePromptMetrics.has(series.metric);
   if (!metricAllowed) return [];
   const limit = series.frequency === "quarterly" && quarterlyBalancePromptMetrics.has(series.metric) ? 2 : 8;
-  const points = series.points.slice(-limit).map(({ period, status, value }) => ({ period, status, value, reference: `fact:${series.metric}:${series.frequency}:${period}` }));
-  return points.length ? [{ metric: series.metric, frequency: series.frequency, basisId: series.basisId, unit: series.unit, points }] : [];
+  const points = series.points.slice(-limit).map(({ period, status, value }) => ({ period, status, ...compactPromptNumber(value, series.unit) }));
+  return points.length ? [{ metric: series.metric, frequency: series.frequency, basisId: series.basisId, unit: compactPromptUnit(series.unit), points }] : [];
 }
 
 function compactStatementHealth(value: unknown) {
@@ -221,12 +222,24 @@ function compactStatementHealth(value: unknown) {
 }
 
 function compactRiskFlag(flag: FinancialAnalysisRiskFlag) {
-  return { ruleId: flag.ruleId, severity: flag.severity, title: flag.title, period: flag.period, value: flag.value, unit: flag.unit, threshold: flag.threshold, operator: flag.operator, reference: compactObservationReference(flag.observationId), ...(flag.comparisonObservationId ? { comparisonReference: compactObservationReference(flag.comparisonObservationId) } : {}) };
+  return { ruleId: flag.ruleId, severity: flag.severity, title: flag.title, period: flag.period, ...compactPromptNumber(flag.value, flag.unit), threshold: compactPromptValue(flag.threshold, flag.unit), unit: compactPromptUnit(flag.unit), operator: flag.operator };
 }
 
-function compactObservationReference(id: string) {
-  const [kind = "observation", metric = "metric", frequency = "period", period = "latest"] = id.split(":");
-  return `obs:${kind}:${metric}:${frequency}:${period}`;
+function compactPromptNumber(value: number | null, unit: string) {
+  return { value: compactPromptValue(value, unit), unit: compactPromptUnit(unit) };
+}
+
+function compactPromptValue(value: number | null, unit: string): number | null {
+  if (value === null) return null;
+  const divisor = unit === "CNY" || unit === "shares" ? 100_000_000 : 1;
+  const decimals = unit === "CNY" || unit === "shares" || unit === "percent" ? 2 : 4;
+  return Number((value / divisor).toFixed(decimals));
+}
+
+function compactPromptUnit(unit: string): string {
+  if (unit === "CNY") return "亿元";
+  if (unit === "shares") return "亿股";
+  return unit;
 }
 
 function compareProjectedObservation(left: FinancialAnalysisSnapshot["derivedObservations"][number], right: FinancialAnalysisSnapshot["derivedObservations"][number]) {

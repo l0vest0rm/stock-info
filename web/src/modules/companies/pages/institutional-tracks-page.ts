@@ -1,5 +1,6 @@
 import { computed, createApp, defineComponent, h, onMounted, ref } from 'vue'
 import trackSnapshotConfig from '../../../config/institutional-track-snapshot.json'
+import em2016ProfilesConfig from '../../../../../config/eastmoney-company-em2016-profiles.json'
 import sortingConfig from '../../../config/institutional-track-sorting.json'
 import valuationConfig from '../../../config/institutional-track-valuation.json'
 import {
@@ -39,6 +40,10 @@ type TrackRow = {
   name: string
   institutionCount: number
   industry: string
+  em2016: string
+  em2016Level1: string
+  em2016Level2: string
+  em2016Level3: string
   concepts: string[]
   primaryTrack: string
   secondaryTrack: string
@@ -94,6 +99,11 @@ type CompanyValuation = {
   dividendYield: number | null
 }
 
+type TrackPerformance = {
+  ninetyDayDrawdownPct: number | null
+  ninetyDayGainPct: number | null
+}
+
 type ValuationModel = {
   id: string
   label: string
@@ -134,10 +144,36 @@ const snapshot = trackSnapshotConfig as {
   }>
 }
 
+type Em2016ProfileEntry = {
+  code: string
+  name?: string
+  availability: string
+  industry: string | null
+  industryLevels?: string[]
+  mainBusiness?: string | null
+  products?: string[]
+  sourceUrl?: string
+  updatedAt?: string | number
+}
+
+const em2016ProfileRegistry = em2016ProfilesConfig as {
+  generatedAt?: string
+  profiles: Array<{
+    code: string
+    name?: string
+    availability: string
+    industry: string | null
+    industryLevels?: string[]
+    mainBusiness?: string | null
+    products?: string[]
+    sourceUrl?: string
+    updatedAt?: string | number
+  }>
+}
+
 const valuationRules = valuationConfig as {
   version: number
   batchLimit: number
-  autoEvaluateLimit: number
   evaluationConcurrency: number
   evaluationCache: {
     version: number
@@ -193,6 +229,20 @@ const valuationStateMeta: Record<ValuationState, { label: string, className: str
 
 const valuationStates = Object.keys(valuationStateMeta) as ValuationState[]
 const valuationCalculationVersion = 5
+
+function parseEm2016Levels(value: string): [string, string, string] | null {
+  const levels = value.split('-').map((item) => item.trim()).filter(Boolean)
+  return levels.length === 3 ? [levels[0], levels[1], levels[2]] : null
+}
+
+function profileLevels(entry: Em2016ProfileEntry | null | undefined): [string, string, string] | null {
+  if (!entry || entry.availability !== 'available' || !entry.industry) return null
+  if (Array.isArray(entry.industryLevels) && entry.industryLevels.length === 3) {
+    const levels = entry.industryLevels.map((item) => String(item || '').trim()).filter(Boolean)
+    return levels.length === 3 ? [levels[0], levels[1], levels[2]] : null
+  }
+  return parseEm2016Levels(entry.industry)
+}
 
 function numberOrNull(value: unknown): number | null {
   const numeric = typeof value === 'number' ? value : Number(value)
@@ -844,32 +894,38 @@ const InstitutionalTracksPage = defineComponent({
     const loading = ref(true)
     const error = ref('')
     const query = ref('')
-    const primaryFilter = ref('')
-    const secondaryFilter = ref('')
+    const level1Filter = ref('')
+    const level2Filter = ref('')
+    const level3Filter = ref('')
     const valuationFilter = ref<ValuationFilter | ''>('')
     const ratingFilter = ref<RatingFilter>('')
     const sortStrategyId = ref(sortingRules.defaultStrategyId)
     const followedCodes = ref(new Set<string>())
     const valuations = ref<Record<string, CompanyValuation>>({})
+    const performances = ref<Record<string, TrackPerformance>>({})
     const evaluatingCodes = ref(new Set<string>())
     const assessmentStatus = ref('')
     const assessmentRunning = ref(false)
+    const performanceStatus = ref('')
+    const performanceRunning = ref(false)
     let evaluationRun: Promise<void> | null = null
+    let performanceRun: Promise<void> | null = null
 
-    const rowsMatchingTrackFilters = computed(() => {
+    const rowsMatchingIndustryFilters = computed(() => {
       const keyword = query.value.trim().toLowerCase()
       return rows.value.filter((row) => {
-        if (primaryFilter.value && row.primaryTrack !== primaryFilter.value) return false
-        if (secondaryFilter.value && row.secondaryTrack !== secondaryFilter.value) return false
+        if (level1Filter.value && row.em2016Level1 !== level1Filter.value) return false
+        if (level2Filter.value && row.em2016Level2 !== level2Filter.value) return false
+        if (level3Filter.value && row.em2016Level3 !== level3Filter.value) return false
         if (!keyword) return true
-        return [row.code, row.name, row.industry, row.primaryTrack, row.secondaryTrack, ...row.concepts]
+        return [row.code, row.name, row.industry, row.em2016, row.em2016Level1, row.em2016Level2, row.em2016Level3, ...row.concepts]
           .join('|').toLowerCase().includes(keyword)
       })
     })
 
     const valuationCounts = computed(() => {
       const counts = new Map<ValuationFilter, number>()
-      rowsMatchingTrackFilters.value.forEach((row) => {
+      rowsMatchingIndustryFilters.value.forEach((row) => {
         const state = valuations.value[row.code]?.state || 'pending'
         counts.set(state, (counts.get(state) || 0) + 1)
       })
@@ -884,7 +940,7 @@ const InstitutionalTracksPage = defineComponent({
 
     function sortValue(row: TrackRow, strategy: SortStrategy): number | null {
       if (strategy.metric === 'institutionCount') return row.institutionCount
-      return valuations.value[row.code]?.[strategy.metric] ?? null
+      return performances.value[row.code]?.[strategy.metric] ?? null
     }
 
     function compareRows(left: TrackRow, right: TrackRow, strategy: SortStrategy): number {
@@ -898,7 +954,7 @@ const InstitutionalTracksPage = defineComponent({
     }
 
     const visibleRows = computed(() => {
-      const filtered = rowsMatchingTrackFilters.value.filter((row) => {
+      const filtered = rowsMatchingIndustryFilters.value.filter((row) => {
         if (!valuationFilter.value) return true
         const state = valuations.value[row.code]?.state || 'pending'
         return state === valuationFilter.value
@@ -906,25 +962,37 @@ const InstitutionalTracksPage = defineComponent({
       return [...filtered].sort((left, right) => compareRows(left, right, selectedSortStrategy.value))
     })
 
-    const primaryCounts = computed(() => {
+    const level1Counts = computed(() => {
       const countMap = new Map<string, number>()
-      rows.value.forEach((row) => countMap.set(row.primaryTrack, (countMap.get(row.primaryTrack) || 0) + 1))
+      rows.value.forEach((row) => countMap.set(row.em2016Level1, (countMap.get(row.em2016Level1) || 0) + 1))
       return [...countMap.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     })
 
-    const secondaryOptions = computed(() => {
+    const level2Options = computed(() => {
       const values = rows.value
-        .filter((row) => !primaryFilter.value || row.primaryTrack === primaryFilter.value)
-        .map((row) => row.secondaryTrack)
+        .filter((row) => !level1Filter.value || row.em2016Level1 === level1Filter.value)
+        .map((row) => row.em2016Level2)
         .filter(Boolean)
       return [...new Set(values)].sort((left, right) => left.localeCompare(right))
     })
 
-    const trackSummaries = computed(() => {
-      const useSecondaryTrack = Boolean(secondaryFilter.value)
+    const level3Options = computed(() => {
+      const values = rows.value
+        .filter((row) => !level1Filter.value || row.em2016Level1 === level1Filter.value)
+        .filter((row) => !level2Filter.value || row.em2016Level2 === level2Filter.value)
+        .map((row) => row.em2016Level3)
+        .filter(Boolean)
+      return [...new Set(values)].sort((left, right) => left.localeCompare(right))
+    })
+
+    const industrySummaries = computed(() => {
       const groups = new Map<string, TrackRow[]>()
       visibleRows.value.forEach((row) => {
-        const key = useSecondaryTrack ? row.secondaryTrack : row.primaryTrack
+        const key = level2Filter.value || level3Filter.value
+          ? row.em2016Level3
+          : level1Filter.value
+            ? row.em2016Level2
+            : row.em2016Level1
         groups.set(key, [...(groups.get(key) || []), row])
       })
       return [...groups.entries()].map(([track, trackRows]) => {
@@ -946,14 +1014,45 @@ const InstitutionalTracksPage = defineComponent({
       }).sort((left, right) => right.total - left.total || left.track.localeCompare(right.track))
     })
 
-    function selectPrimary(track: string) {
-      primaryFilter.value = track
-      if (secondaryFilter.value && !secondaryOptions.value.includes(secondaryFilter.value)) {
-        secondaryFilter.value = ''
+    function selectLevel1(track: string) {
+      level1Filter.value = track
+      if (level2Filter.value && !level2Options.value.includes(level2Filter.value)) {
+        level2Filter.value = ''
+      }
+      if (level3Filter.value && !level3Options.value.includes(level3Filter.value)) {
+        level3Filter.value = ''
       }
     }
 
-    function loadRows() {
+    function selectLevel2(track: string) {
+      level2Filter.value = track
+      if (level3Filter.value && !level3Options.value.includes(level3Filter.value)) {
+        level3Filter.value = ''
+      }
+    }
+
+    async function fetchMissingEm2016Profiles(codes: string[]): Promise<Map<string, Em2016ProfileEntry>> {
+      const resolved = new Map<string, Em2016ProfileEntry>()
+      const queue = [...new Set(codes.map((item) => item.trim()).filter(Boolean))]
+      const concurrency = Math.min(4, Math.max(1, queue.length))
+      async function worker(): Promise<void> {
+        while (queue.length) {
+          const code = queue.shift()
+          if (!code) continue
+          try {
+            const overview = await fetchApi<{ companyProfile?: Em2016ProfileEntry | null }>(`/api/company/overview?code=${encodeURIComponent(code)}`)
+            const profile = overview.companyProfile
+            if (profile) resolved.set(code, profile)
+          } catch {
+            // Keep failure visibility at the row-assembly boundary below.
+          }
+        }
+      }
+      await Promise.all(Array.from({ length: concurrency }, () => worker()))
+      return resolved
+    }
+
+    async function loadRows() {
       loading.value = true
       error.value = ''
       try {
@@ -969,18 +1068,39 @@ const InstitutionalTracksPage = defineComponent({
         if (list.some((item, index) => index > 0 && Number(item.ALLCORP_NUM) > Number(list[index - 1].ALLCORP_NUM))) {
           throw new Error('快照未按机构持股家数降序排列')
         }
-        if (snapshot.classificationVersion !== 2) throw new Error(`不支持的主营赛道分类版本：${snapshot.classificationVersion}`)
+        if (snapshot.classificationVersion !== 2) throw new Error(`不支持的估值模型版本：${snapshot.classificationVersion}`)
+        const em2016ByCode = new Map<string, Em2016ProfileEntry>(
+          (em2016ProfileRegistry.profiles || []).map((item) => [String(item.code || '').trim(), item]),
+        )
+        const missingCodes = list
+          .map((stock) => String(stock.SECUCODE || '').trim())
+          .filter((code) => !profileLevels(em2016ByCode.get(code)))
+        if (missingCodes.length) {
+          const fetchedProfiles = await fetchMissingEm2016Profiles(missingCodes)
+          fetchedProfiles.forEach((value, key) => em2016ByCode.set(key, value))
+        }
         rows.value = list.map((stock, index) => {
           const assignment = snapshot.rows[index]
           if (!assignment.primaryTrack || !assignment.secondaryTrack || !assignment.classificationNote) {
-            throw new Error(`${stock.SECUCODE} ${stock.SECURITY_NAME_ABBR} 缺少主营赛道分类`)
+            throw new Error(`${stock.SECUCODE} ${stock.SECURITY_NAME_ABBR} 缺少估值模型映射`)
           }
+          const em2016Row = em2016ByCode.get(String(stock.SECUCODE || '').trim())
+          if (!em2016Row) {
+            throw new Error(`${stock.SECUCODE} ${stock.SECURITY_NAME_ABBR} 缺少东财 EM2016 行业；请运行 npm run sync:eastmoney-company-em2016-profiles 更新本地配置`)
+          }
+          const levels = profileLevels(em2016Row)
+          if (!levels) throw new Error(`${stock.SECUCODE} ${stock.SECURITY_NAME_ABBR} 的东财 EM2016 不可用或不是完整三级路径；请运行 npm run sync:eastmoney-company-em2016-profiles 更新本地配置`)
+          const [em2016Level1, em2016Level2, em2016Level3] = levels
           return {
             rank: index + 1,
             code: String(stock.SECUCODE),
             name: String(stock.SECURITY_NAME_ABBR || ''),
             institutionCount: Number(stock.ALLCORP_NUM || 0),
             industry: String(stock.INDUSTRY || stock.BOARD_NAME || '未分类'),
+            em2016: em2016Row.industry || `${em2016Level1}-${em2016Level2}-${em2016Level3}`,
+            em2016Level1,
+            em2016Level2,
+            em2016Level3,
             concepts: Array.isArray(stock.CONCEPT) ? stock.CONCEPT.map(String) : [],
             tradeDate: String(stock.MAX_TRADE_DATE || ''),
             primaryTrack: assignment.primaryTrack,
@@ -1046,6 +1166,59 @@ const InstitutionalTracksPage = defineComponent({
       return evaluatingCodes.value.has(code)
     }
 
+    async function loadPerformanceFor(row: TrackRow): Promise<TrackPerformance> {
+      try {
+        const klineRows = await fetchApi<KlineValuationObservation[]>(`/api/kline?code=${encodeURIComponent(row.code)}&period=day&fq=before&from=${encodeURIComponent(klineStartDate())}&format=structured`)
+        const range = calculateLookbackRangePosition(klineRows, sortingRules.lookbackTradingDays)
+        return {
+          ninetyDayDrawdownPct: range?.drawdownPct ?? null,
+          ninetyDayGainPct: range?.gainPct ?? null,
+        }
+      } catch {
+        return {
+          ninetyDayDrawdownPct: null,
+          ninetyDayGainPct: null,
+        }
+      }
+    }
+
+    function loadPerformances(candidates: TrackRow[]): Promise<void> {
+      if (performanceRun) return performanceRun
+      const pending = candidates.filter((row) => !Object.prototype.hasOwnProperty.call(performances.value, row.code))
+      if (!pending.length) {
+        performanceStatus.value = '近90个交易日表现已计算。'
+        return Promise.resolve()
+      }
+      const concurrency = Math.max(1, Math.min(valuationRules.evaluationConcurrency, pending.length))
+      performanceRunning.value = true
+      performanceRun = (async () => {
+        let completed = 0
+        let available = 0
+        performanceStatus.value = `正在计算近90个交易日表现 0/${pending.length}（最多同时 ${concurrency} 家）…`
+        const queue = [...pending]
+        const worker = async () => {
+          while (queue.length) {
+            const row = queue.shift()
+            if (!row) continue
+            const performance = await loadPerformanceFor(row)
+            performances.value = {
+              ...performances.value,
+              [row.code]: performance,
+            }
+            if (performance.ninetyDayDrawdownPct !== null && performance.ninetyDayGainPct !== null) available += 1
+            completed += 1
+            performanceStatus.value = `正在计算近90个交易日表现 ${completed}/${pending.length}；${available} 家数据完整。`
+          }
+        }
+        await Promise.all(Array.from({ length: concurrency }, worker))
+        performanceStatus.value = `近90个交易日表现计算完成：${available}/${pending.length} 家数据完整。`
+      })()
+      return performanceRun.finally(() => {
+        performanceRun = null
+        performanceRunning.value = false
+      })
+    }
+
     async function evaluateCompany(row: TrackRow): Promise<boolean> {
       if (isEvaluating(row.code)) return false
       evaluatingCodes.value = new Set([...evaluatingCodes.value, row.code])
@@ -1070,6 +1243,13 @@ const InstitutionalTracksPage = defineComponent({
         const latestPrice = latestKlineObservation(klineRows) ? numberOrNull(latestKlineObservation(klineRows)!.close) : null
         const latestPb = latestKlinePb(klineRows)
         const pullbackSignal = calculatePullbackSignal(latestPrice, klineRows)
+        performances.value = {
+          ...performances.value,
+          [row.code]: {
+            ninetyDayDrawdownPct: pullbackSignal.ninetyDayDrawdownPct,
+            ninetyDayGainPct: pullbackSignal.ninetyDayGainPct,
+          },
+        }
         const dividendYield = dividend ? numberOrNull(dividend.currentYield) : null
         valuations.value = {
           ...valuations.value,
@@ -1208,23 +1388,20 @@ const InstitutionalTracksPage = defineComponent({
       )
     }
 
-    function startAutomaticEvaluation(): void {
+    function restoreCachedValuations(): void {
       const restored = restoreValuations()
-      const candidates = rows.value.slice(0, valuationRules.autoEvaluateLimit)
-      const missing = candidates.filter((row) => !valuations.value[row.code]).length
-      if (!missing) {
+      if (restored) {
         assessmentStatus.value = `已从本地缓存恢复 ${restored} 家公司的评估结果。`
-        return
       }
-      assessmentStatus.value = restored
-        ? `已恢复 ${restored} 家缓存结果；继续按机构持股排名自动评估其余 ${missing} 家…`
-        : '将按机构持股排名自动评估公司…'
-      void evaluateRows(candidates, '正在自动评估')
     }
 
     onMounted(() => {
-      loadRows()
-      if (!error.value && rows.value.length) startAutomaticEvaluation()
+      void loadRows().then(() => {
+        if (!error.value && rows.value.length) {
+          restoreCachedValuations()
+          void loadPerformances(rows.value)
+        }
+      })
     })
 
     return () => h('div', { class: 'container-fluid my-3 institutional-tracks-page' }, [
@@ -1232,8 +1409,8 @@ const InstitutionalTracksPage = defineComponent({
       h('section', { class: 'institutional-tracks-hero mb-3' }, [
         h('div', { class: 'd-flex flex-wrap justify-content-between gap-3 align-items-end' }, [
           h('div', [
-            h('h1', { class: 'h3 mb-2' }, '机构持股 Top300 主营赛道'),
-            h('p', { class: 'mb-0' }, `按 ALLCORP_NUM 降序；榜单日期 ${rows.value[0]?.tradeDate || '加载中'}。一级、二级赛道按主营业务归类；东财概念仅作为主题标签展示。`),
+            h('h1', { class: 'h3 mb-2' }, '机构持股 Top300 行业分类'),
+            h('p', { class: 'mb-0' }, `按 ALLCORP_NUM 降序；榜单日期 ${rows.value[0]?.tradeDate || snapshot.dataDate || '加载中'}。一级、二级、三级行业使用东财 EM2016 分类；东财概念仅作为主题标签展示。`),
           ]),
         ]),
       ]),
@@ -1241,8 +1418,8 @@ const InstitutionalTracksPage = defineComponent({
       h('section', { class: 'institutional-tracks-valuation-guide mb-3' }, [
         h('div', { class: 'd-flex flex-wrap align-items-center justify-content-between gap-2' }, [
           h('div', [
-            h('div', { class: 'fw-semibold' }, '估值颜色：赛道与公司分别判断'),
-            h('div', { class: 'small text-muted' }, `页面打开后会按机构持股排名自动评估 Top${valuationRules.autoEvaluateLimit}，最多同时核对 ${valuationRules.evaluationConcurrency} 家；结果在本浏览器缓存 ${Math.round(valuationRules.evaluationCache.ttlMs / 60_000)} 分钟。成长赛道同时检查 ${valuationRules.growthPeg.baseForecastYear}E 绝对 PE 和逐年利润路径；红利赛道要求股息率与 ${valuationRules.growthPeg.baseForecastYear}E-${valuationRules.growthPeg.targetForecastYear}E 利润 CAGR 同时成立；银行以近四季股息率为主锚，预测利润增长检验持续性，PB 与滚动 ROE 只作更谨慎的约束；证券和保险使用 PB 与滚动 ROE；周期赛道用连续三年滚动利润中位数计算中周期 PE。机构式评级仅由当前估值结论和证据置信度生成，不创建个人买入计划，也不构成个性化投资建议。`),
+            h('div', { class: 'fw-semibold' }, '估值颜色：行业分组与公司分别判断'),
+            h('div', { class: 'small text-muted' }, `页面打开后自动计算近90个交易日回撤/涨幅；估值只在点击“评估当前前 ${valuationRules.batchLimit} 家”或单只“评估估值”后计算，结果在本浏览器缓存 ${Math.round(valuationRules.evaluationCache.ttlMs / 60_000)} 分钟。成长类行业同时检查 ${valuationRules.growthPeg.baseForecastYear}E 绝对 PE 和逐年利润路径；红利类行业要求股息率与 ${valuationRules.growthPeg.baseForecastYear}E-${valuationRules.growthPeg.targetForecastYear}E 利润 CAGR 同时成立；银行以近四季股息率为主锚，预测利润增长检验持续性，PB 与滚动 ROE 只作更谨慎的约束；证券和保险使用 PB 与滚动 ROE；周期类行业用连续三年滚动利润中位数计算中周期 PE。机构式评级仅由当前估值结论和证据置信度生成，不创建个人买入计划，也不构成个性化投资建议。`),
           ]),
           h('button', {
             type: 'button',
@@ -1252,13 +1429,14 @@ const InstitutionalTracksPage = defineComponent({
           }, `评估当前前 ${valuationRules.batchLimit} 家`),
         ]),
         assessmentStatus.value ? h('div', { class: 'small text-muted mt-2' }, assessmentStatus.value) : null,
+        performanceStatus.value ? h('div', { class: `small mt-1 ${performanceRunning.value ? 'text-primary' : 'text-muted'}` }, performanceStatus.value) : null,
       ]),
       h('div', { class: 'row g-2 mb-3 align-items-center' }, [
         h('div', { class: 'col-12 col-lg-3' }, [
           h('input', {
             class: 'form-control form-control-sm',
             value: query.value,
-            placeholder: '搜索股票、行业、概念或赛道',
+            placeholder: '搜索股票、EM2016 行业或概念',
             onInput: (event: Event) => { query.value = (event.target as HTMLInputElement).value },
           }),
         ]),
@@ -1273,21 +1451,31 @@ const InstitutionalTracksPage = defineComponent({
         h('div', { class: 'col-12 col-lg-3' }, [
           h('select', {
             class: 'form-select form-select-sm',
-            value: primaryFilter.value,
-            onChange: (event: Event) => selectPrimary((event.target as HTMLSelectElement).value),
+            value: level1Filter.value,
+            onChange: (event: Event) => selectLevel1((event.target as HTMLSelectElement).value),
           }, [
-            h('option', { value: '' }, `全部一级主营赛道（${rows.value.length}）`),
-            ...primaryCounts.value.map(([track, count]) => h('option', { value: track }, `${track}（${count}）`)),
+            h('option', { value: '' }, `全部一级行业（${rows.value.length}）`),
+            ...level1Counts.value.map(([track, count]) => h('option', { value: track }, `${track}（${count}）`)),
           ]),
         ]),
         h('div', { class: 'col-12 col-lg-3' }, [
           h('select', {
             class: 'form-select form-select-sm',
-            value: secondaryFilter.value,
-            onChange: (event: Event) => { secondaryFilter.value = (event.target as HTMLSelectElement).value },
+            value: level2Filter.value,
+            onChange: (event: Event) => selectLevel2((event.target as HTMLSelectElement).value),
           }, [
-            h('option', { value: '' }, '全部二级主营赛道'),
-            ...secondaryOptions.value.map((track) => h('option', { value: track }, track)),
+            h('option', { value: '' }, '全部二级行业'),
+            ...level2Options.value.map((track) => h('option', { value: track }, track)),
+          ]),
+        ]),
+        h('div', { class: 'col-12 col-lg-3' }, [
+          h('select', {
+            class: 'form-select form-select-sm',
+            value: level3Filter.value,
+            onChange: (event: Event) => { level3Filter.value = (event.target as HTMLSelectElement).value },
+          }, [
+            h('option', { value: '' }, '全部三级行业'),
+            ...level3Options.value.map((track) => h('option', { value: track }, track)),
           ]),
         ]),
         h('div', { class: 'col-12 col-lg-3' }, [
@@ -1297,7 +1485,7 @@ const InstitutionalTracksPage = defineComponent({
             'aria-label': '按估值状态筛选',
             onChange: (event: Event) => { valuationFilter.value = (event.target as HTMLSelectElement).value as ValuationFilter | '' },
           }, [
-            h('option', { value: '' }, `全部估值状态（${rowsMatchingTrackFilters.value.length}）`),
+            h('option', { value: '' }, `全部估值状态（${rowsMatchingIndustryFilters.value.length}）`),
             h('option', { value: 'pending' }, `待评估（${valuationCounts.value.get('pending') || 0}）`),
             ...valuationStates.map((state) => h(
               'option',
@@ -1318,7 +1506,7 @@ const InstitutionalTracksPage = defineComponent({
           ]),
         ]),
       ]),
-      !loading.value ? h('section', { class: 'institutional-tracks-track-grid mb-3', 'aria-label': '赛道估值状态' }, trackSummaries.value.map((summary) => {
+      !loading.value ? h('section', { class: 'institutional-tracks-track-grid mb-3', 'aria-label': '行业估值状态' }, industrySummaries.value.map((summary) => {
         const meta = valuationStateMeta[summary.state]
         return h('div', { key: summary.track, class: `institutional-tracks-track-card ${meta.className}` }, [
           h('div', { class: 'd-flex justify-content-between gap-2' }, [
@@ -1327,16 +1515,16 @@ const InstitutionalTracksPage = defineComponent({
           ]),
           h('div', { class: 'small mt-1' }, summary.evaluated >= valuationRules.trackMinimumEvaluatedCompanies
             ? `已按 ${summary.evaluated}/${summary.total} 家有结论公司聚合`
-            : `已评估 ${summary.evaluated}/${summary.total} 家；至少 ${valuationRules.trackMinimumEvaluatedCompanies} 家才给赛道颜色`),
+            : `已评估 ${summary.evaluated}/${summary.total} 家；至少 ${valuationRules.trackMinimumEvaluatedCompanies} 家才给行业颜色`),
         ])
       })) : null,
       loading.value
-        ? h('div', { class: 'text-center text-muted py-5' }, '正在加载 Top300 并匹配赛道…')
+        ? h('div', { class: 'text-center text-muted py-5' }, '正在加载 Top300 并匹配东财 EM2016 行业…')
         : h('div', { class: 'table-responsive border rounded' }, [
           h('table', { class: 'table table-sm table-hover align-middle mb-0 institutional-tracks-table' }, [
             h('thead', { class: 'table-light' }, [h('tr', [
-              h('th', '排名'), h('th', '股票'), h('th', '估值状态'), h('th', '机构评级'), h('th', '机构家数'), h('th', '东财行业'),
-              h('th', '近90日回撤'), h('th', '近90日涨幅'), h('th', '一级主营赛道'), h('th', '二级主营赛道'),
+              h('th', '排名'), h('th', '股票'), h('th', '估值状态'), h('th', '机构评级'), h('th', '机构家数'),
+              h('th', '一级行业'), h('th', '二级行业'), h('th', '三级行业'), h('th', '近90日回撤'), h('th', '近90日涨幅'),
             ])]),
             h('tbody', visibleRows.value.map((row) => h('tr', { key: row.code }, [
               h('td', row.rank),
@@ -1401,19 +1589,19 @@ const InstitutionalTracksPage = defineComponent({
                 }, rating.label)
               })()),
               h('td', { class: 'fw-semibold' }, row.institutionCount.toLocaleString()),
-              h('td', row.industry),
-              h('td', { class: valuations.value[row.code]?.ninetyDayDrawdownPct === null || valuations.value[row.code]?.ninetyDayDrawdownPct === undefined
+              h('td', { title: row.em2016 }, row.em2016Level1),
+              h('td', { title: row.em2016 }, row.em2016Level2),
+              h('td', { title: row.em2016 }, row.em2016Level3),
+              h('td', { class: performances.value[row.code]?.ninetyDayDrawdownPct === null || performances.value[row.code]?.ninetyDayDrawdownPct === undefined
                 ? 'text-muted'
-                : 'text-success' }, formatPercent(valuations.value[row.code]?.ninetyDayDrawdownPct ?? null)),
-              h('td', { class: valuations.value[row.code]?.ninetyDayGainPct === null || valuations.value[row.code]?.ninetyDayGainPct === undefined
+                : 'text-success' }, formatPercent(performances.value[row.code]?.ninetyDayDrawdownPct ?? null)),
+              h('td', { class: performances.value[row.code]?.ninetyDayGainPct === null || performances.value[row.code]?.ninetyDayGainPct === undefined
                 ? 'text-muted'
-                : 'text-danger' }, formatPercent(valuations.value[row.code]?.ninetyDayGainPct ?? null, true)),
-              h('td', row.primaryTrack),
-              h('td', row.secondaryTrack),
+                : 'text-danger' }, formatPercent(performances.value[row.code]?.ninetyDayGainPct ?? null, true)),
             ]))),
           ]),
         ]),
-      h('p', { class: 'small text-muted mt-2' }, `当前显示 ${visibleRows.value.length} / ${rows.value.length}，排序：${selectedSortStrategy.value.label}。近90日回撤＝当前价相对90个交易日最高价的跌幅；近90日涨幅＝当前价相对90个交易日最低价的涨幅；均按前复权日线计算，数据不足时固定排在末尾。颜色表示基于当前证据的估值状态，不构成个性化投资建议；同机构家数的边界股票按东财原始返回顺序截取，Top300 的行业占比只代表本榜单样本，不代表全市场。`),
+      h('p', { class: 'small text-muted mt-2' }, `当前显示 ${visibleRows.value.length} / ${rows.value.length}，排序：${selectedSortStrategy.value.label}。近90日回撤＝当前价相对90个交易日最高价的跌幅；近90日涨幅＝当前价相对90个交易日最低价的涨幅；均按前复权日线计算，数据不足时固定排在末尾。颜色表示基于当前证据的估值状态，不构成个性化投资建议；同机构家数的边界股票按东财原始返回顺序截取，Top300 的 EM2016 行业占比只代表本榜单样本，不代表全市场。`),
     ])
   },
 })

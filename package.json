@@ -50,6 +50,7 @@
     "research:refresh-inputs": "node scripts/refresh-research-inputs.mjs",
     "analyze:buy-point": "node scripts/analyze-buy-point.mjs",
     "generate:institutional-tracks": "node scripts/generate-institutional-track-snapshot.mjs",
+    "sync:eastmoney-company-em2016-profiles": "node scripts/sync-eastmoney-company-em2016-profiles.mjs",
     "generate:information:institutional-keywords": "node scripts/generate-information-processing-keywords.mjs",
     "backtest:institutional-top100": "node scripts/backtest-current-institutional-top100-reduce-add.mjs",
     "backtest:institutional-top100:refresh": "npm run generate:institutional-tracks && npm run backtest:institutional-top100",
