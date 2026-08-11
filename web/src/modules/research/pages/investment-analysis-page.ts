@@ -20,13 +20,15 @@ type LowDependencyTask = ReportJob & { taskId?: string; jobId?: string; runId?: 
 type ResumeEligibility = { available?: boolean; reason?: string; runId?: string | null; failedStageKeys?: string[]; reusableStageKeys?: string[]; promptVersion?: string | null; codeVersion?: string | null; currentPromptVersion?: string; currentCodeVersion?: string };
 type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; protocolVersion?: string; promptVersion?: string; run?: LowDependencyRun | null; task?: LowDependencyTask | null; report?: LowDependencyReport | null; stages?: AnalysisStage[]; workflowPackages?: AnalysisWorkPackage[]; finalArtifactId?: string | null; scopeEnvelopeAvailable?: boolean; resume?: ResumeEligibility | null; resumeAvailable?: boolean };
 type RoutingReason = { code?: string; message?: string; fields?: string[] };
-type RoutingCandidate = { templateId?: string; industryKey?: string; label?: string; frameworkCategory?: string; legacyTemplateIds?: string[]; matchedFields?: string[]; score?: number; reason?: string; sourceIds?: string[] };
+type RoutingCandidate = { templateId?: string; industryKey?: string; label?: string; frameworkCategory?: string; presentationCategoryId?: string; presentationCategoryLabel?: string; operatingFeatureLabel?: string; legacyTemplateIds?: string[]; matchedFields?: string[]; score?: number; reason?: string; sourceIds?: string[] };
 type RoutingCurrent = { state?: "unconfirmed" | "confirmed"; selectedTemplateId?: string | null; scopeNote?: string | null; companyScope?: Json; candidateTemplates?: RoutingCandidate[]; reasons?: RoutingReason[] };
 type RoutingConfirmation = { confirmationId?: string; selectedTemplateId?: string; scopeNote?: string | null; actorKey?: string; createdAt?: number; companyScope?: Json };
-type RegisteredTemplate = { templateId?: string; industryKey?: string; label?: string; frameworkCategory?: string; legacyTemplateIds?: string[] };
-type OperatingRouting = { availability?: "available" | "empty" | "unavailable"; templates?: RegisteredTemplate[]; current?: RoutingCurrent; manualConfirmation?: RoutingConfirmation | null; history?: RoutingConfirmation[]; automatic?: Json | null };
+type RegisteredTemplate = { templateId?: string; industryKey?: string; label?: string; frameworkCategory?: string; presentationCategoryId?: string; presentationCategoryLabel?: string; operatingFeatureLabel?: string; legacyTemplateIds?: string[] };
+type PresentationCategory = { id?: string; label?: string };
+type OperatingRouting = { availability?: "available" | "empty" | "unavailable"; presentationCategories?: PresentationCategory[]; templates?: RegisteredTemplate[]; current?: RoutingCurrent; manualConfirmation?: RoutingConfirmation | null; history?: RoutingConfirmation[]; automatic?: Json | null };
 type OperatingAnalysisWithRouting = OperatingAnalysis & { routing?: OperatingRouting | null };
-type CompanyOverview = { name?: string; latestPrice?: number | null; pctChange?: number | null; marketCapYi?: number | null; peTtm?: number | null };
+type EastmoneyCompanyProfile = { taxonomy?: string; availability?: "available" | "unavailable"; industry?: string | null; industryLevels?: string[]; mainBusiness?: string | null; products?: string[]; sourceUrl?: string | null };
+type CompanyOverview = { name?: string; latestPrice?: number | null; pctChange?: number | null; marketCapYi?: number | null; peTtm?: number | null; companyProfile?: EastmoneyCompanyProfile | null };
 type KlineBar = { date?: string; close?: number | null };
 type IncomeStatement = { parentNetprofit?: number | null };
 type ShareChange = { totalShares?: number | null };
@@ -551,14 +553,18 @@ function routingValues(value: unknown): string[] {
 
 function routingPanel(options: {
   routing?: OperatingRouting | null;
+  companyProfile?: EastmoneyCompanyProfile | null;
   confirming: boolean;
+  selectedCategoryId: string;
   selectedTemplateId: string;
   requestError?: string | null;
   success?: string | null;
-  onTemplateChange: (value: string) => void;
+  onCategoryChange: (categoryId: string, templateId: string) => void;
+  onTemplateChange: (value: string, categoryId: string) => void;
   onConfirm: () => void;
 }): VNodeChild {
   const routing = options.routing;
+  const companyProfile = options.companyProfile || null;
   const current = routing?.current || {};
   const automatic = asRecord(routing?.automatic);
   const observedCandidates = [...(Array.isArray(current.candidateTemplates) ? current.candidateTemplates : []), ...(Array.isArray(automatic.candidateTemplates) ? automatic.candidateTemplates as RoutingCandidate[] : [])];
@@ -568,6 +574,15 @@ function routingPanel(options: {
     return { ...observed, ...template };
   }).filter((candidate): candidate is RoutingCandidate => Boolean(text(candidate.templateId)));
   const selectedTemplateId = options.selectedTemplateId || text(current.selectedTemplateId);
+  const selectedTemplate = candidates.find((candidate) => text(candidate.templateId) === selectedTemplateId);
+  const categories = (Array.isArray(routing?.presentationCategories) ? routing.presentationCategories : [])
+    .map((category) => ({ id: text(category.id), label: text(category.label) }))
+    .filter((category) => category.id && category.label);
+  const selectedCategoryId = options.selectedCategoryId || text(selectedTemplate?.presentationCategoryId);
+  const categoryTemplates = candidates.filter((candidate) => text(candidate.presentationCategoryId) === selectedCategoryId);
+  const automaticTemplate = asRecord(automatic.analysisTemplate);
+  const appliedCategory = text(selectedTemplate?.presentationCategoryLabel) || text(automaticTemplate.presentationCategoryLabel);
+  const appliedFeature = text(selectedTemplate?.operatingFeatureLabel) || text(automaticTemplate.operatingFeatureLabel);
   const scope = asRecord(current.companyScope || automatic.companyScope);
   const scopeEntries = Object.entries(scope).filter(([field, value]) => field !== "facts" && field !== "basisSourceIds" && field !== "collectionStatus" && field !== "confirmation" && routingValues(value).length);
   const reasons = (Array.isArray(current.reasons) ? current.reasons : []).filter((reason): reason is RoutingReason => Boolean(reason && typeof reason === "object" && text(reason.message)));
@@ -577,20 +592,28 @@ function routingPanel(options: {
   const confirmed = current.state === "confirmed";
   const confirmation = routing?.manualConfirmation || null;
   const availabilityMessage = routing?.availability === "unavailable" ? "路由确认审计表尚未初始化；当前只能查看自动匹配结果。" : null;
+  const eastmoneyIndustry = companyProfile?.availability === "available" ? text(companyProfile.industry) : "";
   return h("section", { class: "ia-routing", "aria-label": "S0.2本地分析模板路由" }, [
     h("div", { class: "ia-routing-head" }, [
-      h("div", [h("h3", "S0.2 本地分析模板路由"), h("p", "依据有来源的主营、产品、下游和行业事实，选择匹配业务经济性的分析模板；申万行业分类不直接决定模板。未确认时，后续研究保持阻断。")]),
+      h("div", [h("h3", "S0.2 东方财富行业模板路由"), h("p", "A 股默认使用东方财富 F10 的 EM2016 三级行业选择模板；仅在 EM2016 缺失或未配置时需要人工确认。")]),
       h("span", { class: `ia-routing-state ${confirmed ? "confirmed" : "unconfirmed"}` }, routingStateLabel(current.state)),
     ]),
     availabilityMessage ? h("div", { class: "ia-routing-warning", role: "status" }, availabilityMessage) : null,
+    eastmoneyIndustry ? h("p", { class: "ia-routing-profile" }, [h("strong", "东方财富 EM2016 行业："), eastmoneyIndustry]) : h("div", { class: "ia-routing-warning", role: "status" }, "东方财富 EM2016 行业暂不可用；请选择模板并确认。"),
     scopeEntries.length ? h("div", { class: "ia-routing-scope" }, [h("strong", "已收集的范围事实"), h("dl", scopeEntries.map(([field, value]) => h("div", { key: field }, [h("dt", routingFieldLabel(field)), h("dd", routingValues(value).join("、"))])))]) : h("div", { class: "ia-routing-empty" }, "本地输入尚未提供可审计的主营、产品、下游或行业范围；需要人工确认并留下范围说明。"),
     collectionBasis.length ? h("p", { class: "ia-routing-basis" }, [h("strong", "采集依据："), collectionBasis.join("、")]) : null,
     reasons.length ? h("ul", { class: "ia-routing-reasons" }, reasons.map((reason) => h("li", { key: `${reason.code || "reason"}:${reason.message}` }, [h("strong", reason.code || "路由原因"), h("span", reason.message), Array.isArray(reason.fields) && reason.fields.length ? h("small", `涉及字段：${reason.fields.join("、")}`) : null]))) : null,
+    appliedCategory && appliedFeature ? h("p", { class: "ia-routing-profile" }, [h("strong", "当前适用经营特征："), `${appliedCategory} · ${appliedFeature}`]) : null,
     h("form", { class: "ia-routing-form", onSubmit: (event: Event) => { event.preventDefault(); options.onConfirm(); } }, [
-      h("label", [h("span", "分析模板（按业务经济性）"), h("select", { value: selectedTemplateId, disabled: options.confirming || routing?.availability === "unavailable", onChange: (event: Event) => options.onTemplateChange((event.target as HTMLSelectElement).value) }, [h("option", { value: "", disabled: true }, "请选择与公司商业模式相符的分析模板"), ...candidates.map((candidate) => h("option", { value: candidate.templateId }, `${candidate.frameworkCategory ? `${candidate.frameworkCategory} / ` : ""}${candidate.label || candidate.templateId}`))])]),
+      h("label", [h("span", "一级研究类别"), h("select", { value: selectedCategoryId, disabled: options.confirming || routing?.availability === "unavailable", onChange: (event: Event) => {
+        const categoryId = (event.target as HTMLSelectElement).value;
+        const templates = candidates.filter((candidate) => text(candidate.presentationCategoryId) === categoryId);
+        options.onCategoryChange(categoryId, templates.length === 1 ? text(templates[0].templateId) : "");
+      } }, [h("option", { value: "", disabled: true }, "请选择研究类别"), ...categories.map((category) => h("option", { value: category.id }, category.label))])]),
+      h("label", [h("span", "经营特征"), h("select", { value: selectedTemplateId, disabled: options.confirming || routing?.availability === "unavailable" || !selectedCategoryId, onChange: (event: Event) => options.onTemplateChange((event.target as HTMLSelectElement).value, selectedCategoryId) }, [h("option", { value: "", disabled: true }, selectedCategoryId ? "请选择与公司主营相符的经营特征" : "请先选择研究类别"), ...categoryTemplates.map((candidate) => h("option", { value: candidate.templateId }, candidate.operatingFeatureLabel || candidate.label || candidate.templateId))])]),
       h("button", { class: "ia-routing-confirm", type: "submit", disabled: options.confirming || !selectedTemplateId || routing?.availability === "unavailable" }, options.confirming ? "正在确认…" : confirmed ? "确认并切换模板" : "确认模板并继续研究"),
     ]),
-    confirmation ? h("p", { class: "ia-routing-audit" }, `最近确认：${confirmation.selectedTemplateId || "—"} · ${confirmation.actorKey || "local-user"} · ${date(confirmation.createdAt)}${confirmation.confirmationId ? ` · ${confirmation.confirmationId}` : ""}`) : null,
+    confirmation ? h("p", { class: "ia-routing-audit" }, `最近确认：${appliedCategory && appliedFeature ? `${appliedCategory} · ${appliedFeature}（${confirmation.selectedTemplateId || "—"}）` : confirmation.selectedTemplateId || "—"} · ${confirmation.actorKey || "local-user"} · ${date(confirmation.createdAt)}${confirmation.confirmationId ? ` · ${confirmation.confirmationId}` : ""}`) : null,
     options.success ? h("div", { class: "ia-routing-success", role: "status" }, options.success) : null,
     options.requestError ? h("div", { class: "ia-routing-error", role: "alert" }, options.requestError) : null,
   ]);
@@ -604,7 +627,7 @@ const styles = `
 .ia-prompt{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#fff;padding:12px 15px}.ia-prompt summary{cursor:pointer;color:#174b45;font-size:13px;font-weight:800}.ia-prompt-body{margin-top:12px}.ia-prompt-body h4{margin:13px 0 6px;color:#476762;font-size:12px}.ia-prompt-body h4:first-child{margin-top:0}.ia-prompt-body pre{max-height:420px;overflow:auto;margin:0;padding:11px;border:1px solid #dce9e6;border-radius:8px;background:#f6faf9;color:#234640;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}
 .ia-version-control{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800;flex:none}.ia-version-control select{max-width:250px;border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-compare{flex:none;border:1px solid #69a99d;border-radius:9px;background:#f1faf7;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}@media(max-width:650px){.ia-generation-controls{justify-content:flex-start}}
 .ia-stage-progress{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#f8fcfb;padding:13px 15px}.ia-stage-progress h3{margin:0 0 4px;color:#174b45;font-size:13px}.ia-stage-recovery{margin-bottom:9px;color:#6b817d;font-size:11px}.ia-stage-progress ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:0;padding:0;list-style:none}.ia-stage{display:flex;gap:8px;min-width:0;color:#6b817d;font-size:12px;line-height:1.45}.ia-stage-dot{width:8px;height:8px;flex:none;margin-top:4px;border-radius:50%;background:#b6c9c5}.ia-stage strong,.ia-stage span,.ia-stage small{display:block}.ia-stage strong{color:#365a54}.ia-stage small{margin-top:2px;color:#a24337;overflow-wrap:anywhere}.ia-stage-rerun{margin-top:4px;border:1px solid #e3b9b0;border-radius:6px;background:#fff5f3;color:#98463d;padding:3px 7px;font:700 10px inherit;cursor:pointer}.ia-stage.running .ia-stage-dot{background:#08786c;box-shadow:0 0 0 4px #08786c22}.ia-stage.complete .ia-stage-dot,.ia-stage.partial .ia-stage-dot,.ia-stage.not_applicable .ia-stage-dot{background:#34a27d}.ia-stage.blocked .ia-stage-dot,.ia-stage.failed .ia-stage-dot{background:#c76854}@media(max-width:650px){.ia-stage-progress ol{grid-template-columns:1fr}}
-.ia-routing{margin-top:17px;border:1px solid #cde4de;border-radius:12px;background:#fbfefd;padding:15px 16px;color:#315951;font-size:12px;line-height:1.55}.ia-routing-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.ia-routing-head h3{margin:0;color:#174b45;font-size:15px}.ia-routing-head p{margin:5px 0 0;color:#637c78}.ia-routing-state{flex:none;border-radius:999px;padding:4px 9px;background:#fff4e5;color:#98631c;font-size:11px;font-weight:850}.ia-routing-state.confirmed{background:#e6f7ee;color:#15734f}.ia-routing-warning,.ia-routing-error{margin-top:11px;border:1px solid #edc8c2;border-radius:8px;background:#fff5f3;padding:9px 10px;color:#983e34}.ia-routing-success{margin-top:11px;border:1px solid #b9e2d2;border-radius:8px;background:#effbf5;padding:9px 10px;color:#15734f}.ia-routing-scope{margin-top:12px;padding:10px 11px;border-radius:8px;background:#f1faf7}.ia-routing-scope strong{color:#174b45}.ia-routing-scope dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 14px;margin:8px 0 0}.ia-routing-scope dl div{min-width:0}.ia-routing-scope dt{color:#6a8580;font-size:11px}.ia-routing-scope dd{margin:1px 0 0;color:#234e48;overflow-wrap:anywhere}.ia-routing-basis{margin:10px 0 0;color:#637c78}.ia-routing-reasons{margin:10px 0 0;padding-left:18px;color:#6b5148}.ia-routing-reasons li{margin:4px 0}.ia-routing-reasons strong,.ia-routing-reasons span,.ia-routing-reasons small{display:block}.ia-routing-reasons strong{color:#9a5b2b;font-size:11px}.ia-routing-reasons small{color:#8d7770}.ia-routing-form{display:grid;grid-template-columns:minmax(260px,1fr) auto;align-items:end;gap:9px;margin-top:13px;padding-top:12px;border-top:1px solid #dcece8}.ia-routing-form label{display:grid;gap:4px;color:#476762;font-size:11px;font-weight:800}.ia-routing-form select{width:100%;border:1px solid #b6dcd3;border-radius:7px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-routing-confirm{border:1px solid #0a786b;border-radius:8px;background:#08786c;color:#fff;padding:8px 11px;font:800 11px inherit;cursor:pointer}.ia-routing-confirm:disabled{opacity:.56;cursor:not-allowed}.ia-routing-audit{margin:10px 0 0;color:#6c817d;font-size:11px;overflow-wrap:anywhere}@media(max-width:760px){.ia-routing-scope dl,.ia-routing-form{grid-template-columns:1fr}.ia-routing-confirm{justify-self:start}}
+.ia-routing{margin-top:17px;border:1px solid #cde4de;border-radius:12px;background:#fbfefd;padding:15px 16px;color:#315951;font-size:12px;line-height:1.55}.ia-routing-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.ia-routing-head h3{margin:0;color:#174b45;font-size:15px}.ia-routing-head p{margin:5px 0 0;color:#637c78}.ia-routing-state{flex:none;border-radius:999px;padding:4px 9px;background:#fff4e5;color:#98631c;font-size:11px;font-weight:850}.ia-routing-state.confirmed{background:#e6f7ee;color:#15734f}.ia-routing-warning,.ia-routing-error{margin-top:11px;border:1px solid #edc8c2;border-radius:8px;background:#fff5f3;padding:9px 10px;color:#983e34}.ia-routing-success{margin-top:11px;border:1px solid #b9e2d2;border-radius:8px;background:#effbf5;padding:9px 10px;color:#15734f}.ia-routing-scope{margin-top:12px;padding:10px 11px;border-radius:8px;background:#f1faf7}.ia-routing-scope strong{color:#174b45}.ia-routing-scope dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 14px;margin:8px 0 0}.ia-routing-scope dl div{min-width:0}.ia-routing-scope dt{color:#6a8580;font-size:11px}.ia-routing-scope dd{margin:1px 0 0;color:#234e48;overflow-wrap:anywhere}.ia-routing-basis{margin:10px 0 0;color:#637c78}.ia-routing-reasons{margin:10px 0 0;padding-left:18px;color:#6b5148}.ia-routing-reasons li{margin:4px 0}.ia-routing-reasons strong,.ia-routing-reasons span,.ia-routing-reasons small{display:block}.ia-routing-reasons strong{color:#9a5b2b;font-size:11px}.ia-routing-reasons small{color:#8d7770}.ia-routing-profile{margin:11px 0 0;border-radius:8px;background:#edf8f4;padding:8px 10px;color:#236057}.ia-routing-profile strong{color:#174b45}.ia-routing-form{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr)) auto;align-items:end;gap:9px;margin-top:13px;padding-top:12px;border-top:1px solid #dcece8}.ia-routing-form label{display:grid;gap:4px;color:#476762;font-size:11px;font-weight:800}.ia-routing-form select{width:100%;border:1px solid #b6dcd3;border-radius:7px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-routing-confirm{border:1px solid #0a786b;border-radius:8px;background:#08786c;color:#fff;padding:8px 11px;font:800 11px inherit;cursor:pointer}.ia-routing-confirm:disabled{opacity:.56;cursor:not-allowed}.ia-routing-audit{margin:10px 0 0;color:#6c817d;font-size:11px;overflow-wrap:anywhere}@media(max-width:760px){.ia-routing-scope dl,.ia-routing-form{grid-template-columns:1fr}.ia-routing-confirm{justify-self:start}}
 `;
 
 const App = defineComponent({
@@ -615,9 +638,11 @@ const App = defineComponent({
     const selectedRunId = ref<string | null>(null);
     const loading = ref(true);
     const operatingError = ref<string | null>(null);
+    const routingCategoryId = ref("");
     const routingTemplateId = ref("");
     const routingConfirming = ref(false);
     const routingSuccess = ref<string | null>(null);
+    const companyProfile = ref<EastmoneyCompanyProfile | null>(null);
     const elapsedNow = ref(Date.now());
     const selectedReasoningEffort = ref<ReasoningEffort>("xhigh");
     let pollTimer: number | null = null;
@@ -634,6 +659,7 @@ const App = defineComponent({
         const rememberedTemplate = text(next.routing?.manualConfirmation?.selectedTemplateId || currentRouting?.selectedTemplateId);
         const canonicalTemplate = next.routing?.templates?.find((template) => text(template.templateId) === rememberedTemplate || template.legacyTemplateIds?.map(text).includes(rememberedTemplate));
         if (!routingTemplateId.value) routingTemplateId.value = text(canonicalTemplate?.templateId) || rememberedTemplate;
+        if (!routingCategoryId.value) routingCategoryId.value = text(canonicalTemplate?.presentationCategoryId);
         const recordedEffort = text(next.task?.reasoningEffort || next.run?.reasoningEffort);
         if (recordedEffort && reasoningEffortOptions.includes(recordedEffort as ReasoningEffort)) selectedReasoningEffort.value = recordedEffort as ReasoningEffort;
         operatingError.value = null;
@@ -689,6 +715,7 @@ const App = defineComponent({
           request<KlineBar[]>(`/api/kline?code=${encodeURIComponent(code)}&period=day&fq=qfq&from=${year - 2}-12-20&format=structured`),
         ]);
         const latestPrice = finiteNumber(overview.latestPrice);
+        companyProfile.value = overview.companyProfile || null;
         const orderedRows = rows.filter((row) => Boolean(row.date)).sort((left, right) => String(left.date).localeCompare(String(right.date)));
         const title = document.getElementById("codeName");
         if (title) title.textContent = `${text(overview.name) || code}(${code})`;
@@ -749,7 +776,7 @@ const App = defineComponent({
               ...documentOutline(markdown).map((item) => h("button", { class: `l${item.level}`, onClick: () => document.getElementById(item.id)?.scrollIntoView({ behavior: "smooth", block: "start" }) }, item.text)),
             ]) : null,
             h("div", [
-              routingPanel({ routing: operating.value?.routing, confirming: routingConfirming.value, selectedTemplateId: routingTemplateId.value, requestError: operatingError.value, success: routingSuccess.value, onTemplateChange: (value) => { routingTemplateId.value = value; }, onConfirm: () => { void confirmRouting(); } }),
+              routingPanel({ routing: operating.value?.routing, companyProfile: companyProfile.value, confirming: routingConfirming.value, selectedCategoryId: routingCategoryId.value, selectedTemplateId: routingTemplateId.value, requestError: operatingError.value, success: routingSuccess.value, onCategoryChange: (categoryId, templateId) => { routingCategoryId.value = categoryId; routingTemplateId.value = templateId; }, onTemplateChange: (templateId, categoryId) => { routingCategoryId.value = categoryId; routingTemplateId.value = templateId; }, onConfirm: () => { void confirmRouting(); } }),
               reportCard({ title: "完整投资研究", description: "S0.1 工程基线和 S0.2 本地路由完成后，由实际工作包执行确定性基础与一份完整投资研究报告；页面只读取低依赖 read model，生成由本地任务 worker 执行。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地任务会执行实际工作包并生成完整研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.report?.markdown ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, onResume: () => { void resumeOperatingAnalysis(); }, resumeAvailable: operating.value?.resume?.available === true, onStageRerun: (stageKey) => { void rerunStage(stageKey); }, disabled: isRunning(displayJob) }),
             ]),
           ]),

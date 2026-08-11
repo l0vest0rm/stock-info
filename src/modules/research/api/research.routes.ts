@@ -127,6 +127,7 @@ import { loadLocalJobRuntimeState } from "../../../shared/local-job-protocol";
 import { claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, heartbeatResearchOperatingAnalysisJob, loadResearchOperatingAnalysis, loadResearchOperatingAnalysisRun, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage, type OperatingAnalysisStageKey, type OperatingAnalysisStageStatus } from "../application/research-operating-analysis";
 import { claimLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisStage, enqueueLowDependencyResearchOperatingAnalysis, failLowDependencyResearchOperatingAnalysisJob, heartbeatLowDependencyResearchOperatingAnalysisJob, loadLowDependencyResearchOperatingAnalysis, requeueInterruptedLowDependencyResearchOperatingAnalysisJob, resumeLowDependencyResearchOperatingAnalysis, startLowDependencyResearchOperatingAnalysisStage, unlockLowDependencyRoutingAfterConfirmation } from "../application/research-operating-analysis-low-dependency";
 import { loadResearchOperatingAnalysisRouting, recordResearchOperatingAnalysisRoutingConfirmation, isRegisteredResearchIndustryTemplate } from "../application/research-operating-analysis-routing";
+import { enqueueResearchFinancialAnalysis, loadResearchFinancialAnalysis, resumeResearchFinancialAnalysis } from "../application/research-financial-analysis";
 import { renewResearchOperatingAnalysisRunnerLease } from "../application/research-operating-analysis-runner-lease";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
 import {
@@ -830,6 +831,37 @@ researchRoutes.get("/research/company/:code/operating-analysis-low-dependency", 
     } : { ...routing, automatic };
     return ok(c, { ...analysis, routing: effectiveRouting });
   }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+// Deep financial analysis is a single-security, source-bound report.  The
+// existing company-finance page remains the primary surface for its detailed
+// financial evidence; no Worker request may invoke a remote model directly.
+researchRoutes.get("/research/company/:code/financial-analysis", async (c) => {
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await loadResearchFinancialAnalysis(c.env, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/company/:code/financial-analysis/refresh", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "financial analysis refresh is only available in local LLM runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  const body: Record<string, unknown> = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  try {
+    return ok(c, await enqueueResearchFinancialAnalysis(c.env, code, {
+      force: body.force !== false,
+      reasoningEffort: typeof body.reasoningEffort === "string" ? body.reasoningEffort : null,
+    }));
+  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
+
+researchRoutes.post("/research/company/:code/financial-analysis/resume", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "financial analysis resume is only available in local LLM runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await resumeResearchFinancialAnalysis(c.env, code)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

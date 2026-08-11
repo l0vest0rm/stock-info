@@ -17,7 +17,8 @@ export function buildResearchContext(input = {}) {
   const marketSnapshot = normalizeSnapshot(input.marketSnapshot, "marketSnapshot");
   const registry = registerResearchSources(input.sources || input.sourceRegistry?.sources || []);
   const scopeResult = normalizeScopeEnvelope(input.scopeEnvelope);
-  const analysisGaps = [...company.gaps, ...security.gaps, ...financialSnapshot.gaps, ...marketSnapshot.gaps, ...registry.analysisGaps, ...scopeResult.analysisGaps];
+  const companyProfile = normalizeCompanyProfile(input.companyProfile, registry.value.sources);
+  const analysisGaps = [...company.gaps, ...security.gaps, ...financialSnapshot.gaps, ...marketSnapshot.gaps, ...registry.analysisGaps, ...scopeResult.analysisGaps, ...companyProfile.analysisGaps];
   const researchTaskId = text(input.researchTaskId) || `research-analysis:${security.value.securityCode || "unknown"}:${asOf}`;
   const context = {
     contextVersion: RESEARCH_CONTEXT_VERSION,
@@ -29,6 +30,7 @@ export function buildResearchContext(input = {}) {
     financialSnapshot: financialSnapshot.value,
     marketSnapshot: marketSnapshot.value,
     scopeEnvelope: scopeResult.value,
+    companyProfile: companyProfile.value,
     sourceRegistryId: registry.sourceRegistryId,
     knownSourceIds: registry.knownSourceIds,
     sourceRegistry: registry.value,
@@ -39,6 +41,15 @@ export function buildResearchContext(input = {}) {
     },
   };
   return { ...context, inputFingerprint: stableHash(context) };
+}
+
+function normalizeCompanyProfile(raw, sources) {
+  const taxonomy = text(raw?.taxonomy);
+  const industry = text(raw?.industry);
+  const sourceUrl = text(raw?.sourceUrl);
+  const sourceId = Array.isArray(sources) ? text(sources.find((item) => item?.url === sourceUrl)?.sourceId) : "";
+  if (!taxonomy || !industry || !sourceId) return { value: null, analysisGaps: [] };
+  return { value: { taxonomy, industry, industryLevels: strings(raw?.industryLevels), mainBusiness: text(raw?.mainBusiness) || null, products: strings(raw?.products), sourceId }, analysisGaps: [] };
 }
 
 /** Register source versions without turning them into facts or judgments. */
@@ -163,7 +174,7 @@ function normalizeSource(raw, index) {
   if (!sourceRegistryConfig.availabilityStatuses.includes(value.availabilityStatus)) missing.push(`availabilityStatus:${value.availabilityStatus}`);
   if (missing.length) return { value: null, gap: gap("source_version_incomplete", `sources[${index}]`, `来源版本缺少或不合法字段：${missing.join(", ")}`, false) };
   const sourceId = `source:${stableHash({ ...value, registryVersion: RESEARCH_SOURCE_REGISTRY_VERSION })}`;
-  return { value: { sourceId, sourceVersion: RESEARCH_SOURCE_REGISTRY_VERSION, ...value } };
+  return { value: { sourceId, sourceVersion: RESEARCH_SOURCE_REGISTRY_VERSION, ...value, quote: text(source.quote || source.sourceQuote) || null } };
 }
 
 function compactRows(rows) {

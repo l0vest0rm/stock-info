@@ -1,0 +1,1847 @@
+{
+  "schemaVersion": "research-eastmoney-em2016-template-mappings.v1",
+  "source": {
+    "aggregation": "config/research-eastmoney-em2016-top300.json",
+    "coverage": {
+      "total": 300,
+      "available": 295,
+      "unavailable": 0,
+      "unsupported": 5,
+      "uniqueEm2016": 96
+    },
+    "rules": "config/research-eastmoney-em2016-template-rules.json"
+  },
+  "mappings": [
+    {
+      "em2016": "电气设备-电源设备-储能设备",
+      "levels": [
+        "电气设备",
+        "电源设备",
+        "储能设备"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "电气设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300014.SZ",
+        "300438.SZ",
+        "300750.SZ",
+        "605117.SH",
+        "688818.SH"
+      ]
+    },
+    {
+      "em2016": "电气设备-电源设备-太阳能",
+      "levels": [
+        "电气设备",
+        "电源设备",
+        "太阳能"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "电气设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300274.SZ",
+        "300316.SZ",
+        "300751.SZ",
+        "601012.SH"
+      ]
+    },
+    {
+      "em2016": "电气设备-其他电气设备-其他电气设备",
+      "levels": [
+        "电气设备",
+        "其他电气设备",
+        "其他电气设备"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "电气设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002851.SZ",
+        "301669.SZ"
+      ]
+    },
+    {
+      "em2016": "电气设备-输变电设备-电气自控设备",
+      "levels": [
+        "电气设备",
+        "输变电设备",
+        "电气自控设备"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "电气设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002028.SZ",
+        "600885.SH"
+      ]
+    },
+    {
+      "em2016": "电气设备-输变电设备-其他输变电设备",
+      "levels": [
+        "电气设备",
+        "输变电设备",
+        "其他输变电设备"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "电气设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600089.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-半导体-半导体材料",
+      "levels": [
+        "电子设备",
+        "半导体",
+        "半导体材料"
+      ],
+      "templateId": "semiconductor-design.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": "半导体",
+        "level3": null
+      },
+      "securityCodes": [
+        "001399.SZ",
+        "002371.SZ",
+        "002409.SZ",
+        "300054.SZ",
+        "300666.SZ",
+        "605358.SH",
+        "688019.SH",
+        "688048.SH",
+        "688233.SH",
+        "688372.SH",
+        "688783.SH",
+        "688785.SH",
+        "688797.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-半导体-半导体分立器件",
+      "levels": [
+        "电子设备",
+        "半导体",
+        "半导体分立器件"
+      ],
+      "templateId": "semiconductor-design.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": "半导体",
+        "level3": null
+      },
+      "securityCodes": [
+        "300373.SZ",
+        "605111.SH",
+        "688110.SH",
+        "688766.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-半导体-集成电路",
+      "levels": [
+        "电子设备",
+        "半导体",
+        "集成电路"
+      ],
+      "templateId": "semiconductor-design.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": "半导体",
+        "level3": null
+      },
+      "securityCodes": [
+        "001309.SZ",
+        "002156.SZ",
+        "300223.SZ",
+        "300604.SZ",
+        "300661.SZ",
+        "301536.SZ",
+        "600584.SH",
+        "603061.SH",
+        "603986.SH",
+        "688012.SH",
+        "688041.SH",
+        "688072.SH",
+        "688099.SH",
+        "688141.SH",
+        "688147.SH",
+        "688256.SH",
+        "688347.SH",
+        "688396.SH",
+        "688409.SH",
+        "688521.SH",
+        "688536.SH",
+        "688702.SH",
+        "688790.SH",
+        "688795.SH",
+        "688802.SH",
+        "688820.SH",
+        "688981.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-电子器件-其他电子器件",
+      "levels": [
+        "电子设备",
+        "电子器件",
+        "其他电子器件"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002384.SZ",
+        "688313.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-电子器件-显示器件",
+      "levels": [
+        "电子设备",
+        "电子器件",
+        "显示器件"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000725.SZ",
+        "688781.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-电子设备制造-电子设备制造",
+      "levels": [
+        "电子设备",
+        "电子设备制造",
+        "电子设备制造"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002008.SZ",
+        "002179.SZ",
+        "002859.SZ",
+        "300136.SZ",
+        "300776.SZ",
+        "301308.SZ",
+        "301511.SZ",
+        "688002.SH",
+        "688008.SH",
+        "688025.SH",
+        "688082.SH",
+        "688120.SH",
+        "688200.SH",
+        "688322.SH",
+        "688498.SH",
+        "688519.SH",
+        "688525.SH",
+        "688627.SH",
+        "688629.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-电子元件-电子元件",
+      "levels": [
+        "电子设备",
+        "电子元件",
+        "电子元件"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000100.SZ",
+        "000636.SZ",
+        "001389.SZ",
+        "002138.SZ",
+        "002436.SZ",
+        "002463.SZ",
+        "002484.SZ",
+        "002916.SZ",
+        "002938.SZ",
+        "300408.SZ",
+        "300475.SZ",
+        "300476.SZ",
+        "301682.SZ",
+        "600183.SH",
+        "603459.SH",
+        "603678.SH",
+        "688668.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-光电子器件-光学元件",
+      "levels": [
+        "电子设备",
+        "光电子器件",
+        "光学元件"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300394.SZ",
+        "688635.SH"
+      ]
+    },
+    {
+      "em2016": "电子设备-消费电子设备-消费电子设备",
+      "levels": [
+        "电子设备",
+        "消费电子设备",
+        "消费电子设备"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "电子设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002475.SZ",
+        "300857.SZ",
+        "601138.SH"
+      ]
+    },
+    {
+      "em2016": "房地产-房地产开发-房地产开发",
+      "levels": [
+        "房地产",
+        "房地产开发",
+        "房地产开发"
+      ],
+      "templateId": "property-developer.v1",
+      "mappingRule": {
+        "level1": "房地产",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "001979.SZ"
+      ]
+    },
+    {
+      "em2016": "纺织服装-服装家纺-服装",
+      "levels": [
+        "纺织服装",
+        "服装家纺",
+        "服装"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "纺织服装",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002832.SZ"
+      ]
+    },
+    {
+      "em2016": "公用事业-电力-水电",
+      "levels": [
+        "公用事业",
+        "电力",
+        "水电"
+      ],
+      "templateId": "regulated-utility.v1",
+      "mappingRule": {
+        "level1": "公用事业",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600674.SH",
+        "600886.SH",
+        "600900.SH"
+      ]
+    },
+    {
+      "em2016": "公用事业-电力-新能源发电",
+      "levels": [
+        "公用事业",
+        "电力",
+        "新能源发电"
+      ],
+      "templateId": "regulated-utility.v1",
+      "mappingRule": {
+        "level1": "公用事业",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "001248.SZ",
+        "601985.SH"
+      ]
+    },
+    {
+      "em2016": "公用事业-环保-环保",
+      "levels": [
+        "公用事业",
+        "环保",
+        "环保"
+      ],
+      "templateId": "regulated-utility.v1",
+      "mappingRule": {
+        "level1": "公用事业",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600323.SH"
+      ]
+    },
+    {
+      "em2016": "国防与装备-船舶与海洋装备-船舶制造",
+      "levels": [
+        "国防与装备",
+        "船舶与海洋装备",
+        "船舶制造"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "国防与装备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600150.SH",
+        "600482.SH",
+        "603268.SH"
+      ]
+    },
+    {
+      "em2016": "国防与装备-航空航天装备-航天装备",
+      "levels": [
+        "国防与装备",
+        "航空航天装备",
+        "航天装备"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "国防与装备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600893.SH"
+      ]
+    },
+    {
+      "em2016": "互联网-互联网服务-网络媒体",
+      "levels": [
+        "互联网",
+        "互联网服务",
+        "网络媒体"
+      ],
+      "templateId": "internet-platform.v1",
+      "mappingRule": {
+        "level1": "互联网",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002027.SZ"
+      ]
+    },
+    {
+      "em2016": "互联网-互联网服务-游戏娱乐",
+      "levels": [
+        "互联网",
+        "互联网服务",
+        "游戏娱乐"
+      ],
+      "templateId": "internet-platform.v1",
+      "mappingRule": {
+        "level1": "互联网",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002558.SZ",
+        "002602.SZ"
+      ]
+    },
+    {
+      "em2016": "互联网-互联网金融-其他互联网金融",
+      "levels": [
+        "互联网",
+        "互联网金融",
+        "其他互联网金融"
+      ],
+      "templateId": "internet-platform.v1",
+      "mappingRule": {
+        "level1": "互联网",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300033.SZ",
+        "300059.SZ"
+      ]
+    },
+    {
+      "em2016": "化石能源-煤炭-煤炭开采洗选",
+      "levels": [
+        "化石能源",
+        "煤炭",
+        "煤炭开采洗选"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "化石能源",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600188.SH",
+        "601088.SH",
+        "601225.SH",
+        "601699.SH",
+        "601918.SH"
+      ]
+    },
+    {
+      "em2016": "化石能源-石油天然气-石油加工",
+      "levels": [
+        "化石能源",
+        "石油天然气",
+        "石油加工"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "化石能源",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600028.SH",
+        "600256.SH"
+      ]
+    },
+    {
+      "em2016": "化石能源-石油天然气-石油天然气开采",
+      "levels": [
+        "化石能源",
+        "石油天然气",
+        "石油天然气开采"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "化石能源",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600938.SH",
+        "601857.SH"
+      ]
+    },
+    {
+      "em2016": "化石能源-石油天然气-油田服务",
+      "levels": [
+        "化石能源",
+        "石油天然气",
+        "油田服务"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "化石能源",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002353.SZ"
+      ]
+    },
+    {
+      "em2016": "机械设备-机器人-工业机器人",
+      "levels": [
+        "机械设备",
+        "机器人",
+        "工业机器人"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "机械设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300124.SZ"
+      ]
+    },
+    {
+      "em2016": "机械设备-金属制品-金属制品",
+      "levels": [
+        "机械设备",
+        "金属制品",
+        "金属制品"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "机械设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002850.SZ",
+        "301377.SZ",
+        "603370.SH",
+        "688257.SH"
+      ]
+    },
+    {
+      "em2016": "机械设备-通用设备-基础件",
+      "levels": [
+        "机械设备",
+        "通用设备",
+        "基础件"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "机械设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "601100.SH"
+      ]
+    },
+    {
+      "em2016": "机械设备-通用设备-其他通用机械",
+      "levels": [
+        "机械设备",
+        "通用设备",
+        "其他通用机械"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "机械设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002050.SZ",
+        "688017.SH"
+      ]
+    },
+    {
+      "em2016": "机械设备-通用设备-仪器仪表",
+      "levels": [
+        "机械设备",
+        "通用设备",
+        "仪器仪表"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "机械设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300567.SZ",
+        "688808.SH"
+      ]
+    },
+    {
+      "em2016": "机械设备-通用设备-制冷空调设备",
+      "levels": [
+        "机械设备",
+        "通用设备",
+        "制冷空调设备"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "机械设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000811.SZ"
+      ]
+    },
+    {
+      "em2016": "机械设备-专用设备-工程机械",
+      "levels": [
+        "机械设备",
+        "专用设备",
+        "工程机械"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "机械设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000425.SZ",
+        "600031.SH"
+      ]
+    },
+    {
+      "em2016": "机械设备-专用设备-其他专用机械",
+      "levels": [
+        "机械设备",
+        "专用设备",
+        "其他专用机械"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "机械设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002595.SZ",
+        "300757.SZ",
+        "688037.SH",
+        "688361.SH",
+        "688392.SH",
+        "688630.SH",
+        "688813.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-合成纤维及树脂-玻纤",
+      "levels": [
+        "基础化工",
+        "合成纤维及树脂",
+        "玻纤"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002080.SZ",
+        "301526.SZ",
+        "600176.SH",
+        "603256.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-合成纤维及树脂-涤纶",
+      "levels": [
+        "基础化工",
+        "合成纤维及树脂",
+        "涤纶"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "601233.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-合成纤维及树脂-合成树脂",
+      "levels": [
+        "基础化工",
+        "合成纤维及树脂",
+        "合成树脂"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "603382.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-化肥农药-氮肥",
+      "levels": [
+        "基础化工",
+        "化肥农药",
+        "氮肥"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600426.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-化肥农药-钾肥",
+      "levels": [
+        "基础化工",
+        "化肥农药",
+        "钾肥"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000408.SZ",
+        "000792.SZ"
+      ]
+    },
+    {
+      "em2016": "基础化工-化学新材料-化学新材料",
+      "levels": [
+        "基础化工",
+        "化学新材料",
+        "化学新材料"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300285.SZ",
+        "601208.SH",
+        "688146.SH",
+        "688300.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-化学原料-氟化工",
+      "levels": [
+        "基础化工",
+        "化学原料",
+        "氟化工"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002407.SZ",
+        "600160.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-化学原料-聚氨酯",
+      "levels": [
+        "基础化工",
+        "化学原料",
+        "聚氨酯"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600309.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-化学原料-磷化工",
+      "levels": [
+        "基础化工",
+        "化学原料",
+        "磷化工"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600141.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-化学原料-无机盐",
+      "levels": [
+        "基础化工",
+        "化学原料",
+        "无机盐"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "603067.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-化学制品-其他化学制品",
+      "levels": [
+        "基础化工",
+        "化学制品",
+        "其他化学制品"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300037.SZ",
+        "688548.SH"
+      ]
+    },
+    {
+      "em2016": "基础化工-橡胶制品-轮胎",
+      "levels": [
+        "基础化工",
+        "橡胶制品",
+        "轮胎"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "基础化工",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "601058.SH"
+      ]
+    },
+    {
+      "em2016": "家电-白色家电-白色家电",
+      "levels": [
+        "家电",
+        "白色家电",
+        "白色家电"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "家电",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000333.SZ",
+        "000651.SZ",
+        "600690.SH"
+      ]
+    },
+    {
+      "em2016": "家电-视听器材-视听器材",
+      "levels": [
+        "家电",
+        "视听器材",
+        "视听器材"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "家电",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600060.SH"
+      ]
+    },
+    {
+      "em2016": "建筑-建筑施工-房屋建筑",
+      "levels": [
+        "建筑",
+        "建筑施工",
+        "房屋建筑"
+      ],
+      "templateId": "engineering-project.v1",
+      "mappingRule": {
+        "level1": "建筑",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "601668.SH"
+      ]
+    },
+    {
+      "em2016": "交通运输-港口航运-航运",
+      "levels": [
+        "交通运输",
+        "港口航运",
+        "航运"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "交通运输",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "601872.SH",
+        "601919.SH"
+      ]
+    },
+    {
+      "em2016": "交通运输-公路铁路-铁路运输",
+      "levels": [
+        "交通运输",
+        "公路铁路",
+        "铁路运输"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "交通运输",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "601006.SH",
+        "601816.SH"
+      ]
+    },
+    {
+      "em2016": "交通运输-航空机场-航空",
+      "levels": [
+        "交通运输",
+        "航空机场",
+        "航空"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "交通运输",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600115.SH",
+        "601021.SH",
+        "601111.SH"
+      ]
+    },
+    {
+      "em2016": "交通运输-物流-物流",
+      "levels": [
+        "交通运输",
+        "物流",
+        "物流"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "交通运输",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002352.SZ"
+      ]
+    },
+    {
+      "em2016": "交运设备-其他交运设备-其他交运设备",
+      "levels": [
+        "交运设备",
+        "其他交运设备",
+        "其他交运设备"
+      ],
+      "templateId": "automobile-oem.v1",
+      "mappingRule": {
+        "level1": "交运设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "603129.SH",
+        "689009.SH"
+      ]
+    },
+    {
+      "em2016": "交运设备-汽车-乘用车",
+      "levels": [
+        "交运设备",
+        "汽车",
+        "乘用车"
+      ],
+      "templateId": "automobile-oem.v1",
+      "mappingRule": {
+        "level1": "交运设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002594.SZ"
+      ]
+    },
+    {
+      "em2016": "交运设备-汽车-汽车零部件",
+      "levels": [
+        "交运设备",
+        "汽车",
+        "汽车零部件"
+      ],
+      "templateId": "automobile-oem.v1",
+      "mappingRule": {
+        "level1": "交运设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000338.SZ",
+        "002126.SZ",
+        "600660.SH",
+        "601689.SH",
+        "603210.SH"
+      ]
+    },
+    {
+      "em2016": "交运设备-汽车-商用车",
+      "levels": [
+        "交运设备",
+        "汽车",
+        "商用车"
+      ],
+      "templateId": "automobile-oem.v1",
+      "mappingRule": {
+        "level1": "交运设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600066.SH"
+      ]
+    },
+    {
+      "em2016": "金融-非银行金融-保险",
+      "levels": [
+        "金融",
+        "非银行金融",
+        "保险"
+      ],
+      "templateId": "property-insurance.v1",
+      "mappingRule": {
+        "level1": "金融",
+        "level2": "非银行金融",
+        "level3": "保险"
+      },
+      "securityCodes": [
+        "601318.SH",
+        "601336.SH",
+        "601601.SH",
+        "601628.SH"
+      ]
+    },
+    {
+      "em2016": "金融-非银行金融-证券",
+      "levels": [
+        "金融",
+        "非银行金融",
+        "证券"
+      ],
+      "templateId": "broker-trading-platform.v1",
+      "mappingRule": {
+        "level1": "金融",
+        "level2": "非银行金融",
+        "level3": "证券"
+      },
+      "securityCodes": [
+        "000776.SZ",
+        "600030.SH",
+        "600999.SH",
+        "601211.SH",
+        "601377.SH",
+        "601688.SH"
+      ]
+    },
+    {
+      "em2016": "金融-银行-股份制与城商行",
+      "levels": [
+        "金融",
+        "银行",
+        "股份制与城商行"
+      ],
+      "templateId": "bank.v1",
+      "mappingRule": {
+        "level1": "金融",
+        "level2": "银行",
+        "level3": null
+      },
+      "securityCodes": [
+        "000001.SZ",
+        "002142.SZ",
+        "600036.SH",
+        "600919.SH",
+        "600926.SH",
+        "601009.SH",
+        "601077.SH",
+        "601166.SH",
+        "601229.SH",
+        "601665.SH"
+      ]
+    },
+    {
+      "em2016": "金融-银行-国有银行",
+      "levels": [
+        "金融",
+        "银行",
+        "国有银行"
+      ],
+      "templateId": "bank.v1",
+      "mappingRule": {
+        "level1": "金融",
+        "level2": "银行",
+        "level3": null
+      },
+      "securityCodes": [
+        "601288.SH",
+        "601328.SH",
+        "601398.SH",
+        "601939.SH",
+        "601988.SH"
+      ]
+    },
+    {
+      "em2016": "农林牧渔-畜牧业-饲料",
+      "levels": [
+        "农林牧渔",
+        "畜牧业",
+        "饲料"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "农林牧渔",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002311.SZ"
+      ]
+    },
+    {
+      "em2016": "农林牧渔-畜牧业-养殖",
+      "levels": [
+        "农林牧渔",
+        "畜牧业",
+        "养殖"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "农林牧渔",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002714.SZ",
+        "300498.SZ"
+      ]
+    },
+    {
+      "em2016": "轻工制造-造纸印刷-包装印刷",
+      "levels": [
+        "轻工制造",
+        "造纸印刷",
+        "包装印刷"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "轻工制造",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002831.SZ"
+      ]
+    },
+    {
+      "em2016": "轻工制造-造纸印刷-造纸",
+      "levels": [
+        "轻工制造",
+        "造纸印刷",
+        "造纸"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "轻工制造",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002078.SZ"
+      ]
+    },
+    {
+      "em2016": "商贸零售-零售-连锁",
+      "levels": [
+        "商贸零售",
+        "零售",
+        "连锁"
+      ],
+      "templateId": "retail.v1",
+      "mappingRule": {
+        "level1": "商贸零售",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300972.SZ"
+      ]
+    },
+    {
+      "em2016": "食品饮料-食品-调味品",
+      "levels": [
+        "食品饮料",
+        "食品",
+        "调味品"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "食品饮料",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "603288.SH"
+      ]
+    },
+    {
+      "em2016": "食品饮料-食品-肉制品",
+      "levels": [
+        "食品饮料",
+        "食品",
+        "肉制品"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "食品饮料",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000895.SZ"
+      ]
+    },
+    {
+      "em2016": "食品饮料-食品-乳制品",
+      "levels": [
+        "食品饮料",
+        "食品",
+        "乳制品"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "食品饮料",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600887.SH"
+      ]
+    },
+    {
+      "em2016": "食品饮料-食品-食品综合",
+      "levels": [
+        "食品饮料",
+        "食品",
+        "食品综合"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "食品饮料",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600298.SH",
+        "603345.SH"
+      ]
+    },
+    {
+      "em2016": "食品饮料-饮料-白酒",
+      "levels": [
+        "食品饮料",
+        "饮料",
+        "白酒"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "食品饮料",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000568.SZ",
+        "000858.SZ",
+        "600519.SH",
+        "600809.SH"
+      ]
+    },
+    {
+      "em2016": "食品饮料-饮料-软饮料",
+      "levels": [
+        "食品饮料",
+        "饮料",
+        "软饮料"
+      ],
+      "templateId": "consumer-brand.v1",
+      "mappingRule": {
+        "level1": "食品饮料",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "605499.SH"
+      ]
+    },
+    {
+      "em2016": "信息技术-计算机软件-基础软件",
+      "levels": [
+        "信息技术",
+        "计算机软件",
+        "基础软件"
+      ],
+      "templateId": "software-saas.v1",
+      "mappingRule": {
+        "level1": "信息技术",
+        "level2": "计算机软件",
+        "level3": null
+      },
+      "securityCodes": [
+        "688111.SH"
+      ]
+    },
+    {
+      "em2016": "信息技术-计算机软件-其他软件服务",
+      "levels": [
+        "信息技术",
+        "计算机软件",
+        "其他软件服务"
+      ],
+      "templateId": "software-saas.v1",
+      "mappingRule": {
+        "level1": "信息技术",
+        "level2": "计算机软件",
+        "level3": null
+      },
+      "securityCodes": [
+        "000938.SZ",
+        "301396.SZ",
+        "688777.SH"
+      ]
+    },
+    {
+      "em2016": "信息技术-计算机软件-行业应用软件",
+      "levels": [
+        "信息技术",
+        "计算机软件",
+        "行业应用软件"
+      ],
+      "templateId": "software-saas.v1",
+      "mappingRule": {
+        "level1": "信息技术",
+        "level2": "计算机软件",
+        "level3": null
+      },
+      "securityCodes": [
+        "002230.SZ"
+      ]
+    },
+    {
+      "em2016": "信息技术-计算机硬件-专用计算机设备",
+      "levels": [
+        "信息技术",
+        "计算机硬件",
+        "专用计算机设备"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "信息技术",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "301666.SZ",
+        "603019.SH"
+      ]
+    },
+    {
+      "em2016": "信息技术-计算机硬件-PC、服务器及硬件",
+      "levels": [
+        "信息技术",
+        "计算机硬件",
+        "PC、服务器及硬件"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "信息技术",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000977.SZ",
+        "002415.SZ"
+      ]
+    },
+    {
+      "em2016": "信息技术-通信设备-通信传输设备",
+      "levels": [
+        "信息技术",
+        "通信设备",
+        "通信传输设备"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "信息技术",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002281.SZ",
+        "300308.SZ",
+        "300502.SZ",
+        "300548.SZ",
+        "300570.SZ",
+        "600105.SH",
+        "600487.SH",
+        "600522.SH",
+        "601869.SH"
+      ]
+    },
+    {
+      "em2016": "信息技术-通信设备-通信终端设备",
+      "levels": [
+        "信息技术",
+        "通信设备",
+        "通信终端设备"
+      ],
+      "templateId": "technology-equipment.v1",
+      "mappingRule": {
+        "level1": "信息技术",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "603083.SH"
+      ]
+    },
+    {
+      "em2016": "信息技术-通信运营-通信运营",
+      "levels": [
+        "信息技术",
+        "通信运营",
+        "通信运营"
+      ],
+      "templateId": "telecom-operator.v1",
+      "mappingRule": {
+        "level1": "信息技术",
+        "level2": "通信运营",
+        "level3": null
+      },
+      "securityCodes": [
+        "600941.SH"
+      ]
+    },
+    {
+      "em2016": "医药生物-保健护理-保健护理产品",
+      "levels": [
+        "医药生物",
+        "保健护理",
+        "保健护理产品"
+      ],
+      "templateId": "mature-pharma.v1",
+      "mappingRule": {
+        "level1": "医药生物",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002001.SZ"
+      ]
+    },
+    {
+      "em2016": "医药生物-化学制药-化学原料药",
+      "levels": [
+        "医药生物",
+        "化学制药",
+        "化学原料药"
+      ],
+      "templateId": "mature-pharma.v1",
+      "mappingRule": {
+        "level1": "医药生物",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002821.SZ"
+      ]
+    },
+    {
+      "em2016": "医药生物-化学制药-化学制剂",
+      "levels": [
+        "医药生物",
+        "化学制药",
+        "化学制剂"
+      ],
+      "templateId": "mature-pharma.v1",
+      "mappingRule": {
+        "level1": "医药生物",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002422.SZ",
+        "002653.SZ",
+        "600276.SH",
+        "603259.SH",
+        "688266.SH",
+        "688578.SH"
+      ]
+    },
+    {
+      "em2016": "医药生物-生物医药-生物医药",
+      "levels": [
+        "医药生物",
+        "生物医药",
+        "生物医药"
+      ],
+      "templateId": "preprofit-biotech.v1",
+      "mappingRule": {
+        "level1": "医药生物",
+        "level2": "生物医药",
+        "level3": null
+      },
+      "securityCodes": [
+        "300759.SZ",
+        "688235.SH",
+        "688331.SH",
+        "688506.SH"
+      ]
+    },
+    {
+      "em2016": "医药生物-医疗服务-医疗服务",
+      "levels": [
+        "医药生物",
+        "医疗服务",
+        "医疗服务"
+      ],
+      "templateId": "mature-pharma.v1",
+      "mappingRule": {
+        "level1": "医药生物",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300347.SZ"
+      ]
+    },
+    {
+      "em2016": "医药生物-医疗器械-医疗器械",
+      "levels": [
+        "医药生物",
+        "医疗器械",
+        "医疗器械"
+      ],
+      "templateId": "mature-pharma.v1",
+      "mappingRule": {
+        "level1": "医药生物",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "300677.SZ",
+        "300760.SZ",
+        "688271.SH",
+        "688301.SH"
+      ]
+    },
+    {
+      "em2016": "有色金属-贵金属-黄金",
+      "levels": [
+        "有色金属",
+        "贵金属",
+        "黄金"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "有色金属",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000975.SZ",
+        "002731.SZ",
+        "600489.SH",
+        "600547.SH",
+        "600988.SH",
+        "601899.SH"
+      ]
+    },
+    {
+      "em2016": "有色金属-基本金属-铝",
+      "levels": [
+        "有色金属",
+        "基本金属",
+        "铝"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "有色金属",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000933.SZ",
+        "601600.SH"
+      ]
+    },
+    {
+      "em2016": "有色金属-基本金属-铜",
+      "levels": [
+        "有色金属",
+        "基本金属",
+        "铜"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "有色金属",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "601168.SH",
+        "603993.SH"
+      ]
+    },
+    {
+      "em2016": "有色金属-金属非金属新材料-电池材料",
+      "levels": [
+        "有色金属",
+        "金属非金属新材料",
+        "电池材料"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "有色金属",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002709.SZ",
+        "300390.SZ",
+        "688388.SH",
+        "688503.SH"
+      ]
+    },
+    {
+      "em2016": "有色金属-稀有金属-锂",
+      "levels": [
+        "有色金属",
+        "稀有金属",
+        "锂"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "有色金属",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "002460.SZ",
+        "002466.SZ"
+      ]
+    },
+    {
+      "em2016": "有色金属-稀有金属-其他稀有小金属",
+      "levels": [
+        "有色金属",
+        "稀有金属",
+        "其他稀有小金属"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "有色金属",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000962.SZ",
+        "001257.SZ",
+        "002428.SZ",
+        "603799.SH",
+        "605376.SH"
+      ]
+    },
+    {
+      "em2016": "有色金属-稀有金属-钨",
+      "levels": [
+        "有色金属",
+        "稀有金属",
+        "钨"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "有色金属",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "000657.SZ",
+        "600549.SH"
+      ]
+    },
+    {
+      "em2016": "有色金属-稀有金属-稀土",
+      "levels": [
+        "有色金属",
+        "稀有金属",
+        "稀土"
+      ],
+      "templateId": "cyclical-resources.v1",
+      "mappingRule": {
+        "level1": "有色金属",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "600111.SH"
+      ]
+    }
+  ]
+}

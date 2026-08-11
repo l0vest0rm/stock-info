@@ -545,6 +545,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   let companyReportDiscoveryStartedAt: number | null = null
   let companyReportDiscoveryCompletedAt: number | null = null
   let companyReportDiscoveryUpdatedAt: number | null = null
+  let companyReportDiscoveryLastSuccessfulAt: number | null = null
   let companyReportDiscoveryModel: string | null = null
   let companyReportDiscoveryReasoningEffort: string | null = null
 
@@ -629,6 +630,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       discoveryStartedAt: companyReportDiscoveryStartedAt,
       discoveryCompletedAt: companyReportDiscoveryCompletedAt,
       discoveryUpdatedAt: companyReportDiscoveryUpdatedAt,
+      discoveryLastSuccessfulAt: companyReportDiscoveryLastSuccessfulAt,
       discoveryModel: companyReportDiscoveryModel,
       discoveryReasoningEffort: companyReportDiscoveryReasoningEffort,
     })
@@ -663,6 +665,12 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       ? executionReasoningEffort.trim()
       : null
     emitCompanyReportDiscoveryState(companyReportDiscoveryMessage(companyReportDiscoveryStatus, task.lastErrorMessage))
+  }
+
+  function applyCompanyReportDiscoveryCapability(data: any): void {
+    companyReportDiscoveryLastSuccessfulAt = optionalCompanyReportTimestamp(data?.lastSuccessfulCompletedAt)
+    const task = data?.task && typeof data.task === 'object' ? data.task as CompanyReportDiscoveryTask : null
+    applyCompanyReportDiscoveryTask(task)
   }
 
   function isCompanyReportDiscoveryError(data: any): boolean {
@@ -708,7 +716,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       emitCompanyReportDiscoveryState('本地搜索任务不存在，可再次尝试')
       return
     }
-    applyCompanyReportDiscoveryTask(task)
+    applyCompanyReportDiscoveryCapability(data)
     if (companyReportDiscoveryStatus === 'completed') {
       stopCompanyReportDiscoveryPolling()
       if (companyReportActualFinancialMap) {
@@ -737,6 +745,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       companyReportDiscoveryStartedAt = null
       companyReportDiscoveryCompletedAt = null
       companyReportDiscoveryUpdatedAt = null
+      companyReportDiscoveryLastSuccessfulAt = null
       companyReportDiscoveryModel = null
       companyReportDiscoveryReasoningEffort = null
       stopCompanyReportDiscoveryPolling()
@@ -745,7 +754,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     }
     companyReportDiscoveryEnabled = true
     const task = data?.task && typeof data.task === 'object' ? data.task as CompanyReportDiscoveryTask : null
-    applyCompanyReportDiscoveryTask(task)
+    applyCompanyReportDiscoveryCapability(data)
     if (task && (companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running')) {
       scheduleCompanyReportDiscoveryPoll(code, task.taskId)
     }

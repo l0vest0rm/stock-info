@@ -122,6 +122,16 @@ export type CompanyOverview = {
   pb: number | null;
   psTtm: number | null;
   pcfTtm: number | null;
+  companyProfile: {
+    taxonomy: "eastmoney-em2016.v1";
+    availability: "available" | "unavailable";
+    industry: string | null;
+    industryLevels: string[];
+    mainBusiness: string | null;
+    products: string[];
+    sourceUrl: string | null;
+    updatedAt: number;
+  } | null;
   source: string;
   updatedAt: number;
 };

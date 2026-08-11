@@ -1,5 +1,5 @@
 {
-  "registryVersion": "investment-analysis.stage-registry.v2",
+  "registryVersion": "investment-analysis.stage-registry.v3",
   "targetProtocolVersion": "investment-analysis.low-dependency.v1",
   "targetPromptVersion": "investment-analysis.low-dependency.v1",
   "targetTaskType": "research_operating_analysis_low_dependency",
@@ -39,7 +39,7 @@
       "webSearch": false,
       "dependsOn": ["engineering_baseline"],
       "fallbackDependsOn": ["engineering_baseline"],
-      "schemaVersion": "local-routing-match.v1",
+      "schemaVersion": "local-routing-match.v2",
       "reportHeadings": ["# 1. 研究范围与事实边界"]
     },
     {

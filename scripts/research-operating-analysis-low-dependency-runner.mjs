@@ -28,7 +28,7 @@ import { buildInvestmentConclusionInput, validateInvestmentConclusionMarkdown, v
 import { calculateDeterministicValuation } from "./lib/operating-analysis-deterministic-valuation.mjs";
 import { assembleLowDependencyOperatingAnalysisReport } from "./lib/operating-analysis-report.mjs";
 import { getResearchOperatingAnalysisStage, getResearchOperatingAnalysisWorkPackage, isFinalReportWorkPackage, isResearchOperatingAnalysisWorkPackage, normalizeFinalReportMarkdown, parseWorkPackageEnvelopeJson, projectWorkPackageStages, researchOperatingAnalysisDependencies, RESEARCH_OPERATING_ANALYSIS_TARGET_STAGES, RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES, RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES_VERSION } from "./lib/research-operating-analysis-stage-registry.mjs";
-import { applyManualRoutingConfirmation, evaluateLocalTemplateCandidates, matchLocalIndustryTemplate, normalizeEngineeringBaseline, confirmedRoutingProjection } from "./lib/research-scope-industry-routing.mjs";
+import { RESEARCH_ANALYSIS_TEMPLATE_REGISTRY_VERSION, applyManualRoutingConfirmation, evaluateLocalTemplateCandidates, matchLocalIndustryTemplate, normalizeEngineeringBaseline, confirmedRoutingProjection } from "./lib/research-scope-industry-routing.mjs";
 import { researchOperatingAnalysisStageWaves, runResearchOperatingAnalysisStageWaves } from "./lib/operating-analysis-stage-plan.mjs";
 
 const baseUrl = String(process.env.OPERATING_ANALYSIS_LOW_DEPENDENCY_RUNNER_BASE_URL || process.env.OPERATING_ANALYSIS_RUNNER_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -123,13 +123,19 @@ export function buildLowDependencyStageInput({ context, financialContext, stageK
 export function buildEngineeringBaseline({ context = {}, financialContext = {}, sources = [] } = {}) {
   const source = object(context);
   const scopeEnvelope = object(source.scopeEnvelope);
+  const companyProfile = object(source.companyProfile);
+  const profileAvailable = companyProfile.taxonomy === "eastmoney-em2016.v1" && text(companyProfile.industry) && text(companyProfile.sourceId);
   const materialFacts = [];
   const sourceRefs = Array.isArray(sources) ? sources.map((item) => normalizeBaselineSource(item)).filter(Boolean) : [];
+  const profileSourceRefs = sourceRefs.filter((item) => item.sourceId === text(companyProfile.sourceId));
+  const profileReferences = profileSourceRefs.length ? profileSourceRefs : sourceRefs;
   const scope = {
-    primaryBusiness: text(scopeEnvelope.primaryBusiness || scopeEnvelope.business || "") || null,
-    products: stringArray(scopeEnvelope.products),
-    downstream: stringArray(scopeEnvelope.customers || scopeEnvelope.downstream),
-    industry: text(scopeEnvelope.industry || scopeEnvelope.industryName || "") || null,
+    primaryBusiness: text(scopeEnvelope.primaryBusiness || scopeEnvelope.business || companyProfile.mainBusiness || "") || null,
+    products: stringArray(scopeEnvelope.products).length ? stringArray(scopeEnvelope.products) : stringArray(companyProfile.products),
+    downstream: stringArray(scopeEnvelope.customers || scopeEnvelope.downstream).length ? stringArray(scopeEnvelope.customers || scopeEnvelope.downstream) : (text(companyProfile.mainBusiness) ? [text(companyProfile.mainBusiness)] : []),
+    industry: text(scopeEnvelope.industry || scopeEnvelope.industryName || companyProfile.industry || "") || null,
+    industryTaxonomy: profileAvailable ? text(companyProfile.taxonomy) : null,
+    industryLevels: profileAvailable ? stringArray(companyProfile.industryLevels) : [],
     regions: stringArray(scopeEnvelope.regions),
     segments: stringArray(scopeEnvelope.segments),
     basisSourceIds: uniqueStrings(scopeEnvelope.basisSourceIds || source.knownSourceIds),
@@ -137,7 +143,10 @@ export function buildEngineeringBaseline({ context = {}, financialContext = {}, 
     confirmation: "engineering_only",
   };
   for (const [field, values] of [["primary_business", scope.primaryBusiness ? [scope.primaryBusiness] : []], ["product_boundary", scope.products], ["downstream", scope.downstream], ["industry", scope.industry ? [scope.industry] : []]]) {
-    for (const [index, value] of values.entries()) materialFacts.push({ field, factId: `${field}:${index + 1}`, statement: value, sourceReferences: sourceRefs, sourceIds: sourceRefs.map((item) => item.sourceId) });
+    for (const [index, value] of values.entries()) {
+      const references = profileAvailable ? profileReferences : sourceRefs;
+      materialFacts.push({ field, factId: `${field}:${index + 1}`, statement: value, sourceReferences: references, sourceIds: references.map((item) => item.sourceId) });
+    }
   }
   const normalized = normalizeEngineeringBaseline({
     company: source.company,
@@ -145,10 +154,10 @@ export function buildEngineeringBaseline({ context = {}, financialContext = {}, 
     companyScope: { ...scope, facts: materialFacts },
     materials: sourceRefs,
     sourceIds: source.knownSourceIds || sourceRefs.map((item) => item.sourceId),
-    unknowns: Object.keys(scopeEnvelope).length ? [] : [{ unknownId: "engineering:scope", code: "scope_not_available_in_local_inputs", message: "本地工程输入没有可审计的主营、产品、下游或行业字段；需要人工确认。", blocking: true }],
+    unknowns: Object.keys(scopeEnvelope).length || profileAvailable ? [] : [{ unknownId: "engineering:scope", code: "scope_not_available_in_local_inputs", message: "本地工程输入没有可审计的主营、产品、下游或行业字段；需要人工确认。", blocking: true }],
     inputFingerprint: source.inputFingerprint,
   }, { inputFingerprint: source.inputFingerprint });
-  return { ...normalized, candidateTemplates: evaluateLocalTemplateCandidates(normalized), financialSnapshot: financialContext?.descriptor || source.financialSnapshot || null, collectionBasis: ["company overview API", "structured financial read models", "registered local source candidates"], externalConfirmation: false };
+  return { ...normalized, candidateTemplates: evaluateLocalTemplateCandidates(normalized), financialSnapshot: financialContext?.descriptor || source.financialSnapshot || null, collectionBasis: ["Eastmoney F10 EM2016 company profile", "company overview API", "structured financial read models", "registered local source candidates"], externalConfirmation: false };
 }
 
 /**
@@ -327,6 +336,7 @@ export function buildLowDependencyContextInput({ code, overview, income, balance
     marketSnapshot: { ...marketSnapshot, currency: marketSnapshot.tradingCurrency || "CNY", periods: [] },
     sources,
     scopeEnvelope,
+    companyProfile: overview?.companyProfile || null,
   });
   return { context, financialContext: { ...financialContext, entityType: overview?.entityType || overview?.instrumentType || "operating" } };
 }
@@ -358,6 +368,21 @@ export function buildLowDependencySourceCandidates({ code, overview, income, bal
       contentFingerprint: stableHash({ kind: "market_snapshot", code: normalizedCode, overview }),
       availabilityStatus: "available",
       limitations: [],
+    });
+  }
+  const companyProfile = object(overview?.companyProfile);
+  if (companyProfile.availability === "available" && text(companyProfile.industry) && text(companyProfile.sourceUrl)) {
+    candidates.push({
+      url: text(companyProfile.sourceUrl),
+      title: `${name} 东方财富 EM2016 行业与主营`,
+      publishedAt: text(asOf),
+      subject: `${name} (${normalizedCode})`,
+      role: "other",
+      retrievedAt: isoTimestamp(companyProfile.updatedAt, asOf),
+      contentFingerprint: stableHash({ kind: "eastmoney_em2016_company_profile", code: normalizedCode, companyProfile }),
+      availabilityStatus: "available",
+      limitations: ["EM2016 为东方财富行业分类；经营模板仍需按主营和业务经济性确认。"],
+      quote: [text(companyProfile.industry), text(companyProfile.mainBusiness), ...stringArray(companyProfile.products)].filter(Boolean).join("；"),
     });
   }
   for (const [statementType, statement] of [["income", income], ["balance", balance], ["cashflow", cashflow]]) {
@@ -472,6 +497,7 @@ function normalizeBaselineSource(value) {
     url: text(source.url) || null,
     publishedAt: text(source.publishedAt) || null,
     contentFingerprint: text(source.contentFingerprint) || null,
+    quote: text(source.quote || source.sourceQuote) || null,
   };
 }
 
@@ -559,7 +585,8 @@ async function fetchJobInput(code) {
     request(`/api/finance/cashflow?code=${encodeURIComponent(code)}&format=read-model`),
   ]);
   const sourceCandidates = buildLowDependencySourceCandidates({ code, overview, income, balance, cashflow });
-  return { ...buildLowDependencyContextInput({ code, overview, income, balance, cashflow, sources: sourceCandidates, scopeEnvelope: overview?.scopeEnvelope || null }), sources: sourceCandidates };
+  const prepared = buildLowDependencyContextInput({ code, overview, income, balance, cashflow, sources: sourceCandidates, scopeEnvelope: overview?.scopeEnvelope || null });
+  return { ...prepared, sources: prepared.context.sourceRegistry.sources };
 }
 
 async function loadJobState(code) {
@@ -880,7 +907,7 @@ export function buildFinalReportPrompt(template, input = {}) {
 }
 
 export function buildFinalReportModelPrompt({ model, input, template = FINAL_REPORT_WORK_PACKAGE_PROMPT } = {}) {
-  return { model, userPrompt: buildFinalReportPrompt(template, input) };
+  return { model, instructions: INSTRUCTIONS, userPrompt: buildFinalReportPrompt(template, input) };
 }
 
 // Final-report providers may use natural Chinese headings or prose instead of
@@ -1098,7 +1125,7 @@ async function runStage({ claim, stage, baseInput, artifactsByKey, scopeEnvelope
   } else if (stage.key === "local_routing_match") {
     const baseline = lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline")?.output;
     if (!baseline) throw new Error("local routing match requires engineering_baseline output");
-    input = { engineeringBaselineArtifactId: lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline")?.artifactId || null, baseline: normalizeEngineeringBaseline(baseline), registryVersion: "research-analysis-template-registry.v1" };
+    input = { engineeringBaselineArtifactId: lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline")?.artifactId || null, baseline: normalizeEngineeringBaseline(baseline), registryVersion: RESEARCH_ANALYSIS_TEMPLATE_REGISTRY_VERSION };
     output = matchLocalIndustryTemplate(baseline, { upstreamArtifactIds: lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline")?.artifactId ? [lowDependencyArtifactByKey(artifactsByKey, "engineering_baseline").artifactId] : [] });
     if (baseInput.manualRouting?.selectedTemplateId) output = applyManualRoutingConfirmation(output, baseInput.manualRouting);
     status = output.routingState === "confirmed" || allowUnconfirmedRouting ? "complete" : "blocked";

@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  RESEARCH_ANALYSIS_PRESENTATION_CATEGORIES,
   RESEARCH_INDUSTRY_TEMPLATE_REGISTRY,
   applyManualRoutingConfirmation,
+  evaluateLocalTemplateCandidates,
   matchLocalIndustryTemplate,
   normalizeEngineeringBaseline,
   normalizeRoutingFacts,
 } from "./research-scope-industry-routing.mjs";
+import eastmoneyMappings from "../../config/research-eastmoney-em2016-template-mappings.json" with { type: "json" };
 import { getResearchOperatingAnalysisStage } from "./research-operating-analysis-stage-registry.mjs";
 import { lowDependencyPromptForStage } from "../research-operating-analysis-low-dependency-runner.mjs";
 
@@ -18,9 +21,9 @@ const baseline = (overrides = {}) => normalizeEngineeringBaseline({
       { factId: "fact:business", field: "primary_business", statement: "公司主营高速光模块和光通信产品", sourceReferences: [reference("source:business")] },
       { factId: "fact:product", field: "product_boundary", statement: "产品覆盖400G、800G和1.6T光模块", sourceReferences: [reference("source:product")] },
       { factId: "fact:downstream", field: "downstream", statement: "下游为AI数据中心、云计算和GPU集群", sourceReferences: [reference("source:downstream")] },
-      { factId: "fact:industry", field: "industry", statement: "所属行业为AI光模块与光互连", sourceReferences: [reference("source:industry")] },
+      { factId: "fact:industry", field: "industry", statement: "信息技术-通信设备-通信传输设备", sourceReferences: [reference("source:industry")] },
     ],
-    primaryBusiness: "高速光模块和光通信产品", products: ["400G", "800G", "1.6T 光模块"], downstream: ["AI数据中心", "云计算"], industry: "AI光模块与光互连",
+    primaryBusiness: "高速光模块和光通信产品", products: ["400G", "800G", "1.6T 光模块"], downstream: ["AI数据中心", "云计算"], industry: "信息技术-通信设备-通信传输设备", industryTaxonomy: "eastmoney-em2016.v1", industryLevels: ["信息技术", "通信设备", "通信传输设备"],
   },
   ...overrides,
 });
@@ -38,13 +41,13 @@ test("local rules produce one confirmed template from sufficient explicit eviden
   const result = matchLocalIndustryTemplate(baseline());
   assert.equal(result.routingState, "confirmed");
   assert.equal(result.industryTemplateId, "technology-equipment.v1");
-  assert.equal(result.mappingReason.code, "unique_match");
-  assert.equal(result.evidence.length, 4);
+  assert.equal(result.mappingReason.code, "eastmoney_em2016_exact");
+  assert.equal(result.evidence.length, 1);
   assert.equal(result.analysisTemplate.primaryFormula, "收入 ≈ 有效订单 × 实际交付率");
   assert.ok(result.analysisTemplate.operatingMetrics.includes("book-to-bill"));
 });
 
-test("registry contains distinct business-economics profiles rather than Shenwan labels", () => {
+test("registry contains business-economics profiles behind exact Eastmoney EM2016 industry routes", () => {
   assert.equal(RESEARCH_INDUSTRY_TEMPLATE_REGISTRY.length, 24);
   assert.deepEqual(new Set(RESEARCH_INDUSTRY_TEMPLATE_REGISTRY.map((template) => template.industryKey)).size, 24);
   assert.ok(RESEARCH_INDUSTRY_TEMPLATE_REGISTRY.some((template) => template.templateId === "consumer-brand.v1"));
@@ -58,7 +61,19 @@ test("registry contains distinct business-economics profiles rather than Shenwan
   }
 });
 
-test("zero match remains unconfirmed even when evidence is complete", () => {
+test("presentation collapses leaf profiles into eight user-facing research categories", () => {
+  assert.equal(RESEARCH_ANALYSIS_PRESENTATION_CATEGORIES.length, 8);
+  const candidates = evaluateLocalTemplateCandidates(baseline());
+  assert.equal(candidates.length, 24);
+  assert.deepEqual(new Set(candidates.map((candidate) => candidate.presentationCategoryId)).size, 8);
+  assert.ok(candidates.every((candidate) => candidate.presentationCategoryLabel && candidate.operatingFeatureLabel));
+  const result = matchLocalIndustryTemplate(baseline());
+  assert.equal(result.analysisTemplate.presentationCategoryLabel, "制造与资本品");
+  assert.equal(result.analysisTemplate.operatingFeatureLabel, "订单、认证与交付");
+  assert.equal(result.candidateTemplates.find((candidate) => candidate.templateId === "technology-equipment.v1")?.presentationCategoryId, "manufacturing-capital");
+});
+
+test("missing Eastmoney EM2016 remains unconfirmed even when other facts are complete", () => {
   const result = matchLocalIndustryTemplate(baseline({ companyScope: { facts: [
     { field: "primary_business", statement: "工业软件", sourceReferences: [reference("source:a")] },
     { field: "product_boundary", statement: "制造执行系统", sourceReferences: [reference("source:b")] },
@@ -66,7 +81,7 @@ test("zero match remains unconfirmed even when evidence is complete", () => {
     { field: "industry", statement: "工业软件行业", sourceReferences: [reference("source:d")] },
   ] } }));
   assert.equal(result.routingState, "unconfirmed");
-  assert.equal(result.mappingReason.code, "zero_match");
+  assert.equal(result.mappingReason.code, "eastmoney_em2016_unavailable");
   assert.equal(result.industryTemplateId, null);
 });
 
@@ -75,8 +90,8 @@ test("consumer-brand profile covers baijiu without matching technology equipment
     { field: "primary_business", statement: "公司主营白酒生产与销售", sourceReferences: [reference("source:baijiu-business")] },
     { field: "product_boundary", statement: "产品为贵州茅台酒等白酒", sourceReferences: [reference("source:baijiu-product")] },
     { field: "downstream", statement: "通过经销商、商超和零售终端服务消费者", sourceReferences: [reference("source:baijiu-downstream")] },
-    { field: "industry", statement: "所属食品饮料行业的白酒子行业", sourceReferences: [reference("source:baijiu-industry")] },
-  ] } }));
+    { field: "industry", statement: "食品饮料-饮料-白酒", sourceReferences: [reference("source:baijiu-industry")] },
+  ], industry: "食品饮料-饮料-白酒", industryTaxonomy: "eastmoney-em2016.v1", industryLevels: ["食品饮料", "饮料", "白酒"] } }));
   assert.equal(result.routingState, "confirmed");
   assert.equal(result.industryTemplateId, "consumer-brand.v1");
   assert.equal(result.matchedTemplates.length, 1);
@@ -84,25 +99,30 @@ test("consumer-brand profile covers baijiu without matching technology equipment
   assert.ok(result.analysisTemplate.stressFactors.includes("渠道压货"));
 });
 
-test("multiple valid matches remain unconfirmed", () => {
-  const optical = RESEARCH_INDUSTRY_TEMPLATE_REGISTRY.find((template) => template.templateId === "technology-equipment.v1");
-  assert.ok(optical);
-  const second = { ...optical, templateId: "optical-transceiver-ai-interconnect.alt.v1", industryKey: "optical_transceiver_ai_interconnect_alt" };
-  const result = matchLocalIndustryTemplate(baseline(), { templates: [...RESEARCH_INDUSTRY_TEMPLATE_REGISTRY, second] });
+test("an unaggregated Eastmoney EM2016 leaf remains unconfirmed", () => {
+  const result = matchLocalIndustryTemplate(baseline({ companyScope: { facts: [
+    { field: "industry", statement: "信息技术-通信设备-未来新增设备", sourceReferences: [reference("source:industry")] },
+  ], industry: "信息技术-通信设备-未来新增设备", industryTaxonomy: "eastmoney-em2016.v1" } }));
   assert.equal(result.routingState, "unconfirmed");
-  assert.equal(result.mappingReason.code, "ambiguous_match");
-  assert.equal(result.matchedTemplates.length, 2);
+  assert.equal(result.mappingReason.code, "eastmoney_em2016_unmapped");
 });
 
-test("missing evidence blocks matching instead of trusting unverified strings", () => {
+test("unverified Eastmoney industry does not select a template", () => {
   const result = matchLocalIndustryTemplate(baseline({ companyScope: { facts: [
     { field: "primary_business", statement: "公司主营高速光模块" },
     { field: "product_boundary", statement: "产品覆盖800G光模块" },
     { field: "downstream", statement: "下游为AI数据中心" },
-    { field: "industry", statement: "所属行业为光互连" },
-  ] } }));
+    { field: "industry", statement: "信息技术-通信设备-通信传输设备" },
+  ], industry: "信息技术-通信设备-通信传输设备", industryTaxonomy: "eastmoney-em2016.v1" } }));
   assert.equal(result.routingState, "unconfirmed");
-  assert.equal(result.mappingReason.code, "insufficient_evidence");
+  assert.equal(result.mappingReason.code, "eastmoney_em2016_unavailable");
+});
+
+test("all Top300 Eastmoney EM2016 leaves map to registered templates", () => {
+  assert.equal(eastmoneyMappings.mappings.length, 96);
+  for (const mapping of eastmoneyMappings.mappings) {
+    assert.ok(RESEARCH_INDUSTRY_TEMPLATE_REGISTRY.some((template) => template.templateId === mapping.templateId), mapping.em2016);
+  }
 });
 
 test("manual confirmation is registry-bound and produces a confirmed projection", () => {

@@ -93,6 +93,18 @@ type EastmoneyOverviewResponse = {
   };
 };
 
+type EastmoneyCompanyBasicInfoResponse = {
+  result?: {
+    data?: Array<{
+      SECUCODE?: unknown;
+      EM2016?: unknown;
+      MAIN_BUSINESS?: unknown;
+      MAXPROFIT_PRODUCT?: unknown;
+      PRODUCT_NAME?: unknown;
+    }>;
+  };
+};
+
 type EastmoneyNoticeResponse = {
   data?: {
     list?: Array<{
@@ -1599,9 +1611,12 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
   url.searchParams.set("fltt", "1");
   url.searchParams.set("secid", secid);
   url.searchParams.set("fields", "f43,f57,f58,f116,f162,f167,f168,f169,f170");
-  const body = (await cachedFetchJson(db, url.toString(), {
-    headers: { Referer: "https://quote.eastmoney.com/" },
-  }, marketDataCacheTtlMsForCode(normalized))) as EastmoneyOverviewResponse;
+  const [body, companyProfile] = await Promise.all([
+    cachedFetchJson(db, url.toString(), {
+      headers: { Referer: "https://quote.eastmoney.com/" },
+    }, marketDataCacheTtlMsForCode(normalized)) as Promise<EastmoneyOverviewResponse>,
+    fetchEastmoneyCompanyProfile(db, normalized),
+  ]);
   const data = body.data ?? {};
   const latestPriceRaw = numberOrNull(data.f43);
   const changeAmountRaw = numberOrNull(data.f169);
@@ -1622,9 +1637,49 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
     pb: numberOrNull(data.f167) !== null ? numberOrNull(data.f167)! / 100 : null,
     psTtm: null,
     pcfTtm: null,
+    companyProfile,
     source: "eastmoney",
     updatedAt: Date.now(),
   };
+}
+
+/** Eastmoney F10 is the source of truth for the EM2016 three-level industry path. */
+async function fetchEastmoneyCompanyProfile(db: D1Database, code: string): Promise<CompanyOverview["companyProfile"]> {
+  const suffix = securitySuffix(code);
+  if (suffix !== "SH" && suffix !== "SZ") return null;
+  const url = new URL("https://datacenter.eastmoney.com/securities/api/data/v1/get");
+  url.searchParams.set("reportName", "RPT_F10_ORG_BASICINFO");
+  url.searchParams.set("columns", "SECUCODE,EM2016,MAIN_BUSINESS,MAXPROFIT_PRODUCT,PRODUCT_NAME");
+  url.searchParams.set("quoteColumns", "");
+  url.searchParams.set("filter", `(SECUCODE=\"${code}\")`);
+  url.searchParams.set("pageNumber", "1");
+  url.searchParams.set("pageSize", "1");
+  url.searchParams.set("sortTypes", "");
+  url.searchParams.set("sortColumns", "");
+  url.searchParams.set("source", "HSF10");
+  url.searchParams.set("client", "PC");
+  const sourceUrl = url.toString();
+  try {
+    const body = (await cachedFetchJson(db, sourceUrl, {
+      headers: { Referer: "https://emweb.securities.eastmoney.com/" },
+    }, 24 * 60 * 60 * 1000)) as EastmoneyCompanyBasicInfoResponse;
+    const row = (body.result?.data ?? []).find((item) => normalizeSecurityCode(String(item.SECUCODE ?? "")) === code) ?? body.result?.data?.[0];
+    const industry = String(row?.EM2016 ?? "").trim() || null;
+    const products = [...new Set([row?.MAXPROFIT_PRODUCT, row?.PRODUCT_NAME].map((item) => String(item ?? "").trim()).filter(Boolean))];
+    return {
+      taxonomy: "eastmoney-em2016.v1",
+      availability: industry ? "available" : "unavailable",
+      industry,
+      industryLevels: industry ? industry.split("-").map((item) => item.trim()).filter(Boolean) : [],
+      mainBusiness: String(row?.MAIN_BUSINESS ?? "").trim() || null,
+      products,
+      sourceUrl,
+      updatedAt: Date.now(),
+    };
+  } catch (error) {
+    console.warn(`Eastmoney company profile unavailable for ${code}:`, error);
+    return { taxonomy: "eastmoney-em2016.v1", availability: "unavailable", industry: null, industryLevels: [], mainBusiness: null, products: [], sourceUrl, updatedAt: Date.now() };
+  }
 }
 
 export async function fetchEastmoneyCompanyNotices(

@@ -21,6 +21,14 @@ export type ResearchScopeEnvelope = {
   uncertainBoundaries: string[];
   basisSourceIds: string[];
 };
+export type ResearchCompanyProfile = {
+  taxonomy: string;
+  industry: string;
+  industryLevels: string[];
+  mainBusiness: string | null;
+  products: string[];
+  sourceId: string;
+};
 export type ResearchSourceVersion = {
   sourceId: string;
   sourceVersion: string;
@@ -33,6 +41,7 @@ export type ResearchSourceVersion = {
   contentFingerprint: string;
   availabilityStatus: string;
   limitations: string[];
+  quote?: string | null;
 };
 export type ResearchSourceRegistry = { registryVersion: string; sourceIds: string[]; sources: ResearchSourceVersion[] };
 export type ResearchSnapshot = {
@@ -68,6 +77,7 @@ export type ResearchContext = {
   financialSnapshot: ResearchSnapshot;
   marketSnapshot: ResearchSnapshot;
   scopeEnvelope: ResearchScopeEnvelope | null;
+  companyProfile: ResearchCompanyProfile | null;
   sourceRegistryId: string;
   knownSourceIds: string[];
   sourceRegistry: ResearchSourceRegistry;
@@ -85,7 +95,8 @@ export async function buildResearchContext(input: Record<string, unknown> = {}):
   const marketSnapshot = normalizeSnapshot(input.marketSnapshot, "marketSnapshot");
   const registry = await registerResearchSources(input.sources || (input.sourceRegistry as Record<string, unknown> | undefined)?.sources || []);
   const scopeResult = normalizeScopeEnvelope(input.scopeEnvelope);
-  const analysisGaps = [...company.gaps, ...security.gaps, ...financialSnapshot.gaps, ...marketSnapshot.gaps, ...registry.analysisGaps, ...scopeResult.analysisGaps];
+  const companyProfile = normalizeCompanyProfile(input.companyProfile, registry.value.sources);
+  const analysisGaps = [...company.gaps, ...security.gaps, ...financialSnapshot.gaps, ...marketSnapshot.gaps, ...registry.analysisGaps, ...scopeResult.analysisGaps, ...companyProfile.analysisGaps];
   const researchTaskId = text(input.researchTaskId) || `research-analysis:${security.value.securityCode || "unknown"}:${asOf}`;
   const contextWithoutFingerprint = {
     contextVersion: RESEARCH_CONTEXT_VERSION,
@@ -97,6 +108,7 @@ export async function buildResearchContext(input: Record<string, unknown> = {}):
     financialSnapshot: financialSnapshot.value,
     marketSnapshot: marketSnapshot.value,
     scopeEnvelope: scopeResult.value,
+    companyProfile: companyProfile.value,
     sourceRegistryId: registry.sourceRegistryId,
     knownSourceIds: registry.knownSourceIds,
     sourceRegistry: registry.value,
@@ -104,6 +116,16 @@ export async function buildResearchContext(input: Record<string, unknown> = {}):
     quality: { status: analysisGaps.some((gap) => gap.blocking) ? "blocked" : analysisGaps.length ? "partial" : "available", gapCount: analysisGaps.length },
   } as const;
   return { ...contextWithoutFingerprint, inputFingerprint: await stableHash(contextWithoutFingerprint) } as ResearchContext;
+}
+
+function normalizeCompanyProfile(raw: unknown, sources: ResearchSourceVersion[]): { value: ResearchCompanyProfile | null; analysisGaps: ResearchAnalysisGap[] } {
+  const source = record(raw);
+  const taxonomy = text(source.taxonomy);
+  const industry = text(source.industry);
+  const sourceUrl = text(source.sourceUrl);
+  const sourceId = sources.find((item) => item.url === sourceUrl)?.sourceId || "";
+  if (!taxonomy || !industry || !sourceId) return { value: null, analysisGaps: [] };
+  return { value: { taxonomy, industry, industryLevels: strings(source.industryLevels), mainBusiness: text(source.mainBusiness) || null, products: strings(source.products), sourceId }, analysisGaps: [] };
 }
 
 export async function registerResearchSources(sources: unknown): Promise<{ sourceRegistryId: string; knownSourceIds: string[]; analysisGaps: ResearchAnalysisGap[]; value: ResearchSourceRegistry }> {
@@ -206,7 +228,7 @@ async function normalizeSource(raw: unknown, index: number): Promise<{ value: Re
   if (!sourceRegistryConfig.availabilityStatuses.includes(value.availabilityStatus)) missing.push(`availabilityStatus:${value.availabilityStatus}`);
   if (missing.length) return { value: null, gap: gap("source_version_incomplete", `sources[${index}]`, `来源版本缺少或不合法字段：${missing.join(", ")}`, false) };
   const sourceId = `source:${await stableHash({ ...value, registryVersion: RESEARCH_SOURCE_REGISTRY_VERSION })}`;
-  return { value: { sourceId, sourceVersion: RESEARCH_SOURCE_REGISTRY_VERSION, ...value } };
+  return { value: { sourceId, sourceVersion: RESEARCH_SOURCE_REGISTRY_VERSION, ...value, quote: text(source.quote || source.sourceQuote) || null } };
 }
 
 function compactRows(value: unknown): Record<string, unknown>[] { return Array.isArray(value) ? value.map((item) => record(item)).filter((item) => Object.keys(item).length > 0) : []; }

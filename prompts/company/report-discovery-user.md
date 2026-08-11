@@ -15,30 +15,30 @@
 ```json
 [
   {
-      "title": "报告标题",
-      "institution": "研究机构",
-      "publishedAt": "2026-06-20",
-      "url": "https://public.example/report",
-      "forecasts": [
-        {
-          "year": 2026,
-          "revenue": 123.4,
-          "revenueGrowth": 12.5,
-          "netProfit": 10.2,
-          "profitGrowth": 15,
-          "eps": 1.2,
-          "pe": 20
-        }
-      ],
-      "valuation": {
-        "rating": "买入",
-        "targetPrice": 18.5,
-        "targetPriceCurrency": "人民币",
-        "targetPe": 20,
-        "valuationMethod": "PE"
+    "title": "报告标题",
+    "institution": "研究机构",
+    "publishedAt": "2026-06-20",
+    "url": "https://public.example/report",
+    "forecasts": [
+      {
+        "year": 2026,
+        "revenue": 123.4,
+        "revenueGrowth": 12.5,
+        "netProfit": 10.2,
+        "profitGrowth": 15,
+        "eps": 1.2,
+        "pe": 20
       }
+    ],
+    "valuation": {
+      "rating": "买入",
+      "targetPrice": 18.5,
+      "targetPriceCurrency": "人民币",
+      "targetPe": 20,
+      "valuationMethod": "PE"
+    }
   }
 ]
 ```
 
-只提取搜索证据明确支持的内容；营收和净利润用亿元，增速用百分数数值，不能推测或拼接数字。URL 必须是有效的 `http(s)` 来源。只输出 JSON，不要 Markdown、解释或工程去重字段。
+只提取搜索证据明确支持的内容；营收和净利润用亿元，增速用百分数数值，不能推测或拼接数字。URL 必须是有效的 `http(s)` 来源。只输出 JSON，不要 Markdown、解释或工程去重字段。发送前确认整个输出可被 JSON.parse 解析，且顶层必须是数组；没有可核验候选时输出 `[]`，绝不能输出对象或对象包装。

@@ -1,0 +1,17 @@
+{
+  "version": "financial-analysis-risk-rules.v1",
+  "rules": [
+    {"id":"revenue_yoy_decline","observationKind":"yoy","metric":"revenue","frequency":"quarterly","operator":"lt","threshold":0,"severity":"high","title":"收入同比下降"},
+    {"id":"revenue_qoq_decline","observationKind":"qoq","metric":"revenue","frequency":"quarterly","operator":"lt","threshold":0,"severity":"medium","title":"收入环比下降"},
+    {"id":"operating_profit_yoy_decline","observationKind":"yoy","metric":"operating_profit","frequency":"quarterly","operator":"lt","threshold":0,"severity":"high","title":"营业利润同比下降"},
+    {"id":"net_profit_yoy_decline","observationKind":"yoy","metric":"net_profit","frequency":"quarterly","operator":"lt","threshold":0,"severity":"high","title":"净利润同比下降"},
+    {"id":"operating_margin_contraction","observationKind":"operating_margin","frequency":"ttm","operator":"delta_lt","threshold":-3,"severity":"medium","title":"TTM 营业利润率收缩超过 3 个百分点"},
+    {"id":"cash_conversion_weak","observationKind":"cash_conversion","frequency":"ttm","operator":"lt","threshold":80,"severity":"high","title":"TTM 经营现金流/净利润低于 80%"},
+    {"id":"free_cash_flow_negative","observationKind":"free_cash_flow","frequency":"ttm","operator":"lt","threshold":0,"severity":"medium","title":"TTM 自由现金流为负"},
+    {"id":"receivables_buildup","observationKind":"receivables_to_revenue","frequency":"quarterly","operator":"delta_gt","threshold":3,"severity":"medium","title":"应收占收入比上升超过 3 个百分点"},
+    {"id":"inventory_buildup","observationKind":"inventory_to_revenue","frequency":"quarterly","operator":"delta_gt","threshold":3,"severity":"medium","title":"存货占收入比上升超过 3 个百分点"},
+    {"id":"leverage_high","observationKind":"debt_to_equity","frequency":"annual","operator":"gt","threshold":100,"severity":"medium","title":"债务/权益高于 100%"},
+    {"id":"interest_coverage_low","observationKind":"interest_coverage","frequency":"ttm","operator":"lt","threshold":2,"severity":"high","title":"TTM 利息覆盖低于 2 倍"},
+    {"id":"dilution_accelerating","observationKind":"net_dilution_rate","frequency":"annual","operator":"gt","threshold":3,"severity":"medium","title":"稀释后股数年增幅超过 3%"}
+  ]
+}

@@ -1,9 +1,45 @@
 {
-  "registryVersion": "research-analysis-template-registry.v1",
-  "description": "公司经营与行业产业分析模板。模板按业务经济性、核心公式、经营指标和估值方法划分；申万等行业分类只用于分类与展示，不直接决定模板。",
+  "registryVersion": "research-analysis-template-registry.v2",
+  "description": "公司经营与行业产业分析模板。A 股行业边界采用东方财富 F10 的 EM2016 三级分类；经营特征仍按业务经济性、核心公式、经营指标和估值方法确认，不把行业标签单独误作经营模型。",
   "sourceDocument": "docs/公司经营与行业产业分析框架_修订版.md",
   "templateAliases": {
     "optical-transceiver-ai-interconnect.v1": "technology-equipment.v1"
+  },
+  "presentationCategories": [
+    { "id": "technology-digital", "label": "科技与数字化" },
+    { "id": "manufacturing-capital", "label": "制造与资本品" },
+    { "id": "cycle-resources", "label": "周期与资源" },
+    { "id": "consumer-channels", "label": "消费与渠道" },
+    { "id": "healthcare", "label": "医药健康" },
+    { "id": "financial-services", "label": "金融服务" },
+    { "id": "real-assets-infrastructure", "label": "地产、基建与公用事业" },
+    { "id": "diversified-business", "label": "多元业务" }
+  ],
+  "templatePresentation": {
+    "semiconductor-design.v1": { "categoryId": "technology-digital", "featureLabel": "产品研发与客户导入" },
+    "software-saas.v1": { "categoryId": "technology-digital", "featureLabel": "订阅、续费与客户扩张" },
+    "internet-platform.v1": { "categoryId": "technology-digital", "featureLabel": "用户、交易与变现" },
+    "wafer-foundry.v1": { "categoryId": "manufacturing-capital", "featureLabel": "产能、利用率与良率" },
+    "technology-equipment.v1": { "categoryId": "manufacturing-capital", "featureLabel": "订单、认证与交付" },
+    "industrial-manufacturing.v1": { "categoryId": "manufacturing-capital", "featureLabel": "订单、产能与交付" },
+    "automobile-oem.v1": { "categoryId": "manufacturing-capital", "featureLabel": "销量、产品结构与产能" },
+    "memory-semiconductor.v1": { "categoryId": "cycle-resources", "featureLabel": "价格、库存与供需周期" },
+    "cyclical-resources.v1": { "categoryId": "cycle-resources", "featureLabel": "价格、成本与产能周期" },
+    "consumer-brand.v1": { "categoryId": "consumer-channels", "featureLabel": "销量、定价与渠道" },
+    "retail.v1": { "categoryId": "consumer-channels", "featureLabel": "同店、新店与库存" },
+    "mature-pharma.v1": { "categoryId": "healthcare", "featureLabel": "药品现金流与研发管线" },
+    "preprofit-biotech.v1": { "categoryId": "healthcare", "featureLabel": "研发里程碑与现金跑道" },
+    "bank.v1": { "categoryId": "financial-services", "featureLabel": "息差、资产质量与资本" },
+    "property-insurance.v1": { "categoryId": "financial-services", "featureLabel": "承保、准备金与投资收益" },
+    "life-insurance.v1": { "categoryId": "financial-services", "featureLabel": "新业务价值与资产负债匹配" },
+    "asset-manager.v1": { "categoryId": "financial-services", "featureLabel": "管理规模、费率与业绩" },
+    "broker-trading-platform.v1": { "categoryId": "financial-services", "featureLabel": "成交、杠杆与资本" },
+    "reit.v1": { "categoryId": "real-assets-infrastructure", "featureLabel": "出租率、NOI 与分红" },
+    "property-developer.v1": { "categoryId": "real-assets-infrastructure", "featureLabel": "销售、库存与杠杆" },
+    "regulated-utility.v1": { "categoryId": "real-assets-infrastructure", "featureLabel": "资产回报、费率与合同" },
+    "telecom-operator.v1": { "categoryId": "real-assets-infrastructure", "featureLabel": "用户、ARPU 与资本开支" },
+    "engineering-project.v1": { "categoryId": "real-assets-infrastructure", "featureLabel": "订单、进度与回款" },
+    "conglomerate.v1": { "categoryId": "diversified-business", "featureLabel": "分部与资本配置" }
   },
   "templates": [
     {
@@ -63,7 +99,7 @@
       "stressFactors": ["客户资本开支下行", "认证延迟", "订单取消", "技术路线替代", "客户集中采购"],
       "requiredFields": ["primary_business", "product_boundary", "downstream", "industry"],
       "minimumMatchedFields": 4,
-      "terms": { "primary_business": ["半导体设备", "光通信设备", "光模块", "光通信", "光互连"], "product_boundary": ["刻蚀设备", "薄膜设备", "量检测设备", "光模块", "光收发模块", "400g", "800g", "1.6t"], "downstream": ["晶圆厂", "芯片制造商", "数据中心", "云计算", "通信运营商", "设备客户"], "industry": ["半导体设备", "光通信设备", "光模块", "光通信"] },
+      "terms": { "primary_business": ["半导体设备", "光通信设备", "光模块", "光通信", "光互连"], "product_boundary": ["刻蚀设备", "薄膜设备", "量检测设备", "光模块", "光收发模块", "400g", "800g", "1.6t"], "downstream": ["晶圆厂", "芯片制造商", "数据中心", "云计算", "通信运营商", "设备客户"], "industry": ["半导体设备", "光通信设备", "光模块", "光通信", "通信设备", "通信传输设备"] },
       "evidencePolicy": { "requiredEvidencePerField": 1, "requireSourceUrl": true, "requireQuote": true }
     },
     {

@@ -115,7 +115,10 @@ test("projects the last run model and reasoning effort into local discovery stat
       return {
         bind() {
           return {
-            first: async () => sql.includes("from llm_runs") ? runRow : taskRow,
+            first: async () => {
+              if (sql.includes("from llm_runs r join llm_tasks")) return { completedAt: 4 };
+              return sql.includes("from llm_runs") ? runRow : taskRow;
+            },
           };
         },
       };
@@ -135,6 +138,7 @@ test("projects the last run model and reasoning effort into local discovery stat
     model: "gpt-5.6-luna",
     reasoningEffort: "high",
   });
+  assert.equal(payload?.data?.lastSuccessfulCompletedAt, 4);
 });
 
 test("defaults discovery to xhigh reasoning and retains the prior one-hour timeout", () => {
@@ -218,13 +222,13 @@ test("rejects only an empty reasoningEffort at the local discovery API boundary"
 
 test("parses cited discovery reports with the normal forecast and valuation fields", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify([{
-      title: "公司深度研究",
-      institution: "示例证券",
-      publishedAt: "2026-06-20",
-      url: "https://reports.example.com/acme.pdf#page=1",
-      forecasts: [{ year: 2026, revenue: 12.3, netProfit: 1.1, eps: 0.4, pe: 20 }],
-      valuation: { rating: "买入", targetPrice: 18.5, targetPriceCurrency: "人民币", targetPe: 20, valuationMethod: "PE" },
-    }]), "000001.SZ", citations);
+    title: "公司深度研究",
+    institution: "示例证券",
+    publishedAt: "2026-06-20",
+    url: "https://reports.example.com/acme.pdf#page=1",
+    forecasts: [{ year: 2026, revenue: 12.3, netProfit: 1.1, eps: 0.4, pe: 20 }],
+    valuation: { rating: "买入", targetPrice: 18.5, targetPriceCurrency: "人民币", targetPe: 20, valuationMethod: "PE" },
+  }]), "000001.SZ", citations);
   assert.deepEqual(reports, [{
     title: "公司深度研究",
     institution: "示例证券",
@@ -237,12 +241,12 @@ test("parses cited discovery reports with the normal forecast and valuation fiel
 
 test("normalizes a Markdown-formatted model URL before validating its citation", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify([{
-      title: "WebQA 研报",
-      institution: "示例证券",
-      publishedAt: "2026-06-20",
-      url: "[报告来源](https://reports.example.com/acme.pdf?utm_source=chatgpt.com)",
-      forecasts: [],
-    }]), "000001.SZ", citations);
+    title: "WebQA 研报",
+    institution: "示例证券",
+    publishedAt: "2026-06-20",
+    url: "[报告来源](https://reports.example.com/acme.pdf?utm_source=chatgpt.com)",
+    forecasts: [],
+  }]), "000001.SZ", citations);
   assert.deepEqual(reports, [{
     title: "WebQA 研报",
     institution: "示例证券",
@@ -254,10 +258,10 @@ test("normalizes a Markdown-formatted model URL before validating its citation",
 
 test("accepts completed Web Search candidates when citation metadata is unavailable", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify([
-      { title: "缺机构", publishedAt: "2026-06-20", url: "https://reports.example.com/acme.pdf", forecasts: [] },
-      { title: "无 citation", institution: "示例证券", publishedAt: "2026-06-21", url: "https://other.example.com/report.pdf", forecasts: [] },
-      { title: "非网页 URL", institution: "示例证券", publishedAt: "2026-06-22", url: "javascript:alert(1)", forecasts: [] },
-    ], "000001.SZ", []);
+    { title: "缺机构", publishedAt: "2026-06-20", url: "https://reports.example.com/acme.pdf", forecasts: [] },
+    { title: "无 citation", institution: "示例证券", publishedAt: "2026-06-21", url: "https://other.example.com/report.pdf", forecasts: [] },
+    { title: "非网页 URL", institution: "示例证券", publishedAt: "2026-06-22", url: "javascript:alert(1)", forecasts: [] },
+  ]), "000001.SZ", []);
   assert.deepEqual(reports, [
     {
       title: "缺机构",
@@ -283,11 +287,11 @@ test("accepts completed Web Search candidates when citation metadata is unavaila
 
 test("accepts URL-only and title-only partial reports without forecasts", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify([
-      { url: "https://reports.example.com/global/acme-q2.pdf" },
-      { title: "机构观点摘要" },
-      { title: "", url: "" },
-      { institution: "没有身份" },
-    ], "000001.SZ", []);
+    { url: "https://reports.example.com/global/acme-q2.pdf" },
+    { title: "机构观点摘要" },
+    { title: "", url: "" },
+    { institution: "没有身份" },
+  ]), "000001.SZ", []);
   assert.deepEqual(reports, [
     {
       title: "reports.example.com/global/acme-q2.pdf",
@@ -303,12 +307,12 @@ test("accepts URL-only and title-only partial reports without forecasts", () => 
 
 test("keeps missing forecasts and metadata on an otherwise identified candidate", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify([{
-      title: "全球机构更新",
-      url: "https://reports.example.com/global-update",
-      forecasts: null,
-      valuation: null,
-      publishedAt: "not-a-date",
-    }]), "000001.SZ", []);
+    title: "全球机构更新",
+    url: "https://reports.example.com/global-update",
+    forecasts: null,
+    valuation: null,
+    publishedAt: "not-a-date",
+  }]), "000001.SZ", []);
   assert.deepEqual(reports, [{
     title: "全球机构更新",
     url: "https://reports.example.com/global-update",
@@ -320,6 +324,13 @@ test("rejects a completely unidentified discovery candidate", () => {
   assert.deepEqual(parseCompanyReportDiscovery(JSON.stringify([
     { forecasts: [{ year: 2026, eps: 0.4 }] }, { institution: "示例证券", publishedAt: "2026-06-20" },
   ]), "000001.SZ", []), []);
+});
+
+test("rejects the retired object envelope", () => {
+  assert.throws(
+    () => parseCompanyReportDiscovery(JSON.stringify({ reports: [] }), "000001.SZ", []),
+    /not a JSON array/,
+  );
 });
 
 test("retains a discovered row when deterministic identity fields are unavailable", () => {

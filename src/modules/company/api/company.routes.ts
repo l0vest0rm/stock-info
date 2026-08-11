@@ -238,7 +238,7 @@ companyRoutes.get("/company/reports/discovery-capability", async (c) => {
   }
   const normalized = normalizeSecurityCode(code);
   if (!isCnCode(normalized)) {
-    return ok(c, { enabled: false, code: normalized, task: null });
+    return ok(c, { enabled: false, code: normalized, task: null, lastSuccessfulCompletedAt: null });
   }
   const taskId = c.req.query("taskId")?.trim() || "";
   const task = taskId
@@ -265,10 +265,12 @@ companyRoutes.get("/company/reports/discovery-capability", async (c) => {
       reasoningEffort: lastRun?.taskId === matchingTask.taskId ? lastRun.reasoningEffort : matchingTask.requestedReasoningEffort,
     }
     : null;
+  const lastSuccessfulCompletedAt = await loadLastSuccessfulCompanyReportDiscoveryCompletedAt(c.env.DB, normalized);
   return ok(c, {
     enabled: true,
     code: normalized,
     task: matchingTask ? { ...matchingTask, execution } : null,
+    lastSuccessfulCompletedAt,
   });
 });
 
@@ -520,6 +522,7 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
     pb: latest?.pb ?? null,
     psTtm: latest?.ps ?? null,
     pcfTtm: latest?.pcf ?? null,
+    companyProfile: null,
     source: latest?.source ?? "local",
     updatedAt: Date.now(),
   };
@@ -949,6 +952,26 @@ async function loadCachedCompanyReportDiscoveryKnownReports(
     publishedAt: firstNonEmpty([text(item.publishDate), text(item.publishedAt)]),
     url: firstNonEmpty([text(item.url), text(item.detailUrl)]),
   })).filter((item) => item.title || item.url);
+}
+
+/**
+ * Task rows are reused when a discovery is explicitly run again, so their
+ * terminal status can later become failed.  The run ledger is the source of
+ * truth for the most recent successful execution.
+ */
+async function loadLastSuccessfulCompanyReportDiscoveryCompletedAt(
+  db: D1Database,
+  code: string,
+): Promise<number | null> {
+  const row = await db.prepare(`select r.completed_at as completedAt
+    from llm_runs r join llm_tasks t on t.task_id=r.task_id
+    where t.task_type=? and t.target_type='security' and t.target_id=?
+      and r.status='completed' and r.completed_at is not null
+    order by r.completed_at desc limit 1`)
+    .bind(REPORT_DISCOVERY_TASK_TYPE, normalizeSecurityCode(code))
+    .first<{ completedAt?: unknown }>();
+  const completedAt = Number(row?.completedAt);
+  return Number.isFinite(completedAt) ? completedAt : null;
 }
 
 async function completeCompanyReportDiscoveryRun(
@@ -2435,13 +2458,8 @@ function parseJsonObjectFromText(value: string): Record<string, unknown> | null 
 }
 
 function parseJsonArrayFromText(value: string): unknown[] | null {
-  const start = value.indexOf("[");
-  const end = value.lastIndexOf("]");
-  if (start < 0 || end <= start) {
-    return null;
-  }
   try {
-    const parsed = JSON.parse(value.slice(start, end + 1));
+    const parsed = JSON.parse(value.trim());
     return Array.isArray(parsed) ? parsed : null;
   } catch {
     return null;

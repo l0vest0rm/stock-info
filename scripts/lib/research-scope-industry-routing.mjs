@@ -1,4 +1,5 @@
 import registry from "../../config/research-analysis-template-registry.json" with { type: "json" };
+import eastmoneyMappings from "../../config/research-eastmoney-em2016-template-mappings.json" with { type: "json" };
 
 export const RESEARCH_ANALYSIS_TEMPLATE_REGISTRY_VERSION = registry.registryVersion;
 export const RESEARCH_ANALYSIS_TEMPLATE_REGISTRY = Object.freeze(registry.templates.map((template) => Object.freeze({
@@ -11,6 +12,13 @@ export const RESEARCH_ANALYSIS_TEMPLATE_REGISTRY = Object.freeze(registry.templa
   evidencePolicy: Object.freeze({ ...template.evidencePolicy }),
 })));
 export const RESEARCH_ANALYSIS_TEMPLATE_ALIASES = Object.freeze({ ...(registry.templateAliases || {}) });
+const presentationByTemplateId = Object.freeze({ ...(registry.templatePresentation || {}) });
+export const RESEARCH_ANALYSIS_PRESENTATION_CATEGORIES = Object.freeze((registry.presentationCategories || []).map((category) => Object.freeze({
+  id: text(category?.id),
+  label: text(category?.label),
+})).filter((category) => category.id && category.label));
+const presentationCategoryById = new Map(RESEARCH_ANALYSIS_PRESENTATION_CATEGORIES.map((category) => [category.id, category]));
+const eastmoneyTemplateByIndustry = new Map((eastmoneyMappings.mappings || []).map((mapping) => [text(mapping?.em2016), text(mapping?.templateId)]).filter(([industry, templateId]) => industry && templateId));
 // Compatibility exports for callers that still use the pre-v3 symbol names.
 export const RESEARCH_INDUSTRY_TEMPLATE_REGISTRY_VERSION = RESEARCH_ANALYSIS_TEMPLATE_REGISTRY_VERSION;
 export const RESEARCH_INDUSTRY_TEMPLATE_REGISTRY = RESEARCH_ANALYSIS_TEMPLATE_REGISTRY;
@@ -59,26 +67,24 @@ export function matchLocalIndustryTemplate(baseline, { templates = RESEARCH_ANAL
   const normalized = normalizeEngineeringBaseline(baseline);
   const fields = fieldsFromBaseline(normalized);
   const evidenceByField = Object.fromEntries(ROUTING_FIELDS.map((field) => [field, fields[field].filter((item) => hasEvidence(item))]));
-  const missingEvidenceFields = ROUTING_FIELDS.filter((field) => evidenceByField[field].length === 0);
   const candidates = evaluateLocalTemplateCandidates(normalized, { templates });
-  const qualified = candidates.filter((candidate) => {
-    const template = templates.find((item) => text(item.templateId) === candidate.templateId);
-    const requiredFields = Array.isArray(template?.requiredFields) && template.requiredFields.length ? template.requiredFields : ROUTING_FIELDS;
-    return candidate.matchedFields.length >= Number(template?.minimumMatchedFields || requiredFields.length) && requiredFields.every((field) => candidate.matchedFields.includes(field));
-  });
-  const routingReason = missingEvidenceFields.length
-    ? { code: "insufficient_evidence", message: `S1 缺少可审计证据：${missingEvidenceFields.join("、")}`, fields: missingEvidenceFields }
-    : qualified.length === 0
-      ? { code: "zero_match", message: "S1 的已审计主营、产品边界、下游和行业事实未唯一命中受控模板", fields: [] }
-      : qualified.length > 1
-        ? { code: "ambiguous_match", message: `受控模板匹配不唯一：${qualified.map((item) => item.templateId).join("、")}`, fields: [] }
-        : null;
-  const selected = qualified.length === 1 && !routingReason ? qualified[0] : null;
-  const selectedTemplate = selected ? resolveAnalysisTemplate(selected.templateId, { templates }) : null;
-  const sourceIds = uniqueStrings([...normalized.sourceIds, ...ROUTING_FIELDS.flatMap((field) => evidenceByField[field].flatMap((item) => item.sourceIds))]);
-  const evidenceIds = uniqueStrings(ROUTING_FIELDS.flatMap((field) => evidenceByField[field].map((item) => item.factId)));
+  const industry = text(normalized.companyScope.industry);
+  const eastmoneyTaxonomy = text(normalized.companyScope.industryTaxonomy);
+  const templateId = eastmoneyTaxonomy === "eastmoney-em2016.v1" ? text(eastmoneyTemplateByIndustry.get(industry)) : "";
+  const industryEvidence = evidenceByField.industry.filter((item) => item.statement === industry);
+  const mappedTemplate = templateId ? resolveAnalysisTemplate(templateId, { templates }) : null;
+  if (templateId && !mappedTemplate) throw new Error(`Eastmoney EM2016 mapping targets an unregistered template: ${templateId}`);
+  const selectedTemplate = mappedTemplate && industryEvidence.length ? mappedTemplate : null;
+  const routingReason = selectedTemplate
+    ? null
+    : eastmoneyTaxonomy !== "eastmoney-em2016.v1" || !industry || !industryEvidence.length
+      ? { code: "eastmoney_em2016_unavailable", message: "未取得带可审计来源的东方财富 EM2016 行业，需人工选择并确认模板。", fields: ["industry"] }
+      : { code: "eastmoney_em2016_unmapped", message: `东方财富 EM2016 行业“${industry}”尚未配置模板，需人工选择并确认。`, fields: ["industry"] };
+  const selected = selectedTemplate ? { templateId: selectedTemplate.templateId, matchedFields: ["industry"], score: 1, reason: `东方财富 EM2016 精确映射：${industry}` } : null;
+  const sourceIds = uniqueStrings([...normalized.sourceIds, ...industryEvidence.flatMap((item) => item.sourceIds)]);
+  const evidenceIds = uniqueStrings(industryEvidence.map((item) => item.factId));
   return {
-    schemaVersion: "local-routing-match.v1",
+    schemaVersion: "local-routing-match.v3",
     state: selected ? "confirmed" : "unconfirmed",
     routingState: selected ? "confirmed" : "unconfirmed",
     industryTemplateId: selectedTemplate?.templateId || null,
@@ -87,9 +93,9 @@ export function matchLocalIndustryTemplate(baseline, { templates = RESEARCH_ANAL
     analysisTemplate: selectedTemplate ? analysisTemplateProjection(selectedTemplate) : null,
     companyScope: normalized.companyScope,
     candidateTemplates: candidates,
-    matchedTemplates: qualified,
-    mappingReason: routingReason || { code: "unique_match", message: `唯一命中受控模板 ${selected.templateId}`, fields: selected.matchedFields },
-    evidence: ROUTING_FIELDS.flatMap((field) => evidenceByField[field]).map((item) => ({ factId: item.factId, field: item.field, statement: item.statement, sourceIds: item.sourceIds, sourceReferences: item.sourceReferences })),
+    matchedTemplates: selected ? [selected] : [],
+    mappingReason: routingReason || { code: "eastmoney_em2016_exact", message: `东方财富 EM2016 行业“${industry}”映射至模板 ${selected.templateId}`, fields: selected.matchedFields },
+    evidence: industryEvidence.map((item) => ({ factId: item.factId, field: item.field, statement: item.statement, sourceIds: item.sourceIds, sourceReferences: item.sourceReferences })),
     sourceIds,
     evidenceIds,
     unknowns: [...normalized.unknowns, ...(routingReason ? [{ unknownId: `routing:${routingReason.code}`, code: routingReason.code, message: routingReason.message, blocking: true }] : [])],
@@ -104,7 +110,8 @@ export function evaluateLocalTemplateCandidates(baseline, { templates = RESEARCH
   const fields = fieldsFromBaseline(normalized);
   return Array.isArray(templates) ? templates.filter(validTemplate).map((template) => {
     const matchedFields = ROUTING_FIELDS.filter((field) => fieldMatchesTemplate(field, fields[field], template));
-    return { templateId: text(template.templateId), industryKey: text(template.industryKey), label: text(template.label), frameworkCategory: text(template.frameworkCategory), matchedFields, score: matchedFields.length, reason: matchedFields.length ? `命中字段：${matchedFields.join("、")}` : "没有命中受控事实谓词" };
+    const presentation = templatePresentation(template);
+    return { templateId: text(template.templateId), industryKey: text(template.industryKey), label: text(template.label), frameworkCategory: text(template.frameworkCategory), presentationCategoryId: presentation.categoryId, presentationCategoryLabel: presentation.categoryLabel, operatingFeatureLabel: presentation.featureLabel, matchedFields, score: matchedFields.length, reason: matchedFields.length ? `命中字段：${matchedFields.join("、")}` : "没有命中受控事实谓词" };
   }) : [];
 }
 
@@ -148,7 +155,7 @@ export function applyManualRoutingConfirmation(matchResult, confirmation) {
     analysisTemplate: analysisTemplateProjection(template),
     companyScope: scope,
     mappingReason: { code: "manual_confirmation", message: scopeNote ? `人工确认模板 ${template.templateId}；范围说明已记录` : `人工确认模板 ${template.templateId}`, fields: ROUTING_FIELDS, auditId: text(source.confirmationId) || null },
-    unknowns: (baseline.unknowns || []).filter((item) => item?.code !== "insufficient_evidence" && item?.code !== "zero_match" && item?.code !== "ambiguous_match"),
+    unknowns: (baseline.unknowns || []).filter((item) => !["insufficient_evidence", "zero_match", "ambiguous_match", "eastmoney_em2016_unavailable", "eastmoney_em2016_unmapped"].includes(item?.code)),
   };
 }
 
@@ -200,6 +207,8 @@ function normalizeCompanyScope(value) {
     products: stringArray(source.products || source.productBoundary || source.product_boundary),
     downstream: stringArray(source.downstream || source.customers || source.customerScope),
     industry: text(source.industry || source.industryName) || null,
+    industryTaxonomy: text(source.industryTaxonomy) || null,
+    industryLevels: stringArray(source.industryLevels),
     regions: stringArray(source.regions),
     segments: stringArray(source.segments),
     basisSourceIds: uniqueStrings(source.basisSourceIds || source.sourceIds),
@@ -233,17 +242,31 @@ function resolveAnalysisTemplate(templateId, { templates = RESEARCH_ANALYSIS_TEM
   return templates.find((item) => text(item.templateId) === canonical) || null;
 }
 function analysisTemplateProjection(template) {
+  const presentation = templatePresentation(template);
   return {
     templateId: text(template.templateId),
     profileKey: text(template.industryKey),
     label: text(template.label),
     frameworkCategory: text(template.frameworkCategory),
+    presentationCategoryId: presentation.categoryId,
+    presentationCategoryLabel: presentation.categoryLabel,
+    operatingFeatureLabel: presentation.featureLabel,
     businessModel: text(template.businessModel),
     primaryFormula: text(template.primaryFormula),
     operatingMetrics: stringArray(template.operatingMetrics),
     valuationMethods: stringArray(template.valuationMethods),
     stressFactors: stringArray(template.stressFactors),
   };
+}
+function templatePresentation(template) {
+  const matchingRegisteredTemplate = RESEARCH_ANALYSIS_TEMPLATE_REGISTRY.find((item) => text(item.label) === text(template?.label) && text(item.frameworkCategory) === text(template?.frameworkCategory));
+  const configured = object(presentationByTemplateId[text(template?.templateId)] || presentationByTemplateId[text(matchingRegisteredTemplate?.templateId)]);
+  const categoryId = text(configured.categoryId);
+  const category = presentationCategoryById.get(categoryId);
+  if (!category) throw new Error(`research analysis template presentation category is missing: ${text(template?.templateId)}`);
+  const featureLabel = text(configured.featureLabel);
+  if (!featureLabel) throw new Error(`research analysis template operating feature is missing: ${text(template?.templateId)}`);
+  return { categoryId, categoryLabel: category.label, featureLabel };
 }
 function containsForbiddenTemplateSelection(value) { if (!value || typeof value !== "object") return false; if (Array.isArray(value)) return value.some(containsForbiddenTemplateSelection); return Object.entries(value).some(([key, item]) => key === "industryTemplateId" || key === "templateId" && object(value).routingState === "confirmed" || containsForbiddenTemplateSelection(item)); }
 function text(value) { return typeof value === "string" ? value.trim() : ""; }

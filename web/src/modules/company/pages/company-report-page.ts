@@ -3,6 +3,19 @@ import { knowledgeDocModalStyles } from '../../knowledge/runtime/knowledge-doc-m
 
 const companyReportStyles = `
 ${knowledgeDocModalStyles}
+
+.company-report-discovery-actions {
+  flex: 0 0 auto;
+}
+
+.company-report-discovery-trigger {
+  white-space: nowrap;
+}
+
+.company-report-discovery-effort {
+  flex: 0 0 5.5rem;
+  width: 5.5rem;
+}
 `
 
 type CompanyReportRow = {
@@ -83,6 +96,7 @@ type CompanyReportStateEvent = CustomEvent<{
   discoveryStartedAt?: number | null
   discoveryCompletedAt?: number | null
   discoveryUpdatedAt?: number | null
+  discoveryLastSuccessfulAt?: number | null
   discoveryModel?: string | null
   discoveryReasoningEffort?: string | null
 }>
@@ -132,6 +146,24 @@ function formatCompanyReportDiscoveryExecution(model: unknown, reasoningEffort: 
     modelText ? `模型 ${modelText}` : '',
     effortText ? `推理 ${effortText}` : '',
   ].filter(Boolean).join('，')
+}
+
+function formatCompanyReportDiscoveryTimestamp(value: number | null): string {
+  if (!Number.isFinite(value)) {
+    return ''
+  }
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(value))
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || ''
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
 }
 
 function growthTitle(label: string, growth: string): string {
@@ -217,6 +249,7 @@ const CompanyReportPage = defineComponent({
     const discoveryElapsedSeconds = ref(0)
     const discoveryElapsedStartAt = ref<number | null>(null)
     const discoveryElapsedEndAt = ref<number | null>(null)
+    const discoveryLastSuccessfulAt = ref<number | null>(null)
     const discoveryModel = ref<string | null>(null)
     const discoveryReasoningEffort = ref<string | null>(null)
     const selectedDiscoveryReasoningEffort = ref<CompanyReportDiscoveryReasoningEffort>('xhigh')
@@ -296,6 +329,9 @@ const CompanyReportPage = defineComponent({
       if (typeof detail.discoveryBusy === 'boolean') {
         discoveryBusy.value = detail.discoveryBusy
       }
+      if (detail.discoveryLastSuccessfulAt !== undefined) {
+        discoveryLastSuccessfulAt.value = optionalTimestamp(detail.discoveryLastSuccessfulAt)
+      }
       if (detail.discoveryModel !== undefined) {
         discoveryModel.value = typeof detail.discoveryModel === 'string' ? detail.discoveryModel : null
       }
@@ -312,6 +348,7 @@ const CompanyReportPage = defineComponent({
         || detail.discoveryStartedAt !== undefined
         || detail.discoveryCompletedAt !== undefined
         || detail.discoveryUpdatedAt !== undefined
+        || detail.discoveryLastSuccessfulAt !== undefined
         || detail.discoveryModel !== undefined
         || detail.discoveryReasoningEffort !== undefined
       if (!hasDiscoveryPatch) {
@@ -388,27 +425,32 @@ const CompanyReportPage = defineComponent({
           class: `small ${statusDanger.value ? 'text-danger' : 'text-muted'}`,
         }, statusText.value),
         discoveryEnabled.value
-          ? h('div', { class: 'd-flex align-items-center gap-2' }, [
-            h('button', {
-              type: 'button',
-              class: 'btn btn-sm btn-outline-primary',
-              disabled: discoveryBusy.value,
-              onClick: () => emitCompanyReportDiscovery(selectedDiscoveryReasoningEffort.value),
-            }, discoveryBusy.value
-              ? '正在搜索近期研报…'
-              : discoveryStatus.value === 'completed' ? '再次搜索研报' : '搜索近期研报'),
-            h('select', {
-              class: 'form-select form-select-sm',
-              'aria-label': '近期研报搜索推理深度',
-              value: selectedDiscoveryReasoningEffort.value,
-              disabled: discoveryBusy.value,
-              onChange: (event: Event) => {
-                const value = (event.target as HTMLSelectElement).value
-                if (companyReportDiscoveryReasoningOptions.some((option) => option.value === value)) {
-                  selectedDiscoveryReasoningEffort.value = value as CompanyReportDiscoveryReasoningEffort
-                }
-              },
-            }, companyReportDiscoveryReasoningOptions.map((option) => h('option', { value: option.value }, option.label))),
+          ? h('div', { class: 'd-flex flex-wrap align-items-center justify-content-end gap-2 flex-shrink-0' }, [
+            h('div', { class: 'company-report-discovery-actions d-flex align-items-center gap-2' }, [
+              h('button', {
+                type: 'button',
+                class: 'btn btn-sm btn-outline-primary company-report-discovery-trigger',
+                disabled: discoveryBusy.value,
+                onClick: () => emitCompanyReportDiscovery(selectedDiscoveryReasoningEffort.value),
+              }, discoveryBusy.value
+                ? '正在搜索近期研报…'
+                : discoveryStatus.value === 'completed' ? '再次搜索研报' : '搜索近期研报'),
+              h('select', {
+                class: 'form-select form-select-sm company-report-discovery-effort',
+                'aria-label': '近期研报搜索推理深度',
+                value: selectedDiscoveryReasoningEffort.value,
+                disabled: discoveryBusy.value,
+                onChange: (event: Event) => {
+                  const value = (event.target as HTMLSelectElement).value
+                  if (companyReportDiscoveryReasoningOptions.some((option) => option.value === value)) {
+                    selectedDiscoveryReasoningEffort.value = value as CompanyReportDiscoveryReasoningEffort
+                  }
+                },
+              }, companyReportDiscoveryReasoningOptions.map((option) => h('option', { value: option.value }, option.label))),
+            ]),
+            discoveryLastSuccessfulAt.value !== null
+              ? h('span', { class: 'small text-muted' }, `上次成功：${formatCompanyReportDiscoveryTimestamp(discoveryLastSuccessfulAt.value)}`)
+              : null,
             discoveryMessage.value
               ? h('span', {
                 class: `small ${['failed', 'blocked'].includes(discoveryStatus.value) ? 'text-danger' : 'text-muted'}`,

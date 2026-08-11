@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildLowDependencyStageStartPayload,
+  buildEngineeringBaseline,
   buildLowDependencySourceCandidates,
   buildLowDependencyLineage,
   buildLowDependencyScopeProjection,
@@ -31,6 +32,7 @@ import {
   RESEARCH_OPERATING_ANALYSIS_SUPPLY_DEMAND_CYCLE_PROMPT,
   RESEARCH_OPERATING_ANALYSIS_SCENARIO_VALUATION_PROMPT,
 } from "./generated/prompt-text.mjs";
+import { matchLocalIndustryTemplate } from "./lib/research-scope-industry-routing.mjs";
 
 test("deterministic stage starts omit the optional model prompt", () => {
   const deterministic = buildLowDependencyStageStartPayload({ input: { key: "engineering_baseline" }, prompt: null, lineage: {}, reuse: false, runnerInstanceId: "runner", attempt: 1 });
@@ -101,13 +103,27 @@ test("low-dependency context registers real market and statement payload provena
   });
   const candidates = buildLowDependencySourceCandidates({
     code: "300308.SZ",
-    overview: { name: "测试公司", source: "xueqiu", marketDate: "2026-08-09", updatedAt: Date.parse("2026-08-09T00:00:00Z") },
+    overview: { name: "测试公司", source: "xueqiu", marketDate: "2026-08-09", updatedAt: Date.parse("2026-08-09T00:00:00Z"), companyProfile: { taxonomy: "eastmoney-em2016.v1", availability: "available", industry: "信息技术-通信设备-通信传输设备", mainBusiness: "高端光通信收发模块服务云计算数据中心", products: ["光模块"], sourceUrl: "https://datacenter.eastmoney.com/f10?code=300308.SZ", updatedAt: Date.parse("2026-08-09T00:00:00Z") } },
     income: source("income"), balance: source("balance"), cashflow: source("cashflow"),
   });
-  assert.equal(candidates.length, 4);
-  assert.deepEqual(candidates.map((item) => item.role).sort(), ["market_data", "structured_financial", "structured_financial", "structured_financial"]);
+  assert.equal(candidates.length, 5);
+  assert.deepEqual(candidates.map((item) => item.role).sort(), ["market_data", "other", "structured_financial", "structured_financial", "structured_financial"]);
   assert(candidates.every((item) => item.url && item.title && item.publishedAt && item.retrievedAt && item.contentFingerprint && item.availabilityStatus));
   assert(candidates.some((item) => item.url === "/api/finance/income?code=300308.SZ&format=read-model"));
+});
+
+test("Eastmoney EM2016 profile deterministically selects the mapped template", () => {
+  const profileSource = {
+    sourceId: "source:eastmoney-profile", role: "other", title: "东财 F10", url: "https://datacenter.eastmoney.com/f10?code=300308.SZ", publishedAt: "2026-08-11T00:00:00.000Z", contentFingerprint: "profile", quote: "信息技术-通信设备-通信传输设备；高端光通信收发模块服务云计算数据中心",
+  };
+  const baseline = buildEngineeringBaseline({
+    context: { company: { name: "中际旭创" }, security: { securityCode: "300308.SZ" }, companyProfile: { taxonomy: "eastmoney-em2016.v1", industry: "信息技术-通信设备-通信传输设备", industryLevels: ["信息技术", "通信设备", "通信传输设备"], mainBusiness: "高端光通信收发模块服务云计算数据中心", products: ["光模块"], sourceId: profileSource.sourceId }, knownSourceIds: [profileSource.sourceId] },
+    sources: [profileSource],
+  });
+  const routing = matchLocalIndustryTemplate(baseline);
+  assert.equal(routing.routingState, "confirmed");
+  assert.equal(routing.industryTemplateId, "technology-equipment.v1");
+  assert.equal(routing.mappingReason.code, "eastmoney_em2016_exact");
 });
 
 test("stage artifacts expose the protocol step key to projection helpers", () => {
@@ -198,8 +214,11 @@ test("final-report prompt sends only live market facts as plain text", () => {
   assert.match(prompt, /最新价格：1420\.5 CNY/);
   assert.match(prompt, /PE（TTM）：21\.8/);
   assert.doesNotMatch(prompt, /NETPROFIT|不应发送的本地财报来源|<input_data>|\{\s*"/);
-  assert.deepEqual(buildFinalReportModelPrompt({ model: "gpt-5.6-luna", input, template: "任务\n\n{{INPUT_CONTEXT}}" }), { model: "gpt-5.6-luna", userPrompt: prompt });
-  assert.equal(Object.hasOwn(buildFinalReportModelPrompt({ model: "gpt-5.6-luna", input, template: "任务\n\n{{INPUT_CONTEXT}}" }), "instructions"), false);
+  assert.deepEqual(buildFinalReportModelPrompt({ model: "gpt-5.6-luna", input, template: "任务\n\n{{INPUT_CONTEXT}}" }), {
+    model: "gpt-5.6-luna",
+    instructions: "你是严谨的投资研究员。只使用本阶段允许的证据；不以模型记忆填补缺口；严格按输出格式返回。",
+    userPrompt: prompt,
+  });
 });
 
 test("target runner preserves S1-S7 wave shape and keeps Markdown/JSON parsers separate", () => {
@@ -210,7 +229,7 @@ test("target runner preserves S1-S7 wave shape and keeps Markdown/JSON parsers s
   assert.equal(parseLowDependencyStageOutput("company_facts", "{\"status\":\"complete\"}"), "{\"status\":\"complete\"}");
 });
 
-test("work-package input projects only declared upstream package artifacts", () => {
+test("foundation package projects no undeclared upstream artifacts", () => {
   const baseInput = {
     context: { contextVersion: "research-context.v1", inputFingerprint: "fp", company: { name: "测试公司" }, security: { securityCode: "300308.SZ" }, financialSnapshot: { schemaVersion: "financial.v1" } },
     financialContext: { descriptor: { schemaVersion: "financial.v1" }, financialAnalysis: { incomeStatement: [], balanceSheet: [], cashFlowStatement: [] } },
@@ -222,11 +241,10 @@ test("work-package input projects only declared upstream package artifacts", () 
     ["financial_quality", { artifactId: "llm-artifact:s6", stepKey: "financial_quality", status: "complete", output: "# quality" }],
     ["stale_unrelated", { artifactId: "llm-artifact:stale", status: "complete", output: "should not leak" }],
   ]);
-  const external = buildLowDependencyWorkPackageInput({ packageKey: "external_evidence", baseInput, artifactsByKey: artifacts });
-  assert.deepEqual(Object.keys(external.upstreamArtifacts).sort(), ["engineering_baseline", "local_routing_match"]);
-  const synthesis = buildLowDependencyWorkPackageInput({ packageKey: "investment_synthesis", baseInput, artifactsByKey: artifacts });
-  assert.deepEqual(Object.keys(synthesis.upstreamArtifacts).sort(), ["company_facts", "financial_quality"]);
-  assert.equal(synthesis.inputFingerprint, "fp");
+  const foundation = buildLowDependencyWorkPackageInput({ packageKey: "foundation", baseInput, artifactsByKey: artifacts });
+  assert.deepEqual(Object.keys(foundation.upstreamArtifacts), []);
+  assert.deepEqual(Object.keys(foundation.stageInputs).sort(), ["engineering_baseline", "local_routing_match"]);
+  assert.equal(foundation.inputFingerprint, "fp");
 });
 
 test("targeted rerun invalidates only selected stages and dependency descendants", () => {
