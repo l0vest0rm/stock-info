@@ -47,8 +47,9 @@ type FinanceTabKey = 'analysis' | 'core' | 'income' | 'balance' | 'cashflow'
 
 type FinancialAnalysisState = {
   availability: 'empty' | 'pending' | 'available' | 'failed'
-  task: { status?: string; requestedReasoningEffort?: string | null; lastErrorMessage?: string | null; completedAt?: number | null } | null
+  task: { status?: string; requestedReasoningEffort?: string | null; lastErrorMessage?: string | null; completedAt?: number | null; updatedAt?: number | null } | null
   snapshot: {
+    asOf?: string | null
     dataQuality?: { status?: string; sourcePolicy?: string; statutoryVerification?: { status?: string; reason?: string } }
     periodCoverage?: { annual?: string[]; quarterly?: string[]; ttmEndDate?: string | null }
     deterministicFlags?: Array<{ ruleId: string; severity: string; title: string; period: string; value: number; unit: string }>
@@ -123,6 +124,22 @@ function renderFinancialAnalysisMarkdown(markdown: string) {
   return blocks
 }
 
+function formatFinancialAnalysisTimestamp(value: number | null | undefined): string {
+  if (!Number.isFinite(value)) return ''
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(Number(value)))
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value || ''
+  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
+}
+
 function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: { generating: boolean; error: string | null; generate: () => Promise<void>; resume: () => Promise<void> }) {
   const code = codeFromUrl()
   if (!code) return h('section', { class: 'card border-info mb-3' }, [h('div', { class: 'card-body text-muted' }, '请选择单只股票后生成深入财务分析；多股票对比仍使用下方图表和三表。')])
@@ -130,15 +147,28 @@ function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: 
   const quality = snapshot?.dataQuality
   const flags = snapshot?.deterministicFlags || []
   const status = state?.availability === 'available' ? '已完成' : state?.availability === 'failed' ? '失败' : state?.availability === 'pending' ? '生成中' : '尚未生成'
+  const reportGeneratedAt = formatFinancialAnalysisTimestamp(state?.task?.completedAt)
+  const lastUpdatedAt = formatFinancialAnalysisTimestamp(state?.task?.updatedAt)
+  const dataAsOf = typeof snapshot?.asOf === 'string' && snapshot.asOf.trim() ? snapshot.asOf.trim() : snapshot?.periodCoverage?.ttmEndDate || ''
+  const statusSummary = [
+    `单证券 · ${code} · ${status}`,
+    reportGeneratedAt ? `生成于 ${reportGeneratedAt}` : '',
+  ].filter(Boolean).join(' · ')
+  const timingSummary = [
+    reportGeneratedAt ? `报告生成：${reportGeneratedAt}` : '',
+    dataAsOf ? `数据截至：${dataAsOf}` : '',
+    !reportGeneratedAt && lastUpdatedAt ? `最近更新：${lastUpdatedAt}` : '',
+  ].filter(Boolean).join('；')
   return h('section', { class: 'card border-primary mb-3', id: 'financial-analysis' }, [
     h('div', { class: 'card-header d-flex align-items-center justify-content-between gap-2 flex-wrap' }, [
-      h('div', [h('strong', '深入财务分析'), h('small', { class: 'text-muted ms-2' }, `单证券 · ${code} · ${status}`)]),
+      h('div', [h('strong', '深入财务分析'), h('small', { class: 'text-muted ms-2' }, statusSummary)]),
       h('div', { class: 'd-flex gap-2' }, [
         h('button', { class: 'btn btn-sm btn-primary', disabled: options.generating, onClick: options.generate }, options.generating ? '正在提交…' : '生成/刷新'),
         state?.resume?.available ? h('button', { class: 'btn btn-sm btn-outline-primary', disabled: options.generating, onClick: options.resume }, '恢复失败任务') : null,
       ]),
     ]),
     h('div', { class: 'card-body' }, [
+      timingSummary ? h('p', { class: 'small text-muted mb-2' }, timingSummary) : null,
       quality ? h('p', { class: 'small text-muted mb-2' }, `数据：${quality.status || 'unknown'}；${quality.sourcePolicy || '来源待载入'}；法定核验：${quality.statutoryVerification?.status || 'unknown'}。${quality.statutoryVerification?.reason || ''}`) : h('p', { class: 'small text-muted' }, '尚无冻结的财务分析输入。'),
       snapshot?.periodCoverage ? h('p', { class: 'small text-muted' }, `覆盖：年度 ${snapshot.periodCoverage.annual?.join('、') || '—'}；季度 ${snapshot.periodCoverage.quarterly?.join('、') || '—'}；TTM 截至 ${snapshot.periodCoverage.ttmEndDate || '—'}。`) : null,
       options.error ? h('p', { class: 'alert alert-danger py-2 small' }, options.error) : null,
