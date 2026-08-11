@@ -68,6 +68,61 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return payload.data as T
 }
 
+/** Persisted model output is rendered as VNodes, never injected as HTML. */
+function inlineMarkdown(source: string): Array<string | ReturnType<typeof h>> {
+  const nodes: Array<string | ReturnType<typeof h>> = []
+  const pattern = /(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\[[^\]]+\]\((?:https?:\/\/)[^)\s]+\))/g
+  let offset = 0
+  for (const match of source.matchAll(pattern)) {
+    const start = match.index ?? 0
+    if (start > offset) nodes.push(source.slice(offset, start))
+    const token = match[0]
+    if (token.startsWith('**') || token.startsWith('__')) nodes.push(h('strong', token.slice(2, -2)))
+    else if (token.startsWith('`')) nodes.push(h('code', token.slice(1, -1)))
+    else {
+      const link = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(token)
+      nodes.push(link ? h('a', { href: link[2], target: '_blank', rel: 'noreferrer' }, link[1]) : token)
+    }
+    offset = start + token.length
+  }
+  if (offset < source.length) nodes.push(source.slice(offset))
+  return nodes
+}
+
+function renderFinancialAnalysisMarkdown(markdown: string) {
+  const lines = markdown.replace(/\r\n?/g, '\n').split('\n').map((line) => line.trim())
+  const blocks: Array<string | ReturnType<typeof h>> = []
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index]
+    if (!line) { index += 1; continue }
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line)
+    if (heading) {
+      blocks.push(h(`h${Math.min(heading[1].length, 4)}`, { key: `heading-${index}` }, inlineMarkdown(heading[2])))
+      index += 1
+      continue
+    }
+    const list = /^([-*+] |\d+\. )(.+)$/.exec(line)
+    if (list) {
+      const ordered = /^\d+\. /.test(line)
+      const matcher = ordered ? /^\d+\.\s+(.+)$/ : /^[-*+]\s+(.+)$/
+      const items: string[] = []
+      while (index < lines.length) {
+        const item = matcher.exec(lines[index])
+        if (!item) break
+        items.push(item[1])
+        index += 1
+      }
+      blocks.push(h(ordered ? 'ol' : 'ul', { key: `list-${index}` }, items.map((item, itemIndex) => h('li', { key: itemIndex }, inlineMarkdown(item)))))
+      continue
+    }
+    const paragraph = [line]
+    index += 1
+    while (index < lines.length && lines[index] && !/^#{1,6}\s+|^[-*+]\s+|^\d+\.\s+/.test(lines[index])) paragraph.push(lines[index++])
+    blocks.push(h('p', { key: `paragraph-${index}` }, inlineMarkdown(paragraph.join(' '))))
+  }
+  return blocks
+}
+
 function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: { generating: boolean; error: string | null; generate: () => Promise<void>; resume: () => Promise<void> }) {
   const code = codeFromUrl()
   if (!code) return h('section', { class: 'card border-info mb-3' }, [h('div', { class: 'card-body text-muted' }, '请选择单只股票后生成深入财务分析；多股票对比仍使用下方图表和三表。')])
@@ -88,7 +143,7 @@ function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: 
       snapshot?.periodCoverage ? h('p', { class: 'small text-muted' }, `覆盖：年度 ${snapshot.periodCoverage.annual?.join('、') || '—'}；季度 ${snapshot.periodCoverage.quarterly?.join('、') || '—'}；TTM 截至 ${snapshot.periodCoverage.ttmEndDate || '—'}。`) : null,
       options.error ? h('p', { class: 'alert alert-danger py-2 small' }, options.error) : null,
       flags.length ? h('div', { class: 'mb-3' }, [h('strong', { class: 'small' }, '工程触发的财务风险信号'), h('ul', { class: 'small mb-0 mt-1' }, flags.map((flag) => h('li', { key: flag.ruleId }, `[${flag.severity}] ${flag.title}（${flag.period}，${flag.value}${flag.unit}）`)))]) : null,
-      state?.report?.markdown ? h('article', { class: 'company-finance-analysis-markdown' }, state.report.markdown) : h('p', { class: 'text-muted mb-0' }, '报告生成后会在此展示；模型只解释工程冻结的三表指标、缺口和风险信号。'),
+      state?.report?.markdown ? h('article', { class: 'company-finance-analysis-markdown' }, renderFinancialAnalysisMarkdown(state.report.markdown)) : h('p', { class: 'text-muted mb-0' }, '报告生成后会在此展示；模型只解释工程冻结的三表指标、缺口和风险信号。'),
       state?.report?.citations?.length ? h('div', { class: 'mt-3 small' }, [h('strong', '引用：'), ...state.report.citations.map((citation, index) => citation.url ? h('a', { class: 'ms-2', key: `${citation.url}-${index}`, href: citation.url, target: '_blank', rel: 'noreferrer' }, citation.title || citation.url) : null)]) : null,
     ]),
   ])

@@ -13,7 +13,19 @@ const answer = (markdown) => ({
   content: { markdown },
   citations: [{ text: "source", url: "https://example.test/source", title: "Source" }],
   sources: [{ text: "source", url: "https://example.test/source", title: "Source" }],
-  rawSnapshot: { provider: "chatgpt-web", complete: true },
+  rawSnapshot: { provider: "chatgpt-web", complete: true, terminalSignals: ["sse_done", "dom_stable"] },
+});
+
+const terminalEvidence = (markdown = "final answer") => ({
+  schemaVersion: "webqa.completion-evidence.v1",
+  outcome: "succeeded",
+  provider: "chatgpt-web",
+  providerUrl: "https://chatgpt.com/c/provider-session",
+  resultKind: "text",
+  signals: ["dom_stable", "sse_done"],
+  contentSha256: `sha256:${markdown.length}`,
+  contentChars: markdown.length,
+  terminalAt: "2026-08-11T00:00:00Z",
 });
 
 const config = {
@@ -80,7 +92,7 @@ test("WebQA submits once, persists task id, polls terminal state, and writes no 
   const snapshots = [
     { task_id: "gateway-task:1", status: "queued", platform: config.platform, conversation_id: "request-session", provider: config.provider, answer: answer("") },
     { task_id: "gateway-task:1", status: "streaming", platform: config.platform, conversation_id: "request-session", provider: config.provider, answer: answer("partial answer") },
-    { task_id: "gateway-task:1", status: "completed", platform: config.platform, conversation_id: "request-session", conversation_id_provider: "provider-session", provider: config.provider, provider_url: "https://chatgpt.com/c/provider-session", answer: answer("final answer"), events: [{ status: "completed", at: "2026-08-10T00:00:00Z", message: "done" }] },
+    { task_id: "gateway-task:1", status: "succeeded", platform: config.platform, conversation_id: "request-session", conversation_id_provider: "provider-session", provider: config.provider, provider_url: "https://chatgpt.com/c/provider-session", answer: answer("final answer"), terminal_evidence: terminalEvidence("final answer"), events: [{ status: "succeeded", at: "2026-08-10T00:00:00Z", message: "done" }] },
   ];
   const gateway = {
     async submit(request) { calls.push({ kind: "submit", request }); return snapshots[0]; },
@@ -140,7 +152,7 @@ test("a transient gateway restart retries the saved task instead of failing the 
     async get() {
       reads += 1;
       if (reads === 1) throw new WebQaAdapterError("webqa_gateway_unavailable", "WebQA gateway request failed: fetch failed");
-      return { task_id: "gateway-task:restart", status: "completed", provider: config.provider, answer: answer("recovered final answer") };
+      return { task_id: "gateway-task:restart", status: "succeeded", provider: config.provider, answer: answer("recovered final answer"), terminal_evidence: terminalEvidence("recovered final answer") };
     },
     async cancel() { throw new Error("cancel should not run"); },
   };
@@ -165,9 +177,31 @@ test("accepted WebQA tasks may omit an answer until the provider completes", () 
   assert.equal(snapshot.status, "queued");
   assert.equal(snapshot.answer, null);
   assert.throws(
-    () => normalizeWebQaSnapshot({ task_id: "gateway-task:completed", status: "completed", provider: "chatgpt-web", answer: null }),
+    () => normalizeWebQaSnapshot({ task_id: "gateway-task:succeeded", status: "succeeded", provider: "chatgpt-web", answer: null }),
     /completed task lacks structured answer/,
   );
+  assert.throws(
+    () => normalizeWebQaSnapshot({ task_id: "gateway-task:unverified", status: "succeeded", provider: "chatgpt-web", answer: answer("prefix") }),
+    /without completionEvidence/,
+  );
+});
+
+test("legacy completed and incomplete gateway states never become generic success", async () => {
+  const persisted = [];
+  const gateway = {
+    async submit() { return { task_id: "gateway-task:legacy", status: "completed", provider: config.provider, answer: answer("old prefix") }; },
+    async get() { return { task_id: "gateway-task:legacy", status: "completed", provider: config.provider, answer: answer("old prefix") }; },
+    async cancel() { throw new Error("legacy terminal must not be cancelled"); },
+  };
+  await runWebQaJob(job(), "runner:webqa-test", {
+    config,
+    gateway,
+    sleep: async () => {},
+    runtimePost: async (path, body) => { persisted.push({ path, body }); return { active: true }; },
+  });
+  const failure = persisted.find((item) => item.path.endsWith("/fail"));
+  assert.equal(failure.body.errorCode, "webqa_legacy_completion_unverified");
+  assert.equal(persisted.some((item) => item.path.endsWith("/complete")), false);
 });
 
 test("bounded WebQA timeout requests gateway cancellation and waits for cancelled terminal state", async () => {

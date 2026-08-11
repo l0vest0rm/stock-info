@@ -7,11 +7,16 @@
     {"id":"net_profit_yoy_decline","observationKind":"yoy","metric":"net_profit","frequency":"quarterly","operator":"lt","threshold":0,"severity":"high","title":"净利润同比下降"},
     {"id":"operating_margin_contraction","observationKind":"operating_margin","frequency":"ttm","operator":"delta_lt","threshold":-3,"severity":"medium","title":"TTM 营业利润率收缩超过 3 个百分点"},
     {"id":"cash_conversion_weak","observationKind":"cash_conversion","frequency":"ttm","operator":"lt","threshold":80,"severity":"high","title":"TTM 经营现金流/净利润低于 80%"},
+    {"id":"cash_conversion_deteriorating","observationKind":"cash_conversion","frequency":"ttm","operator":"delta_lt","threshold":-20,"severity":"medium","title":"TTM 经营现金流/净利润较上期下降超过 20 个百分点"},
     {"id":"free_cash_flow_negative","observationKind":"free_cash_flow","frequency":"ttm","operator":"lt","threshold":0,"severity":"medium","title":"TTM 自由现金流为负"},
     {"id":"receivables_buildup","observationKind":"receivables_to_revenue","frequency":"quarterly","operator":"delta_gt","threshold":3,"severity":"medium","title":"应收占收入比上升超过 3 个百分点"},
     {"id":"inventory_buildup","observationKind":"inventory_to_revenue","frequency":"quarterly","operator":"delta_gt","threshold":3,"severity":"medium","title":"存货占收入比上升超过 3 个百分点"},
     {"id":"leverage_high","observationKind":"debt_to_equity","frequency":"annual","operator":"gt","threshold":100,"severity":"medium","title":"债务/权益高于 100%"},
     {"id":"interest_coverage_low","observationKind":"interest_coverage","frequency":"ttm","operator":"lt","threshold":2,"severity":"high","title":"TTM 利息覆盖低于 2 倍"},
+    {"id":"current_ratio_low","observationKind":"current_ratio","frequency":"quarterly","operator":"lt","threshold":1,"severity":"high","title":"流动比率低于 1 倍"},
+    {"id":"quick_ratio_low","observationKind":"quick_ratio","frequency":"quarterly","operator":"lt","threshold":0.7,"severity":"medium","title":"速动比率低于 0.7 倍"},
+    {"id":"cash_conversion_cycle_lengthening","observationKind":"cash_conversion_cycle","frequency":"quarterly","operator":"delta_gt","threshold":15,"severity":"medium","title":"现金转换周期较上期延长超过 15 天"},
+    {"id":"roic_contraction","observationKind":"return_on_invested_capital","frequency":"ttm","operator":"delta_lt","threshold":-5,"severity":"medium","title":"TTM ROIC 较上期下降超过 5 个百分点"},
     {"id":"dilution_accelerating","observationKind":"net_dilution_rate","frequency":"annual","operator":"gt","threshold":3,"severity":"medium","title":"稀释后股数年增幅超过 3%"}
   ]
 }

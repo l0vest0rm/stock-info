@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const WEBQA_ARTIFACT_STEP = "raw_model";
-const WEBQA_STATUSES = new Set(["queued", "waiting_for_browser", "streaming", "recovering", "cancelling", "completed", "failed", "cancelled"]);
+const WEBQA_STATUSES = new Set(["queued", "waiting_for_browser", "streaming", "finalizing", "recovering", "cancelling", "succeeded", "incomplete", "completed", "failed", "cancelled"]);
 
 /** A stable, user-visible error code that survives the generic runner boundary. */
 export class WebQaAdapterError extends Error {
@@ -105,7 +105,11 @@ export function normalizeWebQaSnapshot(value) {
   // The gateway deliberately stores `answer: null` until the provider has a
   // terminal result.  Requiring an answer while a task is queued/streaming
   // turns a valid accepted task into an immediate local failure.
-  const answer = normalizeWebQaAnswer(item.answer, { required: status === "completed" });
+  const answer = normalizeWebQaAnswer(item.answer, { required: status === "succeeded" });
+  const terminalEvidence = normalizeTerminalEvidence(item.terminal_evidence);
+  if (status === "succeeded" && !terminalEvidence) {
+    throw new WebQaAdapterError("webqa_unverified_completion", "WebQA succeeded without completionEvidence.v1");
+  }
   return {
     taskId,
     mode: text(item.mode),
@@ -116,6 +120,7 @@ export function normalizeWebQaSnapshot(value) {
     idempotencyKey: text(item.idempotency_key),
     reasoningEffort: text(item.reasoning_effort),
     answer,
+    terminalEvidence,
     providerConversationId: text(item.conversation_id_provider),
     providerUrl: text(item.provider_url),
     error: text(item.error),
@@ -146,6 +151,24 @@ function normalizeWebQaAnswer(value, { required = true } = {}) {
     sources: value.sources,
     rawSnapshot: value.rawSnapshot,
   };
+}
+
+function normalizeTerminalEvidence(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const signals = Array.isArray(value.signals) ? value.signals.map(text).filter(Boolean) : [];
+  const evidence = {
+    schemaVersion: text(value.schemaVersion),
+    outcome: text(value.outcome),
+    provider: text(value.provider),
+    providerUrl: text(value.providerUrl),
+    resultKind: text(value.resultKind),
+    signals,
+    contentSha256: text(value.contentSha256),
+    contentChars: Number.isInteger(value.contentChars) && value.contentChars >= 0 ? value.contentChars : null,
+    terminalAt: text(value.terminalAt),
+  };
+  if (evidence.schemaVersion !== "webqa.completion-evidence.v1" || evidence.outcome !== "succeeded" || !evidence.signals.length || !evidence.contentSha256 || !evidence.terminalAt) return null;
+  return evidence;
 }
 
 function answerMarkdown(answer) {
@@ -268,10 +291,11 @@ export async function runWebQaJob(job, owner, {
         throw normalized;
       }
       await persistProgress(latest);
-      if (latest.status === "completed") {
+      if (latest.status === "succeeded") {
         if (!answerMarkdown(latest.answer) && !hasGeneratedOutput(latest.raw)) {
           throw new WebQaAdapterError("webqa_empty_completion", "WebQA completed without structured answer or generated output");
         }
+        assertArtifactContract(readRawModelRequest(job).artifactContract, latest);
         const terminalMetadata = terminalMetadataFor(latest, request, externalTaskId);
         if (typeof onCompleted === "function") {
           await onCompleted({ job, owner, snapshot: latest, request, externalTaskId, terminalMetadata });
@@ -305,6 +329,11 @@ export async function runWebQaJob(job, owner, {
         });
         return { taskId: externalTaskId, snapshot: latest };
       }
+      if (latest.status === "incomplete" || latest.status === "completed") {
+        const code = latest.status === "completed" ? "webqa_legacy_completion_unverified" : "webqa_incomplete";
+        await failRun(runtimePost, job, owner, code, latest.error || "WebQA stream ended without verified terminal evidence", terminalMetadataFor(latest, request, externalTaskId));
+        return { taskId: externalTaskId, snapshot: latest };
+      }
       if (latest.status === "failed") {
         await failRun(runtimePost, job, owner, stableGatewayError(latest.error, "webqa_provider_failed"), latest.error || "WebQA provider failed", terminalMetadataFor(latest, request, externalTaskId));
         return { taskId: externalTaskId, snapshot: latest };
@@ -326,7 +355,7 @@ export async function runWebQaJob(job, owner, {
     }
     const cancelDeadline = now() + normalizedConfig.cancelGraceMs;
     while (now() <= cancelDeadline) {
-      if (latest.status === "completed") {
+      if (latest.status === "succeeded") {
         // The provider completed while cancellation was being requested; do
         // not discard a terminal answer.
         return await completeFromSnapshot({ latest, request, externalTaskId, job, owner, runtimePost, persistProgress, onCompleted });
@@ -351,6 +380,7 @@ export async function runWebQaJob(job, owner, {
 
 async function completeFromSnapshot({ latest, request, externalTaskId, job, owner, runtimePost, persistProgress, onCompleted }) {
   if (!answerMarkdown(latest.answer) && !hasGeneratedOutput(latest.raw)) throw new WebQaAdapterError("webqa_empty_completion", "WebQA completed without structured answer or generated output");
+  assertArtifactContract(readRawModelRequest(job).artifactContract, latest);
   const terminalMetadata = terminalMetadataFor(latest, request, externalTaskId);
   if (typeof onCompleted === "function") {
     await onCompleted({ job, owner, snapshot: latest, request, externalTaskId, terminalMetadata });
@@ -368,6 +398,25 @@ async function completeFromSnapshot({ latest, request, externalTaskId, job, owne
   });
   await runtimePost(`/api/llm-tasks/${encodeURIComponent(job.runId)}/complete`, { taskId: job.taskId, runnerInstanceId: owner, attempt: job.attempt, status: "completed", metadata: terminalMetadata });
   return { taskId: externalTaskId, snapshot: latest };
+}
+
+/** The provider terminal state and a caller-owned artifact contract are
+ * separate gates. This generic validator deliberately knows only the declared
+ * contract, never a business task type or provider/UI completion heuristic. */
+function assertArtifactContract(contract, snapshot) {
+  if (!contract || typeof contract !== "object" || Array.isArray(contract)) return;
+  if (text(contract.kind) !== "markdown_h1") throw new WebQaAdapterError("webqa_artifact_contract_invalid", "unsupported WebQA artifact contract");
+  const markdown = answerMarkdown(snapshot.answer).trim();
+  const headings = markdown.match(/^#\s+.+$/gm) || [];
+  const requiredH1Count = positiveInteger(contract.requiredH1Count, 0);
+  const minimumCharacters = positiveInteger(contract.minimumCharacters, 0);
+  const prefix = text(contract.requiredH1Prefix);
+  const matchingHeadings = contract.numberedH1 === true
+    ? headings.filter((heading) => /^#\s+[1-9]\d*\.\s+.+$/.test(heading))
+    : prefix ? headings.filter((heading) => heading.startsWith(prefix)) : headings;
+  if (markdown.length < minimumCharacters || (requiredH1Count > 0 && (matchingHeadings.length !== requiredH1Count || headings.length !== requiredH1Count))) {
+    throw new WebQaAdapterError("webqa_artifact_contract_invalid", `WebQA Markdown artifact violates its contract: received ${markdown.length} characters and ${matchingHeadings.length}/${requiredH1Count} required H1 sections`);
+  }
 }
 
 async function failRun(runtimePost, job, owner, errorCode, errorMessage, metadata) {
@@ -490,6 +539,7 @@ function terminalMetadataFor(snapshot, request, taskId) {
     mode: snapshot.mode || request.mode,
     reasoningEffort: snapshot.reasoningEffort || request.reasoning_effort,
     cancelRequested: snapshot.cancelRequested,
+    completionEvidence: snapshot.terminalEvidence,
     events: snapshot.events,
     updatedAt: snapshot.updatedAt,
     ...(text(request.recoveredFromRunId) ? { recoveredFromRunId: text(request.recoveredFromRunId) } : {}),

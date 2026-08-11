@@ -2,8 +2,8 @@ import riskRulesJson from "../../../../config/research-financial-analysis-risk-r
 import type { ResearchFinancialFrequency, ResearchFinancialMetric, ResearchFinancialObservation, ResearchFinancialQuality, ResearchFinancialSeries, ResearchFinancialSeriesPoint } from "./research-financial-quality";
 
 export const FINANCIAL_ANALYSIS_PROTOCOL_VERSION = "financial-analysis-input.v1";
-export const FINANCIAL_ANALYSIS_PROMPT_VERSION = "financial-analysis.webqa.v1";
-export const FINANCIAL_ANALYSIS_CODE_VERSION = "financial-analysis-code.v1";
+export const FINANCIAL_ANALYSIS_PROMPT_VERSION = "financial-analysis.webqa.v3";
+export const FINANCIAL_ANALYSIS_CODE_VERSION = "financial-analysis-code.v3";
 export const FINANCIAL_ANALYSIS_ORIGIN_TASK_TYPE = "research_financial_analysis";
 export const FINANCIAL_ANALYSIS_TARGET_TYPE = "research_financial_analysis";
 
@@ -38,10 +38,21 @@ export type FinancialAnalysisSnapshot = {
     gaps: unknown[];
   };
   periodCoverage: { annual: string[]; quarterly: string[]; ttmEndDate: string | null };
-  reportedFacts: Array<{ metric: string; frequency: string; basisId: string; unit: string; points: Array<{ period: string; status: string; value: number | null; formula: string; reasonCodes: string[]; factIds: string[] }> }>;
-  derivedObservations: Array<{ id: string; kind: string; metric: string; frequency: string; period: string; comparisonPeriod: string | null; status: string; value: number | null; unit: string; formula: string; reasonCodes: string[]; factIds: string[] }>;
+  reportedFacts: Array<{ metric: string; frequency: string; basisId: string; unit: string; points: Array<{ period: string; status: string; value: number | null; formula: string; reasonCodes: string[]; factIds: string[]; sources: FinancialAnalysisSourceReference[] }> }>;
+  derivedObservations: Array<{ id: string; kind: string; metric: string; frequency: string; period: string; comparisonPeriod: string | null; status: string; value: number | null; unit: string; formula: string; reasonCodes: string[]; factIds: string[]; sources: FinancialAnalysisSourceReference[] }>;
   deterministicFlags: FinancialAnalysisRiskFlag[];
   lineage: { factIds: string[]; sourceIds: string[]; inputFingerprint: string };
+};
+
+/** A small, immutable source projection lets the model cite a fact without
+ * receiving provider payloads or inventing an alternative source. */
+type FinancialAnalysisSourceReference = {
+  sourceId: string;
+  sourceType: string;
+  documentId?: string;
+  url?: string;
+  publishedAt?: string;
+  locator?: string;
 };
 
 const coreMetrics = new Set<ResearchFinancialMetric>([
@@ -132,12 +143,120 @@ export function buildFinancialAnalysisRiskFlags(observations: ResearchFinancialO
 }
 
 export function financialAnalysisPrompt(snapshot: FinancialAnalysisSnapshot): string {
-  return `你是严谨的上市公司财务研究员。只使用 <input_data> 内的事实、确定性指标、风险触发与附注证据；不得使用模型记忆、搜索结果或常识补齐数字，也不得重新计算任何数值。\n\n数据数值以 reportedFacts 与 derivedObservations 为唯一主来源。deterministicFlags 是工程规则触发，不等于造假或最终结论；你必须解释可能原因、反证和下期验证项。status 为 missing、incomparable、not_applicable 的指标必须如实说明，不得当作零或安全。dataQuality 为 partial/blocked 时，先说明受影响的核验范围。不得输出目标价、交易建议或总分。\n\n只输出中文 Markdown，并且只包含以下八个 H1：\n# 1. 数据覆盖、口径与可信度\n# 2. 收入增长、同比环比与盈利能力\n# 3. 利润质量、现金流与营运资本\n# 4. 资本效率、再投资与 ROIC\n# 5. 资产负债表、债务与流动性压力\n# 6. 每股价值、稀释与资本配置\n# 7. 财务风险隐患、反证与下期监控\n# 8. 条件化财务综合结论\n\n每项判断均写“依据：observationId/factId”；不得把缺失项隐去。\n\n<input_data>\n${JSON.stringify(snapshot)}\n</input_data>`;
+  return `你是严谨的上市公司财务研究员。只使用 <input_data> 内的事实、确定性指标、风险触发与附注证据；不得使用模型记忆、搜索结果或常识补齐数字，也不得重新计算任何数值。\n\n数据数值以 reportedFacts 与 derivedObservations 为唯一主来源。deterministicFlags 是工程规则触发，不等于造假或最终结论；你必须解释可能原因、反证和下期验证项。status 为 missing、incomparable、not_applicable 的指标必须如实说明，不得当作零或安全。dataQuality 为 partial/blocked 时，先说明受影响的核验范围。不得输出目标价、交易建议或总分。\n\n只输出中文 Markdown，并且只包含以下八个 H1：\n# 1. 数据覆盖、口径与可信度\n# 2. 收入增长、同比环比与盈利能力\n# 3. 利润质量、现金流与营运资本\n# 4. 资本效率、再投资与 ROIC\n# 5. 资产负债表、债务与流动性压力\n# 6. 每股价值、稀释与资本配置\n# 7. 财务风险隐患、反证与下期监控\n# 8. 条件化财务综合结论\n\n每项判断均写“依据：observationId/factId”；不得把缺失项隐去。\n\n<input_data>\n${JSON.stringify(compactFinancialAnalysisPromptInput(snapshot))}\n</input_data>`;
+}
+
+/** Do not spend a model run on a report that lacks one of the primary
+ * statements.  A partial statutory verification remains analysable and is
+ * disclosed in the report; an unavailable primary three-statement input is
+ * not. */
+export function assertFinancialAnalysisSnapshotCanRun(snapshot: FinancialAnalysisSnapshot): void {
+  if (snapshot.dataQuality.status !== "blocked") return;
+  const unavailable = snapshot.dataQuality.statements
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => item as Record<string, unknown>)
+    .filter((item) => Number(item.rows ?? 0) <= 0 || (item.sourceHealth && typeof item.sourceHealth === "object" && (item.sourceHealth as Record<string, unknown>).status === "failed"))
+    .map((item) => String(item.statementType ?? "unknown"));
+  throw new Error(`financial analysis is blocked until all primary statements are available${unavailable.length ? `: ${unavailable.join(", ")}` : ""}`);
+}
+
+/** The full frozen snapshot is durable audit evidence.  WebQA receives a
+ * bounded projection instead: enough history to analyse, never a repeated
+ * copy of every provenance chain and every unavailable observation. */
+function compactFinancialAnalysisPromptInput(snapshot: FinancialAnalysisSnapshot) {
+  const flagObservationIds = new Set(snapshot.deterministicFlags.flatMap((flag) => [flag.observationId, flag.comparisonObservationId].filter(Boolean)));
+  const latestBySeries = new Map<string, number>();
+  for (const observation of [...snapshot.derivedObservations].sort(compareProjectedObservation)) {
+    const key = `${observation.kind}:${observation.metric}:${observation.frequency}`;
+    latestBySeries.set(key, (latestBySeries.get(key) ?? 0) + 1);
+  }
+  const promptObservations = snapshot.derivedObservations
+    .filter((item) => item.status === "available")
+    .sort(compareProjectedObservation)
+    .filter((item) => {
+      const key = `${item.kind}:${item.metric}:${item.frequency}`;
+      const rank = latestBySeries.get(key) ?? 0;
+      latestBySeries.set(key, rank - 1);
+      return rank <= 2 || flagObservationIds.has(item.id);
+    })
+    .map(({ id, kind, metric, frequency, period, comparisonPeriod, status, value, unit, formula }) => ({ reference: compactObservationReference(id), kind, metric, frequency, period, comparisonPeriod, status, value, unit, formula }));
+  return {
+    schemaVersion: snapshot.schemaVersion,
+    codeVersion: snapshot.codeVersion,
+    securityCode: snapshot.securityCode,
+    asOf: snapshot.asOf,
+    entityType: snapshot.entityType,
+    dataQuality: {
+      status: snapshot.dataQuality.status,
+      sourcePolicy: snapshot.dataQuality.sourcePolicy,
+      statutoryVerification: snapshot.dataQuality.statutoryVerification,
+      statements: snapshot.dataQuality.statements.map(compactStatementHealth),
+      gapSummary: summarizeGaps(snapshot.dataQuality.gaps),
+    },
+    periodCoverage: snapshot.periodCoverage,
+    reportedFacts: snapshot.reportedFacts.flatMap(compactReportedFactSeries),
+    derivedObservations: promptObservations,
+    deterministicFlags: snapshot.deterministicFlags.map(compactRiskFlag),
+    lineage: { inputFingerprint: snapshot.lineage.inputFingerprint, factCount: snapshot.lineage.factIds.length, sourceCount: snapshot.lineage.sourceIds.length, fullSnapshotPersisted: true },
+  };
+}
+
+const annualPromptMetrics = new Set(["revenue", "gross_profit", "operating_profit", "net_profit", "operating_cash_flow", "capital_expenditure", "diluted_weighted_average_shares"]);
+const quarterlyFlowPromptMetrics = new Set(["revenue", "gross_profit", "operating_profit", "net_profit", "operating_cash_flow", "capital_expenditure"]);
+const quarterlyBalancePromptMetrics = new Set(["cash", "total_debt", "total_equity", "current_assets", "current_liabilities", "trade_receivables", "inventory", "trade_payables", "diluted_shares"]);
+
+function compactReportedFactSeries(series: FinancialAnalysisSnapshot["reportedFacts"][number]) {
+  const metricAllowed = series.frequency === "annual" ? annualPromptMetrics.has(series.metric)
+    : quarterlyFlowPromptMetrics.has(series.metric) || quarterlyBalancePromptMetrics.has(series.metric);
+  if (!metricAllowed) return [];
+  const limit = series.frequency === "quarterly" && quarterlyBalancePromptMetrics.has(series.metric) ? 2 : 8;
+  const points = series.points.slice(-limit).map(({ period, status, value }) => ({ period, status, value, reference: `fact:${series.metric}:${series.frequency}:${period}` }));
+  return points.length ? [{ metric: series.metric, frequency: series.frequency, basisId: series.basisId, unit: series.unit, points }] : [];
+}
+
+function compactStatementHealth(value: unknown) {
+  const item = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const sourceHealth = item.sourceHealth && typeof item.sourceHealth === "object" && !Array.isArray(item.sourceHealth) ? item.sourceHealth as Record<string, unknown> : {};
+  return { statementType: item.statementType ?? null, rows: item.rows ?? 0, originProviders: item.originProviders ?? [], reportingCurrencies: item.reportingCurrencies ?? [], latestReportDate: item.latestReportDate ?? null, sourceHealth: sourceHealth.status ?? "unknown" };
+}
+
+function compactRiskFlag(flag: FinancialAnalysisRiskFlag) {
+  return { ruleId: flag.ruleId, severity: flag.severity, title: flag.title, period: flag.period, value: flag.value, unit: flag.unit, threshold: flag.threshold, operator: flag.operator, reference: compactObservationReference(flag.observationId), ...(flag.comparisonObservationId ? { comparisonReference: compactObservationReference(flag.comparisonObservationId) } : {}) };
+}
+
+function compactObservationReference(id: string) {
+  const [kind = "observation", metric = "metric", frequency = "period", period = "latest"] = id.split(":");
+  return `obs:${kind}:${metric}:${frequency}:${period}`;
+}
+
+function compareProjectedObservation(left: FinancialAnalysisSnapshot["derivedObservations"][number], right: FinancialAnalysisSnapshot["derivedObservations"][number]) {
+  return left.period.localeCompare(right.period) || left.id.localeCompare(right.id);
+}
+
+function summarizeGaps(gaps: unknown[]) {
+  const counts = new Map<string, number>();
+  for (const gap of gaps) {
+    const record = gap && typeof gap === "object" && !Array.isArray(gap) ? gap as Record<string, unknown> : {};
+    const status = typeof record.status === "string" ? record.status : "unknown";
+    const reason = Array.isArray(record.reasonCodes) ? record.reasonCodes.filter((item): item is string => typeof item === "string").sort().join(",") : "unspecified";
+    const key = `${status}:${reason || "unspecified"}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([key, count]) => ({ key, count }));
 }
 
 function selectSeriesPoints(series: ResearchFinancialSeries, limit: number): ResearchFinancialSeriesPoint[] { return [...series.points].sort((left, right) => comparePeriod(left.period, right.period)).slice(-limit); }
-function projectPoint(point: ResearchFinancialSeriesPoint) { return { period: periodLabel(point.period), status: point.status, value: point.value, formula: point.formula, reasonCodes: point.reasonCodes, factIds: point.inputs.map((reference) => reference.factId) }; }
-function projectObservation(item: ResearchFinancialObservation) { return { id: item.id, kind: item.kind, metric: item.metric, frequency: item.frequency, period: periodLabel(item.period), comparisonPeriod: item.comparisonPeriod ? periodLabel(item.comparisonPeriod) : null, status: item.status, value: item.value, unit: item.unit, formula: item.formula, reasonCodes: item.reasonCodes, factIds: item.inputs.map((reference) => reference.factId) }; }
+function projectPoint(point: ResearchFinancialSeriesPoint) { return { period: periodLabel(point.period), status: point.status, value: point.value, formula: point.formula, reasonCodes: point.reasonCodes, factIds: point.inputs.map((reference) => reference.factId), sources: projectSources(point.inputs) }; }
+function projectObservation(item: ResearchFinancialObservation) { return { id: item.id, kind: item.kind, metric: item.metric, frequency: item.frequency, period: periodLabel(item.period), comparisonPeriod: item.comparisonPeriod ? periodLabel(item.comparisonPeriod) : null, status: item.status, value: item.value, unit: item.unit, formula: item.formula, reasonCodes: item.reasonCodes, factIds: item.inputs.map((reference) => reference.factId), sources: projectSources(item.inputs) }; }
+function projectSources(inputs: Array<{ provenance: FinancialAnalysisSourceReference }>): FinancialAnalysisSourceReference[] {
+  const seen = new Set<string>();
+  return inputs.flatMap(({ provenance }) => {
+    const key = `${provenance.sourceId}:${provenance.locator ?? ""}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{ ...provenance }];
+  });
+}
 function periods(series: ResearchFinancialSeries[], frequency: ResearchFinancialFrequency, limit: number): string[] { return [...new Set(series.filter((item) => item.frequency === frequency).flatMap((item) => item.points.map((point) => periodLabel(point.period))))].sort().slice(-limit); }
 function withinLatestPeriods(item: ResearchFinancialObservation, annual: string[], quarterly: string[], ttmEndDate: string | null) { return item.frequency === "annual" ? annual.includes(periodLabel(item.period)) : item.frequency === "quarterly" ? quarterly.includes(periodLabel(item.period)) : item.frequency === "ttm" ? item.period.endDate === ttmEndDate : false; }
 function comparePeriod(left: { fiscalYear: number; fiscalQuarter?: number; endDate: string }, right: { fiscalYear: number; fiscalQuarter?: number; endDate: string }) { return left.endDate.localeCompare(right.endDate) || left.fiscalYear - right.fiscalYear || (left.fiscalQuarter ?? 0) - (right.fiscalQuarter ?? 0); }

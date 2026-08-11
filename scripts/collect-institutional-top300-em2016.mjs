@@ -2,10 +2,9 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 
-const snapshotPath = new URL("../web/src/config/institutional-track-snapshot.json", import.meta.url);
 const outputPath = new URL("../config/research-eastmoney-em2016-top300.json", import.meta.url);
-const snapshot = JSON.parse(await readFile(snapshotPath, "utf8"));
-const rows = Array.isArray(snapshot.rows) ? snapshot.rows : [];
+const ranking = await fetchTop300();
+const rows = ranking.map((row, index) => ({ rank: index + 1, code: String(row.SECUCODE ?? ""), name: String(row.SECURITY_NAME_ABBR ?? ""), institutionCount: Number(row.ALLCORP_NUM ?? 0), dataDate: String(row.MAX_TRADE_DATE ?? "") }));
 if (rows.length !== 300) throw new Error(`expected exactly 300 Top300 rows, received ${rows.length}`);
 const offset = integerOption("--offset", 0);
 const limit = integerOption("--limit", rows.length);
@@ -17,7 +16,7 @@ const resultsByCode = new Map((Array.isArray(existing?.rows) ? existing.rows : [
 const collectedAt = new Date().toISOString();
 for (const [index, row] of selectedRows.entries()) {
   const code = String(row?.code ?? "").trim().toUpperCase();
-  if (!/^\d{6}\.(?:SH|SZ)$/.test(code)) {
+  if (!/^\d{6}\.(?:SH|SZ|BJ)$/.test(code)) {
     resultsByCode.set(code, { code, name: String(row?.name ?? ""), status: "unsupported", em2016: null, mainBusiness: null, products: [] });
     continue;
   }
@@ -49,9 +48,10 @@ industries.sort((left, right) => left.em2016.localeCompare(right.em2016, "zh-CN"
 const output = {
   schemaVersion: "research-eastmoney-em2016-top300.v1",
   source: {
-    ranking: "web/src/config/institutional-track-snapshot.json",
-    rankingDataDate: String(snapshot.dataDate ?? ""),
-    rankingGeneratedAt: String(snapshot.generatedAt ?? ""),
+    ranking: "Eastmoney institutional holding count Top300",
+    rankingDataDate: String(rows[0]?.dataDate ?? ""),
+    rankingGeneratedAt: collectedAt,
+    rankingEndpoint: "https://data.eastmoney.com/dataapi/xuangu/list?st=ALLCORP_NUM&sr=-1&ps=300&p=1",
     endpoint: "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO",
     field: "EM2016",
     collectedAt,
@@ -108,4 +108,15 @@ async function fetchProfile(code) {
   } catch (error) {
     return { status: "unavailable", em2016: null, mainBusiness: null, products: [], error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+async function fetchTop300() {
+  const url = new URL("https://data.eastmoney.com/dataapi/xuangu/list");
+  url.search = new URLSearchParams({ st: "ALLCORP_NUM", sr: "-1", ps: "300", p: "1", sty: "SECUCODE,SECURITY_NAME_ABBR,ALLCORP_NUM,MAX_TRADE_DATE", source: "SELECT_SECURITIES", client: "WEB" }).toString();
+  const response = await fetch(url, { headers: { Referer: "https://data.eastmoney.com/xuangu/" } });
+  if (!response.ok) throw new Error(`Top300 ranking request failed: HTTP ${response.status}`);
+  const body = await response.json();
+  const data = Array.isArray(body?.result?.data) ? body.result.data : [];
+  if (data.length !== 300 || new Set(data.map((row) => String(row?.SECUCODE ?? ""))).size !== 300) throw new Error(`Top300 ranking response is invalid: ${data.length} rows`);
+  return data;
 }

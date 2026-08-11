@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildLowDependencyStageStartPayload,
   buildEngineeringBaseline,
+  buildLowDependencyContextInput,
   buildLowDependencySourceCandidates,
   buildLowDependencyLineage,
   buildLowDependencyScopeProjection,
@@ -126,6 +127,18 @@ test("Eastmoney EM2016 profile deterministically selects the mapped template", (
   assert.equal(routing.mappingReason.code, "eastmoney_em2016_exact");
 });
 
+test("Eastmoney company profile survives the source registry before S0 routing", () => {
+  const overview = {
+    name: "中际旭创", source: "xueqiu", marketDate: "2026-08-11", updatedAt: Date.parse("2026-08-11T00:00:00Z"),
+    companyProfile: { taxonomy: "eastmoney-em2016.v1", availability: "available", industry: "信息技术-通信设备-通信传输设备", industryLevels: ["信息技术", "通信设备", "通信传输设备"], mainBusiness: "高端光通信收发模块服务云计算数据中心", products: ["光模块"], sourceUrl: "https://datacenter.eastmoney.com/f10?code=300308.SZ", updatedAt: Date.parse("2026-08-11T00:00:00Z") },
+  };
+  const candidates = buildLowDependencySourceCandidates({ code: "300308.SZ", overview, income: {}, balance: {}, cashflow: {} });
+  const prepared = buildLowDependencyContextInput({ code: "300308.SZ", overview, income: {}, balance: {}, cashflow: {}, sources: candidates });
+  assert.equal(prepared.context.companyProfile?.industry, "信息技术-通信设备-通信传输设备");
+  const baseline = buildEngineeringBaseline({ context: prepared.context, sources: prepared.context.sourceRegistry.sources });
+  assert.equal(matchLocalIndustryTemplate(baseline).industryTemplateId, "technology-equipment.v1");
+});
+
 test("stage artifacts expose the protocol step key to projection helpers", () => {
   const normalized = stageArtifact({ stageKey: "engineering_baseline", artifactId: "llm-artifact:s0", status: "complete" });
   assert.equal(normalized.stageKey, "engineering_baseline");
@@ -140,13 +153,14 @@ test("runner dependency lookup reads normalized output from its Map artifact sto
 
 test("S1-S5 input uses only the confirmed local routing projection, never Markdown", () => {
   const context = { contextVersion: "research-context.v1", company: { name: "测试公司" }, security: { securityCode: "000001.SZ" }, financialSnapshot: { schemaVersion: "financial.v1" }, inputFingerprint: "fp" };
-  const routingArtifact = { artifactId: "llm-artifact:routing", stepKey: "local_routing_match", status: "complete", output: { routingState: "confirmed", industryTemplateId: "technology-equipment.v1", industryKey: "technology_equipment", companyScope: { products: ["产品"], downstream: ["客户"] }, sourceIds: ["source:routing"], evidenceIds: ["evidence:routing"] }, sourceIds: ["source:routing"] };
+  const routingArtifact = { artifactId: "llm-artifact:routing", stepKey: "local_routing_match", status: "complete", output: { routingState: "confirmed", industryTemplateId: "technology-equipment.v1", industryKey: "technology_equipment", companyScope: { products: ["产品"], downstream: ["客户"], industry: "信息技术-通信设备-通信传输设备", industryTaxonomy: "eastmoney-em2016.v1" }, sourceIds: ["source:routing"], evidenceIds: ["evidence:routing"] }, sourceIds: ["source:routing"] };
   const companyMarkdownArtifact = { artifactId: "llm-artifact:s1", stepKey: "company_facts", status: "complete", output: "# 公司事实\n\n正文", sourceIds: ["source:s1"], claimIds: ["claim:s1"], evidenceIds: ["evidence:s1"], unknownIds: [] };
   for (const stageKey of ["industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers"]) {
     const input = buildLowDependencyStageInput({ context, financialContext: { descriptor: { schemaVersion: "financial.v1" } }, stageKey, artifactsByKey: { local_routing_match: routingArtifact, company_facts: companyMarkdownArtifact }, scopeEnvelopeAvailable: true });
     assert.deepEqual(input.companyScope.products, ["产品"]);
     assert.equal(input.routing.analysisTemplate.templateId, "technology-equipment.v1");
-    assert.ok(input.routing.analysisTemplate.operatingMetrics.includes("book-to-bill"));
+    assert.equal(input.routing.analysisTemplate.industryProfileId, "telecom-equipment.v1");
+    assert.ok(input.routing.analysisTemplate.operatingMetrics.includes("运营商/云厂商资本开支"));
     assert.equal(input.scopeProjection.status, "available");
     assert.deepEqual(input.scopeProjection.upstreamArtifactIds, ["llm-artifact:routing"]);
     assert.equal("output" in input, false);

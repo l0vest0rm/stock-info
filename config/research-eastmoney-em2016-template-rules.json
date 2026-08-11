@@ -1,6 +1,6 @@
 {
   "schemaVersion": "research-eastmoney-em2016-template-rules.v1",
-  "description": "东方财富 EM2016 三级行业到投资分析经营模板的受控规则。生成后的精确行业表是运行时唯一可自动确认的映射；未覆盖的 EM2016 行业和缺失 EM2016 都必须人工确认。",
+  "description": "东方财富 EM2016 三级行业到通用经营框架的受控规则。Top300 聚合会生成精确行业映射；本规则只用于确定通用框架，运行时自动确认还必须命中 research-eastmoney-em2016-industry-profiles.json 中的细分行业画像。缺失 EM2016、通用框架或细分画像时均必须人工确认。",
   "rules": [
     { "level1": "金融", "level2": "银行", "templateId": "bank.v1" },
     { "level1": "金融", "level2": "非银行金融", "level3": "证券", "templateId": "broker-trading-platform.v1" },

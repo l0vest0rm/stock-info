@@ -4,6 +4,7 @@ import { loadResearchFinancialQuality } from "./research-financials";
 import { loadResearchFinancialProfile } from "./research-financial-profile";
 import {
   buildFinancialAnalysisSnapshot,
+  assertFinancialAnalysisSnapshotCanRun,
   financialAnalysisPrompt,
   FINANCIAL_ANALYSIS_ORIGIN_TASK_TYPE,
   FINANCIAL_ANALYSIS_PROMPT_VERSION,
@@ -20,6 +21,7 @@ type Row = { taskId?: string };
 
 export async function enqueueResearchFinancialAnalysis(env: AppEnv["Bindings"], securityCode: string, options: { force?: boolean; reasoningEffort?: string | null } = {}) {
   const snapshot = await buildSnapshot(env, securityCode);
+  assertFinancialAnalysisSnapshotCanRun(snapshot);
   const versionKey = options.force === true ? `${snapshot.lineage.inputFingerprint}:${Date.now()}` : snapshot.lineage.inputFingerprint;
   const prompt = financialAnalysisPrompt(snapshot);
   const created = await createGenericLlmTask(env.DB, {
@@ -42,6 +44,10 @@ export async function enqueueResearchFinancialAnalysis(env: AppEnv["Bindings"], 
         requestId: `research-financial-analysis:${securityCode}:${versionKey}`,
         instructions: "你是严谨的投资研究员。只使用给定证据，不得用模型记忆补齐缺口；严格按输出标题返回。",
         input: [{ role: "user", content: [{ type: "input_text", text: prompt }] }],
+        // This is a caller-owned artifact contract, deliberately separate
+        // from the WebQA provider-terminal contract. The generic adapter can
+        // validate its declared shape without knowing this task type.
+        artifactContract: { kind: "markdown_h1", numberedH1: true, requiredH1Count: 8, minimumCharacters: 800 },
         allowReasoning: true,
         reasoningEffort: options.reasoningEffort || DEFAULT_REASONING_EFFORT,
         maxOutputTokens: 18000,
@@ -91,7 +97,7 @@ export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], s
   const metadata = task.metadata && typeof task.metadata === "object" && !Array.isArray(task.metadata) ? task.metadata as Record<string, unknown> : {};
   const version = metadata.financialAnalysis && typeof metadata.financialAnalysis === "object" && !Array.isArray(metadata.financialAnalysis)
     ? String((metadata.financialAnalysis as Record<string, unknown>).codeVersion || "") : "";
-  if (task.promptVersion !== FINANCIAL_ANALYSIS_PROMPT_VERSION || version !== "financial-analysis-code.v1") throw new Error("financial-analysis prompt or code version changed; resume is not eligible");
+  if (task.promptVersion !== FINANCIAL_ANALYSIS_PROMPT_VERSION || version !== "financial-analysis-code.v3") throw new Error("financial-analysis prompt or code version changed; resume is not eligible");
   if (!await requeueGenericLlmTask(env.DB, task.taskId)) throw new Error("financial-analysis task could not be requeued");
   return loadResearchFinancialAnalysis(env, securityCode);
 }

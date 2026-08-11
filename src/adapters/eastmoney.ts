@@ -1646,7 +1646,7 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
 /** Eastmoney F10 is the source of truth for the EM2016 three-level industry path. */
 async function fetchEastmoneyCompanyProfile(db: D1Database, code: string): Promise<CompanyOverview["companyProfile"]> {
   const suffix = securitySuffix(code);
-  if (suffix !== "SH" && suffix !== "SZ") return null;
+  if (suffix !== "SH" && suffix !== "SZ" && suffix !== "BJ") return null;
   const url = new URL("https://datacenter.eastmoney.com/securities/api/data/v1/get");
   url.searchParams.set("reportName", "RPT_F10_ORG_BASICINFO");
   url.searchParams.set("columns", "SECUCODE,EM2016,MAIN_BUSINESS,MAXPROFIT_PRODUCT,PRODUCT_NAME");

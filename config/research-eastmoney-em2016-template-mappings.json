@@ -4,14 +4,31 @@
     "aggregation": "config/research-eastmoney-em2016-top300.json",
     "coverage": {
       "total": 300,
-      "available": 295,
+      "available": 300,
       "unavailable": 0,
-      "unsupported": 5,
-      "uniqueEm2016": 96
+      "unsupported": 0,
+      "uniqueEm2016": 97
     },
     "rules": "config/research-eastmoney-em2016-template-rules.json"
   },
   "mappings": [
+    {
+      "em2016": "电气设备-电机-电机",
+      "levels": [
+        "电气设备",
+        "电机",
+        "电机"
+      ],
+      "templateId": "industrial-manufacturing.v1",
+      "mappingRule": {
+        "level1": "电气设备",
+        "level2": null,
+        "level3": null
+      },
+      "securityCodes": [
+        "920011.BJ"
+      ]
+    },
     {
       "em2016": "电气设备-电源设备-储能设备",
       "levels": [
@@ -175,6 +192,7 @@
         "300604.SZ",
         "300661.SZ",
         "301536.SZ",
+        "600460.SH",
         "600584.SH",
         "603061.SH",
         "603986.SH",
@@ -299,7 +317,8 @@
         "600183.SH",
         "603459.SH",
         "603678.SH",
-        "688668.SH"
+        "688668.SH",
+        "920181.BJ"
       ]
     },
     {
@@ -316,8 +335,7 @@
         "level3": null
       },
       "securityCodes": [
-        "300394.SZ",
-        "688635.SH"
+        "300394.SZ"
       ]
     },
     {
@@ -844,7 +862,8 @@
         "300285.SZ",
         "601208.SH",
         "688146.SH",
-        "688300.SH"
+        "688300.SH",
+        "920189.BJ"
       ]
     },
     {
@@ -931,7 +950,8 @@
       },
       "securityCodes": [
         "300037.SZ",
-        "688548.SH"
+        "688548.SH",
+        "920193.BJ"
       ]
     },
     {
@@ -1129,7 +1149,8 @@
         "002126.SZ",
         "600660.SH",
         "601689.SH",
-        "603210.SH"
+        "603210.SH",
+        "920136.BJ"
       ]
     },
     {
@@ -1540,6 +1561,7 @@
         "300570.SZ",
         "600105.SH",
         "600487.SH",
+        "600498.SH",
         "600522.SH",
         "601869.SH"
       ]
@@ -1687,7 +1709,6 @@
       "securityCodes": [
         "300677.SZ",
         "300760.SZ",
-        "688271.SH",
         "688301.SH"
       ]
     },

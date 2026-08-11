@@ -8,8 +8,10 @@ import {
   matchLocalIndustryTemplate,
   normalizeEngineeringBaseline,
   normalizeRoutingFacts,
+  resolveEastmoneyIndustryProfile,
 } from "./research-scope-industry-routing.mjs";
 import eastmoneyMappings from "../../config/research-eastmoney-em2016-template-mappings.json" with { type: "json" };
+import eastmoneyTop300 from "../../config/research-eastmoney-em2016-top300.json" with { type: "json" };
 import { getResearchOperatingAnalysisStage } from "./research-operating-analysis-stage-registry.mjs";
 import { lowDependencyPromptForStage } from "../research-operating-analysis-low-dependency-runner.mjs";
 
@@ -43,8 +45,8 @@ test("local rules produce one confirmed template from sufficient explicit eviden
   assert.equal(result.industryTemplateId, "technology-equipment.v1");
   assert.equal(result.mappingReason.code, "eastmoney_em2016_exact");
   assert.equal(result.evidence.length, 1);
-  assert.equal(result.analysisTemplate.primaryFormula, "收入 ≈ 有效订单 × 实际交付率");
-  assert.ok(result.analysisTemplate.operatingMetrics.includes("book-to-bill"));
+  assert.equal(result.analysisTemplate.primaryFormula, "收入 = 客户资本开支 × 设备份额 × 交付率");
+  assert.ok(result.analysisTemplate.operatingMetrics.includes("运营商/云厂商资本开支"));
 });
 
 test("registry contains business-economics profiles behind exact Eastmoney EM2016 industry routes", () => {
@@ -99,10 +101,19 @@ test("consumer-brand profile covers baijiu without matching technology equipment
   assert.ok(result.analysisTemplate.stressFactors.includes("渠道压货"));
 });
 
-test("an unaggregated Eastmoney EM2016 leaf remains unconfirmed", () => {
+test("an unprofiled Eastmoney EM2016 leaf remains unconfirmed for a detailed template", () => {
   const result = matchLocalIndustryTemplate(baseline({ companyScope: { facts: [
     { field: "industry", statement: "信息技术-通信设备-未来新增设备", sourceReferences: [reference("source:industry")] },
   ], industry: "信息技术-通信设备-未来新增设备", industryTaxonomy: "eastmoney-em2016.v1" } }));
+  assert.equal(result.routingState, "unconfirmed");
+  assert.equal(result.industryTemplateId, null);
+  assert.equal(result.mappingReason.code, "eastmoney_em2016_profile_unmapped");
+});
+
+test("an Eastmoney EM2016 taxonomy outside controlled rules remains unconfirmed", () => {
+  const result = matchLocalIndustryTemplate(baseline({ companyScope: { facts: [
+    { field: "industry", statement: "未来行业-未来设备-未来零件", sourceReferences: [reference("source:industry")] },
+  ], industry: "未来行业-未来设备-未来零件", industryTaxonomy: "eastmoney-em2016.v1" } }));
   assert.equal(result.routingState, "unconfirmed");
   assert.equal(result.mappingReason.code, "eastmoney_em2016_unmapped");
 });
@@ -119,10 +130,19 @@ test("unverified Eastmoney industry does not select a template", () => {
 });
 
 test("all Top300 Eastmoney EM2016 leaves map to registered templates", () => {
-  assert.equal(eastmoneyMappings.mappings.length, 96);
+  assert.equal(eastmoneyMappings.mappings.length, eastmoneyTop300.industries.length);
+  assert.equal(eastmoneyTop300.coverage.available, eastmoneyTop300.coverage.total);
   for (const mapping of eastmoneyMappings.mappings) {
     assert.ok(RESEARCH_INDUSTRY_TEMPLATE_REGISTRY.some((template) => template.templateId === mapping.templateId), mapping.em2016);
+    assert.ok(resolveEastmoneyIndustryProfile(mapping.em2016), `missing detailed industry profile: ${mapping.em2016}`);
   }
+});
+
+test("Eastmoney EM2016 routing injects its detailed industry profile into the prompt template", () => {
+  const result = matchLocalIndustryTemplate(baseline());
+  assert.equal(result.analysisTemplate.industryProfileId, "telecom-equipment.v1");
+  assert.equal(result.analysisTemplate.industryProfileLabel, "通信设备");
+  assert.ok(result.analysisTemplate.operatingMetrics.includes("运营商/云厂商资本开支"));
 });
 
 test("manual confirmation is registry-bound and produces a confirmed projection", () => {
