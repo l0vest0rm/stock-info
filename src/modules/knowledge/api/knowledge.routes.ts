@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
-import { getAppKv, putAppKv } from "../../../db/queries";
+import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../../../db/queries";
 import { fail, ok } from '../../../shared/http';
 import { externalHttpOptions } from '../../../shared/http';
 import { loadGenericLlmRun, loadGenericLlmRunArtifacts, loadGenericLlmTask } from "../../../shared/local-job-protocol";
@@ -970,7 +970,7 @@ async function readKnowledgeReportAnalysis(
   if (!key) {
     return null;
   }
-  const row = await getAppKv(db, key);
+  const row = await getKvCacheByLegacyKey(db, key);
   if (!row?.valueJson) {
     return null;
   }
@@ -988,7 +988,7 @@ async function writeKnowledgeReportAnalysis(
   value: KnowledgeReportAnalysis,
 ): Promise<void> {
   const now = Date.now();
-  await putAppKv(db, {
+  await putKvCacheByLegacyKey(db, {
     key,
     valueJson: JSON.stringify(value),
     expiresAt: now + KNOWLEDGE_REPORT_ANALYSIS_CACHE_TTL_MS,

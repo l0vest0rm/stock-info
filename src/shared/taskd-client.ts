@@ -19,7 +19,7 @@ export type TaskdTask = {
 };
 
 export type TaskdCallerClient = {
-  submit(input: { name: string; taskType: string; payload: unknown }): Promise<TaskdTask>;
+  submit(input: { name: string; taskType: string; payload: unknown; diagnostics?: Record<string, unknown> }): Promise<TaskdTask>;
   get(name: string): Promise<TaskdTask | null>;
   cancel(name: string): Promise<TaskdTask | null>;
   delete(name: string): Promise<boolean>;
@@ -29,6 +29,7 @@ type TaskdCallerClientOptions = {
   baseUrl: string;
   namespace: string;
   token: string;
+  tokenSource?: string;
   fetchImpl?: typeof fetch;
 };
 
@@ -41,13 +42,16 @@ export function createTaskdCallerClient(options: TaskdCallerClientOptions): Task
   const baseUrl = required(options.baseUrl, "TASKD_BASE_URL").replace(/\/+$/, "");
   const namespace = required(options.namespace, "TASKD_NAMESPACE");
   const token = required(options.token, "STOCK_INFO_TASKD_CALLER_TOKEN");
+  const tokenSource = text(options.tokenSource) || "configured";
   const fetchImpl = options.fetchImpl || fetch;
   const prefix = `${baseUrl}/v1/namespaces/${encodeURIComponent(namespace)}/tasks`;
 
-  async function request(path: string, init: RequestInit = {}): Promise<{ response: Response; body: unknown }> {
+  async function request(path: string, init: RequestInit = {}, diagnostics: Record<string, unknown> = {}): Promise<{ response: Response; body: unknown }> {
     let response: Response;
+    const method = text(init.method) || "GET";
+    const url = `${prefix}${path}`;
     try {
-      response = await fetchImpl(`${prefix}${path}`, {
+      response = await fetchImpl(url, {
         ...init,
         headers: {
           authorization: `Bearer ${token}`,
@@ -56,14 +60,21 @@ export function createTaskdCallerClient(options: TaskdCallerClientOptions): Task
         },
       });
     } catch (error) {
-      throw new Error(`taskd request failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`taskd request failed: ${error instanceof Error ? error.message : String(error)}${formatDiagnostics({
+        method,
+        url,
+        namespace,
+        tokenSource,
+        token: maskToken(token),
+        ...diagnostics,
+      })}`);
     }
     const body = await response.json().catch(() => null);
     return { response, body };
   }
 
-  async function taskRequest(path: string, init?: RequestInit): Promise<TaskdTask | null> {
-    const { response, body } = await request(path, init);
+  async function taskRequest(path: string, init?: RequestInit, diagnostics: Record<string, unknown> = {}): Promise<TaskdTask | null> {
+    const { response, body } = await request(path, init, diagnostics);
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`taskd returned ${response.status}: ${message(body) || response.statusText}`);
     return normalizeTask(body);
@@ -76,18 +87,27 @@ export function createTaskdCallerClient(options: TaskdCallerClientOptions): Task
       const task = await taskRequest("", {
         method: "POST",
         body: JSON.stringify({ client_task_name: name, task_type: taskType, input: input.payload }),
+      }, {
+        action: "submit",
+        taskName: name,
+        taskType,
+        ...taskPayloadDiagnostics(input.payload),
+        ...input.diagnostics,
       });
       if (!task) throw new Error("taskd submit returned no task");
       return task;
     },
     get(name) {
-      return taskRequest(`/by-name/${encodeURIComponent(required(name, "taskd task name"))}`);
+      const normalizedName = required(name, "taskd task name");
+      return taskRequest(`/by-name/${encodeURIComponent(normalizedName)}`, undefined, { action: "get", taskName: normalizedName });
     },
     cancel(name) {
-      return taskRequest(`/by-name/${encodeURIComponent(required(name, "taskd task name"))}/cancel`, { method: "POST" });
+      const normalizedName = required(name, "taskd task name");
+      return taskRequest(`/by-name/${encodeURIComponent(normalizedName)}/cancel`, { method: "POST" }, { action: "cancel", taskName: normalizedName });
     },
     async delete(name) {
-      const { response, body } = await request(`/by-name/${encodeURIComponent(required(name, "taskd task name"))}`, { method: "DELETE" });
+      const normalizedName = required(name, "taskd task name");
+      const { response, body } = await request(`/by-name/${encodeURIComponent(normalizedName)}`, { method: "DELETE" }, { action: "delete", taskName: normalizedName });
       if (response.status === 404) return false;
       if (response.status !== 204) throw new Error(`taskd returned ${response.status}: ${message(body) || response.statusText}`);
       return true;
@@ -97,12 +117,14 @@ export function createTaskdCallerClient(options: TaskdCallerClientOptions): Task
 
 export function taskdCallerClient(env: Bindings): TaskdCallerClient {
   if (env.LLM_RUNTIME !== "local") throw new Error("taskd caller is only available in local LLM runtime");
+  const token = env.STOCK_INFO_TASKD_CALLER_TOKEN || env.TASKD_CALLER_TOKEN || "";
   return createTaskdCallerClient({
     baseUrl: env.TASKD_BASE_URL || "",
     namespace: env.TASKD_NAMESPACE || "stock-info",
     // TASKD_CALLER_TOKEN is taskd's generic caller-secret name. Keep the
     // stock-info name first so existing local credential files remain valid.
-    token: env.STOCK_INFO_TASKD_CALLER_TOKEN || env.TASKD_CALLER_TOKEN || "",
+    token,
+    tokenSource: env.STOCK_INFO_TASKD_CALLER_TOKEN ? "STOCK_INFO_TASKD_CALLER_TOKEN" : env.TASKD_CALLER_TOKEN ? "TASKD_CALLER_TOKEN" : "missing",
   });
 }
 
@@ -156,4 +178,44 @@ function optionalInteger(value: unknown): number | null {
 function message(value: unknown): string {
   const row = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
   return text(row?.error) || text(row?.message);
+}
+
+function taskPayloadDiagnostics(value: unknown): Record<string, unknown> {
+  const row = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return {
+    provider: text(row?.provider) || undefined,
+    platform: text(row?.platform) || undefined,
+    conversationId: text(row?.conversation_id) || undefined,
+    reasoningEffort: text(row?.reasoning_effort) || undefined,
+    timeoutMs: numericDiagnostic(row?.timeout_ms),
+    mode: text(row?.mode) || undefined,
+  };
+}
+
+function numericDiagnostic(value: unknown): number | undefined {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function maskToken(value: string): string {
+  if (!value) return "missing";
+  if (value.length <= 8) return `present(len=${value.length})`;
+  return `present(len=${value.length},last4=${value.slice(-4)})`;
+}
+
+function formatDiagnostics(value: Record<string, unknown>): string {
+  const parts = Object.entries(value)
+    .flatMap(([key, item]) => {
+      const normalized = diagnosticValue(item);
+      return normalized ? [`${key}=${normalized}`] : [];
+    });
+  return parts.length ? ` [${parts.join(" ")}]` : "";
+}
+
+function diagnosticValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  const normalized = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+  return normalized ? normalized.slice(0, 160) : "";
 }

@@ -163,7 +163,7 @@ function pageCalls(calls, run, source) {
 }
 
 function checkpoint(db, source) {
-  const value = db.appKv.get(provisionalSyncStateKey(source, REPORT_DATE));
+  const value = db.kvCache.get(`financial_provisional_sync|${provisionalSyncStateKey(source, REPORT_DATE)}`);
   assert.ok(value, `${source} checkpoint exists`);
   return JSON.parse(value.valueJson);
 }
@@ -174,7 +174,7 @@ function assertCheckpoint(db, source, expected) {
 
 class FakeD1 {
   constructor() {
-    this.appKv = new Map();
+    this.kvCache = new Map();
     this.syncJobs = new Map();
   }
 
@@ -183,13 +183,17 @@ class FakeD1 {
     return {
       bind: (...args) => ({
         first: async () => {
-          if (normalized.includes("from app_kv")) return this.appKv.get(args[0]) ?? null;
+          if (normalized.includes("from kv_cache")) return this.kvCache.get(`${args[0]}|${args[1]}`) ?? null;
           return null;
         },
         run: async () => {
-          if (normalized.includes("insert into app_kv")) {
-            this.appKv.set(args[0], {
-              valueJson: args[1], expiresAt: args[2], updatedAt: args[3],
+          if (normalized.includes("insert into kv_cache")) {
+            this.kvCache.set(`${args[0]}|${args[1]}`, {
+              namespace: args[0],
+              key: args[1],
+              valueJson: args[2],
+              expiresAt: args[3],
+              updatedAt: args[4],
             });
           } else if (normalized.includes("insert into sync_jobs")) {
             this.syncJobs.set(args[0], { status: "running", statsJson: args[2] });

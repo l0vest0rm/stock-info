@@ -1,5 +1,6 @@
 import type { AppEnv, KlineBar } from "../../../types";
-import { RESEARCH_OPERATING_ANALYSIS_PROMPT, RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT } from "../../../generated/prompt-text";
+import { getKvCache, putKvCache } from "../../../db/queries.ts";
+import { RESEARCH_OPERATING_ANALYSIS_PROMPT } from "../../../generated/prompt-text";
 import { taskdWebQaInput } from "../../../shared/llm-client";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
@@ -10,7 +11,8 @@ import companyProfiles from "../../../../config/eastmoney-company-em2016-profile
 const TASK_TYPE = "webqa.chatgpt.v1";
 const MODEL = "gpt-5.6-luna" as const;
 const DEFAULT_REASONING_EFFORT = "xhigh";
-const PROMPT_VERSION = "investment-analysis.taskd.v2";
+const PROMPT_VERSION = "investment-analysis.taskd.v3";
+const INVESTMENT_ANALYSIS_NAMESPACE = "research_investment_analysis";
 
 type Row = Record<string, unknown>;
 type AnalysisFramework = {
@@ -46,6 +48,7 @@ type ResultRow = {
   terminalEvidenceJson: string | null;
   projectedAt: number;
 };
+type StoredResultValue = Omit<ResultRow, "securityCode">;
 
 export function researchInvestmentAnalysisTaskName(securityCode: string): string {
   return `research:investment-analysis:${securityCode}`;
@@ -58,22 +61,27 @@ export async function enqueueResearchInvestmentAnalysis(
 ) {
   const prepared = await prepareResearchInvestmentAnalysis(env, securityCode);
   const name = researchInvestmentAnalysisTaskName(prepared.securityCode);
+  const normalizedReasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
   const task = await taskdCallerClient(env).submit({
     name,
     taskType: TASK_TYPE,
     payload: {
       ...taskdWebQaInput(env, {
       model: MODEL,
-      reasoningEffort: normalizeReasoningEffort(options.reasoningEffort),
+      reasoningEffort: normalizedReasoningEffort,
       waitTimeoutMs: 2 * 60 * 60_000,
-      messages: [
-        { role: "system", content: RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT },
-        { role: "user", content: prepared.prompt },
-      ],
+      messages: [{ role: "user", content: prepared.prompt }],
       }, name),
       // The executor ignores this field; it is retained in taskd with the
       // exact engineering snapshot that produced the submitted prompt.
       business_input: prepared.input,
+    },
+    diagnostics: {
+      securityCode: prepared.securityCode,
+      model: MODEL,
+      reasoningEffort: normalizedReasoningEffort,
+      promptVersion: prepared.input.promptVersion,
+      schemaVersion: prepared.input.schemaVersion,
     },
   });
   return { accepted: true, task: taskView(task), input: prepared.input };
@@ -164,7 +172,6 @@ function frameworkForIndustry(industry: string): AnalysisFramework | null {
 
 function investmentAnalysisBrief(input: InvestmentAnalysisInput): string {
   const market = input.marketSnapshot;
-  const boundary = input.businessBoundary;
   const framework = input.analysisFramework;
   return [
     "## 研究对象",
@@ -182,13 +189,6 @@ function investmentAnalysisBrief(input: InvestmentAnalysisInput): string {
     `- PS（TTM）：${display(market.psTtm)}`,
     `- PCF（TTM）：${display(market.pcfTtm)}`,
     "",
-    "## 本地业务边界状态",
-    `- 状态：${boundary.status}`,
-    `- 说明：${boundary.note ?? "未提供"}`,
-    `- 已确认产品：${boundary.products.join("、") || "未提供"}`,
-    `- 已确认客户：${boundary.customers.join("、") || "未提供"}`,
-    `- 已确认地区：${boundary.regions.join("、") || "未提供"}`,
-    "",
     "## 分析框架（工程配置，不是公司事实）",
     `- 量价成本主公式：${framework?.primaryFormula ?? "未配置"}`,
     `- 优先核验指标：${framework?.operatingMetrics.join("、") || "未配置"}`,
@@ -197,7 +197,9 @@ function investmentAnalysisBrief(input: InvestmentAnalysisInput): string {
   ].join("\n");
 }
 
-function display(value: number | null, unit = ""): string { return value === null ? "未提供" : `${value}${unit ? ` ${unit}` : ""}`; }
+function display(value: number | null, unit = ""): string {
+  return value === null ? "未提供" : `${Number(value.toFixed(2))}${unit ? ` ${unit}` : ""}`;
+}
 
 async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input: Record<string, unknown>, task: TaskdTask) {
   const result = object(task.result);
@@ -209,28 +211,56 @@ async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input:
   const securityCode = text(object(input.security)?.code);
   if (!securityCode) throw new Error("investment analysis input has no security code");
   const projectedAt = Date.now();
-  await env.DB.prepare(`insert into research_investment_analysis_results (
-      security_code,input_json,markdown,citations_json,sources_json,terminal_evidence_json,projected_at
-    ) values (?,?,?,?,?,?,?)
-    on conflict(security_code) do update set
-      input_json=excluded.input_json,markdown=excluded.markdown,citations_json=excluded.citations_json,
-      sources_json=excluded.sources_json,terminal_evidence_json=excluded.terminal_evidence_json,projected_at=excluded.projected_at`)
-    .bind(
-      securityCode,
-      JSON.stringify(input),
-      markdown,
-      JSON.stringify(Array.isArray(answer?.citations) ? answer.citations : []),
-      JSON.stringify(Array.isArray(answer?.sources) ? answer.sources : []),
-      JSON.stringify(result?.terminal_evidence ?? null),
-      projectedAt,
-    ).run();
+  await writeStoredResearchInvestmentAnalysis(env.DB, securityCode, {
+    inputJson: JSON.stringify(input),
+    markdown,
+    citationsJson: JSON.stringify(Array.isArray(answer?.citations) ? answer.citations : []),
+    sourcesJson: JSON.stringify(Array.isArray(answer?.sources) ? answer.sources : []),
+    terminalEvidenceJson: JSON.stringify(result?.terminal_evidence ?? null),
+    projectedAt,
+  });
   return { securityCode, projectedAt };
 }
 
 async function loadResult(db: D1Database, securityCode: string): Promise<ResultRow | null> {
-  return await db.prepare(`select security_code as securityCode,input_json as inputJson,markdown,citations_json as citationsJson,
-      sources_json as sourcesJson,terminal_evidence_json as terminalEvidenceJson,projected_at as projectedAt
-    from research_investment_analysis_results where security_code=?`).bind(securityCode).first<ResultRow>();
+  const row = await readStoredResearchInvestmentAnalysis(db, securityCode);
+  return row ? { securityCode, ...row } : null;
+}
+
+export async function writeStoredResearchInvestmentAnalysis(
+  db: D1Database,
+  securityCode: string,
+  value: StoredResultValue,
+): Promise<void> {
+  await putKvCache(db, {
+    namespace: INVESTMENT_ANALYSIS_NAMESPACE,
+    key: securityCode,
+    valueJson: JSON.stringify(value),
+    expiresAt: null,
+    updatedAt: value.projectedAt,
+  });
+}
+
+export async function readStoredResearchInvestmentAnalysis(
+  db: D1Database,
+  securityCode: string,
+): Promise<StoredResultValue | null> {
+  const row = await getKvCache(db, INVESTMENT_ANALYSIS_NAMESPACE, securityCode);
+  if (!row) return null;
+  const parsed = object(parseJson(row.valueJson));
+  if (!parsed) return null;
+  const markdown = text(parsed.markdown);
+  if (!markdown) return null;
+  const projectedAt = Number(parsed.projectedAt);
+  if (!Number.isFinite(projectedAt)) return null;
+  return {
+    inputJson: jsonString(parsed.inputJson),
+    markdown,
+    citationsJson: jsonString(parsed.citationsJson, "[]"),
+    sourcesJson: jsonString(parsed.sourcesJson, "[]"),
+    terminalEvidenceJson: nullableJsonString(parsed.terminalEvidenceJson),
+    projectedAt,
+  };
 }
 
 export function validateResearchInvestmentAnalysisTerminalEvidence(result: Record<string, unknown> | null): void {
@@ -262,5 +292,7 @@ function normalizeReasoningEffort(value: string | null | undefined): "low" | "me
 function taskView(task: TaskdTask) { return { name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
 function object(value: unknown): Row | null { return value && typeof value === "object" && !Array.isArray(value) ? value as Row : null; }
 function text(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
+function jsonString(value: unknown, fallback = "{}"): string { return typeof value === "string" ? value : fallback; }
+function nullableJsonString(value: unknown): string | null { return typeof value === "string" ? value : null; }
 function parseJson(value: string | null): unknown { try { return value ? JSON.parse(value) : null; } catch { return null; } }
 function parseArray(value: string): unknown[] { const parsed = parseJson(value); return Array.isArray(parsed) ? parsed : []; }

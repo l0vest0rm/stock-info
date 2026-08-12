@@ -266,7 +266,10 @@ function renderPrompt(messages: LlmMessage[]): string {
   const rendered = messages
     .map((message) => ({ role: message.role, content: string(message.content) }))
     .filter((message) => message.content)
-    .map((message) => `${message.role === "system" ? "系统指令" : message.role === "assistant" ? "已有助手内容" : "用户输入"}：\n${message.content}`);
+    // taskd's ChatGPT WebQA executor accepts one browser-composer string, not
+    // a role-aware API request. Preserve message order, but do not imply that
+    // a "system" entry has higher-priority semantics in that transport.
+    .map((message) => message.content);
   if (rendered.length === 0) throw new Error("LLM request requires at least one non-empty message");
   return rendered.join("\n\n");
 }

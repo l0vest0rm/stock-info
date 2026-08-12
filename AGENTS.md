@@ -42,6 +42,12 @@
 - Keep Cloudflare-specific configuration, bindings, migrations, and deploy logic explicit.
 - Do not add local-only shortcuts that obscure the Worker/D1 production contract.
 
+## Schema Change Boundaries
+
+- Do not add a new database table directly in this repo.
+- If a new table is truly required, stop and get explicit user approval before adding any migration with `CREATE TABLE`.
+- Any approved new-table change must also update the repository's schema guard allowlist and automated test coverage so unapproved future table additions fail in CI/local verification.
+
 ## Market Data Source Boundaries
 
 - Stock K-line data must use Xueqiu only. Do not add Eastmoney, Tencent, Yahoo, or other stock K-line fallbacks for A-shares, Hong Kong stocks, U.S. stocks, or indices.

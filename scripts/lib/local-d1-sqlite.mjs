@@ -46,6 +46,15 @@ export function executeLocalD1Sql(sql, options = {}) {
 
 export function queryLocalD1Sql(sql, options = {}) {
   const databaseFile = resolveLocalD1Database(options);
+  return querySqliteJson(databaseFile, sql, options);
+}
+
+export function queryExistingLocalD1Sql(sql, options = {}) {
+  const databaseFile = resolveExistingLocalD1Database(options);
+  return querySqliteJson(databaseFile, sql, options);
+}
+
+function querySqliteJson(databaseFile, sql, options = {}) {
   const output = execFileSync(
     "sqlite3",
     ["-json", "-readonly", databaseFile],
@@ -74,20 +83,29 @@ export function prepareLocalD1DatabasePath(options = {}) {
   return file;
 }
 
+export function resolveExistingLocalD1Database(options = {}) {
+  const file = resolveLocalD1Path(options);
+  assertDatabaseFile(file);
+  return file;
+}
+
 export function resolveLocalD1Database(options = {}) {
   const requiredTable = text(options.requiredTable);
   if (!requiredTable) {
     throw new Error("requiredTable is required to resolve the local D1 database");
   }
-  const file = resolveLocalD1Path(options);
-  assertDatabase(file, requiredTable);
+  const file = resolveExistingLocalD1Database(options);
+  assertDatabaseTable(file, requiredTable);
   return file;
 }
 
-function assertDatabase(file, requiredTable) {
+function assertDatabaseFile(file) {
   if (!existsSync(file) || !statSync(file).isFile()) {
     throw new Error(`configured local SQLite database does not exist: ${file}`);
   }
+}
+
+function assertDatabaseTable(file, requiredTable) {
   if (!hasTable(file, requiredTable)) {
     throw new Error(`configured local SQLite database is missing table ${requiredTable}: ${file}`);
   }

@@ -83,7 +83,7 @@
     "test:fund-quarterly-research": "node --test scripts/lib/fund-quarterly-research.test.mjs",
     "test:institutional-valuation": "node --test web/src/modules/companies/domain/institutional-track-growth-valuation.test.mjs web/src/modules/companies/domain/institutional-track-financial-valuation.test.mjs web/src/modules/companies/domain/institutional-track-rating.test.mjs && esbuild src/adapters/xueqiu.test.mjs --bundle --platform=node --format=esm --outfile=/tmp/stock-info-xueqiu-kline-test.mjs >/dev/null && node --test /tmp/stock-info-xueqiu-kline-test.mjs",
     "test:buy-point": "node --test scripts/lib/buy-point-analysis.test.mjs",
-    "test:local-runtime": "npm run build:node && esbuild src/shared/request.test.mjs --bundle --platform=node --format=esm --outfile=/tmp/stock-info-local-runtime-request-test.mjs >/dev/null && node --test scripts/local-node-bindings.test.mjs scripts/lib/local-d1-sqlite.test.mjs scripts/check-no-wrangler-local.test.mjs scripts/check-no-inline-prompts.test.mjs /tmp/stock-info-local-runtime-request-test.mjs && npm run check:wrangler-local && npm run check:inline-prompts",
+    "test:local-runtime": "npm run build:node && esbuild src/shared/request.test.mjs --bundle --platform=node --format=esm --outfile=/tmp/stock-info-local-runtime-request-test.mjs >/dev/null && node --test scripts/local-node-bindings.test.mjs scripts/lib/local-d1-sqlite.test.mjs scripts/check-no-wrangler-local.test.mjs scripts/check-no-inline-prompts.test.mjs scripts/check-no-new-tables.test.mjs /tmp/stock-info-local-runtime-request-test.mjs && npm run check:wrangler-local && npm run check:inline-prompts && npm run check:no-new-tables",
     "test:macro": "node --test src/modules/macro/domain/macro-research.test.mjs src/modules/macro/application/macro-storage.test.mjs && esbuild src/modules/macro/adapters/adapters.test.ts --bundle --platform=node --format=esm --outfile=/tmp/stock-info-macro-adapters-test.mjs >/dev/null && node /tmp/stock-info-macro-adapters-test.mjs",
     "test:finance": "finance_test_dir=$(mktemp -d /tmp/stock-info-finance-tests.XXXXXX) && esbuild src/modules/finance/domain/*.test.mjs --bundle --platform=node --format=esm --outdir=\"$finance_test_dir\" >/dev/null && find \"$finance_test_dir\" -name '*.test.js' -exec node --test {} +",
     "test:research": "research_test_dir=$(mktemp -d /tmp/stock-info-research-tests.XXXXXX) && esbuild src/modules/research/domain/*.test.mjs src/modules/research/application/research-statutory-operating-candidates.test.mjs src/modules/research/application/import-statutory-disclosure-to-knowledge.test.mjs src/adapters/eastmoney-finance-report-type.test.mjs src/adapters/yahoo-finance.test.mjs --bundle --platform=node --format=esm --outdir=\"$research_test_dir\" >/dev/null && find \"$research_test_dir\" -name '*.test.js' -exec node --test {} + && node --test scripts/lib/operating-analysis-stage-plan.test.mjs",
@@ -92,7 +92,8 @@
     "db:migrate:local": "node scripts/local-db.mjs",
     "db:migrate:remote": "node ./node_modules/wrangler/bin/wrangler.js d1 migrations apply stock_info --remote",
     "check:wrangler-local": "node scripts/check-no-wrangler-local.mjs",
-    "check:inline-prompts": "node scripts/check-no-inline-prompts.mjs"
+    "check:inline-prompts": "node scripts/check-no-inline-prompts.mjs",
+    "check:no-new-tables": "node scripts/check-no-new-tables.mjs"
   },
   "dependencies": {
     "@m2ai/shared-llm-client": "file:../shared-ts/packages/llm-client",

@@ -54,6 +54,38 @@ test("taskd caller accepts taskd's generic caller-token environment name", async
   }));
 });
 
+test("taskd caller includes request diagnostics when submit fetch fails", async () => {
+  const client = createTaskdCallerClient({
+    baseUrl: "https://task.example.test/",
+    namespace: "stock-info",
+    token: "secret-token-1234",
+    tokenSource: "TASKD_CALLER_TOKEN",
+    fetchImpl: async () => {
+      throw new Error("fetch failed");
+    },
+  });
+
+  await assert.rejects(
+    () => client.submit({
+      name: "research:investment-analysis:300308.SZ",
+      taskType: "webqa.chatgpt.v1",
+      payload: {
+        provider: "chatgpt-web",
+        platform: "stock-info",
+        conversation_id: "stock-info:research:investment-analysis:300308.SZ",
+        reasoning_effort: "xhigh",
+        timeout_ms: 7_200_000,
+        mode: "ask",
+      },
+      diagnostics: {
+        securityCode: "300308.SZ",
+        model: "gpt-5.6-luna",
+      },
+    }),
+    /taskd request failed: fetch failed \[method=POST url=https:\/\/task\.example\.test\/v1\/namespaces\/stock-info\/tasks namespace=stock-info tokenSource=TASKD_CALLER_TOKEN token=present\(len=17,last4=1234\) action=submit taskName=research:investment-analysis:300308\.SZ taskType=webqa\.chatgpt\.v1 provider=chatgpt-web platform=stock-info conversationId=stock-info:research:investment-analysis:300308\.SZ reasoningEffort=xhigh timeoutMs=7200000 mode=ask securityCode=300308\.SZ model=gpt-5\.6-luna\]/,
+  );
+});
+
 test("taskd result projection is retry-safe at the business boundary", async () => {
   const completed = { ...task, status: "succeeded", result: { answer: "final" } };
   let projections = 0;

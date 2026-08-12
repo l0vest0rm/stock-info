@@ -13,7 +13,7 @@ import {
   securityMarket,
   securitySuffix,
 } from "../shared/codes";
-import { getAppKv, putAppKv } from "../db/queries";
+import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../db/queries";
 import { cachedFetchJson, cachedFetchText, numberOrNull, parseJsonOrJsonp } from "../shared/http";
 import type { ExternalHttpOptions } from "../shared/http";
 import type { CompanyNotice, CompanyOverview, FinancialStatement, FundNavRow, KlineBar, SecurityRecord, StatementType } from "../types";
@@ -1423,23 +1423,23 @@ function getOptionExpiration(expirations: Map<string, USOptionExpiration>, date:
 }
 
 async function getCachedUSOptionChain(db: D1Database, prefix: string): Promise<USOptionChain | null> {
-  const row = await getAppKv(db, prefix);
+  const row = await getKvCacheByLegacyKey(db, prefix);
   if (row) {
     return JSON.parse(row.valueJson) as USOptionChain;
   }
-  const metaRow = await getAppKv(db, `${prefix}.meta`);
+  const metaRow = await getKvCacheByLegacyKey(db, `${prefix}.meta`);
   if (!metaRow) {
     return null;
   }
   const meta = JSON.parse(metaRow.valueJson) as USOptionChainMeta;
   const expirations: USOptionExpiration[] = [];
   for (const date of meta.expirationDates ?? []) {
-    const expirationRow = await getAppKv(db, `${prefix}.expiration.${date}`);
+    const expirationRow = await getKvCacheByLegacyKey(db, `${prefix}.expiration.${date}`);
     if (expirationRow) {
       expirations.push(JSON.parse(expirationRow.valueJson) as USOptionExpiration);
       continue;
     }
-    const expirationMetaRow = await getAppKv(db, `${prefix}.expiration.${date}.meta`);
+    const expirationMetaRow = await getKvCacheByLegacyKey(db, `${prefix}.expiration.${date}.meta`);
     if (!expirationMetaRow) {
       return null;
     }
@@ -1447,12 +1447,12 @@ async function getCachedUSOptionChain(db: D1Database, prefix: string): Promise<U
     const calls: USOptionContract[] = [];
     const puts: USOptionContract[] = [];
     for (let i = 0; i < expirationMeta.callChunks; i++) {
-      const chunkRow = await getAppKv(db, `${prefix}.expiration.${date}.calls.${i}`);
+      const chunkRow = await getKvCacheByLegacyKey(db, `${prefix}.expiration.${date}.calls.${i}`);
       if (!chunkRow) return null;
       calls.push(...JSON.parse(chunkRow.valueJson) as USOptionContract[]);
     }
     for (let i = 0; i < expirationMeta.putChunks; i++) {
-      const chunkRow = await getAppKv(db, `${prefix}.expiration.${date}.puts.${i}`);
+      const chunkRow = await getKvCacheByLegacyKey(db, `${prefix}.expiration.${date}.puts.${i}`);
       if (!chunkRow) return null;
       puts.push(...JSON.parse(chunkRow.valueJson) as USOptionContract[]);
     }
@@ -1467,7 +1467,7 @@ async function getCachedUSOptionChain(db: D1Database, prefix: string): Promise<U
 }
 
 async function getCachedUSOptionChainSummary(db: D1Database, prefix: string): Promise<USOptionChainSummary | null> {
-  const row = await getAppKv(db, `${prefix}.summary`);
+  const row = await getKvCacheByLegacyKey(db, `${prefix}.summary`);
   if (!row) {
     return null;
   }
@@ -1484,7 +1484,7 @@ async function putCachedUSOptionChainSummary(db: D1Database, prefix: string, sum
     expirations: summary.expirations,
     strikes: summary.strikes,
   };
-  await putAppKv(db, {
+  await putKvCacheByLegacyKey(db, {
     key: `${prefix}.summary`,
     valueJson: JSON.stringify(meta),
     expiresAt,
@@ -1493,7 +1493,7 @@ async function putCachedUSOptionChainSummary(db: D1Database, prefix: string, sum
 }
 
 async function getCachedUSOptionExpiration(db: D1Database, prefix: string, date: string): Promise<USOptionExpiration | null> {
-  const row = await getAppKv(db, `${prefix}.expiration.${date}`);
+  const row = await getKvCacheByLegacyKey(db, `${prefix}.expiration.${date}`);
   if (!row) {
     return null;
   }
@@ -1508,7 +1508,7 @@ async function putCachedUSOptionExpiration(
   updatedAt: number
 ): Promise<void> {
   const code = optionChainCodeFromPrefix(prefix);
-  await putAppKv(db, {
+  await putKvCacheByLegacyKey(db, {
     key: `${prefix}.expiration.${date}`,
     valueJson: JSON.stringify(expiration),
     expiresAt: marketDataCacheExpiresAtMsForCode(code, updatedAt),
@@ -1525,7 +1525,7 @@ async function putCachedUSOptionChain(db: D1Database, prefix: string, chain: USO
     currentPrice: chain.currentPrice,
     expirationDates: chain.expirations.map((item) => item.date),
   };
-  await putAppKv(db, {
+  await putKvCacheByLegacyKey(db, {
     key: `${prefix}.meta`,
     valueJson: JSON.stringify(meta),
     expiresAt,
@@ -1539,14 +1539,14 @@ async function putCachedUSOptionChain(db: D1Database, prefix: string, chain: USO
       callChunks: callChunks.length,
       putChunks: putChunks.length,
     };
-    await putAppKv(db, {
+    await putKvCacheByLegacyKey(db, {
       key: `${prefix}.expiration.${expiration.date}.meta`,
       valueJson: JSON.stringify(expirationMeta),
       expiresAt,
       updatedAt: now,
     });
     for (const [i, chunk] of callChunks.entries()) {
-      await putAppKv(db, {
+      await putKvCacheByLegacyKey(db, {
         key: `${prefix}.expiration.${expiration.date}.calls.${i}`,
         valueJson: JSON.stringify(chunk),
         expiresAt,
@@ -1554,7 +1554,7 @@ async function putCachedUSOptionChain(db: D1Database, prefix: string, chain: USO
       });
     }
     for (const [i, chunk] of putChunks.entries()) {
-      await putAppKv(db, {
+      await putKvCacheByLegacyKey(db, {
         key: `${prefix}.expiration.${expiration.date}.puts.${i}`,
         valueJson: JSON.stringify(chunk),
         expiresAt,

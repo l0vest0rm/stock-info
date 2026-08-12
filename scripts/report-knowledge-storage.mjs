@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { queryLocalD1Sql, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
+import { queryExistingLocalD1Sql, resolveExistingLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const args = parseArgs(process.argv.slice(2));
@@ -11,7 +11,7 @@ if (args.help) {
   printHelp();
   process.exit(0);
 }
-const localDatabaseFile = args.remote ? "" : resolveLocalD1Database({ root, requiredTable: "_local_migrations" });
+const localDatabaseFile = args.remote ? "" : resolveExistingLocalD1Database({ root });
 const existingTables = new Set(
   (runD1Sql(["select name from sqlite_master where type = 'table' and name like 'knowledge_%'"])[0] ?? [])
     .map((row) => String(row.name || "").trim())
@@ -81,7 +81,7 @@ console.log(JSON.stringify(summary, null, 2));
 
 function runD1Sql(commands) {
   if (!args.remote) {
-    return commands.map((command) => queryLocalD1Sql(command, { root, requiredTable: "_local_migrations" }));
+    return commands.map((command) => queryExistingLocalD1Sql(command, { root }));
   }
   const output = execFileSync(
     "npx",

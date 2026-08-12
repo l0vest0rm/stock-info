@@ -1,5 +1,5 @@
 import { Context, Hono } from "hono";
-import { getAppKv, putAppKv } from "../../../db/queries";
+import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../../../db/queries";
 import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { fetchCninfoCompanyNotices, supportsCninfoCompanyNotices } from "../../../adapters/cninfo";
 import { loadKline } from "../../market/application/load-kline";
@@ -741,7 +741,7 @@ export async function prepareCompanyReportDiscoveryExecution(
 }
 
 /**
- * The report page materializes its current source pool in app_kv before a
+ * The report page materializes its current source pool in kv_cache before a
  * discovery job is normally queued. Pass only stable report identity fields
  * back to the model: forecast/valuation fields neither identify a report nor
  * help it find a new one.
@@ -2156,7 +2156,7 @@ function inferCharset(contentType: string | null): string {
 }
 
 async function readAppJson<T>(db: D1Database, key: string): Promise<T | null> {
-  const row = await getAppKv(db, key);
+  const row = await getKvCacheByLegacyKey(db, key);
   if (!row?.valueJson) {
     return null;
   }
@@ -2169,7 +2169,7 @@ async function readAppJson<T>(db: D1Database, key: string): Promise<T | null> {
 
 async function writeAppJson(db: D1Database, key: string, value: unknown, ttlMs: number): Promise<void> {
   const now = Date.now();
-  await putAppKv(db, {
+  await putKvCacheByLegacyKey(db, {
     key,
     valueJson: JSON.stringify(value),
     expiresAt: now + Math.max(1, ttlMs),

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getAppKv, putAppKv } from "../../../db/queries";
+import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../../../db/queries";
 import { fail, ok } from "../../../shared/http";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
 import type { AppEnv } from "../../../types";
@@ -61,7 +61,7 @@ localDataRoutes.get("/companies/follow/forecast", async (c) => {
   if (!isLocalDevelopmentRuntime(c.env)) {
     return ok(c, { version: 1, storage: "browser" });
   }
-  const record = await getAppKv(c.env.DB, COMPANIES_FOLLOW_CONFIG_KEY);
+  const record = await getKvCacheByLegacyKey(c.env.DB, COMPANIES_FOLLOW_CONFIG_KEY);
   if (!record) {
     return ok(c, {
       version: 1,
@@ -87,7 +87,7 @@ localDataRoutes.post("/companies/follow/forecast", async (c) => {
     return fail(c, 400, "invalid companies follow config");
   }
   const config = normalizeCompaniesFollowConfig(body as Record<string, unknown>);
-  await putAppKv(c.env.DB, {
+  await putKvCacheByLegacyKey(c.env.DB, {
     key: COMPANIES_FOLLOW_CONFIG_KEY,
     valueJson: JSON.stringify(config),
     expiresAt: null,

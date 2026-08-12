@@ -3,7 +3,7 @@ import {
   fetchEastmoneyPerformanceReportPage,
   type EastmoneyDataPage,
 } from "../../../adapters/eastmoney";
-import { getAppKv, putAppKv } from "../../../db/queries";
+import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../../../db/queries";
 import { latestCompletedQuarterEndDate } from "../../../shared/cache-policy";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import {
@@ -500,7 +500,7 @@ async function readSyncCheckpoint(
   source: ProvisionalSource,
   reportDate: string
 ): Promise<SyncCheckpoint> {
-  const record = await getAppKv(db, cursorKey(source, reportDate));
+  const record = await getKvCacheByLegacyKey(db, cursorKey(source, reportDate));
   if (!record) return emptyCheckpoint(reportDate);
   try {
     const value = JSON.parse(record.valueJson) as Record<string, unknown>;
@@ -525,7 +525,7 @@ async function writeSyncCheckpoint(
   reportDate: string,
   checkpoint: SyncCheckpoint
 ): Promise<void> {
-  await putAppKv(db, {
+  await putKvCacheByLegacyKey(db, {
     key: cursorKey(source, reportDate),
     valueJson: JSON.stringify(checkpoint),
     expiresAt: null,
@@ -555,14 +555,14 @@ function cursorKey(source: ProvisionalSource, reportDate: string): string {
 async function migrateLegacyCheckpoints(db: D1Database, reportDate: string): Promise<void> {
   for (const source of ["performance_report", "performance_forecast"] as const) {
     const newKey = cursorKey(source, reportDate);
-    if (await getAppKv(db, newKey)) continue;
+    if (await getKvCacheByLegacyKey(db, newKey)) continue;
     const legacyKey = `financial-provisional-sync:${source}`;
-    const legacy = await getAppKv(db, legacyKey);
+    const legacy = await getKvCacheByLegacyKey(db, legacyKey);
     if (!legacy) continue;
     try {
       const value = JSON.parse(legacy.valueJson) as Record<string, unknown>;
       if (value.reportDate !== reportDate) continue;
-      await putAppKv(db, {
+      await putKvCacheByLegacyKey(db, {
         key: newKey,
         valueJson: JSON.stringify({
           schemaVersion: 2,

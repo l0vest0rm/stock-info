@@ -15,7 +15,7 @@ test("renders a taskd payload with the business name but no caller-visible task 
     messages: [{ role: "system", content: "规则" }, { role: "user", content: "问题" }],
   }, "business:meaningful-name");
   assert.equal(input.conversation_id, "stock-info:business:meaningful-name");
-  assert.match(String(input.input), /系统指令/);
+  assert.equal(input.input, "规则\n\n问题");
   assert.equal(Object.hasOwn(input, "task_id"), false);
 });
 

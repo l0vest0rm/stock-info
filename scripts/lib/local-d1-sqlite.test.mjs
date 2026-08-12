@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { executeLocalD1SqlFile, resolveLocalD1Database } from "./local-d1-sqlite.mjs";
+import { executeLocalD1SqlFile, queryExistingLocalD1Sql, resolveExistingLocalD1Database, resolveLocalD1Database } from "./local-d1-sqlite.mjs";
 
 test("local D1 executor commits a SQL file as one transaction", () => {
   const fixture = createFixture();
@@ -83,6 +83,18 @@ test("local SQLite resolver reports a required table that is missing", () => {
       () => resolveLocalD1Database({ root: fixture.dir, requiredTable: "knowledge_filtered_docs" }),
       new RegExp(`missing table knowledge_filtered_docs: ${escapeRegExp(fixture.database)}`)
     );
+  } finally {
+    rmSync(fixture.dir, { recursive: true, force: true });
+  }
+});
+
+test("local SQLite resolver can open an existing database without a sentinel table", () => {
+  const fixture = createFixture();
+  try {
+    assert.equal(resolveExistingLocalD1Database({ root: fixture.dir }), fixture.database);
+    assert.deepEqual(queryExistingLocalD1Sql("select name from sqlite_master where type='table' order by name;", { root: fixture.dir }), [
+      { name: "knowledge_docs" },
+    ]);
   } finally {
     rmSync(fixture.dir, { recursive: true, force: true });
   }

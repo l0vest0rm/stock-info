@@ -94,7 +94,7 @@ test("prepares the structured discovery prompt with the current report identity 
           return {
         first: async () => {
           if (sql.includes("from securities")) return { name: "示例公司" };
-          if (sql.includes("from app_kv")) return {
+          if (sql.includes("from kv_cache")) return {
             valueJson: JSON.stringify([{
               title: "示例公司深度报告",
               orgName: "示例证券",

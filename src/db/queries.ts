@@ -8,11 +8,30 @@ export type HttpCacheRecord = {
   updatedAt: number;
 };
 
-export type AppKvRecord = {
+export type KvCacheRecord = {
+  namespace: string;
+  key: string;
   valueJson: string;
   expiresAt: number | null;
   updatedAt: number;
 };
+
+export type KvCacheValueRecord = Pick<KvCacheRecord, "valueJson" | "expiresAt" | "updatedAt">;
+
+const LEGACY_KV_CACHE_NAMESPACE_RULES: Array<{ prefix: string; namespace: string }> = [
+  { prefix: "company-reports-source:", namespace: "company_reports_source" },
+  { prefix: "report-forecast:", namespace: "company_report_forecast" },
+  { prefix: "shared-report-analysis:", namespace: "shared_report_analysis" },
+  { prefix: "knowledge-report-analysis:", namespace: "knowledge_report_analysis" },
+  { prefix: "company-news-report-analysis:", namespace: "company_news_report_analysis" },
+  { prefix: "sina-report-list:", namespace: "sina_report_list" },
+  { prefix: "sina-report-detail:", namespace: "sina_report_detail" },
+  { prefix: "eastmoney-report-pdf-text:", namespace: "eastmoney_report_pdf_text" },
+  { prefix: "financial-provisional-sync:", namespace: "financial_provisional_sync" },
+  { prefix: "llm-daily-quota:", namespace: "daily_llm_quota" },
+  { prefix: "companies-follow-config", namespace: "companies_follow_config" },
+  { prefix: "us.options.chain.v2.", namespace: "us_option_chain" },
+];
 
 export async function upsertSecurity(db: D1Database, record: SecurityRecord): Promise<void> {
   const upsert = db.prepare(
@@ -183,21 +202,27 @@ export async function putHttpCache(
     .run();
 }
 
-export async function getAppKv(db: D1Database, key: string, now = Date.now()): Promise<AppKvRecord | null> {
+export async function getKvCache(
+  db: D1Database,
+  namespace: string,
+  key: string,
+  now = Date.now()
+): Promise<KvCacheRecord | null> {
   const row = await db
     .prepare(
-      `select value_json as valueJson, expires_at as expiresAt, updated_at as updatedAt
-       from app_kv
-       where key = ? and (expires_at is null or expires_at > ?)`
+      `select namespace, key, value_json as valueJson, expires_at as expiresAt, updated_at as updatedAt
+       from kv_cache
+       where namespace = ? and key = ? and (expires_at is null or expires_at > ?)`
     )
-    .bind(key, now)
-    .first<AppKvRecord>();
+    .bind(namespace, key, now)
+    .first<KvCacheRecord>();
   return row ?? null;
 }
 
-export async function putAppKv(
+export async function putKvCache(
   db: D1Database,
   record: {
+    namespace: string;
     key: string;
     valueJson: string;
     expiresAt: number | null;
@@ -206,16 +231,82 @@ export async function putAppKv(
 ): Promise<void> {
   await db
     .prepare(
-      `insert into app_kv (key, value_json, expires_at, updated_at)
-       values (?, ?, ?, ?)
-       on conflict(key) do update set
+      `insert into kv_cache (namespace, key, value_json, expires_at, updated_at)
+       values (?, ?, ?, ?, ?)
+       on conflict(namespace, key) do update set
         value_json = excluded.value_json,
         expires_at = excluded.expires_at,
         updated_at = excluded.updated_at`
     )
-    .bind(record.key, record.valueJson, record.expiresAt, record.updatedAt)
+    .bind(record.namespace, record.key, record.valueJson, record.expiresAt, record.updatedAt)
     .run();
 }
+
+export async function deleteKvCache(db: D1Database, namespace: string, key: string): Promise<void> {
+  await db
+    .prepare(
+      `delete from kv_cache
+       where namespace = ? and key = ?`
+    )
+    .bind(namespace, key)
+    .run();
+}
+
+export async function listKvCacheByNamespace(
+  db: D1Database,
+  namespace: string,
+  now = Date.now()
+): Promise<KvCacheRecord[]> {
+  const result = await db
+    .prepare(
+      `select namespace, key, value_json as valueJson, expires_at as expiresAt, updated_at as updatedAt
+       from kv_cache
+       where namespace = ? and (expires_at is null or expires_at > ?)
+       order by updated_at desc, key asc`
+    )
+    .bind(namespace, now)
+    .all<KvCacheRecord>();
+  return result.results ?? [];
+}
+
+export function resolveLegacyKvCacheLocation(key: string): { namespace: string; key: string } {
+  const normalized = String(key || "").trim();
+  for (const rule of LEGACY_KV_CACHE_NAMESPACE_RULES) {
+    if (normalized.startsWith(rule.prefix)) return { namespace: rule.namespace, key: normalized };
+  }
+  throw new Error(`unsupported kv_cache key namespace mapping: ${normalized}`);
+}
+
+export async function getKvCacheByLegacyKey(
+  db: D1Database,
+  key: string,
+  now = Date.now()
+): Promise<KvCacheValueRecord | null> {
+  const location = resolveLegacyKvCacheLocation(key);
+  const row = await getKvCache(db, location.namespace, location.key, now);
+  return row ? { valueJson: row.valueJson, expiresAt: row.expiresAt, updatedAt: row.updatedAt } : null;
+}
+
+export async function putKvCacheByLegacyKey(
+  db: D1Database,
+  record: {
+    key: string;
+    valueJson: string;
+    expiresAt: number | null;
+    updatedAt: number;
+  }
+): Promise<void> {
+  const location = resolveLegacyKvCacheLocation(record.key);
+  await putKvCache(db, {
+    namespace: location.namespace,
+    key: location.key,
+    valueJson: record.valueJson,
+    expiresAt: record.expiresAt,
+    updatedAt: record.updatedAt,
+  });
+}
+
+const DAILY_LLM_QUOTA_CACHE_NAMESPACE = "daily_llm_quota";
 
 export async function consumeDailyLlmQuota(
   db: D1Database,
@@ -226,27 +317,27 @@ export async function consumeDailyLlmQuota(
 ): Promise<{ allowed: boolean; count: number }> {
   const row = await db
     .prepare(
-      `insert into app_kv (key, value_json, expires_at, updated_at)
-       values (?, json_object('count', 1), ?, ?)
-       on conflict(key) do update set
+      `insert into kv_cache (namespace, key, value_json, expires_at, updated_at)
+       values (?, ?, json_object('count', 1), ?, ?)
+       on conflict(namespace, key) do update set
         value_json = case
-          when coalesce(cast(json_extract(app_kv.value_json, '$.count') as integer), 0) < ?
-            then json_object('count', coalesce(cast(json_extract(app_kv.value_json, '$.count') as integer), 0) + 1)
-          else app_kv.value_json
+          when coalesce(cast(json_extract(kv_cache.value_json, '$.count') as integer), 0) < ?
+            then json_object('count', coalesce(cast(json_extract(kv_cache.value_json, '$.count') as integer), 0) + 1)
+          else kv_cache.value_json
         end,
         expires_at = case
-          when coalesce(cast(json_extract(app_kv.value_json, '$.count') as integer), 0) < ? then excluded.expires_at
-          else app_kv.expires_at
+          when coalesce(cast(json_extract(kv_cache.value_json, '$.count') as integer), 0) < ? then excluded.expires_at
+          else kv_cache.expires_at
         end,
         updated_at = case
-          when coalesce(cast(json_extract(app_kv.value_json, '$.count') as integer), 0) < ? then excluded.updated_at
-          else app_kv.updated_at
+          when coalesce(cast(json_extract(kv_cache.value_json, '$.count') as integer), 0) < ? then excluded.updated_at
+          else kv_cache.updated_at
         end
        returning
         cast(json_extract(value_json, '$.count') as integer) as count,
         updated_at as updatedAt`
     )
-    .bind(key, expiresAt, updatedAt, limit, limit, limit)
+    .bind(DAILY_LLM_QUOTA_CACHE_NAMESPACE, key, expiresAt, updatedAt, limit, limit, limit)
     .first<{ count: number | null; updatedAt: number | null }>();
   const count = Number(row?.count ?? 0);
   return {
@@ -262,14 +353,14 @@ export async function releaseDailyLlmQuota(
 ): Promise<void> {
   await db
     .prepare(
-      `update app_kv
+      `update kv_cache
        set value_json = json_object(
              'count',
              max(coalesce(cast(json_extract(value_json, '$.count') as integer), 0) - 1, 0)
            ),
            updated_at = ?
-       where key = ?`
+       where namespace = ? and key = ?`
     )
-    .bind(updatedAt, key)
+    .bind(updatedAt, DAILY_LLM_QUOTA_CACHE_NAMESPACE, key)
     .run();
 }

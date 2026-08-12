@@ -14,17 +14,20 @@ if (process.argv.includes("--help") || process.argv.includes("-h")) {
 const databaseFile = prepareLocalD1DatabasePath({ root });
 const migrationsDir = resolve(root, "migrations");
 const database = new DatabaseSync(databaseFile);
-database.exec(`${LOCAL_SQLITE_CONNECTION_PRAGMAS.join("\n")}\ncreate table if not exists _local_migrations (filename text primary key, applied_at integer not null);`);
-const known = new Set(database.prepare("select filename from _local_migrations").all().map((row) => row.filename));
+database.exec(LOCAL_SQLITE_CONNECTION_PRAGMAS.join("\n"));
 const migrations = readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort();
+const currentUserVersion = getUserVersion(database);
+if (currentUserVersion > migrations.length) {
+  throw new Error(`Local migration state exceeds available files: version=${currentUserVersion}, files=${migrations.length}`);
+}
 let applied = 0;
-for (const filename of migrations) {
-  if (known.has(filename)) continue;
+for (let index = currentUserVersion; index < migrations.length; index += 1) {
+  const filename = migrations[index];
   const sql = await readFile(join(migrationsDir, filename), "utf8");
   database.exec("begin immediate");
   try {
     database.exec(sql);
-    database.prepare("insert into _local_migrations (filename, applied_at) values (?, ?)").run(filename, Date.now());
+    setUserVersion(database, index + 1);
     database.exec("commit");
     applied += 1;
     console.log(`Applied local migration: ${filename}`);
@@ -35,3 +38,11 @@ for (const filename of migrations) {
 }
 database.close();
 console.log(`Local database ready: ${databaseFile} (${applied} migration${applied === 1 ? "" : "s"} applied)`);
+
+function getUserVersion(databaseHandle) {
+  return Number(databaseHandle.prepare("pragma user_version").get()?.user_version ?? 0);
+}
+
+function setUserVersion(databaseHandle, version) {
+  databaseHandle.exec(`pragma user_version = ${Math.max(0, Number(version) || 0)}`);
+}
