@@ -11,7 +11,7 @@
       "pe": 0
     }
   ],
-  "targetPrice": null
+  "targetPrice": 100
 }
 
 规则：

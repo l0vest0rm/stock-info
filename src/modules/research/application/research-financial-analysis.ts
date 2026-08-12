@@ -1,5 +1,4 @@
 import type { AppEnv } from "../../../types";
-import { RESEARCH_FINANCIAL_ANALYSIS_SYSTEM_PROMPT } from "../../../generated/prompt-text";
 import { taskdWebQaInput } from "../../../shared/llm-client";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
@@ -50,10 +49,7 @@ export async function enqueueResearchFinancialAnalysis(
       model: MODEL,
       reasoningEffort: reasoningEffort as "low" | "medium" | "high" | "xhigh",
       waitTimeoutMs: 60 * 60_000,
-      messages: [
-        { role: "system", content: RESEARCH_FINANCIAL_ANALYSIS_SYSTEM_PROMPT },
-        { role: "user", content: financialAnalysisPrompt(snapshot) },
-      ],
+      messages: [{ role: "user", content: financialAnalysisPrompt(snapshot) }],
     }, name),
   });
   return { accepted: true, task: taskView(task), snapshot, force: options.force === true };

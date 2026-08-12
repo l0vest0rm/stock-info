@@ -48,6 +48,10 @@ STOCK_INFO_TASKD_CALLER_TOKEN="<taskd-stock-info-caller-token>"
 `TASKD_NAMESPACE` 由启动脚本默认设为 `https://task.m2ai.cc` 和 `stock-info`。
 不要把 token 写入 `wrangler.jsonc`、源码或提交到 Git；生产 Worker 不允许调用 taskd。
 
+本地页面/API 读取 taskd 业务状态时，先读本地 `kv_cache` 中的业务快照。只有本地缓存已经是
+`queued`、`running` 这类中间态时，才继续向 taskd 对账；从未提交过任务或已经是稳态结果时，
+不应把 taskd 当成默认查询源。
+
 ## 命令
 
 ```bash

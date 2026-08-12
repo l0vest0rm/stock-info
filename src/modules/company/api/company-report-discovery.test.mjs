@@ -13,13 +13,72 @@ import {
   normalizeCompanyReportLlmRawResponse,
   parseCompanyReportDiscovery,
   prepareCompanyReportDiscoveryExecution,
+  readStoredCompanyReportDiscovery,
   validateCompanyReportDiscoveryTerminalEvidence,
   validateCompanyReportDiscoveryWebSearch,
+  writeStoredCompanyReportDiscovery,
 } from "./company.routes.ts";
 
 const citations = [
   { title: "公开研报", url: "https://reports.example.com/acme.pdf?utm_source=search#page=1" },
 ];
+
+class FakeD1 {
+  constructor() {
+    this.kvCache = new Map();
+    this.httpCache = new Map();
+  }
+
+  prepare(sql) {
+    const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
+    return {
+      bind: (...args) => ({
+        first: async () => {
+          if (normalized.includes("from kv_cache")) {
+            const row = this.kvCache.get(`${args[0]}|${args[1]}`) ?? null;
+            if (!row) return null;
+            if (args[2] != null && row.expiresAt != null && row.expiresAt <= args[2]) return null;
+            return row;
+          }
+          if (normalized.includes("from securities")) {
+            return null;
+          }
+          if (normalized.includes("from http_cache")) {
+            return this.httpCache.get(args[0]) ?? null;
+          }
+          throw new Error(`Unexpected D1 statement: ${sql}`);
+        },
+        run: async () => {
+          if (normalized.includes("insert into kv_cache")) {
+            this.kvCache.set(`${args[0]}|${args[1]}`, {
+              namespace: args[0],
+              key: args[1],
+              valueJson: args[2],
+              expiresAt: args[3],
+              updatedAt: args[4],
+            });
+            return { success: true };
+          }
+          if (normalized.includes("insert into http_cache")) {
+            this.httpCache.set(args[0], {
+              status: args[3],
+              headersJson: args[4],
+              bodyText: args[5],
+              expiresAt: args[6],
+              updatedAt: args[7],
+            });
+            return { success: true };
+          }
+          throw new Error(`Unexpected D1 statement: ${sql}`);
+        },
+        all: async () => {
+          if (normalized.includes("from knowledge_docs")) return { results: [] };
+          throw new Error(`Unexpected D1 statement: ${sql}`);
+        },
+      }),
+    };
+  }
+}
 
 test("keeps only the exact discovery-model report object for a matching source URL", () => {
   const targetUrl = "https://stock.finance.sina.com.cn/stock/go.php/vReport_Show/kind/search/rptid/836910213940/index.phtml";
@@ -111,16 +170,70 @@ test("prepares the structured discovery prompt with the current report identity 
     },
   };
   const prepared = await prepareCompanyReportDiscoveryExecution(db, "000001.SZ", "xhigh");
-  assert.equal(prepared.promptVersion, "company-report-discovery.v5");
-  assert.match(prepared.input, /证券代码：000001\.SZ/);
-  assert.match(prepared.input, /公司名称：示例公司/);
-  assert.match(prepared.input, /"forecasts"/);
-  assert.match(prepared.input, /"valuation"/);
-  assert.match(prepared.input, /示例公司深度报告/);
-  assert.match(prepared.input, /示例证券/);
-  assert.match(prepared.input, /https:\/\/example\.test\/report/);
-  assert.doesNotMatch(prepared.input, /"forecasts":\[\{"year":2026/);
-  assert.doesNotMatch(prepared.input, /MAX_REPORTS|最多返回报告数|\{\{MAX_REPORTS\}\}/);
+  assert.equal(prepared.promptVersion, "company-report-discovery.v6");
+  assert.match(prepared.prompt, /证券代码：000001\.SZ/);
+  assert.match(prepared.prompt, /公司名称：示例公司/);
+  assert.match(prepared.prompt, /"forecasts"/);
+  assert.match(prepared.prompt, /"targetPrice"/);
+  assert.match(prepared.prompt, /示例公司深度报告/);
+  assert.match(prepared.prompt, /示例证券/);
+  assert.match(prepared.prompt, /https:\/\/example\.test\/report/);
+  assert.doesNotMatch(prepared.prompt, /"forecasts":\[\{"year":2026/);
+  assert.doesNotMatch(prepared.prompt, /MAX_REPORTS|最多返回报告数|\{\{MAX_REPORTS\}\}/);
+});
+
+test("materializes the source pool before discovery submission when the report cache is cold", async () => {
+  const db = new FakeD1();
+  const originalFetch = globalThis.fetch;
+  let discoveryInput = "";
+  globalThis.fetch = async (url, init) => {
+    const value = String(url);
+    if (value.startsWith("https://reportapi.eastmoney.com/report/list")) {
+      return new Response('jQuery({"data":[{"title":"缓存尚未写入的既有研报","orgName":"示例证券","publishDate":"2026-08-10","infoCode":"EM-001"}]})');
+    }
+    if (value.startsWith("https://stock.finance.sina.com.cn/stock/go.php/vReport_List")) {
+      return new Response("<table></table>", { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+    if (value.startsWith("https://task.example.test/v1/namespaces/stock-info/tasks")) {
+      const request = JSON.parse(String(init?.body || "{}"));
+      discoveryInput = String(request.input?.input || "");
+      return new Response(JSON.stringify({
+        task_id: 42,
+        namespace: "stock-info",
+        client_task_name: "company:report-discovery:000001.SZ",
+        task_type: "webqa.chatgpt.v1",
+        input: request.input,
+        status: "queued",
+        checkpoint: null,
+        result: null,
+        error_message: null,
+        superseded_by_task_id: null,
+        created_at: 1_786_517_000_000,
+        updated_at: 1_786_517_000_000,
+        completed_at: null,
+      }), { status: 200 });
+    }
+    throw new Error(`Unexpected fetch: ${value}`);
+  };
+
+  try {
+    const response = await companyRoutes.request(
+      "http://example.test/company/reports/discover?code=000001.SZ",
+      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+      {
+        LLM_RUNTIME: "local",
+        DB: db,
+        TASKD_BASE_URL: "https://task.example.test",
+        TASKD_NAMESPACE: "stock-info",
+        TASKD_CALLER_TOKEN: "token",
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.match(discoveryInput, /缓存尚未写入的既有研报/);
+    assert.doesNotMatch(discoveryInput, /KNOWN_REPORTS_JSON\s*\n\[\]/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("rejects only an empty reasoningEffort at the local discovery API boundary", async () => {
@@ -138,14 +251,133 @@ test("rejects only an empty reasoningEffort at the local discovery API boundary"
   assert.match(String(payload?.msg || ""), /must be a non-empty string/);
 });
 
-test("parses cited discovery reports with the normal forecast and valuation fields", () => {
+test("discovery capability serves a completed kv_cache snapshot without querying taskd", async () => {
+  const db = new FakeD1();
+  await writeStoredCompanyReportDiscovery(db, "300308.SZ", {
+    report: {
+      response: {
+        text: JSON.stringify([{ title: "已缓存研报", url: "https://reports.example.com/cached.pdf", forecasts: [] }]),
+      },
+      projection: {
+        securityCode: "300308.SZ",
+        reportsFound: 1,
+        reportsRejected: 0,
+        sourceRows: 8,
+        cachedAt: 1_786_517_056_000,
+      },
+    },
+    task: {
+      name: "company:report-discovery:300308.SZ",
+      status: "completed",
+      errorMessage: null,
+      createdAt: 1_786_517_000_000,
+      updatedAt: 1_786_517_056_000,
+      completedAt: 1_786_517_056_000,
+    },
+    lastSuccessfulCompletedAt: 1_786_517_056_000,
+  });
+
+  const response = await companyRoutes.request(
+    "http://example.test/company/reports/discovery-capability?code=300308.SZ",
+    {},
+    { LLM_RUNTIME: "local", DB: db },
+  );
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.data?.task?.status, "completed");
+  assert.equal(payload.data?.lastSuccessfulCompletedAt, 1_786_517_056_000);
+});
+
+test("discovery capability returns enabled with no task when kv_cache has no snapshot", async () => {
+  const db = new FakeD1();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("taskd should not be queried without a cached in-flight task");
+  };
+
+  try {
+    const response = await companyRoutes.request(
+      "http://example.test/company/reports/discovery-capability?code=603986.SH",
+      {},
+      { LLM_RUNTIME: "local", DB: db },
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.data?.enabled, true);
+    assert.equal(payload.data?.task, null);
+    assert.equal(payload.data?.lastSuccessfulCompletedAt, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("discovery capability refreshes only pending task state from taskd and persists it", async () => {
+  const db = new FakeD1();
+  await writeStoredCompanyReportDiscovery(db, "603986.SH", {
+    report: null,
+    task: {
+      name: "company:report-discovery:603986.SH",
+      status: "running",
+      errorMessage: null,
+      createdAt: 1_786_517_000_000,
+      updatedAt: 1_786_517_010_000,
+      completedAt: null,
+    },
+    lastSuccessfulCompletedAt: null,
+  });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.match(String(url), /by-name\/company%3Areport-discovery%3A603986\.SH$/);
+    return new Response(JSON.stringify({
+      task_id: 7,
+      namespace: "stock-info",
+      client_task_name: "company:report-discovery:603986.SH",
+      task_type: "webqa.chatgpt.v1",
+      input: {},
+      status: "running",
+      checkpoint: null,
+      result: null,
+      error_message: null,
+      superseded_by_task_id: null,
+      created_at: 1_786_517_000_000,
+      updated_at: 1_786_529_418_000,
+      completed_at: null,
+    }), { status: 200 });
+  };
+
+  try {
+    const response = await companyRoutes.request(
+      "http://example.test/company/reports/discovery-capability?code=603986.SH",
+      {},
+      {
+        LLM_RUNTIME: "local",
+        DB: db,
+        TASKD_BASE_URL: "https://task.example.test",
+        TASKD_NAMESPACE: "stock-info",
+        TASKD_CALLER_TOKEN: "token",
+      },
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.data?.task?.status, "running");
+    assert.equal(payload.data?.task?.updatedAt, 1_786_529_418_000);
+    const stored = await readStoredCompanyReportDiscovery(db, "603986.SH");
+    assert.equal(stored?.task?.status, "running");
+    assert.equal(stored?.task?.updatedAt, 1_786_529_418_000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("parses cited discovery reports with the normal forecast and top-level target price fields", () => {
   const reports = parseCompanyReportDiscovery(JSON.stringify([{
     title: "公司深度研究",
     institution: "示例证券",
     publishedAt: "2026-06-20",
     url: "https://reports.example.com/acme.pdf#page=1",
     forecasts: [{ year: 2026, revenue: 12.3, netProfit: 1.1, eps: 0.4, pe: 20 }],
-    valuation: { rating: "买入", targetPrice: 18.5, targetPriceCurrency: "人民币", targetPe: 20, valuationMethod: "PE" },
+    targetPrice: 18.5,
   }]), "000001.SZ", citations);
   assert.deepEqual(reports, [{
     title: "公司深度研究",
@@ -153,6 +385,26 @@ test("parses cited discovery reports with the normal forecast and valuation fiel
     publishedAt: "2026-06-20",
     url: "https://reports.example.com/acme.pdf",
     forecasts: [{ year: 2026, revenue: 12.3, netProfit: 1.1, eps: 0.4, pe: 20 }],
+    targetPrice: 18.5,
+  }]);
+});
+
+test("retains backward compatibility for legacy discovery valuation objects", () => {
+  const reports = parseCompanyReportDiscovery(JSON.stringify([{
+    title: "旧格式研报",
+    institution: "示例证券",
+    publishedAt: "2026-06-20",
+    url: "https://reports.example.com/acme.pdf#page=1",
+    forecasts: [{ year: 2026, eps: 0.4 }],
+    valuation: { rating: "买入", targetPrice: 18.5, targetPriceCurrency: "人民币", targetPe: 20, valuationMethod: "PE" },
+  }]), "000001.SZ", citations);
+  assert.deepEqual(reports, [{
+    title: "旧格式研报",
+    institution: "示例证券",
+    publishedAt: "2026-06-20",
+    url: "https://reports.example.com/acme.pdf",
+    forecasts: [{ year: 2026, eps: 0.4 }],
+    targetPrice: 18.5,
     valuation: { rating: "买入", targetPrice: 18.5, targetPriceCurrency: "人民币", targetPe: 20, valuationMethod: "PE" },
   }]);
 });
@@ -228,7 +480,7 @@ test("keeps missing forecasts and metadata on an otherwise identified candidate"
     title: "全球机构更新",
     url: "https://reports.example.com/global-update",
     forecasts: null,
-    valuation: null,
+    targetPrice: null,
     publishedAt: "not-a-date",
   }]), "000001.SZ", []);
   assert.deepEqual(reports, [{

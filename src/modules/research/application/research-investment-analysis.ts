@@ -41,12 +41,21 @@ type InvestmentAnalysisInput = {
 };
 type ResultRow = {
   securityCode: string;
-  inputJson: string;
-  markdown: string;
+  inputJson: string | null;
+  markdown: string | null;
   citationsJson: string;
   sourcesJson: string;
   terminalEvidenceJson: string | null;
-  projectedAt: number;
+  projectedAt: number | null;
+  task: StoredTaskValue | null;
+};
+type StoredTaskValue = {
+  name: string;
+  status: TaskdTask["status"];
+  errorMessage: string | null;
+  createdAt: number;
+  updatedAt: number;
+  completedAt: number | null;
 };
 type StoredResultValue = Omit<ResultRow, "securityCode">;
 
@@ -60,6 +69,7 @@ export async function enqueueResearchInvestmentAnalysis(
   options: { reasoningEffort?: string | null } = {},
 ) {
   const prepared = await prepareResearchInvestmentAnalysis(env, securityCode);
+  const current = await loadResult(env.DB, prepared.securityCode);
   const name = researchInvestmentAnalysisTaskName(prepared.securityCode);
   const normalizedReasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
   const task = await taskdCallerClient(env).submit({
@@ -84,32 +94,56 @@ export async function enqueueResearchInvestmentAnalysis(
       schemaVersion: prepared.input.schemaVersion,
     },
   });
+  await storeResult(env.DB, prepared.securityCode, mergeStoredResult(current, {
+    inputJson: JSON.stringify(prepared.input),
+    task: taskView(task),
+  }));
   return { accepted: true, task: taskView(task), input: prepared.input };
 }
 
 export async function loadResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string) {
-  const prepared = await prepareResearchInvestmentAnalysis(env, securityCode);
-  const name = researchInvestmentAnalysisTaskName(prepared.securityCode);
-  const state = env.LLM_RUNTIME === "local"
-    ? await reconcileTaskdResult(taskdCallerClient(env), {
-      name,
-      project: (task) => projectResearchInvestmentAnalysis(env, taskBusinessInput(task) || prepared.input, task),
-    })
-    : { state: "missing" as const };
-  const result = await loadResult(env.DB, prepared.securityCode);
-  const task = "task" in state ? state.task : null;
+  const code = securityCode.trim().toUpperCase();
+  let result = await loadResult(env.DB, code);
+  if (result?.markdown && !isPendingTask(result.task)) return responseFromStoredResult(result);
+  const cachedInput = jsonObject(result?.inputJson);
+  const shouldQueryTaskd = env.LLM_RUNTIME === "local" && (!result?.markdown || isPendingTask(result.task));
+  let prepared: Awaited<ReturnType<typeof prepareResearchInvestmentAnalysis>> | null = null;
+  const ensurePrepared = async () => {
+    if (!prepared) prepared = await prepareResearchInvestmentAnalysis(env, code);
+    return prepared;
+  };
+  let task: StoredTaskValue | null = result?.task ?? null;
+  if (shouldQueryTaskd) {
+    const state = await reconcileTaskdResult(taskdCallerClient(env), {
+      name: researchInvestmentAnalysisTaskName(code),
+      project: async (currentTask) => projectResearchInvestmentAnalysis(env, taskBusinessInput(currentTask) || cachedInput || (await ensurePrepared()).input, currentTask),
+    });
+    switch (state.state) {
+      case "projected":
+        result = state.value;
+        task = state.value.task;
+        break;
+      case "pending":
+      case "failed":
+      case "cancelled":
+      case "superseded":
+        task = taskView(state.task);
+        result = await persistTaskSnapshot(env.DB, code, result, taskBusinessInput(state.task) || cachedInput || (await ensurePrepared()).input, state.task);
+        break;
+      case "missing":
+        task = null;
+        if (result?.task) result = await persistTaskSnapshot(env.DB, code, result, cachedInput, null);
+        break;
+    }
+  }
+  if (result) return responseFromStoredResult(result);
+  const fallbackInput = cachedInput || (await ensurePrepared()).input;
   return {
-    availability: result ? "available" as const : state.state === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
+    availability: task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
     task: task ? taskView(task) : null,
-    input: result ? parseJson(result.inputJson) : prepared.input,
-    report: result ? {
-      markdown: result.markdown,
-      citations: parseArray(result.citationsJson),
-      sources: parseArray(result.sourcesJson),
-      terminalMetadata: parseJson(result.terminalEvidenceJson),
-      projectedAt: result.projectedAt,
-    } : null,
-    resume: { available: state.state === "failed", reason: state.state === "failed" ? "submit_new_task" : result ? "already_projected" : "not_failed" },
+    input: fallbackInput,
+    report: null,
+    resume: { available: task?.status === "failed", reason: task?.status === "failed" ? "submit_new_task" : "not_failed" },
   };
 }
 
@@ -211,15 +245,17 @@ async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input:
   const securityCode = text(object(input.security)?.code);
   if (!securityCode) throw new Error("investment analysis input has no security code");
   const projectedAt = Date.now();
-  await writeStoredResearchInvestmentAnalysis(env.DB, securityCode, {
+  const stored = {
     inputJson: JSON.stringify(input),
     markdown,
     citationsJson: JSON.stringify(Array.isArray(answer?.citations) ? answer.citations : []),
     sourcesJson: JSON.stringify(Array.isArray(answer?.sources) ? answer.sources : []),
     terminalEvidenceJson: JSON.stringify(result?.terminal_evidence ?? null),
     projectedAt,
-  });
-  return { securityCode, projectedAt };
+    task: taskView(task),
+  } satisfies StoredResultValue;
+  await storeResult(env.DB, securityCode, stored);
+  return { securityCode, ...stored };
 }
 
 async function loadResult(db: D1Database, securityCode: string): Promise<ResultRow | null> {
@@ -232,13 +268,7 @@ export async function writeStoredResearchInvestmentAnalysis(
   securityCode: string,
   value: StoredResultValue,
 ): Promise<void> {
-  await putKvCache(db, {
-    namespace: INVESTMENT_ANALYSIS_NAMESPACE,
-    key: securityCode,
-    valueJson: JSON.stringify(value),
-    expiresAt: null,
-    updatedAt: value.projectedAt,
-  });
+  await storeResult(db, securityCode, value);
 }
 
 export async function readStoredResearchInvestmentAnalysis(
@@ -249,17 +279,19 @@ export async function readStoredResearchInvestmentAnalysis(
   if (!row) return null;
   const parsed = object(parseJson(row.valueJson));
   if (!parsed) return null;
-  const markdown = text(parsed.markdown);
-  if (!markdown) return null;
-  const projectedAt = Number(parsed.projectedAt);
-  if (!Number.isFinite(projectedAt)) return null;
+  const task = parseStoredTask(parsed.task);
+  const inputJson = typeof parsed.inputJson === "string" ? parsed.inputJson : null;
+  const markdown = text(parsed.markdown) || null;
+  const projectedAt = parsed.projectedAt === null || parsed.projectedAt === undefined ? null : Number(parsed.projectedAt);
+  if (!markdown && !task) return null;
   return {
-    inputJson: jsonString(parsed.inputJson),
+    inputJson,
     markdown,
     citationsJson: jsonString(parsed.citationsJson, "[]"),
     sourcesJson: jsonString(parsed.sourcesJson, "[]"),
     terminalEvidenceJson: nullableJsonString(parsed.terminalEvidenceJson),
-    projectedAt,
+    projectedAt: Number.isFinite(projectedAt) ? projectedAt : null,
+    task,
   };
 }
 
@@ -290,9 +322,91 @@ function normalizeReasoningEffort(value: string | null | undefined): "low" | "me
 }
 
 function taskView(task: TaskdTask) { return { name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
+function responseFromStoredResult(result: ResultRow) {
+  const task = result.task;
+  return {
+    availability: result.markdown ? "available" as const : task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
+    task,
+    input: parseJson(result.inputJson),
+    report: result.markdown ? {
+      markdown: result.markdown,
+      citations: parseArray(result.citationsJson),
+      sources: parseArray(result.sourcesJson),
+      terminalMetadata: parseJson(result.terminalEvidenceJson),
+      projectedAt: result.projectedAt,
+    } : null,
+    resume: { available: task?.status === "failed", reason: task?.status === "failed" ? "submit_new_task" : result.markdown ? "already_projected" : "not_failed" },
+  };
+}
+async function persistTaskSnapshot(
+  db: D1Database,
+  securityCode: string,
+  current: ResultRow | null,
+  input: Record<string, unknown> | null,
+  task: TaskdTask | null,
+): Promise<ResultRow> {
+  const stored = mergeStoredResult(current, {
+    inputJson: input ? JSON.stringify(input) : undefined,
+    task: task ? taskView(task) : null,
+  });
+  await storeResult(db, securityCode, stored);
+  return { securityCode, ...stored };
+}
+async function storeResult(db: D1Database, securityCode: string, value: StoredResultValue): Promise<void> {
+  await putKvCache(db, {
+    namespace: INVESTMENT_ANALYSIS_NAMESPACE,
+    key: securityCode,
+    valueJson: JSON.stringify(value),
+    expiresAt: null,
+    updatedAt: value.projectedAt ?? value.task?.updatedAt ?? Date.now(),
+  });
+}
+function mergeStoredResult(current: ResultRow | StoredResultValue | null, patch: {
+  inputJson?: string | null;
+  markdown?: string | null;
+  citationsJson?: string;
+  sourcesJson?: string;
+  terminalEvidenceJson?: string | null;
+  projectedAt?: number | null;
+  task?: StoredTaskValue | null;
+}): StoredResultValue {
+  return {
+    inputJson: patch.inputJson !== undefined ? patch.inputJson : current?.inputJson ?? null,
+    markdown: patch.markdown !== undefined ? patch.markdown : current?.markdown ?? null,
+    citationsJson: patch.citationsJson ?? current?.citationsJson ?? "[]",
+    sourcesJson: patch.sourcesJson ?? current?.sourcesJson ?? "[]",
+    terminalEvidenceJson: patch.terminalEvidenceJson !== undefined ? patch.terminalEvidenceJson : current?.terminalEvidenceJson ?? null,
+    projectedAt: patch.projectedAt !== undefined ? patch.projectedAt : current?.projectedAt ?? null,
+    task: patch.task !== undefined ? patch.task : current?.task ?? null,
+  };
+}
+function parseStoredTask(value: unknown): StoredTaskValue | null {
+  const row = object(value);
+  const name = text(row?.name);
+  const status = text(row?.status) as TaskdTask["status"];
+  const createdAt = Number(row?.createdAt);
+  const updatedAt = Number(row?.updatedAt);
+  if (!name || !isTaskStatus(status) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt)) return null;
+  const completedAt = row?.completedAt === null || row?.completedAt === undefined ? null : Number(row?.completedAt);
+  return {
+    name,
+    status,
+    errorMessage: text(row?.errorMessage) || null,
+    createdAt,
+    updatedAt,
+    completedAt: Number.isFinite(completedAt) ? completedAt : null,
+  };
+}
+function isPendingTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean {
+  return task?.status === "queued" || task?.status === "leased" || task?.status === "running" || task?.status === "cancel_requested";
+}
+function isTaskStatus(value: string): value is TaskdTask["status"] {
+  return new Set<TaskdTask["status"]>(["queued", "leased", "running", "cancel_requested", "succeeded", "failed", "cancelled", "superseded"]).has(value as TaskdTask["status"]);
+}
 function object(value: unknown): Row | null { return value && typeof value === "object" && !Array.isArray(value) ? value as Row : null; }
 function text(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
 function jsonString(value: unknown, fallback = "{}"): string { return typeof value === "string" ? value : fallback; }
 function nullableJsonString(value: unknown): string | null { return typeof value === "string" ? value : null; }
 function parseJson(value: string | null): unknown { try { return value ? JSON.parse(value) : null; } catch { return null; } }
 function parseArray(value: string): unknown[] { const parsed = parseJson(value); return Array.isArray(parsed) ? parsed : []; }
+function jsonObject(value: string | null | undefined): Record<string, unknown> | null { return object(parseJson(value ?? null)); }

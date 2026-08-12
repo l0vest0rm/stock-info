@@ -80,3 +80,39 @@ claim。所有读取、取消和删除均按 `namespace + client_task_name` 进�
 - 任务完成后由读取路径或业务协调器调用同一个幂等投影函数；投影成功后才标记业务成果可用。
 - 现有 taskd 不提供文本增量事件。本次不得以保留 `llm_run_artifacts` 的方式绕过该缺口。
 - `task_id` 是 taskd SQLite 的自增主键（rowid），只供执行器 lease/start/heartbeat/complete 使用；调用方 API 不按该字段寻址。
+
+## 本地任务状态缓存与查询规则
+
+调用方必须先读本地 `kv_cache` 中的业务任务快照，再决定是否访问 taskd。默认路径应是“本地缓存优先”，
+而不是“页面每次读取都去 taskd 查询一次”。
+
+- 从未提交过任务时，本地应表现为“无任务”，不要为了确认不存在而访问 taskd。
+- 已有稳态结果时，本地直接返回缓存的 `task`/`report` 快照；稳态包括 `completed`、`failed`、`blocked`，以及本地根本没有 task 记录的场景。
+- 只有中间态才需要向 taskd 对账；中间态仅指本地缓存中的 `queued`、`running`，或其他明确表示“远端执行仍可能推进”的状态。
+- 对账成功后，把最新 `task` 状态和已投影的业务结果回写到本地 `kv_cache`；后续页面读取继续先读本地快照。
+- 读取 taskd 的目的，是推进本地中间态到新的可解释状态；不是把 taskd 当成每次页面初始化的默认查询源。
+
+推荐的本地缓存结构如下，既保存业务结果，也保存最近一次 taskd 任务状态：
+
+```json
+{
+  "report": {
+    "...": "..."
+  },
+  "task": {
+    "status": "running",
+    "name": "research:investment-analysis:603986.SH",
+    "createdAt": 1786517056000,
+    "updatedAt": 1786529418000,
+    "completedAt": null,
+    "errorMessage": null
+  }
+}
+```
+
+约束如下：
+
+- `report` 保存已物化、可直接被页面或业务读取的最终业务结果；没有结果时可为 `null` 或缺省。
+- `task` 保存最近一次已提交到 taskd 的业务任务快照；从未提交过时应为 `null` 或缺省，而不是触发一次“探测式”远端查询。
+- `status` 的解释以本地业务快照为准；只有本地已知中间态时，才允许调用方再去 taskd 拉新状态。
+- `completedAt` 为空表示任务尚未完成；完成后应写入时间戳，并配合 `report` 一起形成可复用的稳态快照。

@@ -60,6 +60,7 @@ test("taskd caller includes request diagnostics when submit fetch fails", async 
     namespace: "stock-info",
     token: "secret-token-1234",
     tokenSource: "TASKD_CALLER_TOKEN",
+    now: () => Date.parse("2026-08-12T01:02:03.000Z"),
     fetchImpl: async () => {
       throw new Error("fetch failed");
     },
@@ -82,7 +83,41 @@ test("taskd caller includes request diagnostics when submit fetch fails", async 
         model: "gpt-5.6-luna",
       },
     }),
-    /taskd request failed: fetch failed \[method=POST url=https:\/\/task\.example\.test\/v1\/namespaces\/stock-info\/tasks namespace=stock-info tokenSource=TASKD_CALLER_TOKEN token=present\(len=17,last4=1234\) action=submit taskName=research:investment-analysis:300308\.SZ taskType=webqa\.chatgpt\.v1 provider=chatgpt-web platform=stock-info conversationId=stock-info:research:investment-analysis:300308\.SZ reasoningEffort=xhigh timeoutMs=7200000 mode=ask securityCode=300308\.SZ model=gpt-5\.6-luna\]/,
+    /taskd request failed: fetch failed \[method=POST url=https:\/\/task\.example\.test\/v1\/namespaces\/stock-info\/tasks namespace=stock-info tokenSource=TASKD_CALLER_TOKEN token=present\(len=17,last4=1234\) requestedAt=2026-08-12T01:02:03\.000Z errorName=Error errorCode=network_fetch_failed action=submit taskName=research:investment-analysis:300308\.SZ taskType=webqa\.chatgpt\.v1 provider=chatgpt-web platform=stock-info conversationId=stock-info:research:investment-analysis:300308\.SZ reasoningEffort=xhigh timeoutMs=7200000 mode=ask securityCode=300308\.SZ model=gpt-5\.6-luna\]/,
+  );
+});
+
+test("taskd caller includes response status, reason, code and request time when submit returns an HTTP error", async () => {
+  const client = createTaskdCallerClient({
+    baseUrl: "https://task.example.test/",
+    namespace: "stock-info",
+    token: "secret-token-1234",
+    now: () => Date.parse("2026-08-12T01:02:03.000Z"),
+    fetchImpl: async () => new Response(JSON.stringify({
+      code: "unauthorized",
+      reason: "caller token rejected",
+      message: "caller token rejected",
+    }), {
+      status: 401,
+      statusText: "Unauthorized",
+      headers: { "content-type": "application/json" },
+    }),
+  });
+
+  await assert.rejects(
+    () => client.submit({
+      name: "company:report-discovery:603986.SH",
+      taskType: "webqa.chatgpt.v1",
+      payload: {
+        provider: "chatgpt-web",
+        platform: "stock-info",
+        conversation_id: "stock-info:company:report-discovery:603986.SH",
+        reasoning_effort: "xhigh",
+        timeout_ms: 3_600_000,
+        mode: "ask",
+      },
+    }),
+    /taskd returned 401: caller token rejected \[status=401 statusText=Unauthorized requestedAt=2026-08-12T01:02:03\.000Z responseCode=unauthorized responseReason=caller token rejected\]/,
   );
 });
 

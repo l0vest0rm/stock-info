@@ -1,4 +1,4 @@
-import { RESEARCH_FINANCIAL_ANALYSIS_USER_PROMPT } from "../../../generated/prompt-text";
+import { RESEARCH_FINANCIAL_ANALYSIS_PROMPT } from "../../../generated/prompt-text";
 import riskRulesJson from "../../../../config/research-financial-analysis-risk-rules.json";
 import type { ResearchFinancialFrequency, ResearchFinancialMetric, ResearchFinancialObservation, ResearchFinancialQuality, ResearchFinancialSeries, ResearchFinancialSeriesPoint } from "./research-financial-quality";
 
@@ -155,7 +155,7 @@ export function buildFinancialAnalysisRiskFlags(observations: ResearchFinancialO
 }
 
 export function financialAnalysisPrompt(snapshot: FinancialAnalysisSnapshot): string {
-  return RESEARCH_FINANCIAL_ANALYSIS_USER_PROMPT.replace("{{INPUT_DATA}}", JSON.stringify(projectFinancialAnalysisPromptInput(snapshot)));
+  return RESEARCH_FINANCIAL_ANALYSIS_PROMPT.replace("{{INPUT_DATA}}", JSON.stringify(projectFinancialAnalysisPromptInput(snapshot)));
 }
 
 /** Do not spend a model run on a report that lacks one of the primary

@@ -31,6 +31,7 @@ type TaskdCallerClientOptions = {
   token: string;
   tokenSource?: string;
   fetchImpl?: typeof fetch;
+  now?: () => number;
 };
 
 /**
@@ -44,12 +45,18 @@ export function createTaskdCallerClient(options: TaskdCallerClientOptions): Task
   const token = required(options.token, "STOCK_INFO_TASKD_CALLER_TOKEN");
   const tokenSource = text(options.tokenSource) || "configured";
   const fetchImpl = options.fetchImpl || fetch;
+  const now = options.now || Date.now;
   const prefix = `${baseUrl}/v1/namespaces/${encodeURIComponent(namespace)}/tasks`;
 
-  async function request(path: string, init: RequestInit = {}, diagnostics: Record<string, unknown> = {}): Promise<{ response: Response; body: unknown }> {
+  async function request(
+    path: string,
+    init: RequestInit = {},
+    diagnostics: Record<string, unknown> = {},
+  ): Promise<{ response: Response; body: unknown; rawText: string; requestedAt: string }> {
     let response: Response;
     const method = text(init.method) || "GET";
     const url = `${prefix}${path}`;
+    const requestedAt = isoTimestamp(now());
     try {
       response = await fetchImpl(url, {
         ...init,
@@ -60,23 +67,35 @@ export function createTaskdCallerClient(options: TaskdCallerClientOptions): Task
         },
       });
     } catch (error) {
-      throw new Error(`taskd request failed: ${error instanceof Error ? error.message : String(error)}${formatDiagnostics({
+      throw new Error(`taskd request failed: ${requestErrorMessage(error)}${formatDiagnostics({
         method,
         url,
         namespace,
         tokenSource,
         token: maskToken(token),
+        requestedAt,
+        errorName: error instanceof Error ? error.name : undefined,
+        errorCode: requestErrorCode(error),
+        errorCause: errorCauseMessage(error),
         ...diagnostics,
       })}`);
     }
-    const body = await response.json().catch(() => null);
-    return { response, body };
+    const { body, rawText } = await parseTaskdResponseBody(response);
+    return { response, body, rawText, requestedAt };
   }
 
   async function taskRequest(path: string, init?: RequestInit, diagnostics: Record<string, unknown> = {}): Promise<TaskdTask | null> {
-    const { response, body } = await request(path, init, diagnostics);
+    const { response, body, rawText, requestedAt } = await request(path, init, diagnostics);
     if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`taskd returned ${response.status}: ${message(body) || response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`taskd returned ${response.status}: ${message(body, rawText) || response.statusText}${formatDiagnostics({
+        status: response.status,
+        statusText: response.statusText,
+        requestedAt,
+        responseCode: responseCode(body),
+        responseReason: responseReason(body, rawText),
+      })}`);
+    }
     return normalizeTask(body);
   }
 
@@ -107,9 +126,21 @@ export function createTaskdCallerClient(options: TaskdCallerClientOptions): Task
     },
     async delete(name) {
       const normalizedName = required(name, "taskd task name");
-      const { response, body } = await request(`/by-name/${encodeURIComponent(normalizedName)}`, { method: "DELETE" }, { action: "delete", taskName: normalizedName });
+      const { response, body, rawText, requestedAt } = await request(
+        `/by-name/${encodeURIComponent(normalizedName)}`,
+        { method: "DELETE" },
+        { action: "delete", taskName: normalizedName },
+      );
       if (response.status === 404) return false;
-      if (response.status !== 204) throw new Error(`taskd returned ${response.status}: ${message(body) || response.statusText}`);
+      if (response.status !== 204) {
+        throw new Error(`taskd returned ${response.status}: ${message(body, rawText) || response.statusText}${formatDiagnostics({
+          status: response.status,
+          statusText: response.statusText,
+          requestedAt,
+          responseCode: responseCode(body),
+          responseReason: responseReason(body, rawText),
+        })}`);
+      }
       return true;
     },
   };
@@ -175,9 +206,29 @@ function optionalInteger(value: unknown): number | null {
   return integer(value, "taskd integer");
 }
 
-function message(value: unknown): string {
+async function parseTaskdResponseBody(response: Response): Promise<{ body: unknown; rawText: string }> {
+  const rawText = await response.text().catch(() => "");
+  const trimmed = rawText.trim();
+  if (!trimmed) return { body: null, rawText: "" };
+  try {
+    return { body: JSON.parse(trimmed), rawText };
+  } catch {
+    return { body: null, rawText };
+  }
+}
+
+function message(value: unknown, rawText = ""): string {
   const row = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-  return text(row?.error) || text(row?.message);
+  return text(row?.error) || text(row?.message) || text(row?.reason) || truncateDiagnostic(rawText);
+}
+
+function responseCode(value: unknown): string {
+  const row = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return text(row?.code) || text(row?.error_code) || text(row?.errorCode);
+}
+
+function responseReason(value: unknown, rawText = ""): string {
+  return message(value, rawText);
 }
 
 function taskPayloadDiagnostics(value: unknown): Record<string, unknown> {
@@ -203,6 +254,36 @@ function maskToken(value: string): string {
   return `present(len=${value.length},last4=${value.slice(-4)})`;
 }
 
+function requestErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+function requestErrorCode(error: unknown): string {
+  const explicit = error && typeof error === "object" ? text((error as { code?: unknown }).code) : "";
+  if (explicit) return explicit;
+  const name = error instanceof Error ? error.name : "";
+  const detail = requestErrorMessage(error);
+  if (/fetch failed/i.test(detail)) return "network_fetch_failed";
+  if (name === "AbortError") return "abort_error";
+  if (name === "TimeoutError") return "timeout_error";
+  return "";
+}
+
+function errorCauseMessage(error: unknown): string {
+  const cause = error && typeof error === "object" ? (error as { cause?: unknown }).cause : undefined;
+  if (cause instanceof Error) return cause.message;
+  return typeof cause === "string" ? cause.trim() : "";
+}
+
+function truncateDiagnostic(value: string): string {
+  return value.trim().replace(/\s+/g, " ").slice(0, 160);
+}
+
+function isoTimestamp(value: number): string {
+  return new Date(value).toISOString();
+}
+
 function formatDiagnostics(value: Record<string, unknown>): string {
   const parts = Object.entries(value)
     .flatMap(([key, item]) => {
@@ -216,6 +297,6 @@ function diagnosticValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
   if (typeof value === "boolean") return value ? "true" : "false";
-  const normalized = typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+  const normalized = typeof value === "string" ? truncateDiagnostic(value) : "";
   return normalized ? normalized.slice(0, 160) : "";
 }

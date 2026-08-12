@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   calculateCurrentForecastNetProfit,
   calculateCurrentForecastPe,
-  parseCompanyNewsReportAnalysis,
+  isLikelyCompanyNewsReport,
   parseCompanyReportAnalysis,
   parseCompanyReportForecasts,
   parseCompanyReportTargetPrice,
@@ -80,21 +80,13 @@ test("rejects malformed model output instead of turning it into a successful emp
   );
 });
 
-test("parses unified news report analysis and clears ordinary news results", () => {
-  assert.deepEqual(
-    parseCompanyNewsReportAnalysis(JSON.stringify({
-      isCompanyReport: true,
-      forecasts: [{ year: 2026, netProfit: 123.4, pe: 18 }],
-      targetPrice: 51.51,
-    })),
-    {
-      isCompanyReport: true,
-      forecasts: [{ year: 2026, netProfit: 123.4, pe: 18 }],
-      targetPrice: 51.51,
-    },
+test("matches likely news report articles using configured valuation and rating keywords", () => {
+  assert.equal(
+    isLikelyCompanyNewsReport("券商首次覆盖并给出目标价", "机构称公司 2026 年 EPS 与 PE 具备上修空间"),
+    true,
   );
-  assert.deepEqual(
-    parseCompanyNewsReportAnalysis('{"isCompanyReport":false,"forecasts":[{"year":2026,"netProfit":99}],"targetPrice":88}'),
-    { isCompanyReport: false, forecasts: [], targetPrice: null },
+  assert.equal(
+    isLikelyCompanyNewsReport("公司发布新品", "文章只介绍产品发布、产能进展和客户签约，没有券商观点"),
+    false,
   );
 });

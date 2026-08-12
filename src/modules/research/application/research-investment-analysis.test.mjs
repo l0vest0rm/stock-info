@@ -96,6 +96,14 @@ test("investment analysis persists and loads reports from kv_cache without the l
     sourcesJson: "[{\"url\":\"https://example.com\"}]",
     terminalEvidenceJson: "{\"schemaVersion\":\"webqa.completion-evidence.v1\",\"outcome\":\"succeeded\"}",
     projectedAt: 1_234_567,
+    task: {
+      name: "research:investment-analysis:300476.SZ",
+      status: "succeeded",
+      errorMessage: null,
+      createdAt: 1_234_000,
+      updatedAt: 1_234_567,
+      completedAt: 1_234_567,
+    },
   });
 
   const row = await readStoredResearchInvestmentAnalysis(db, "300476.SZ");
@@ -106,5 +114,51 @@ test("investment analysis persists and loads reports from kv_cache without the l
     sourcesJson: "[{\"url\":\"https://example.com\"}]",
     terminalEvidenceJson: "{\"schemaVersion\":\"webqa.completion-evidence.v1\",\"outcome\":\"succeeded\"}",
     projectedAt: 1_234_567,
+    task: {
+      name: "research:investment-analysis:300476.SZ",
+      status: "succeeded",
+      errorMessage: null,
+      createdAt: 1_234_000,
+      updatedAt: 1_234_567,
+      completedAt: 1_234_567,
+    },
+  });
+});
+
+test("investment analysis loads a task-only kv_cache record so refresh state can short-circuit locally", async () => {
+  const db = new FakeD1();
+  await writeStoredResearchInvestmentAnalysis(db, "603986.SH", {
+    inputJson: "{\"security\":{\"code\":\"603986.SH\"}}",
+    markdown: null,
+    citationsJson: "[]",
+    sourcesJson: "[]",
+    terminalEvidenceJson: null,
+    projectedAt: null,
+    task: {
+      name: "research:investment-analysis:603986.SH",
+      status: "running",
+      errorMessage: null,
+      createdAt: 2_000_000,
+      updatedAt: 2_000_123,
+      completedAt: null,
+    },
+  });
+
+  const row = await readStoredResearchInvestmentAnalysis(db, "603986.SH");
+  assert.deepEqual(row, {
+    inputJson: "{\"security\":{\"code\":\"603986.SH\"}}",
+    markdown: null,
+    citationsJson: "[]",
+    sourcesJson: "[]",
+    terminalEvidenceJson: null,
+    projectedAt: null,
+    task: {
+      name: "research:investment-analysis:603986.SH",
+      status: "running",
+      errorMessage: null,
+      createdAt: 2_000_000,
+      updatedAt: 2_000_123,
+      completedAt: null,
+    },
   });
 });

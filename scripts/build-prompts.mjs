@@ -17,16 +17,8 @@ const promptEntries = [
     source: "prompts/company/report-analyze-user.md",
   },
   {
-    exportName: "NEWS_REPORT_ANALYZE_SYSTEM_PROMPT",
-    source: "prompts/company/news-report-analyze-system.md",
-  },
-  {
-    exportName: "REPORT_DISCOVERY_SYSTEM_PROMPT",
-    source: "prompts/company/report-discovery-system.md",
-  },
-  {
-    exportName: "REPORT_DISCOVERY_USER_PROMPT",
-    source: "prompts/company/report-discovery-user.md",
+    exportName: "REPORT_DISCOVERY_PROMPT",
+    source: "prompts/company/report-discovery.md",
   },
   {
     exportName: "TOPIC_BATCH_SYSTEM_PROMPT",
@@ -53,12 +45,8 @@ const promptEntries = [
     source: "prompts/research/forecast-synthesis-user.md",
   },
   {
-    exportName: "RESEARCH_FINANCIAL_ANALYSIS_SYSTEM_PROMPT",
-    source: "prompts/research/financial-analysis-system.md",
-  },
-  {
-    exportName: "RESEARCH_FINANCIAL_ANALYSIS_USER_PROMPT",
-    source: "prompts/research/financial-analysis-user.md",
+    exportName: "RESEARCH_FINANCIAL_ANALYSIS_PROMPT",
+    source: "prompts/research/financial-analysis.md",
   },
   {
     exportName: "RESEARCH_OPERATING_ANALYSIS_PROMPT",

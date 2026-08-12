@@ -1,5 +1,6 @@
 import { Context, Hono } from "hono";
-import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../../../db/queries";
+import companyNewsReportKeywords from "../../../../config/company-news-report-keywords.json";
+import { getKvCache, getKvCacheByLegacyKey, putKvCache, putKvCacheByLegacyKey } from "../../../db/queries";
 import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { fetchCninfoCompanyNotices, supportsCninfoCompanyNotices } from "../../../adapters/cninfo";
 import { loadKline } from "../../market/application/load-kline";
@@ -18,11 +19,9 @@ import {
   GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP,
 } from "../../../shared/local-job-protocol";
 import {
-  NEWS_REPORT_ANALYZE_SYSTEM_PROMPT,
   REPORT_ANALYZE_SYSTEM_PROMPT,
   REPORT_ANALYZE_USER_PROMPT,
-  REPORT_DISCOVERY_SYSTEM_PROMPT,
-  REPORT_DISCOVERY_USER_PROMPT,
+  REPORT_DISCOVERY_PROMPT,
 } from "../../../generated/prompt-text";
 import type { AppEnv, CompanyOverview, KlineBar } from "../../../types";
 import {
@@ -104,6 +103,7 @@ export type CompanyReportDiscoveryCandidate = {
   publishedAt?: string;
   url?: string;
   forecasts: CompanyReportForecast[];
+  targetPrice?: number | null;
   valuation?: CompanyReportValuation;
 };
 
@@ -116,6 +116,32 @@ export type CompanyReportDiscoveryWebSearchMetadata = LlmWebSearchMetadata & {
   webSearchCallCompleted?: boolean;
   /** The local WebQA gateway completed the browser-backed request. */
   transport?: "webqa";
+};
+
+type StoredCompanyReportDiscoveryTask = {
+  name: string;
+  status: "queued" | "running" | "completed" | "failed" | "blocked";
+  errorMessage: string | null;
+  createdAt: number;
+  updatedAt: number;
+  completedAt: number | null;
+};
+
+type StoredCompanyReportDiscoveryReport = {
+  response: { text: string };
+  projection: {
+    securityCode: string;
+    reportsFound: number;
+    reportsRejected: number;
+    sourceRows: number;
+    cachedAt: number;
+  };
+};
+
+type StoredCompanyReportDiscoveryValue = {
+  report: StoredCompanyReportDiscoveryReport | null;
+  task: StoredCompanyReportDiscoveryTask | null;
+  lastSuccessfulCompletedAt: number | null;
 };
 
 type SinaCompanyReport = {
@@ -136,13 +162,14 @@ const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
 const NEWS_REPORT_CANDIDATE_LIMIT = 40;
 const NEWS_REPORT_ANALYSIS_MAX_CALLS = 5;
-const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v2";
+const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v3";
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
-const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v5";
+const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v6";
 const REPORT_DISCOVERY_TASK_TYPE = "webqa.chatgpt.v1";
 const REPORT_DISCOVERY_REASONING_EFFORT = "xhigh";
 const REPORT_DISCOVERY_MAX_REPORTS = 20;
 export const COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS = 60 * 60 * 1000;
+const COMPANY_REPORT_DISCOVERY_NAMESPACE = "company_report_discovery";
 
 companyRoutes.get("/company/overview", async (c) => {
   const code = requireQuery(c, "code");
@@ -221,17 +248,12 @@ companyRoutes.get("/company/reports/discovery-capability", async (c) => {
   if (!isCnCode(normalized)) {
     return ok(c, { enabled: false, code: normalized, task: null, lastSuccessfulCompletedAt: null });
   }
-  const name = companyReportDiscoveryTaskName(normalized);
-  const state = await reconcileTaskdResult(taskdCallerClient(c.env), {
-    name,
-    project: (task) => projectCompanyReportDiscovery(c, normalized, task),
-  });
-  const task = "task" in state ? state.task : null;
+  const stored = await loadCompanyReportDiscoverySnapshot(c, normalized);
   return ok(c, {
     enabled: true,
     code: normalized,
-    task: task ? companyReportDiscoveryTaskView(task) : null,
-    lastSuccessfulCompletedAt: state.state === "projected" ? state.task.completedAt : null,
+    task: stored?.task ?? null,
+    lastSuccessfulCompletedAt: stored?.lastSuccessfulCompletedAt ?? null,
   });
 });
 
@@ -627,18 +649,30 @@ async function getCompanyReportsSource(
   if (!isCnCode(normalized)) {
     return [];
   }
+  return paginateCompanyReports(await loadMaterializedCompanyReportSourcePool(c, normalized), page);
+}
+
+/**
+ * The page read and discovery submission share this materialization boundary.
+ * Discovery must not depend on the page request winning a cache-write race.
+ */
+async function loadMaterializedCompanyReportSourcePool(
+  c: Context<AppEnv>,
+  code: string,
+): Promise<Array<Record<string, unknown>>> {
+  const normalized = normalizeSecurityCode(code);
   const cacheKey = `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${normalized}`;
   const cached = await readAppJson<Array<Record<string, unknown>>>(c.env.DB, cacheKey);
   if (Array.isArray(cached)) {
-    return paginateCompanyReports(cached.map(normalizeCompanyReportProvenance), page);
+    return cached.map(normalizeCompanyReportProvenance);
   }
-  console.info("company report Web Search discovery is not started by read-only report GET", {
+  console.info("company report source pool cache miss; materializing source pool", {
     code: normalized,
     llmRuntime: c.env.LLM_RUNTIME || "unset",
   });
   const merged = await loadCompanyReportSourcePool(c, normalized);
   await writeAppJson(c.env.DB, cacheKey, merged, REPORT_SOURCE_CACHE_TTL_MS);
-  return paginateCompanyReports(merged, page);
+  return merged;
 }
 
 async function loadCompanyReportSourcePool(
@@ -694,6 +728,7 @@ export async function enqueueCompanyReportDiscovery(
   const code = normalizeSecurityCode(securityCode);
   if (!isCnCode(code)) throw new Error("company report discovery only supports mainland company codes");
   const reasoningEffort = normalizeCompanyReportDiscoveryReasoningEffort(requestedReasoningEffort);
+  await loadMaterializedCompanyReportSourcePool(c, code);
   const prepared = await prepareCompanyReportDiscoveryExecution(c.env.DB, code, reasoningEffort);
   const name = companyReportDiscoveryTaskName(code);
   const task = await taskdCallerClient(c.env).submit({
@@ -703,13 +738,11 @@ export async function enqueueCompanyReportDiscovery(
       model: REPORT_LLM_MODEL,
       reasoningEffort: prepared.reasoningEffort as "low" | "medium" | "high" | "xhigh",
       waitTimeoutMs: prepared.jobTimeoutMs,
-      messages: [
-        { role: "system", content: prepared.instructions },
-        { role: "user", content: prepared.input },
-      ],
+      messages: [{ role: "user", content: prepared.prompt }],
     }, name),
   });
-  return { accepted: true, task: companyReportDiscoveryTaskView(task) };
+  const stored = await persistCompanyReportDiscoveryTaskSnapshot(c.env.DB, code, await readStoredCompanyReportDiscovery(c.env.DB, code), task);
+  return { accepted: true, task: stored.task };
 }
 
 export async function prepareCompanyReportDiscoveryExecution(
@@ -730,8 +763,7 @@ export async function prepareCompanyReportDiscoveryExecution(
     maxOutputTokens: 8192,
     jobTimeoutMs: COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS,
     promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
-    instructions: REPORT_DISCOVERY_SYSTEM_PROMPT,
-    input: renderCompanyReportDiscoveryPrompt(REPORT_DISCOVERY_USER_PROMPT, {
+    prompt: renderCompanyReportDiscoveryPrompt(REPORT_DISCOVERY_PROMPT, {
       SECURITY_CODE: code,
       COMPANY_NAME: text(security?.name) || code,
       RECENT_SINCE: recentSince,
@@ -743,7 +775,7 @@ export async function prepareCompanyReportDiscoveryExecution(
 /**
  * The report page materializes its current source pool in kv_cache before a
  * discovery job is normally queued. Pass only stable report identity fields
- * back to the model: forecast/valuation fields neither identify a report nor
+ * back to the model: forecast/target-price fields neither identify a report nor
  * help it find a new one.
  */
 async function loadCachedCompanyReportDiscoveryKnownReports(
@@ -766,15 +798,25 @@ async function projectCompanyReportDiscovery(c: Context<AppEnv>, securityCode: s
   validateCompanyReportDiscoveryTerminalEvidence(result);
   const answer = asRecord(result?.answer);
   const content = asRecord(answer?.content);
+  const responseText = text(content?.markdown);
   const webSearch = companyReportDiscoveryWebQaSearch(answer);
   const citations = validateCompanyReportDiscoveryWebSearch(webSearch);
   const code = normalizeSecurityCode(securityCode);
-  const parsed = parseCompanyReportDiscoveryWithDiagnostics(text(content?.markdown), code, citations);
+  const parsed = parseCompanyReportDiscoveryWithDiagnostics(responseText, code, citations);
   if (parsed.rejected > 0) console.warn("company report discovery rejected candidates", { code, rejected: parsed.rejected });
   const discoveredRows = parsed.reports.map((item) => mapCompanyReportDiscoveryCandidate(item, code));
   const sourceRows = await loadCompanyReportSourcePool(c, code, discoveredRows);
   await writeAppJson(c.env.DB, `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${code}`, sourceRows, REPORT_SOURCE_CACHE_TTL_MS);
-  return { securityCode: code, reportsFound: parsed.reports.length, reportsRejected: parsed.rejected, sourceRows: sourceRows.length, cachedAt: Date.now() };
+  const projection = { securityCode: code, reportsFound: parsed.reports.length, reportsRejected: parsed.rejected, sourceRows: sourceRows.length, cachedAt: Date.now() };
+  await writeStoredCompanyReportDiscovery(c.env.DB, code, mergeStoredCompanyReportDiscovery(
+    await readStoredCompanyReportDiscovery(c.env.DB, code),
+    {
+      report: { response: { text: responseText }, projection },
+      task: companyReportDiscoveryTaskView(task),
+      lastSuccessfulCompletedAt: task.completedAt ?? projection.cachedAt,
+    },
+  ));
+  return projection;
 }
 
 export function validateCompanyReportDiscoveryTerminalEvidence(result: Record<string, unknown> | null): void {
@@ -820,12 +862,14 @@ function mapCompanyReportDiscoveryCandidate(
   candidate: CompanyReportDiscoveryCandidate,
   securityCode: string,
 ): Record<string, unknown> {
+  const targetPrice = positiveNumberOrUndefined(candidate.targetPrice)
+    ?? positiveNumberOrUndefined(candidate.valuation?.targetPrice);
   return {
     code: normalizeSecurityCode(securityCode),
     title: candidate.title,
     pages: 0,
     forecasts: candidate.forecasts,
-    ...(candidate.valuation?.targetPrice !== undefined ? { targetPrice: candidate.valuation.targetPrice } : {}),
+    ...(targetPrice !== undefined ? { targetPrice } : {}),
     ...(candidate.institution ? { orgName: candidate.institution, orgSName: candidate.institution } : {}),
     ...(candidate.publishedAt ? { publishDate: candidate.publishedAt } : {}),
     ...(candidate.url ? { url: candidate.url } : {}),
@@ -1205,12 +1249,11 @@ async function loadCompanyReportDiscoveryRawReport(
   if (!code) {
     return null;
   }
-  const task = await taskdCallerClient(c.env).get(companyReportDiscoveryTaskName(code));
-  if (!task || task.status !== "succeeded") return null;
-  const result = asRecord(task.result);
-  const answer = asRecord(result?.answer);
-  const content = asRecord(answer?.content);
-  return findCompanyReportDiscoveryRawReport({ response: { text: content?.markdown } }, item);
+  const stored = await loadCompanyReportDiscoverySnapshot(c, code);
+  if (!stored?.report?.response.text) {
+    return null;
+  }
+  return findCompanyReportDiscoveryRawReport(stored.report, item);
 }
 
 function companyReportRawIdentityMatches(
@@ -1378,6 +1421,34 @@ export type CompanyReportAnalysis = {
   targetPrice: number | null;
 };
 
+async function requestCompanyReportAnalysisByLlm(
+  c: Context<AppEnv>,
+  title: string,
+  trimmedContent: string,
+  options: LlmExtractionOptions & { targetType?: string; promptVersion?: string } = {},
+): Promise<CompanyReportAnalysis> {
+  const prompt = REPORT_ANALYZE_USER_PROMPT
+    .replace("{{TITLE}}", title)
+    .replace("{{CONTENT}}", trimmedContent);
+  const response = await requestLlmText(c.env, {
+    model: REPORT_LLM_MODEL,
+    messages: [
+      { role: "system", content: REPORT_ANALYZE_SYSTEM_PROMPT },
+      { role: "user", content: prompt },
+    ],
+    maxTokens: 4096,
+    cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
+    targetType: options.targetType || "company_report_forecast",
+    targetId: options.targetId || title,
+    idempotencyKey: options.idempotencyKey,
+    promptVersion: options.promptVersion || REPORT_FORECAST_PROMPT_VERSION,
+    priority: 500,
+    onText: options.onText,
+    onStatus: options.onStatus,
+  });
+  return parseCompanyReportAnalysis(response.text);
+}
+
 export async function extractCompanyReportAnalysisByLlm(
   c: Context<AppEnv>,
   title: string,
@@ -1389,26 +1460,7 @@ export async function extractCompanyReportAnalysisByLlm(
   if (!trimmed) {
     return { forecasts: [], targetPrice: null };
   }
-  const prompt = REPORT_ANALYZE_USER_PROMPT
-    .replace("{{TITLE}}", title)
-    .replace("{{CONTENT}}", trimmed);
-  const response = await requestLlmText(c.env, {
-    model: REPORT_LLM_MODEL,
-    messages: [
-      { role: "system", content: REPORT_ANALYZE_SYSTEM_PROMPT },
-      { role: "user", content: prompt },
-    ],
-    maxTokens: 4096,
-    cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
-    targetType: "company_report_forecast",
-    targetId: options.targetId || title,
-    idempotencyKey: options.idempotencyKey,
-    promptVersion: REPORT_FORECAST_PROMPT_VERSION,
-    priority: 500,
-    onText: options.onText,
-    onStatus: options.onStatus,
-  });
-  return parseCompanyReportAnalysis(response.text);
+  return requestCompanyReportAnalysisByLlm(c, title, trimmed, options);
 }
 
 /** Backward-compatible forecast-only helper used by knowledge processing. */
@@ -1430,33 +1482,23 @@ export async function extractCompanyNewsReportByLlm(
 ): Promise<Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt">> {
   if (c.env.LLM_RUNTIME !== "local") throw new Error("company news report LLM extraction is only available in local LLM runtime");
   const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
-  if (!trimmed) {
+  if (!trimmed || !isLikelyCompanyNewsReport(title, trimmed)) {
     return {
       isCompanyReport: false,
       forecasts: [],
       targetPrice: null,
     };
   }
-  const prompt = REPORT_ANALYZE_USER_PROMPT
-    .replace("{{TITLE}}", title)
-    .replace("{{CONTENT}}", trimmed);
-  const response = await requestLlmText(c.env, {
-    model: REPORT_LLM_MODEL,
-    messages: [
-      { role: "system", content: NEWS_REPORT_ANALYZE_SYSTEM_PROMPT },
-      { role: "user", content: prompt },
-    ],
-    maxTokens: 4096,
-    cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
+  const analysis = await requestCompanyReportAnalysisByLlm(c, title, trimmed, {
+    ...options,
     targetType: "company_news_report",
-    targetId: options.targetId || title,
-    idempotencyKey: options.idempotencyKey,
     promptVersion: NEWS_REPORT_ANALYSIS_CACHE_VERSION,
-    priority: 500,
-    onText: options.onText,
-    onStatus: options.onStatus,
   });
-  return parseCompanyNewsReportAnalysis(response.text);
+  return {
+    isCompanyReport: true,
+    forecasts: analysis.forecasts,
+    targetPrice: analysis.targetPrice,
+  };
 }
 
 export function formatCompanyReportTextForLlm(content: string): string {
@@ -1531,6 +1573,10 @@ function parseCompanyReportDiscoveryWithDiagnostics(
       return [];
     }
     const forecasts = Array.isArray(row.forecasts) ? parseCompanyReportForecastRows(row.forecasts) : [];
+    const legacyValuation = row.valuation && typeof row.valuation === "object" && !Array.isArray(row.valuation)
+      ? parseCompanyReportValuation(row.valuation as Record<string, unknown>)
+      : {};
+    const targetPrice = parseCompanyReportTargetPrice(row.targetPrice);
     const valuation = row.valuation && typeof row.valuation === "object" && !Array.isArray(row.valuation)
       ? parseCompanyReportValuation(row.valuation as Record<string, unknown>)
       : {};
@@ -1540,6 +1586,9 @@ function parseCompanyReportDiscoveryWithDiagnostics(
       ...(publishedAt ? { publishedAt } : {}),
       ...(url ? { url } : {}),
       forecasts,
+      ...((targetPrice !== null || legacyValuation.targetPrice !== undefined)
+        ? { targetPrice: targetPrice ?? legacyValuation.targetPrice ?? null }
+        : {}),
       ...(Object.keys(valuation).length > 0 ? { valuation } : {}),
     }];
   });
@@ -1628,19 +1677,31 @@ function companyReportDiscoveryTitleFromUrl(url: string): string {
   }
 }
 
-export function parseCompanyNewsReportAnalysis(textBody: string): Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt"> {
-  const parsed = parseJsonObjectFromText(textBody);
-  if (!parsed || typeof parsed.isCompanyReport !== "boolean" || !Array.isArray(parsed.forecasts)) {
-    throw new Error("LLM news report response did not contain the required fields");
+export function isLikelyCompanyNewsReport(title: string, content: string): boolean {
+  const haystack = `${title}\n${content}`.toLowerCase();
+  return companyNewsReportKeywords.some((keyword) => {
+    const normalizedKeyword = String(keyword || "").trim().toLowerCase();
+    return normalizedKeyword ? containsPositiveNewsReportKeyword(haystack, normalizedKeyword) : false;
+  });
+}
+
+function containsPositiveNewsReportKeyword(haystack: string, keyword: string): boolean {
+  if (!haystack.includes(keyword)) {
+    return false;
   }
-  if (!parsed.isCompanyReport) {
-    return { isCompanyReport: false, forecasts: [], targetPrice: null };
-  }
-  return {
-    isCompanyReport: true,
-    forecasts: parseCompanyReportForecastRows(parsed.forecasts),
-    targetPrice: parseCompanyReportTargetPrice(parsed.targetPrice),
-  };
+  const negatedForms = [
+    `没有${keyword}`,
+    `无${keyword}`,
+    `未提及${keyword}`,
+    `不含${keyword}`,
+    `并无${keyword}`,
+    `未给出${keyword}`,
+    `未披露${keyword}`,
+    `未提供${keyword}`,
+    `并未给出${keyword}`,
+  ];
+  const stripped = negatedForms.reduce((value, phrase) => value.replaceAll(phrase, ""), haystack);
+  return stripped.includes(keyword);
 }
 
 function parseCompanyReportForecastRows(value: unknown[]): CompanyReportForecast[] {
@@ -2177,6 +2238,160 @@ async function writeAppJson(db: D1Database, key: string, value: unknown, ttlMs: 
   });
 }
 
+export async function readStoredCompanyReportDiscovery(
+  db: D1Database,
+  securityCode: string,
+): Promise<StoredCompanyReportDiscoveryValue | null> {
+  const row = await getKvCache(db, COMPANY_REPORT_DISCOVERY_NAMESPACE, normalizeSecurityCode(securityCode));
+  if (!row?.valueJson) return null;
+  const parsed = asRecord(parseJson(row.valueJson));
+  if (!parsed) return null;
+  const report = parseStoredCompanyReportDiscoveryReport(parsed.report);
+  const task = parseStoredCompanyReportDiscoveryTask(parsed.task);
+  const lastSuccessfulCompletedAt = parsed.lastSuccessfulCompletedAt === null || parsed.lastSuccessfulCompletedAt === undefined
+    ? null
+    : Number(parsed.lastSuccessfulCompletedAt);
+  if (!report && !task) return null;
+  return {
+    report,
+    task,
+    lastSuccessfulCompletedAt: Number.isFinite(lastSuccessfulCompletedAt) ? lastSuccessfulCompletedAt : null,
+  };
+}
+
+export async function writeStoredCompanyReportDiscovery(
+  db: D1Database,
+  securityCode: string,
+  value: StoredCompanyReportDiscoveryValue,
+): Promise<void> {
+  await putKvCache(db, {
+    namespace: COMPANY_REPORT_DISCOVERY_NAMESPACE,
+    key: normalizeSecurityCode(securityCode),
+    valueJson: JSON.stringify(value),
+    expiresAt: null,
+    updatedAt: value.report?.projection.cachedAt ?? value.task?.updatedAt ?? value.lastSuccessfulCompletedAt ?? Date.now(),
+  });
+}
+
+async function loadCompanyReportDiscoverySnapshot(
+  c: Context<AppEnv>,
+  securityCode: string,
+): Promise<StoredCompanyReportDiscoveryValue | null> {
+  const code = normalizeSecurityCode(securityCode);
+  let stored = await readStoredCompanyReportDiscovery(c.env.DB, code);
+  if (c.env.LLM_RUNTIME !== "local" || !shouldQueryTaskdForCompanyReportDiscovery(stored)) {
+    return stored;
+  }
+  const state = await reconcileTaskdResult(taskdCallerClient(c.env), {
+    name: companyReportDiscoveryTaskName(code),
+    project: (task) => projectCompanyReportDiscovery(c, code, task),
+  });
+  switch (state.state) {
+    case "projected":
+      return await readStoredCompanyReportDiscovery(c.env.DB, code);
+    case "pending":
+    case "failed":
+    case "cancelled":
+    case "superseded":
+      stored = await persistCompanyReportDiscoveryTaskSnapshot(c.env.DB, code, stored, state.task);
+      return stored;
+    case "missing":
+      if (stored?.task) {
+        stored = await persistCompanyReportDiscoveryTaskSnapshot(c.env.DB, code, stored, null);
+      }
+      return stored;
+  }
+}
+
+async function persistCompanyReportDiscoveryTaskSnapshot(
+  db: D1Database,
+  securityCode: string,
+  current: StoredCompanyReportDiscoveryValue | null,
+  task: TaskdTask | null,
+): Promise<StoredCompanyReportDiscoveryValue> {
+  const stored = mergeStoredCompanyReportDiscovery(current, {
+    task: task ? companyReportDiscoveryTaskView(task) : null,
+    lastSuccessfulCompletedAt: task?.status === "succeeded"
+      ? (task.completedAt ?? current?.lastSuccessfulCompletedAt ?? null)
+      : current?.lastSuccessfulCompletedAt ?? null,
+  });
+  await writeStoredCompanyReportDiscovery(db, securityCode, stored);
+  return stored;
+}
+
+function shouldQueryTaskdForCompanyReportDiscovery(value: StoredCompanyReportDiscoveryValue | null): boolean {
+  return value?.task?.status === "queued" || value?.task?.status === "running";
+}
+
+function mergeStoredCompanyReportDiscovery(
+  current: StoredCompanyReportDiscoveryValue | null,
+  patch: {
+    report?: StoredCompanyReportDiscoveryReport | null;
+    task?: StoredCompanyReportDiscoveryTask | null;
+    lastSuccessfulCompletedAt?: number | null;
+  },
+): StoredCompanyReportDiscoveryValue {
+  return {
+    report: patch.report !== undefined ? patch.report : current?.report ?? null,
+    task: patch.task !== undefined ? patch.task : current?.task ?? null,
+    lastSuccessfulCompletedAt: patch.lastSuccessfulCompletedAt !== undefined
+      ? patch.lastSuccessfulCompletedAt
+      : current?.lastSuccessfulCompletedAt ?? null,
+  };
+}
+
+function parseStoredCompanyReportDiscoveryReport(value: unknown): StoredCompanyReportDiscoveryReport | null {
+  const row = asRecord(value);
+  const response = asRecord(row?.response);
+  const projection = asRecord(row?.projection);
+  const responseText = text(response?.text);
+  const securityCode = text(projection?.securityCode);
+  const reportsFound = Number(projection?.reportsFound);
+  const reportsRejected = Number(projection?.reportsRejected);
+  const sourceRows = Number(projection?.sourceRows);
+  const cachedAt = Number(projection?.cachedAt);
+  if (
+    !responseText
+    || !securityCode
+    || !Number.isFinite(reportsFound)
+    || !Number.isFinite(reportsRejected)
+    || !Number.isFinite(sourceRows)
+    || !Number.isFinite(cachedAt)
+  ) {
+    return null;
+  }
+  return {
+    response: { text: responseText },
+    projection: {
+      securityCode,
+      reportsFound,
+      reportsRejected,
+      sourceRows,
+      cachedAt,
+    },
+  };
+}
+
+function parseStoredCompanyReportDiscoveryTask(value: unknown): StoredCompanyReportDiscoveryTask | null {
+  const row = asRecord(value);
+  const name = text(row?.name);
+  const status = text(row?.status) as StoredCompanyReportDiscoveryTask["status"];
+  const createdAt = Number(row?.createdAt);
+  const updatedAt = Number(row?.updatedAt);
+  if (!name || !new Set<StoredCompanyReportDiscoveryTask["status"]>(["queued", "running", "completed", "failed", "blocked"]).has(status) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt)) {
+    return null;
+  }
+  const completedAt = row?.completedAt === null || row?.completedAt === undefined ? null : Number(row?.completedAt);
+  return {
+    name,
+    status,
+    errorMessage: text(row?.errorMessage) || null,
+    createdAt,
+    updatedAt,
+    completedAt: Number.isFinite(completedAt) ? completedAt : null,
+  };
+}
+
 function parseJsonObjectFromText(value: string): Record<string, unknown> | null {
   const start = value.indexOf("{");
   const end = value.lastIndexOf("}");
@@ -2195,6 +2410,14 @@ function parseJsonArrayFromText(value: string): unknown[] | null {
   try {
     const parsed = JSON.parse(value.trim());
     return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
   } catch {
     return null;
   }

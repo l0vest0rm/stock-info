@@ -20,6 +20,7 @@ export type KvCacheValueRecord = Pick<KvCacheRecord, "valueJson" | "expiresAt" |
 
 const LEGACY_KV_CACHE_NAMESPACE_RULES: Array<{ prefix: string; namespace: string }> = [
   { prefix: "company-reports-source:", namespace: "company_reports_source" },
+  { prefix: "company-report-discovery:", namespace: "company_report_discovery" },
   { prefix: "report-forecast:", namespace: "company_report_forecast" },
   { prefix: "shared-report-analysis:", namespace: "shared_report_analysis" },
   { prefix: "knowledge-report-analysis:", namespace: "knowledge_report_analysis" },
