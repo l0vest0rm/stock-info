@@ -20,7 +20,7 @@ test("raw task status endpoint exposes the latest run and persisted partial arti
       return {
         bind() {
           return {
-            first: async () => /from llm_tasks/.test(sql) ? {
+            first: async () => /from workflow_tasks/.test(sql) ? {
               taskId, taskType: "generic_raw_model", targetType: "llm_request", targetId: "request:1",
               idempotencyKey: "request:1", protocolVersion: "llm-task-protocol.v1", promptVersion: "generic-raw-model.v1",
               status: "running", requestedModel: "gpt-5.6-luna", requestedReasoningEffort: null, lastRunId: runId,

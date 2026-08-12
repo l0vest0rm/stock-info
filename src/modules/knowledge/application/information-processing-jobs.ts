@@ -74,7 +74,7 @@ export async function enqueueInformationProcessingTasks(
     // existing enqueue/retry endpoints to request a fresh execution, while a
     // running task is never reset underneath its current lease.
     if (options.force && (task.status === "failed" || task.status === "blocked" || task.status === "completed")) {
-      await db.prepare(`update llm_tasks
+      await db.prepare(`update workflow_tasks
         set status='queued', last_run_id=null, last_error_code=null, last_error_message=null,
             started_at=null, completed_at=null, updated_at=?
         where task_id=? and status in ('failed', 'blocked', 'completed')`).bind(now, task.taskId).run();

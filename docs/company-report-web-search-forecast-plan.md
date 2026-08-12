@@ -1,5 +1,7 @@
 # 公司研报 Web Search 预测整合方案
 
+> 说明：本文第 2.2 节所述的“Web Search 证据包”已删除，不能作为当前实现或后续方案依据。
+
 状态：设计稿（proposed）。本文件只新增设计文档，不改变运行时代码、测试、迁移或既有 API。
 
 阅读约定：文中“当前”是对仓库代码、配置和迁移的静态核对结论，不等于本次已完成真实模型、长连接、浏览器或生产证明；“拟议”/“proposed”是目标设计，不能当作已存在的表、接口或行为。现有统一设计和数据路由分别见 [`investment-analysis-llm-task-unification-plan.md`](./investment-analysis-llm-task-unification-plan.md) 与 [`investment-analysis-data-acquisition-routing.md`](./investment-analysis-data-acquisition-routing.md)。
@@ -40,18 +42,9 @@
 
 结论：当前公司研报预测是“候选列表 + `app_kv` TTL 提取缓存 + 页面派生”的链路，尚未成为带原文证据和独立版本的预测业务投影，也没有接入 `research_source_forecasts`。
 
-### 2.2 `forecast_consensus` 当前链路（静态核对）
+### 2.2 已删除的 `forecast_consensus` 链路
 
-涉及实现：`config/research-web-search-packages.json`、`src/modules/research/application/research-web-search-packages.ts`、`src/modules/research/api/research.routes.ts`、`migrations/0089`/`0090`/`0092`/`0105`。
-
-1. **配置和语义。** 配置版本为 `research-web-search-packages.v10`；`forecast_consensus` 的 prompt 版本为 `research-web-search.forecast-external-supplement.v3`，标签是“外部预测补充包”，只允许 `forecast` Tab。prompt 会注入内部 `research_source_forecasts` 覆盖摘要，要求不要重复搜索内部研报、不要搜索或拼成“市场一致预期”，管理层指引归 `recent_filings`。
-2. **入队。** `POST /api/research/company/:code/web-search-packages/forecast_consensus` 仅本地可写，调用 `enqueueResearchWebSearchPackage()`。持久身份是 `(security_code, package_kind, prompt_version)`；同一身份去重，失败任务由条件更新重新置为 `queued`。`GET /api/research/company/:code/web-search-packages` 只读已保存包和 job，永不启动搜索。
-3. **执行。** 本地 Node runner 通过 `claim-next` 认领 job，写 `attempt/lease_owner/lease_until/heartbeat` 并占用共享 provider slot；`prepareResearchWebSearchPackageExecution()` 只从 D1 读取证券身份、法定财报边界和内部预测覆盖，并渲染系统 prompt/包 prompt。配置模型为 `gpt-5.6-luna`、reasoning `high`、输出上限 2800、默认任务窗口 10 分钟。Worker 不持有长时远端模型流。
-4. **完成门禁。** `complete` 必须匹配模型、当前 attempt 和租约；provider 必须报告 `webSearch.searched` 且有原生 citations，否则不落包。返回正文必须是 JSON，至少有可读中文 summary 或 evidence；每条证据的 `source_url` 只有在原生 citation 中时才是 `verified`，否则为 `uncited`（或其他结构性状态），`numeric_value` 非有限数变为 `null`。当前包任务完成不代表每条证据已验证。
-5. **业务投影。** 当前写入 `research_web_search_source_packages`（搜索查询、引用、summary、缺口、冲突、刷新触发器）和 `research_web_search_evidence_records`（tab/field/subject/statement/value/unit/currency/period/scope/source/status）。`0092` 已允许 `verified/unavailable/uncited/citation_unquoted/format_incomplete`；查询返回 packages、evidence 和 jobs。它是 Web Search 证据包，不是内部来源预测账本。
-6. **内部预测账本链路。** 现有第三方预测真正进入 `research_source_forecasts` 的链路是：知识文档版本 → 信息处理记录（`information_type=forecast`）→ `metadata_json.researchForecastEvidence` 的原始载体/模型谱系/单值测量契约 → 本地 `POST .../third-party-forecasts/sync-auto` → 精确文档版本和 content hash 的来源身份断言 → 单位/币种/会计、归属、每股口径标准化 → `research_source_forecasts` → `research_forecast_consolidations`。缺失契约会记录自动阻断原因；来源身份、独立来源组和模型谱系不可由标题、URL 或机构显示名猜测。预测页 `GET /api/research/company/:code/forecasts` 是只读工作区，有限样本明确不是市场一致预期；本地可生成带 `forecastId` 引用的整理草稿，但整理稿不成为事实。
-
-结论：`forecast_consensus` 已有持久 Web Search 包和证据状态，但当前它与公司研报提取、内部来源预测账本是分开的三条业务链；“任务 completed”“证据 verified”“内部账本可纳入”不能互相替代。
+原 Web Search 证据包及其 `forecast_consensus` 子类型已经删除：不再有配置、prompt、接口、local runner 或 `research_web_search_*` 投影表。第三方预测仍只经知识文档处理和既有来源审核进入 `research_source_forecasts`；不会以通用 Web Search 包补充或宣称“市场一致预期”。
 
 ## 3. 推荐架构（拟议）
 

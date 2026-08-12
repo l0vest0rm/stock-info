@@ -22,7 +22,7 @@ type CompanyReportDiscoveryStatus = 'idle' | 'queued' | 'running' | 'completed' 
 type CompanyReportDiscoveryReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'pro'
 
 type CompanyReportDiscoveryTask = {
-  taskId: string
+  name: string
   status: CompanyReportDiscoveryStatus
   requestedModel?: string | null
   requestedReasoningEffort?: string | null
@@ -30,7 +30,7 @@ type CompanyReportDiscoveryTask = {
     model?: string | null
     reasoningEffort?: string | null
   } | null
-  lastErrorMessage?: string | null
+  errorMessage?: string | null
   createdAt?: number | null
   startedAt?: number | null
   completedAt?: number | null
@@ -537,7 +537,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   let valuationChart: any | null = null
   let valuationChartResizeBound = false
   let companyReportDiscoveryEnabled = false
-  let companyReportDiscoveryTaskId: string | null = null
+  let companyReportDiscoveryTaskName: string | null = null
   let companyReportDiscoveryStatus: CompanyReportDiscoveryStatus = 'idle'
   let companyReportDiscoveryPollTimer: number | null = null
   let companyReportDiscoveryPollGeneration = 0
@@ -622,7 +622,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   function emitCompanyReportDiscoveryState(message = companyReportDiscoveryMessage(companyReportDiscoveryStatus)): void {
     emitCompanyReportState({
       discoveryEnabled: companyReportDiscoveryEnabled,
-      discoveryTaskId: companyReportDiscoveryTaskId,
+      discoveryTaskName: companyReportDiscoveryTaskName,
       discoveryStatus: companyReportDiscoveryStatus,
       discoveryMessage: message,
       discoveryBusy: companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running',
@@ -637,8 +637,8 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   }
 
   function applyCompanyReportDiscoveryTask(task: CompanyReportDiscoveryTask | null): void {
-    if (!task || !task.taskId) {
-      companyReportDiscoveryTaskId = null
+    if (!task || !task.name) {
+      companyReportDiscoveryTaskName = null
       companyReportDiscoveryStatus = 'idle'
       companyReportDiscoveryCreatedAt = null
       companyReportDiscoveryStartedAt = null
@@ -650,7 +650,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       emitCompanyReportDiscoveryState('')
       return
     }
-    companyReportDiscoveryTaskId = task.taskId
+    companyReportDiscoveryTaskName = task.name
     companyReportDiscoveryStatus = normalizeCompanyReportDiscoveryStatus(task.status)
     companyReportDiscoveryCreatedAt = optionalCompanyReportTimestamp(task.createdAt)
     companyReportDiscoveryStartedAt = optionalCompanyReportTimestamp(task.startedAt)
@@ -664,7 +664,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     companyReportDiscoveryReasoningEffort = typeof executionReasoningEffort === 'string' && executionReasoningEffort.trim()
       ? executionReasoningEffort.trim()
       : null
-    emitCompanyReportDiscoveryState(companyReportDiscoveryMessage(companyReportDiscoveryStatus, task.lastErrorMessage))
+    emitCompanyReportDiscoveryState(companyReportDiscoveryMessage(companyReportDiscoveryStatus, task.errorMessage))
   }
 
   function applyCompanyReportDiscoveryCapability(data: any): void {
@@ -677,8 +677,8 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     return Boolean(data && typeof data === 'object' && typeof data.error === 'string' && data.error.trim())
   }
 
-  function scheduleCompanyReportDiscoveryPoll(code: string, taskId: string): void {
-    if (!companyReportDiscoveryEnabled || !taskId) {
+  function scheduleCompanyReportDiscoveryPoll(code: string, name: string): void {
+    if (!companyReportDiscoveryEnabled || !name) {
       return
     }
     if (companyReportDiscoveryPollTimer !== null) {
@@ -687,20 +687,20 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     const generation = ++companyReportDiscoveryPollGeneration
     companyReportDiscoveryPollTimer = window.setTimeout(() => {
       companyReportDiscoveryPollTimer = null
-      void pollCompanyReportDiscovery(code, taskId, generation)
+      void pollCompanyReportDiscovery(code, name, generation)
     }, 1500)
   }
 
-  async function pollCompanyReportDiscovery(code: string, taskId: string, generation: number): Promise<void> {
-    if (generation !== companyReportDiscoveryPollGeneration || taskId !== companyReportDiscoveryTaskId) {
+  async function pollCompanyReportDiscovery(code: string, name: string, generation: number): Promise<void> {
+    if (generation !== companyReportDiscoveryPollGeneration || name !== companyReportDiscoveryTaskName) {
       return
     }
     const data = await fetchRequest({
       url: `${server}/api/company/reports/discovery-capability`,
-      params: { code, taskId },
+      params: { code },
       silent: true,
     }) as any
-    if (generation !== companyReportDiscoveryPollGeneration || taskId !== companyReportDiscoveryTaskId) {
+    if (generation !== companyReportDiscoveryPollGeneration || name !== companyReportDiscoveryTaskName) {
       return
     }
     if (isCompanyReportDiscoveryError(data)) {
@@ -728,7 +728,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       stopCompanyReportDiscoveryPolling()
       return
     }
-    scheduleCompanyReportDiscoveryPoll(code, taskId)
+    scheduleCompanyReportDiscoveryPoll(code, name)
   }
 
   async function loadCompanyReportDiscoveryCapability(code: string): Promise<void> {
@@ -739,7 +739,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     }) as any
     if (isCompanyReportDiscoveryError(data) || data?.enabled !== true) {
       companyReportDiscoveryEnabled = false
-      companyReportDiscoveryTaskId = null
+      companyReportDiscoveryTaskName = null
       companyReportDiscoveryStatus = 'idle'
       companyReportDiscoveryCreatedAt = null
       companyReportDiscoveryStartedAt = null
@@ -756,7 +756,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     const task = data?.task && typeof data.task === 'object' ? data.task as CompanyReportDiscoveryTask : null
     applyCompanyReportDiscoveryCapability(data)
     if (task && (companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running')) {
-      scheduleCompanyReportDiscoveryPoll(code, task.taskId)
+      scheduleCompanyReportDiscoveryPoll(code, task.name)
     }
   }
 
@@ -766,7 +766,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     }
     const force = ['completed', 'failed', 'blocked'].includes(companyReportDiscoveryStatus)
     companyReportDiscoveryStatus = 'queued'
-    companyReportDiscoveryTaskId = null
+    companyReportDiscoveryTaskName = null
     companyReportDiscoveryCreatedAt = null
     companyReportDiscoveryStartedAt = null
     companyReportDiscoveryCompletedAt = null
@@ -792,7 +792,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     }
     applyCompanyReportDiscoveryTask(task)
     if (companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running') {
-      scheduleCompanyReportDiscoveryPoll(code, task.taskId)
+      scheduleCompanyReportDiscoveryPoll(code, task.name)
     } else if (companyReportDiscoveryStatus === 'completed') {
       // A non-forced, idempotent enqueue may return an already completed task.
       if (companyReportActualFinancialMap) {

@@ -8,7 +8,15 @@ import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
 import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
-import { requestLlmText, type LlmWebSearchMetadata, type SupportedLlmModel } from "../../../shared/llm-client";
+import { requestLlmText, taskdWebQaInput, type LlmWebSearchMetadata, type SupportedLlmModel } from "../../../shared/llm-client";
+import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
+import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
+import {
+  loadGenericLlmRun,
+  loadGenericLlmRunArtifacts,
+  loadGenericLlmTaskByIdentity,
+  GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP,
+} from "../../../shared/local-job-protocol";
 import {
   NEWS_REPORT_ANALYZE_SYSTEM_PROMPT,
   NEWS_REPORT_ANALYZE_USER_PROMPT,
@@ -24,20 +32,6 @@ import {
   runSharedReportAnalysisTask,
   sharedReportAnalysisCacheKey,
 } from "../application/report-analysis-cache";
-import {
-  claimNextGenericLlmTaskRun,
-  completeGenericLlmRun,
-  createGenericLlmTask,
-  failGenericLlmRun,
-  heartbeatGenericLlmRun,
-  loadGenericLlmRun,
-  loadGenericLlmRunArtifacts,
-  loadGenericLlmTask,
-  loadGenericLlmTaskByIdentity,
-  requeueGenericLlmTask,
-  writeGenericLlmRunArtifact,
-  GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP,
-} from "../../../shared/local-job-protocol";
 
 export const companyRoutes = new Hono<AppEnv>();
 
@@ -114,18 +108,6 @@ export type CompanyReportDiscoveryCandidate = {
   valuation?: CompanyReportValuation;
 };
 
-type CompanyReportDiscoveryRunInput = {
-  taskId: string;
-  runId: string;
-  attempt: number;
-  runnerInstanceId: string;
-  response: {
-    model: string;
-    text: string;
-    webSearch?: CompanyReportDiscoveryWebSearchMetadata;
-  };
-};
-
 export type CompanyReportDiscoveryWebSearchMetadata = LlmWebSearchMetadata & {
   /** The provider reached a terminal `response.completed` event. */
   responseCompleted?: boolean;
@@ -158,7 +140,7 @@ const NEWS_REPORT_ANALYSIS_MAX_CALLS = 5;
 const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v1";
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
 const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v5";
-const REPORT_DISCOVERY_TASK_TYPE = "company_report_discovery";
+const REPORT_DISCOVERY_TASK_TYPE = "webqa.chatgpt.v1";
 const REPORT_DISCOVERY_REASONING_EFFORT = "xhigh";
 const REPORT_DISCOVERY_MAX_REPORTS = 20;
 export const COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS = 60 * 60 * 1000;
@@ -240,37 +222,17 @@ companyRoutes.get("/company/reports/discovery-capability", async (c) => {
   if (!isCnCode(normalized)) {
     return ok(c, { enabled: false, code: normalized, task: null, lastSuccessfulCompletedAt: null });
   }
-  const taskId = c.req.query("taskId")?.trim() || "";
-  const task = taskId
-    ? await loadGenericLlmTask(c.env.DB, taskId)
-    : await loadGenericLlmTaskByIdentity(c.env.DB, {
-      taskType: REPORT_DISCOVERY_TASK_TYPE,
-      targetType: "security",
-      targetId: normalized,
-      idempotencyKey: `company-report-discovery:${reportDiscoveryRecentSince()}`,
-      promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
-    });
-  const matchingTask = task && task.taskType === REPORT_DISCOVERY_TASK_TYPE && task.targetType === "security" && task.targetId === normalized
-    ? task
-    : null;
-  const lastRun = matchingTask?.lastRunId
-    ? await loadGenericLlmRun(c.env.DB, matchingTask.lastRunId)
-    : null;
-  const execution = matchingTask
-    ? {
-      runId: lastRun?.taskId === matchingTask.taskId ? lastRun.runId : null,
-      attempt: lastRun?.taskId === matchingTask.taskId ? lastRun.attempt : null,
-      status: lastRun?.taskId === matchingTask.taskId ? lastRun.status : null,
-      model: lastRun?.taskId === matchingTask.taskId ? lastRun.model : matchingTask.requestedModel,
-      reasoningEffort: lastRun?.taskId === matchingTask.taskId ? lastRun.reasoningEffort : matchingTask.requestedReasoningEffort,
-    }
-    : null;
-  const lastSuccessfulCompletedAt = await loadLastSuccessfulCompanyReportDiscoveryCompletedAt(c.env.DB, normalized);
+  const name = companyReportDiscoveryTaskName(normalized);
+  const state = await reconcileTaskdResult(taskdCallerClient(c.env), {
+    name,
+    project: (task) => projectCompanyReportDiscovery(c, normalized, task),
+  });
+  const task = "task" in state ? state.task : null;
   return ok(c, {
     enabled: true,
     code: normalized,
-    task: matchingTask ? { ...matchingTask, execution } : null,
-    lastSuccessfulCompletedAt,
+    task: task ? companyReportDiscoveryTaskView(task) : null,
+    lastSuccessfulCompletedAt: state.state === "projected" ? state.task.completedAt : null,
   });
 });
 
@@ -325,8 +287,8 @@ companyRoutes.get("/company/reports/stream", async (c) => {
   });
 });
 
-// Web Search report discovery is an explicit local job. A normal report page
-// GET/SSE remains read-only and only serves the materialized source pool.
+// Web Search report discovery is an explicit taskd submission. A normal report
+// page GET/SSE remains read-only and only serves the materialized source pool.
 companyRoutes.post("/company/reports/discover", async (c) => {
   if (c.env.LLM_RUNTIME !== "local") {
     return fail(c, 404, "company report discovery is only available in local LLM runtime");
@@ -337,104 +299,7 @@ companyRoutes.post("/company/reports/discover", async (c) => {
   }
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try {
-    return ok(c, await enqueueCompanyReportDiscovery(c.env.DB, code, body.force === true, Date.now(), body.reasoningEffort));
-  } catch (error) {
-    return fail(c, 400, error instanceof Error ? error.message : String(error));
-  }
-});
-
-// Local Node runner boundary. The Worker prepares/claims/completes the job;
-// the runner, not this request handler, owns the long remote model call.
-companyRoutes.post("/company/report-discovery-tasks/claim-next", async (c) => {
-  if (c.env.LLM_RUNTIME !== "local") {
-    return fail(c, 404, "company report discovery is only available in local LLM runtime");
-  }
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) {
-    return fail(c, 400, "runnerInstanceId is required");
-  }
-  try {
-    return ok(c, await claimNextCompanyReportDiscoveryTaskRun(c.env.DB, body.runnerInstanceId));
-  } catch (error) {
-    return fail(c, 400, error instanceof Error ? error.message : String(error));
-  }
-});
-
-companyRoutes.post("/company/report-discovery-runs/:runId/complete", async (c) => {
-  if (c.env.LLM_RUNTIME !== "local") {
-    return fail(c, 404, "company report discovery is only available in local LLM runtime");
-  }
-  try {
-    const body = await c.req.json<unknown>();
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return fail(c, 400, "company report discovery result is required");
-    }
-    const payload = body as {
-      taskId?: unknown;
-      model?: unknown;
-      text?: unknown;
-      runnerInstanceId?: unknown;
-      attempt?: unknown;
-      webSearch?: CompanyReportDiscoveryWebSearchMetadata;
-    };
-    if (typeof payload.taskId !== "string" || !payload.taskId.trim()
-      || typeof payload.runnerInstanceId !== "string" || !payload.runnerInstanceId.trim()
-      || !Number.isInteger(payload.attempt) || typeof payload.model !== "string" || typeof payload.text !== "string") {
-      return fail(c, 400, "taskId, model, text, runnerInstanceId and attempt are required");
-    }
-    return ok(c, await completeCompanyReportDiscoveryRun(c, {
-      taskId: payload.taskId,
-      runId: c.req.param("runId"),
-      attempt: payload.attempt as number,
-      runnerInstanceId: payload.runnerInstanceId,
-      response: { model: payload.model, text: payload.text, webSearch: payload.webSearch },
-    }));
-  } catch (error) {
-    return fail(c, 400, error instanceof Error ? error.message : String(error));
-  }
-});
-
-companyRoutes.post("/company/report-discovery-runs/:runId/fail", async (c) => {
-  if (c.env.LLM_RUNTIME !== "local") {
-    return fail(c, 404, "company report discovery is only available in local LLM runtime");
-  }
-  try {
-    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-    if (typeof body.taskId !== "string" || !body.taskId.trim()
-      || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()
-      || !Number.isInteger(body.attempt)) {
-      return fail(c, 400, "taskId, runnerInstanceId and attempt are required");
-    }
-    const task = await loadGenericLlmTask(c.env.DB, body.taskId);
-    if (!task || task.taskType !== REPORT_DISCOVERY_TASK_TYPE) return fail(c, 400, "company report discovery task was not found");
-    const result = await failGenericLlmRun(c.env.DB, {
-      taskId: body.taskId,
-      runId: c.req.param("runId"),
-      attempt: body.attempt as number,
-      leaseOwner: body.runnerInstanceId,
-      errorCode: "provider_failed",
-      errorMessage: String(body.error || "local company report discovery runner failed").slice(0, 1600),
-      terminalMetadata: { taskType: REPORT_DISCOVERY_TASK_TYPE },
-    });
-    return ok(c, result);
-  } catch (error) {
-    return fail(c, 400, error instanceof Error ? error.message : String(error));
-  }
-});
-
-companyRoutes.post("/company/report-discovery-runs/:runId/heartbeat", async (c) => {
-  if (c.env.LLM_RUNTIME !== "local") {
-    return fail(c, 404, "company report discovery is only available in local LLM runtime");
-  }
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.taskId !== "string" || !body.taskId.trim()
-    || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()
-    || !Number.isInteger(body.attempt)) {
-    return fail(c, 400, "taskId, runnerInstanceId and attempt are required");
-  }
-  try {
-    const active = await heartbeatGenericLlmRun(c.env.DB, c.req.param("runId"), body.taskId, body.attempt as number, body.runnerInstanceId);
-    return ok(c, { active });
+    return ok(c, await enqueueCompanyReportDiscovery(c, code, body.reasoningEffort));
   } catch (error) {
     return fail(c, 400, error instanceof Error ? error.message : String(error));
   }
@@ -818,101 +683,44 @@ export function normalizeCompanyReportDiscoveryReasoningEffort(value: unknown): 
   return value.trim();
 }
 
+export function companyReportDiscoveryTaskName(securityCode: string): string {
+  return `company:report-discovery:${normalizeSecurityCode(securityCode)}`;
+}
+
 export async function enqueueCompanyReportDiscovery(
-  db: D1Database,
+  c: Context<AppEnv>,
   securityCode: string,
-  force = false,
-  now = Date.now(),
   requestedReasoningEffort?: unknown,
 ) {
   const code = normalizeSecurityCode(securityCode);
   if (!isCnCode(code)) throw new Error("company report discovery only supports mainland company codes");
   const reasoningEffort = normalizeCompanyReportDiscoveryReasoningEffort(requestedReasoningEffort);
-  const recentSince = reportDiscoveryRecentSince(now);
-  const created = await createGenericLlmTask(db, {
+  const prepared = await prepareCompanyReportDiscoveryExecution(c.env.DB, code, reasoningEffort);
+  const name = companyReportDiscoveryTaskName(code);
+  const task = await taskdCallerClient(c.env).submit({
+    name,
     taskType: REPORT_DISCOVERY_TASK_TYPE,
-    targetType: "security",
-    targetId: code,
-    idempotencyKey: `company-report-discovery:${recentSince}`,
-    promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
-    handlerKey: REPORT_DISCOVERY_TASK_TYPE,
-    model: REPORT_LLM_MODEL,
-    reasoningEffort,
-    metadata: { securityCode: code, recentSince, maxReports: REPORT_DISCOVERY_MAX_REPORTS },
-    now,
+    payload: taskdWebQaInput(c.env, {
+      model: REPORT_LLM_MODEL,
+      reasoningEffort: prepared.reasoningEffort as "low" | "medium" | "high" | "xhigh",
+      waitTimeoutMs: prepared.jobTimeoutMs,
+      messages: [
+        { role: "system", content: prepared.instructions },
+        { role: "user", content: prepared.input },
+      ],
+    }, name),
   });
-  let task = created.task;
-  let requeued = false;
-  if (force && (task.status === "completed" || task.status === "failed" || task.status === "blocked")) {
-    requeued = await requeueGenericLlmTask(db, task.taskId, now);
-    task = await loadGenericLlmTask(db, task.taskId) || task;
-  }
-  // A queued, deduplicated task may receive an explicit diagnostic choice
-  // after it was first created. Persist the choice before the worker claims it;
-  // running/terminal tasks are left untouched unless force requeued them above.
-  if (task.status === "queued") {
-    await db.prepare(`update llm_tasks set requested_model=?, requested_reasoning_effort=?, updated_at=?
-      where task_id=? and status='queued'`).bind(REPORT_LLM_MODEL, reasoningEffort, now, task.taskId).run();
-    task = await loadGenericLlmTask(db, task.taskId) || task;
-  }
-  return { accepted: true, task, deduplicated: created.deduplicated && !requeued, requeued };
-}
-
-export async function claimNextCompanyReportDiscoveryTaskRun(
-  db: D1Database,
-  runnerInstanceId: string,
-) {
-  const claimed = await claimNextGenericLlmTaskRun(db, runnerInstanceId, {
-    provider: "openai",
-    model: REPORT_LLM_MODEL,
-  });
-  if (!claimed) return null;
-  try {
-    const prepared = await prepareCompanyReportDiscoveryExecution(db, claimed.task.targetId, claimed.task.taskId);
-  return {
-    task: claimed.task,
-    run: claimed.run,
-    request: {
-      ...prepared,
-      taskId: claimed.task.taskId,
-      runId: claimed.run.runId,
-      attempt: claimed.run.attempt,
-      runnerInstanceId,
-      taskType: claimed.task.taskType,
-      targetType: claimed.task.targetType,
-      targetId: claimed.task.targetId,
-      idempotencyKey: claimed.task.idempotencyKey,
-      protocolVersion: claimed.task.protocolVersion,
-      progress: claimed.run.progress,
-    },
-  };
-  } catch (error) {
-    await failGenericLlmRun(db, {
-      taskId: claimed.task.taskId,
-      runId: claimed.run.runId,
-      attempt: claimed.run.attempt,
-      leaseOwner: runnerInstanceId,
-      errorCode: "prepare_failed",
-      errorMessage: error instanceof Error ? error.message : String(error),
-    }).catch(() => {});
-    throw error;
-  }
+  return { accepted: true, task: companyReportDiscoveryTaskView(task) };
 }
 
 export async function prepareCompanyReportDiscoveryExecution(
   db: D1Database,
   securityCode: string,
-  taskId: string,
+  requestedReasoningEffort?: unknown,
 ) {
   const code = normalizeSecurityCode(securityCode);
-  const task = await loadGenericLlmTask(db, taskId);
-  if (!task || task.taskType !== REPORT_DISCOVERY_TASK_TYPE || task.targetType !== "security" || task.targetId !== code) {
-    throw new Error("company report discovery task was not found while preparing execution");
-  }
-  // Tasks created before the reasoning selector existed have a NULL field;
-  // treat that persisted absence as the default max while still rejecting an
-  // explicit null request at the API boundary.
-  const reasoningEffort = normalizeCompanyReportDiscoveryReasoningEffort(task.requestedReasoningEffort ?? undefined);
+  if (!isCnCode(code)) throw new Error("company report discovery only supports mainland company codes");
+  const reasoningEffort = normalizeCompanyReportDiscoveryReasoningEffort(requestedReasoningEffort);
   const security = await db.prepare("select name from securities where code=?").bind(code).first<{ name?: unknown }>();
   const recentSince = reportDiscoveryRecentSince();
   const knownReports = await loadCachedCompanyReportDiscoveryKnownReports(db, code);
@@ -954,99 +762,59 @@ async function loadCachedCompanyReportDiscoveryKnownReports(
   })).filter((item) => item.title || item.url);
 }
 
-/**
- * Task rows are reused when a discovery is explicitly run again, so their
- * terminal status can later become failed.  The run ledger is the source of
- * truth for the most recent successful execution.
- */
-async function loadLastSuccessfulCompanyReportDiscoveryCompletedAt(
-  db: D1Database,
-  code: string,
-): Promise<number | null> {
-  const row = await db.prepare(`select r.completed_at as completedAt
-    from llm_runs r join llm_tasks t on t.task_id=r.task_id
-    where t.task_type=? and t.target_type='security' and t.target_id=?
-      and r.status='completed' and r.completed_at is not null
-    order by r.completed_at desc limit 1`)
-    .bind(REPORT_DISCOVERY_TASK_TYPE, normalizeSecurityCode(code))
-    .first<{ completedAt?: unknown }>();
-  const completedAt = Number(row?.completedAt);
-  return Number.isFinite(completedAt) ? completedAt : null;
+async function projectCompanyReportDiscovery(c: Context<AppEnv>, securityCode: string, task: TaskdTask) {
+  const result = asRecord(task.result);
+  validateCompanyReportDiscoveryTerminalEvidence(result);
+  const answer = asRecord(result?.answer);
+  const content = asRecord(answer?.content);
+  const webSearch = companyReportDiscoveryWebQaSearch(answer);
+  const citations = validateCompanyReportDiscoveryWebSearch(webSearch);
+  const code = normalizeSecurityCode(securityCode);
+  const parsed = parseCompanyReportDiscoveryWithDiagnostics(text(content?.markdown), code, citations);
+  if (parsed.rejected > 0) console.warn("company report discovery rejected candidates", { code, rejected: parsed.rejected });
+  const discoveredRows = parsed.reports.map((item) => mapCompanyReportDiscoveryCandidate(item, code));
+  const sourceRows = await loadCompanyReportSourcePool(c, code, discoveredRows);
+  await writeAppJson(c.env.DB, `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${code}`, sourceRows, REPORT_SOURCE_CACHE_TTL_MS);
+  return { securityCode: code, reportsFound: parsed.reports.length, reportsRejected: parsed.rejected, sourceRows: sourceRows.length, cachedAt: Date.now() };
 }
 
-async function completeCompanyReportDiscoveryRun(
-  c: Context<AppEnv>,
-  input: CompanyReportDiscoveryRunInput,
-) {
-  const task = await loadGenericLlmTask(c.env.DB, input.taskId);
-  if (!task || task.taskType !== REPORT_DISCOVERY_TASK_TYPE || task.targetType !== "security") {
-    throw new Error("company report discovery task was not found");
-  }
-  const run = await loadGenericLlmRun(c.env.DB, input.runId);
-  assertActiveCompanyReportDiscoveryRun(run, input, task.taskId);
-  if (input.response.model !== REPORT_LLM_MODEL) throw new Error("company report discovery response model mismatch");
-  try {
-    const webSearch = input.response.webSearch;
-    const citations = validateCompanyReportDiscoveryWebSearch(webSearch);
-    const parsed = parseCompanyReportDiscoveryWithDiagnostics(input.response.text, task.targetId, citations);
-    if (parsed.rejected > 0) {
-      console.warn("company report discovery rejected candidates", { code: task.targetId, rejected: parsed.rejected });
-    }
-    const discoveredRows = parsed.reports.map((item) => mapCompanyReportDiscoveryCandidate(item, task.targetId));
-    const sourceRows = await loadCompanyReportSourcePool(c, task.targetId, discoveredRows);
-    const cacheKey = `company-reports-source:${REPORT_SOURCE_CACHE_VERSION}:${normalizeSecurityCode(task.targetId)}`;
-    await writeAppJson(c.env.DB, cacheKey, sourceRows, REPORT_SOURCE_CACHE_TTL_MS);
-    const projection = {
-      securityCode: normalizeSecurityCode(task.targetId),
-      reportsFound: parsed.reports.length,
-      reportsRejected: parsed.rejected,
-      sourceRows: sourceRows.length,
-      cachedAt: Date.now(),
-    };
-    await writeGenericLlmRunArtifact(c.env.DB, {
-      runId: input.runId,
-      taskId: input.taskId,
-      attempt: input.attempt,
-      leaseOwner: input.runnerInstanceId,
-      stepKey: "company_report_discovery",
-      outputType: "json",
-      status: "complete",
-      structureValid: true,
-      output: { response: input.response, projection },
-      terminalMetadata: projection,
-    });
-    const terminal = await completeGenericLlmRun(c.env.DB, {
-      runId: input.runId,
-      taskId: input.taskId,
-      attempt: input.attempt,
-      leaseOwner: input.runnerInstanceId,
-      status: "completed",
-      terminalMetadata: projection,
-    });
-    return { ...terminal, projection };
-  } catch (error) {
-    await failGenericLlmRun(c.env.DB, {
-      runId: input.runId,
-      taskId: input.taskId,
-      attempt: input.attempt,
-      leaseOwner: input.runnerInstanceId,
-      errorCode: "projection_failed",
-      errorMessage: error instanceof Error ? error.message : String(error),
-      terminalMetadata: { taskType: REPORT_DISCOVERY_TASK_TYPE },
-    }).catch(() => {});
-    throw error;
+export function validateCompanyReportDiscoveryTerminalEvidence(result: Record<string, unknown> | null): void {
+  const evidence = asRecord(result?.terminal_evidence);
+  if (
+    text(evidence?.schemaVersion) !== "webqa.completion-evidence.v1"
+    || text(evidence?.outcome) !== "succeeded"
+  ) {
+    throw new Error("company report discovery taskd result lacks terminal WebQA completion evidence");
   }
 }
 
-function assertActiveCompanyReportDiscoveryRun(
-  run: Awaited<ReturnType<typeof loadGenericLlmRun>>,
-  input: CompanyReportDiscoveryRunInput,
-  taskId: string,
-): asserts run is NonNullable<Awaited<ReturnType<typeof loadGenericLlmRun>>> {
-  if (!run || run.taskId !== taskId || run.status !== "running" || run.attempt !== input.attempt
-    || run.leaseOwner !== input.runnerInstanceId || !run.leaseUntil || run.leaseUntil < Date.now()) {
-    throw new Error("company report discovery run lease is no longer owned by this runner");
-  }
+function companyReportDiscoveryWebQaSearch(answer: Record<string, unknown> | null): CompanyReportDiscoveryWebSearchMetadata {
+  const records = [...(Array.isArray(answer?.citations) ? answer.citations : []), ...(Array.isArray(answer?.sources) ? answer.sources : [])];
+  const citations = records.flatMap((item) => {
+    const record = asRecord(item);
+    const url = text(record?.url);
+    return url ? [{ title: text(record?.title) || url, url }] : [];
+  });
+  return { searched: true, queries: [], citations, responseCompleted: true, responseStatus: "completed", webSearchCallCompleted: true, transport: "webqa" };
+}
+
+function companyReportDiscoveryTaskView(task: TaskdTask) {
+  return {
+    name: task.name,
+    status: companyReportDiscoveryStatus(task.status),
+    errorMessage: task.errorMessage,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    completedAt: task.completedAt,
+  };
+}
+
+function companyReportDiscoveryStatus(status: TaskdTask["status"]): "queued" | "running" | "completed" | "failed" | "blocked" {
+  if (status === "queued" || status === "leased") return "queued";
+  if (status === "running") return "running";
+  if (status === "succeeded") return "completed";
+  if (status === "failed") return "failed";
+  return "blocked";
 }
 
 function mapCompanyReportDiscoveryCandidate(
@@ -1351,9 +1119,7 @@ type CompanyReportLlmTaskIdentity = {
 };
 
 /**
- * Keep the exact report object returned by the discovery model. The model's
- * top-level report array is persisted as a terminal artifact; only the one candidate
- * whose canonical URL/report identity matches this row is returned.
+ * Keep the exact report object returned by the latest discovery taskd result.
  */
 export function findCompanyReportDiscoveryRawReport(
   artifactOutput: unknown,
@@ -1408,7 +1174,7 @@ async function loadCompanyReportLlmRawResponse(
     return undefined;
   }
   try {
-    const discovery = await loadCompanyReportDiscoveryRawReport(c.env.DB, item);
+    const discovery = await loadCompanyReportDiscoveryRawReport(c, item);
     if (discovery) {
       return discovery;
     }
@@ -1417,13 +1183,9 @@ async function loadCompanyReportLlmRawResponse(
       return undefined;
     }
     const task = await loadGenericLlmTaskByIdentity(c.env.DB, identity);
-    if (!task || task.status !== "completed" || !task.lastRunId) {
-      return null;
-    }
+    if (!task || task.status !== "completed" || !task.lastRunId) return null;
     const run = await loadGenericLlmRun(c.env.DB, task.lastRunId);
-    if (!run || run.taskId !== task.taskId || run.status !== "completed") {
-      return null;
-    }
+    if (!run || run.taskId !== task.taskId || run.status !== "completed") return null;
     const artifact = (await loadGenericLlmRunArtifacts(c.env.DB, run.runId))
       .find((candidate) => candidate.stepKey === GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP && candidate.status === "complete");
     return artifact ? normalizeCompanyReportLlmRawResponse(artifact.output) : null;
@@ -1437,37 +1199,19 @@ async function loadCompanyReportLlmRawResponse(
 }
 
 async function loadCompanyReportDiscoveryRawReport(
-  db: D1Database,
+  c: Context<AppEnv>,
   item: Record<string, unknown>,
 ): Promise<Record<string, unknown> | null> {
   const code = normalizeSecurityCode(text(item.code));
   if (!code) {
     return null;
   }
-  const row = await db.prepare(`
-    select task_id as taskId
-      from llm_tasks
-     where task_type=? and target_type='security' and target_id=?
-       and prompt_version=? and status='completed'
-     order by coalesce(completed_at, updated_at) desc, updated_at desc
-     limit 1
-  `).bind(REPORT_DISCOVERY_TASK_TYPE, code, REPORT_DISCOVERY_PROMPT_VERSION).first<{ taskId?: unknown }>();
-  const taskId = text(row?.taskId);
-  if (!taskId) {
-    return null;
-  }
-  const task = await loadGenericLlmTask(db, taskId);
-  if (!task || task.taskType !== REPORT_DISCOVERY_TASK_TYPE || task.targetType !== "security"
-    || task.targetId !== code || task.status !== "completed" || !task.lastRunId) {
-    return null;
-  }
-  const run = await loadGenericLlmRun(db, task.lastRunId);
-  if (!run || run.taskId !== task.taskId || run.status !== "completed") {
-    return null;
-  }
-  const artifact = (await loadGenericLlmRunArtifacts(db, run.runId))
-    .find((candidate) => candidate.stepKey === REPORT_DISCOVERY_TASK_TYPE && candidate.status === "complete");
-  return artifact ? findCompanyReportDiscoveryRawReport(artifact.output, item) : null;
+  const task = await taskdCallerClient(c.env).get(companyReportDiscoveryTaskName(code));
+  if (!task || task.status !== "succeeded") return null;
+  const result = asRecord(task.result);
+  const answer = asRecord(result?.answer);
+  const content = asRecord(answer?.content);
+  return findCompanyReportDiscoveryRawReport({ response: { text: content?.markdown } }, item);
 }
 
 function companyReportRawIdentityMatches(

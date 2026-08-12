@@ -1,4 +1,8 @@
-# Investment-analysis LLM task unification - delivery checklist
+# Investment-analysis LLM task unification - historical delivery checklist
+
+> Historical record. The Web Search evidence-package implementation described
+> here was removed by migration `0114_remove_research_web_search_packages.sql`.
+> It is no longer an active local task or business projection.
 
 Source plan: `docs/investment-analysis-llm-task-unification-plan.md`.
 
@@ -6,13 +10,12 @@ Source plan: `docs/investment-analysis-llm-task-unification-plan.md`.
 
 - A generic local LLM task/run/artifact ledger owns task identity, lease, attempts,
   provider slots, terminal state and recovery for every local LLM consumer.
-- Investment-analysis and Web Search retain only their business projections; no
+- Investment-analysis retains its business projection; no
   per-table job lifecycle adapter, import bridge or double-write remains.
 - Intermediate stream text is never persisted. Terminal artifacts, run history,
   explicit failure/cancellation evidence and recoverable lease state remain
   durable.
-- Forecast consensus remains an externally sourced Web Search supplement; the
-  internal forecast ledger remains business-owned.
+- The internal forecast ledger remains business-owned.
 - Local-only LLM execution remains gated by `LLM_RUNTIME=local`; production
   behavior remains unchanged.
 
@@ -23,7 +26,7 @@ Source plan: `docs/investment-analysis-llm-task-unification-plan.md`.
 | T01 | Add a forward migration for generic task, run and terminal-artifact ledgers with attempt/lease fencing and provider slots. | Complete | `0107_generic_llm_task_protocol.sql`; schema opened in a temporary SQLite database. No destructive cleanup occurred. |
 | T02 | Generalize the local task protocol and runtime reconciliation, heartbeat and requeue behavior. | Complete | Generic typed lifecycle, progress metadata, terminal artifacts and targeted stale-run requeue; stale-owner and cross-task isolation tests pass. |
 | T03 | Migrate information-processing to the generic ledger while retaining its business projection. | Complete | Knowledge application/API/runner use generic task/run/artifact records; business-run fencing and a generic read endpoint added. |
-| T04 | Migrate Web Search packages to the generic ledger while retaining package/evidence projections and external `forecast_consensus`. | Complete | Generic lifecycle plus package/source/evidence projections; duplicate, retry, terminal-failure and stale-lease D1 checks pass. |
+| T04 | Migrate Web Search packages to the generic ledger while retaining package/evidence projections and external `forecast_consensus`. | Superseded | The entire evidence-package feature was removed; do not restore its generic-task path. |
 | T05 | Migrate operating-analysis stages to the generic ledger and terminal artifacts/run history. | Complete | Generic lifecycle/progress and terminal report artifacts; projection keeps generic run ID and prior run history. |
 | T06 | Remove periodic stage checkpoint persistence and the corresponding endpoint/config/UI rendering. | Complete | Checkpoint route/config/runner writes and saved intermediate-body UI removed; status, stage and elapsed display retained. |
 | T07 | Keep local runtime startup, worker supervision, recovery/cleanup and operational audit aligned with the generic ledger. | Complete | Audit inventory and scoped expired-Web-Search recovery are generic-task aware; worker/supervisor need no process-model change. |

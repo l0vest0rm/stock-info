@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 export const WEBQA_ARTIFACT_STEP = "raw_model";
 const WEBQA_STATUSES = new Set(["queued", "waiting_for_browser", "streaming", "finalizing", "recovering", "cancelling", "succeeded", "incomplete", "completed", "failed", "cancelled"]);
+const DEFAULT_TASKD_TASK_TYPE = "webqa.chatgpt.v1";
 
 /** A stable, user-visible error code that survives the generic runner boundary. */
 export class WebQaAdapterError extends Error {
@@ -51,6 +52,61 @@ export function createWebQaGatewayClient({ baseUrl, fetchImpl = globalThis.fetch
   };
 }
 
+export function createWebQaTaskdClient({
+  baseUrl,
+  namespace,
+  taskType = DEFAULT_TASKD_TASK_TYPE,
+  bearerToken = process.env.STOCK_INFO_TASKD_CALLER_TOKEN || process.env.TASKD_CALLER_TOKEN || "",
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const root = String(baseUrl || "").trim().replace(/\/+$/, "");
+  const scopedNamespace = String(namespace || "").trim();
+  const token = String(bearerToken || "").trim();
+  if (!root) throw new WebQaAdapterError("webqa_config_invalid", "taskd base URL is required");
+  if (!scopedNamespace) throw new WebQaAdapterError("webqa_config_invalid", "taskd namespace is required");
+  if (!token) throw new WebQaAdapterError("webqa_config_invalid", "taskd caller token is required");
+  if (typeof fetchImpl !== "function") throw new WebQaAdapterError("webqa_config_invalid", "taskd fetch implementation is required");
+
+  async function request(path, { method = "GET", body } = {}) {
+    let response;
+    try {
+      response = await fetchImpl(`${root}${path}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${token}`,
+          ...(body === undefined ? {} : { "content-type": "application/json" }),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    } catch (error) {
+      throw new WebQaAdapterError("webqa_gateway_unavailable", `taskd request failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const detail = text(payload?.error) || text(payload?.msg) || `HTTP ${response.status}`;
+      throw new WebQaAdapterError("webqa_gateway_http", `taskd returned ${response.status}: ${detail}`);
+    }
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new WebQaAdapterError("webqa_invalid_response", "taskd returned a non-object response");
+    }
+    return payload;
+  }
+
+  const prefix = `/v1/namespaces/${encodeURIComponent(scopedNamespace)}/tasks`;
+  return {
+    submit: (clientTaskName, input) => request(prefix, {
+      method: "POST",
+      body: {
+        task_type: taskType,
+        client_task_name: clientTaskName,
+        input,
+      },
+    }),
+    get: (clientTaskName) => request(`${prefix}/by-name/${encodeURIComponent(clientTaskName)}`),
+    cancel: (clientTaskName) => request(`${prefix}/by-name/${encodeURIComponent(clientTaskName)}/cancel`, { method: "POST", body: {} }),
+  };
+}
+
 /**
  * Build one WebQA request from the existing generic raw-model request. The
  * business stage supplies only the normal instructions/input/identity; the
@@ -62,12 +118,13 @@ export function buildWebQaRequest(job, config) {
   const prompt = renderGenericPrompt(rawModelRequest);
   if (!prompt) throw new WebQaAdapterError("webqa_input_missing", "generic raw model request has no text for WebQA");
   const session = deriveWebQaSession(identity, config);
+  const reasoningEffort = text(job?.reasoningEffort) || text(rawModelRequest.reasoningEffort) || text(config.reasoningEffort);
   return {
     platform: config.platform,
     conversation_id: session.conversationId,
     provider: config.provider,
     input: prompt,
-    reasoning_effort: text(job?.reasoningEffort) || text(rawModelRequest.reasoningEffort) || config.reasoningEffort,
+    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
     attachments: config.attachments,
     new_session: config.newSession,
     single_tab_mode: config.singleTabMode,
@@ -131,6 +188,51 @@ export function normalizeWebQaSnapshot(value) {
   };
 }
 
+export function normalizeTaskdWebQaSnapshot(value, { clientTaskName } = {}) {
+  const item = value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  if (!item) throw new WebQaAdapterError("webqa_invalid_response", "taskd task response is not an object");
+  const input = item.input && typeof item.input === "object" && !Array.isArray(item.input) ? item.input : {};
+  const checkpoint = item.checkpoint && typeof item.checkpoint === "object" && !Array.isArray(item.checkpoint) ? item.checkpoint : {};
+  const result = item.result && typeof item.result === "object" && !Array.isArray(item.result) ? item.result : {};
+  const answer = normalizeWebQaAnswer(result.answer, { required: text(item.status) === "succeeded" });
+  const terminalEvidence = normalizeTerminalEvidence(result.terminal_evidence || result.completionEvidence);
+  if (text(item.status) === "succeeded" && !terminalEvidence) {
+    throw new WebQaAdapterError("webqa_unverified_completion", "taskd completed WebQA task without completionEvidence.v1");
+  }
+  const status = mapTaskdStatus(item.status, checkpoint.gateway_status);
+  if (!WEBQA_STATUSES.has(status)) {
+    throw new WebQaAdapterError("webqa_unknown_status", `taskd returned unsupported mapped status: ${status}`);
+  }
+  const taskId = text(item.client_task_name) || text(clientTaskName);
+  if (!taskId) throw new WebQaAdapterError("webqa_invalid_response", "taskd task response lacks client_task_name");
+  const raw = answer?.rawSnapshot && typeof answer.rawSnapshot === "object" && !Array.isArray(answer.rawSnapshot)
+    ? answer.rawSnapshot
+    : result.rawSnapshot && typeof result.rawSnapshot === "object" && !Array.isArray(result.rawSnapshot)
+      ? result.rawSnapshot
+      : item;
+  return {
+    taskId,
+    taskdTaskId: text(item.task_id),
+    gatewayTaskId: text(checkpoint.gateway_task_id) || text(result.gateway_task_id),
+    mode: text(input.mode || checkpoint.mode),
+    status,
+    platform: text(result.platform || checkpoint.platform || input.platform),
+    requestConversationId: text(result.conversation_id || checkpoint.conversation_id || input.conversation_id),
+    provider: text(result.provider || checkpoint.provider || input.provider),
+    idempotencyKey: text(input.idempotency_key),
+    reasoningEffort: text(result.reasoning_effort || checkpoint.reasoning_effort || input.reasoning_effort),
+    answer,
+    terminalEvidence,
+    providerConversationId: text(result.provider_conversation_id || checkpoint.provider_conversation_id),
+    providerUrl: text(result.provider_url || checkpoint.provider_url),
+    error: text(item.error_message || result.error || checkpoint.error),
+    cancelRequested: text(item.status) === "cancel_requested",
+    events: [],
+    updatedAt: text(result.updated_at || checkpoint.updated_at || item.updated_at),
+    raw,
+  };
+}
+
 function normalizeWebQaAnswer(value, { required = true } = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     if (!required) return null;
@@ -191,7 +293,15 @@ export async function runWebQaJob(job, owner, {
 } = {}) {
   const normalizedConfig = normalizeAdapterConfig(config);
   if (typeof runtimePost !== "function") throw new WebQaAdapterError("webqa_config_invalid", "WebQA runtime persistence callback is required");
-  const client = gateway || createWebQaGatewayClient({ baseUrl: normalizedConfig.gatewayBaseUrl });
+  const isTaskd = Boolean(normalizedConfig.taskdBaseUrl);
+  const client = gateway || (isTaskd
+    ? createWebQaTaskdClient({
+      baseUrl: normalizedConfig.taskdBaseUrl,
+      namespace: normalizedConfig.taskdNamespace,
+      taskType: normalizedConfig.taskdTaskType,
+      bearerToken: process.env[normalizedConfig.taskdTokenEnv] || process.env.STOCK_INFO_TASKD_CALLER_TOKEN || process.env.TASKD_CALLER_TOKEN || "",
+    })
+    : createWebQaGatewayClient({ baseUrl: normalizedConfig.gatewayBaseUrl }));
   const externalFromProgress = readExternalProgress(job);
   const request = externalFromProgress?.taskId || externalFromProgress?.gatewayTaskId
     ? restoreExternalRequest(externalFromProgress, normalizedConfig)
@@ -223,8 +333,12 @@ export async function runWebQaJob(job, owner, {
     ensureLease(leaseActive);
     const state = {
       kind: "webqa",
-      gatewayBaseUrl: normalizedConfig.gatewayBaseUrl,
+      ...(normalizedConfig.gatewayBaseUrl ? { gatewayBaseUrl: normalizedConfig.gatewayBaseUrl } : {}),
+      ...(normalizedConfig.taskdBaseUrl ? { taskdBaseUrl: normalizedConfig.taskdBaseUrl, taskdNamespace: normalizedConfig.taskdNamespace } : {}),
+      taskId: externalTaskId,
       gatewayTaskId: externalTaskId,
+      ...(text(snapshot?.taskdTaskId) ? { taskdTaskId: text(snapshot.taskdTaskId) } : {}),
+      ...(text(snapshot?.gatewayTaskId) ? { executorGatewayTaskId: text(snapshot.gatewayTaskId) } : {}),
       platform: request.platform,
       conversationId: request.conversation_id,
       provider: request.provider,
@@ -261,7 +375,14 @@ export async function runWebQaJob(job, owner, {
     if (!externalTaskId) {
       let submitted;
       try {
-        submitted = normalizeWebQaSnapshot(await client.submit(request));
+        const session = deriveWebQaSession(genericTaskIdentity(job), normalizedConfig);
+        externalTaskId = session.idempotencyKey;
+        const response = isTaskd
+          ? await client.submit(externalTaskId, request)
+          : await client.submit(request);
+        submitted = isTaskd
+          ? normalizeTaskdWebQaSnapshot(response, { clientTaskName: externalTaskId })
+          : normalizeWebQaSnapshot(response);
       } catch (error) {
         throw asWebQaError(error, "webqa_submit_failed");
       }
@@ -276,7 +397,10 @@ export async function runWebQaJob(job, owner, {
     while (now() <= deadline) {
       ensureLease(leaseActive);
       try {
-        latest = normalizeWebQaSnapshot(await client.get(externalTaskId));
+        const response = await client.get(externalTaskId);
+        latest = isTaskd
+          ? normalizeTaskdWebQaSnapshot(response, { clientTaskName: externalTaskId })
+          : normalizeWebQaSnapshot(response);
       } catch (error) {
         const normalized = asWebQaError(error, "webqa_poll_failed");
         // The gateway persists the external task identity before this loop.
@@ -348,7 +472,10 @@ export async function runWebQaJob(job, owner, {
     // A bounded waiter timeout is visible and recoverable. Request provider
     // cancellation, then give the gateway a short grace window to confirm it.
     try {
-      latest = normalizeWebQaSnapshot(await client.cancel(externalTaskId));
+      const response = await client.cancel(externalTaskId);
+      latest = isTaskd
+        ? normalizeTaskdWebQaSnapshot(response, { clientTaskName: externalTaskId })
+        : normalizeWebQaSnapshot(response);
       await persistProgress(latest);
     } catch (error) {
       throw asWebQaError(error, "webqa_cancel_failed");
@@ -365,7 +492,10 @@ export async function runWebQaJob(job, owner, {
         return { taskId: externalTaskId, snapshot: latest };
       }
       await sleep(normalizedConfig.pollIntervalMs);
-      latest = normalizeWebQaSnapshot(await client.get(externalTaskId));
+      const response = await client.get(externalTaskId);
+      latest = isTaskd
+        ? normalizeTaskdWebQaSnapshot(response, { clientTaskName: externalTaskId })
+        : normalizeWebQaSnapshot(response);
       await persistProgress(latest);
     }
     throw new WebQaAdapterError("webqa_cancel_timeout", `WebQA cancellation did not reach a terminal state: ${latest.status}`);
@@ -433,19 +563,24 @@ async function failRun(runtimePost, job, owner, errorCode, errorMessage, metadat
 function normalizeAdapterConfig(config) {
   if (!config || typeof config !== "object") throw new WebQaAdapterError("webqa_config_invalid", "WebQA transport config is required");
   const gatewayBaseUrl = text(config.gatewayBaseUrl).replace(/\/+$/, "");
+  const taskdBaseUrl = text(config.taskdBaseUrl).replace(/\/+$/, "");
   const provider = text(config.provider) || "chatgpt-web";
   const platform = text(config.platform) || "stock-info";
-  if (!gatewayBaseUrl || !provider || !platform) throw new WebQaAdapterError("webqa_config_invalid", "WebQA gatewayBaseUrl, provider and platform are required");
+  if ((!gatewayBaseUrl && !taskdBaseUrl) || !provider || !platform) throw new WebQaAdapterError("webqa_config_invalid", "WebQA gatewayBaseUrl or taskdBaseUrl, provider and platform are required");
   return {
     ...config,
-    gatewayBaseUrl,
+    ...(gatewayBaseUrl ? { gatewayBaseUrl } : {}),
+    ...(taskdBaseUrl ? { taskdBaseUrl } : {}),
+    taskdNamespace: text(config.taskdNamespace) || "stock-info",
+    taskdTaskType: text(config.taskdTaskType) || DEFAULT_TASKD_TASK_TYPE,
+    taskdTokenEnv: text(config.taskdTokenEnv) || "STOCK_INFO_TASKD_CALLER_TOKEN",
     provider,
     platform,
     pollIntervalMs: positiveInteger(config.pollIntervalMs, 1200),
     taskTimeoutMs: positiveInteger(config.taskTimeoutMs, 1200000),
     cancelGraceMs: positiveInteger(config.cancelGraceMs, 30000),
     heartbeatIntervalMs: positiveInteger(config.heartbeatIntervalMs, 10000),
-    reasoningEffort: text(config.reasoningEffort) || "high",
+    reasoningEffort: text(config.reasoningEffort) || null,
     attachments: Array.isArray(config.attachments) ? config.attachments : [],
     newSession: config.newSession === true,
     singleTabMode: config.singleTabMode === true,
@@ -509,12 +644,13 @@ function restoreExternalRequest(external, config) {
   const conversationId = text(external.conversationId);
   const idempotencyKey = text(external.idempotencyKey);
   if (!conversationId || !idempotencyKey) throw new WebQaAdapterError("webqa_progress_invalid", "saved WebQA progress lacks conversation or idempotency identity");
+  const reasoningEffort = text(external.reasoningEffort) || text(config.reasoningEffort);
   return {
     platform: text(external.platform) || config.platform,
     conversation_id: conversationId,
     provider: text(external.provider) || config.provider,
     input: "",
-    reasoning_effort: text(external.reasoningEffort) || config.reasoningEffort,
+    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
     attachments: [],
     new_session: false,
     single_tab_mode: config.singleTabMode,
@@ -530,6 +666,8 @@ function terminalMetadataFor(snapshot, request, taskId) {
   return {
     transport: "webqa",
     gatewayTaskId: taskId,
+    ...(text(snapshot.taskdTaskId) ? { taskdTaskId: text(snapshot.taskdTaskId) } : {}),
+    ...(text(snapshot.gatewayTaskId) ? { executorGatewayTaskId: text(snapshot.gatewayTaskId) } : {}),
     gatewayStatus: snapshot.status,
     provider: snapshot.provider || request.provider,
     platform: snapshot.platform || request.platform,
@@ -555,6 +693,19 @@ function hasGeneratedOutput(raw) {
 function stableGatewayError(message, fallback) {
   const value = slug(message).slice(0, 80);
   return value ? `webqa_${value}` : fallback;
+}
+
+function mapTaskdStatus(taskdStatus, gatewayStatus) {
+  const remote = text(taskdStatus);
+  const gateway = text(gatewayStatus);
+  if (remote === "succeeded") return "succeeded";
+  if (remote === "failed") return "failed";
+  if (remote === "cancelled") return "cancelled";
+  if (remote === "cancel_requested") return "cancelling";
+  if (gateway && WEBQA_STATUSES.has(gateway)) return gateway;
+  if (remote === "running" || remote === "leased") return "streaming";
+  if (remote === "queued") return "queued";
+  return remote;
 }
 
 function isTransientGatewayUnavailable(error) {

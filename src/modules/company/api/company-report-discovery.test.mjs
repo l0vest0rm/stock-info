@@ -6,12 +6,14 @@ import {
   companyReportDedupKeys,
   companyRoutes,
   COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS,
+  companyReportDiscoveryTaskName,
   findCompanyReportDiscoveryRawReport,
   mergeCompanyReportsPreferPrimary,
   normalizeCompanyReportDiscoveryReasoningEffort,
   normalizeCompanyReportLlmRawResponse,
   parseCompanyReportDiscovery,
   prepareCompanyReportDiscoveryExecution,
+  validateCompanyReportDiscoveryTerminalEvidence,
   validateCompanyReportDiscoveryWebSearch,
 } from "./company.routes.ts";
 
@@ -60,85 +62,15 @@ test("hides the discovery capability endpoint outside the local LLM runtime", as
   assert.equal(response.status, 404);
 });
 
-test("projects the last run model and reasoning effort into local discovery status", async () => {
-  const taskId = "llm-task:company-report-status";
-  const runId = "llm-run:company-report-status";
-  const taskRow = {
-    taskId,
-    taskType: "company_report_discovery",
-    targetType: "security",
-    targetId: "000001.SZ",
-    idempotencyKey: "company-report-discovery:2026-08-10",
-    protocolVersion: "llm-task-protocol.v1",
-    promptVersion: "company-report-discovery.v3",
-    status: "running",
-    requestedModel: "gpt-5.6-luna",
-    requestedReasoningEffort: "max",
-    lastRunId: runId,
-    metadataJson: "{}",
-    lastErrorCode: null,
-    lastErrorMessage: null,
-    createdAt: 1,
-    startedAt: 2,
-    completedAt: null,
-    updatedAt: 3,
-  };
-  const runRow = {
-    runId,
-    taskId,
-    attempt: 2,
-    provider: "openai",
-    model: "gpt-5.6-luna",
-    reasoningEffort: "high",
-    promptVersion: "company-report-discovery.v3",
-    inputFingerprint: null,
-    inputAsOf: null,
-    inputJson: null,
-    promptJson: null,
-    lineageRunId: null,
-    status: "running",
-    leaseOwner: "runner",
-    leaseUntil: Date.now() + 60_000,
-    heartbeatAt: Date.now(),
-    currentStepKey: null,
-    progressJson: null,
-    progressUpdatedAt: null,
-    terminalMetadataJson: null,
-    errorCode: null,
-    errorMessage: null,
-    startedAt: 2,
-    completedAt: null,
-    updatedAt: 3,
-  };
-  const db = {
-    prepare(sql) {
-      return {
-        bind() {
-          return {
-            first: async () => {
-              if (sql.includes("from llm_runs r join llm_tasks")) return { completedAt: 4 };
-              return sql.includes("from llm_runs") ? runRow : taskRow;
-            },
-          };
-        },
-      };
-    },
-  };
-  const response = await companyRoutes.request(
-    `http://example.test/company/reports/discovery-capability?code=000001.SZ&taskId=${encodeURIComponent(taskId)}`,
-    {},
-    { LLM_RUNTIME: "local", DB: db },
-  );
-  assert.equal(response.status, 200);
-  const payload = await response.json();
-  assert.deepEqual(payload?.data?.task?.execution, {
-    runId,
-    attempt: 2,
-    status: "running",
-    model: "gpt-5.6-luna",
-    reasoningEffort: "high",
-  });
-  assert.equal(payload?.data?.lastSuccessfulCompletedAt, 4);
+test("uses a stable caller-owned discovery name without a local task id", () => {
+  assert.equal(companyReportDiscoveryTaskName("000001.SZ"), "company:report-discovery:000001.SZ");
+});
+
+test("requires taskd terminal WebQA completion evidence before projecting reports", () => {
+  assert.doesNotThrow(() => validateCompanyReportDiscoveryTerminalEvidence({
+    terminal_evidence: { schemaVersion: "webqa.completion-evidence.v1", outcome: "succeeded" },
+  }));
+  assert.throws(() => validateCompanyReportDiscoveryTerminalEvidence({}), /lacks terminal WebQA completion evidence/);
 });
 
 test("defaults discovery to xhigh reasoning and retains the prior one-hour timeout", () => {
@@ -155,20 +87,6 @@ test("accepts explicit provider reasoning values without an enum whitelist", () 
 });
 
 test("prepares the structured discovery prompt with the current report identity inventory", async () => {
-  const taskId = "llm-task:company-report-prompt";
-  const taskRow = {
-    taskId,
-    taskType: "company_report_discovery",
-    targetType: "security",
-    targetId: "000001.SZ",
-    idempotencyKey: "company-report-discovery:2026-08-10",
-    protocolVersion: "llm-task-protocol.v1",
-    promptVersion: "company-report-discovery.v5",
-    status: "queued",
-    requestedModel: "gpt-5.6-luna",
-    requestedReasoningEffort: "max",
-    metadataJson: "{}",
-  };
   const db = {
     prepare(sql) {
       return {
@@ -185,14 +103,14 @@ test("prepares the structured discovery prompt with the current report identity 
               forecasts: [{ year: 2026, revenue: 10 }],
             }]),
           };
-          return taskRow;
+          return null;
         },
           };
         },
       };
     },
   };
-  const prepared = await prepareCompanyReportDiscoveryExecution(db, "000001.SZ", taskId);
+  const prepared = await prepareCompanyReportDiscoveryExecution(db, "000001.SZ", "xhigh");
   assert.equal(prepared.promptVersion, "company-report-discovery.v5");
   assert.match(prepared.input, /证券代码：000001\.SZ/);
   assert.match(prepared.input, /公司名称：示例公司/);

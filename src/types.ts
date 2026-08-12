@@ -18,6 +18,9 @@ export type Bindings = {
   LLM_API_KEY?: string;
   LLM_BASE_URL?: string;
   LLM_RUNTIME?: string;
+  TASKD_BASE_URL?: string;
+  TASKD_NAMESPACE?: string;
+  STOCK_INFO_TASKD_CALLER_TOKEN?: string;
   LLM_DAILY_LIMIT?: string;
   HTTP_PROXY_URL?: string;
   HTTP_PROXY_RELAY_URL?: string;

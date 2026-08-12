@@ -122,10 +122,10 @@ import { produceResearchStatutoryOperatingEvidenceCandidates } from "../applicat
 import { importIndexedStatutoryDisclosureToKnowledge } from "../application/import-statutory-disclosure-to-knowledge";
 import { extractResearchAutoFilingInsights, loadResearchAutoBusinessDriverTree, loadResearchAutoFilingDocumentVersions, loadResearchAutoFilingFactInputs, loadResearchAutoFilingInsights, loadResearchAutoFilingModuleRebuilds, loadResearchAutoForecastInputGate, loadResearchAutoGovernanceCapitalLedger, loadResearchAutoIndustryCompetitionInputs, loadResearchAutoMarketSpaceInputs, loadResearchAutoRiskLedger, loadResearchAutoRiskQuantitativeInputGate, loadResearchAutoRiskSnapshotHistory, loadResearchAutoSecurityStructureCandidates, rebuildResearchAutoFilingReadModels } from "../application/research-auto-filing-insights";
 import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } from "../application/research-industry-source-series";
-import { claimNextResearchWebSearchPackageTaskRun, completeResearchWebSearchPackageRun, enqueueResearchWebSearchPackage, failResearchWebSearchPackageRun, heartbeatResearchWebSearchPackageRun, loadResearchWebSearchPackages } from "../application/research-web-search-packages";
 import { loadLocalJobRuntimeState } from "../../../shared/local-job-protocol";
 import { claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, heartbeatResearchOperatingAnalysisJob, loadResearchOperatingAnalysis, loadResearchOperatingAnalysisRun, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage, type OperatingAnalysisStageKey, type OperatingAnalysisStageStatus } from "../application/research-operating-analysis";
 import { claimLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisStage, enqueueLowDependencyResearchOperatingAnalysis, failLowDependencyResearchOperatingAnalysisJob, heartbeatLowDependencyResearchOperatingAnalysisJob, loadLowDependencyResearchOperatingAnalysis, requeueInterruptedLowDependencyResearchOperatingAnalysisJob, resumeLowDependencyResearchOperatingAnalysis, startLowDependencyResearchOperatingAnalysisStage, unlockLowDependencyRoutingAfterConfirmation } from "../application/research-operating-analysis-low-dependency";
+import { enqueueResearchInvestmentAnalysis, loadResearchInvestmentAnalysis, resumeResearchInvestmentAnalysis } from "../application/research-investment-analysis";
 import { loadResearchOperatingAnalysisRouting, recordResearchOperatingAnalysisRoutingConfirmation, isRegisteredResearchIndustryTemplate } from "../application/research-operating-analysis-routing";
 import { enqueueResearchFinancialAnalysis, loadResearchFinancialAnalysis, resumeResearchFinancialAnalysis } from "../application/research-financial-analysis";
 import { renewResearchOperatingAnalysisRunnerLease } from "../application/research-operating-analysis-runner-lease";
@@ -726,73 +726,6 @@ researchRoutes.post("/research/company/:code/sync-industry-source-series", async
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
-// Read-only in every runtime.  The page uses this persisted ledger to show
-// the original source, source date and local processing time for each manual
-// Web Search package; GET never causes a search or a model call.
-researchRoutes.get("/research/company/:code/web-search-packages", async (c) => {
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try { return ok(c, await loadResearchWebSearchPackages(c.env.DB, code)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-// One click only persists or reuses one generic task. The local Node runner
-// claims its run from D1; the Worker never owns a long-lived remote model stream.
-researchRoutes.post("/research/company/:code/web-search-packages/:packageKind", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try {
-    const task = await enqueueResearchWebSearchPackage(c.env.DB, code, c.req.param("packageKind"));
-    if (!task.task) return fail(c, 500, "generic Web Search task was not created");
-    return ok(c, { accepted: true, deduplicated: task.deduplicated, task: task.task });
-  }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-// The Node runner is launched only by local development scripts. These
-// endpoints keep generic task/run transitions inside the Worker while its
-// process is never held open by an upstream Responses SSE connection.
-researchRoutes.post("/research/web-search-tasks/claim-next", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-  try { return ok(c, await claimNextResearchWebSearchPackageTaskRun(c.env.DB, body.runnerInstanceId)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/web-search-runs/:runId/complete", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
-  try {
-    const body = await c.req.json<unknown>();
-    if (!body || typeof body !== "object" || Array.isArray(body)) return fail(c, 400, "web search package result is required");
-    const payload = body as { taskId?: unknown; model: string; text: string; runnerInstanceId?: unknown; attempt?: unknown; webSearch?: { searched?: boolean; queries?: string[]; citations?: Array<{ title: string; url: string; start?: number; end?: number }> } };
-    if (typeof payload.taskId !== "string" || !payload.taskId.trim() || typeof payload.model !== "string" || typeof payload.text !== "string" || typeof payload.runnerInstanceId !== "string" || !payload.runnerInstanceId.trim() || !Number.isInteger(payload.attempt)) return fail(c, 400, "taskId, model, text, runnerInstanceId and attempt are required");
-    return ok(c, await completeResearchWebSearchPackageRun(c.env.DB, { taskId: payload.taskId, runId: c.req.param("runId"), response: payload, runnerInstanceId: payload.runnerInstanceId, attempt: payload.attempt as number }));
-  }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/web-search-runs/:runId/fail", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
-  try {
-    const body = await c.req.json<unknown>();
-    const payload = body && typeof body === "object" && !Array.isArray(body) ? body as { taskId?: unknown; error?: unknown; runnerInstanceId?: unknown; attempt?: unknown } : {};
-    if (typeof payload.taskId !== "string" || !payload.taskId.trim() || typeof payload.runnerInstanceId !== "string" || !payload.runnerInstanceId.trim() || !Number.isInteger(payload.attempt)) return fail(c, 400, "taskId, runnerInstanceId and attempt are required");
-    const message = typeof payload.error === "string" ? payload.error : "local Web Search runner failed without an error message";
-    return ok(c, await failResearchWebSearchPackageRun(c.env.DB, { taskId: payload.taskId, runId: c.req.param("runId"), error: message, runnerInstanceId: payload.runnerInstanceId, attempt: payload.attempt as number }));
-  }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/web-search-runs/:runId/heartbeat", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "web search source packages are only available in local research runtime");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.taskId !== "string" || !body.taskId.trim() || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "taskId, runnerInstanceId and attempt are required");
-  try { return ok(c, await heartbeatResearchWebSearchPackageRun(c.env.DB, { taskId: body.taskId, runId: c.req.param("runId"), runnerInstanceId: body.runnerInstanceId, attempt: body.attempt as number })); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
 researchRoutes.get("/research/local-job-runtime", async (c) => {
   if (!canWriteResearchLocally(c.env)) return fail(c, 404, "local job runtime is only available in local research runtime");
   try { return ok(c, await loadLocalJobRuntimeState(c.env.DB)); }
@@ -808,29 +741,12 @@ researchRoutes.get("/research/company/:code/operating-analysis", async (c) => {
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
-// Low-dependency S0-S12 contract. It is deliberately a separate task type and
-// route family; the legacy six-stage task/read model above remains untouched.
+// The investment-analysis page prepares its bounded engineering input in
+// stock-info, then submits one latest-only ChatGPT WebQA task to taskd.
 researchRoutes.get("/research/company/:code/operating-analysis-low-dependency", async (c) => {
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try {
-    const [analysis, routing] = await Promise.all([loadLowDependencyResearchOperatingAnalysis(c.env.DB, code), loadResearchOperatingAnalysisRouting(c.env.DB, code)]);
-    const automaticStage = analysis.stages.find((stage) => stage.stageKey === "local_routing_match");
-    const automatic = automaticStage?.output && typeof automaticStage.output === "object" && !Array.isArray(automaticStage.output) ? automaticStage.output as Record<string, unknown> : null;
-    const effectiveRouting = automatic && !routing.manualConfirmation ? {
-      ...routing,
-      current: {
-        state: automatic.routingState === "confirmed" ? "confirmed" as const : "unconfirmed" as const,
-        selectedTemplateId: typeof automatic.industryTemplateId === "string" ? automatic.industryTemplateId : null,
-        scopeNote: null,
-        companyScope: automatic.companyScope && typeof automatic.companyScope === "object" && !Array.isArray(automatic.companyScope) ? automatic.companyScope as Record<string, unknown> : {},
-        candidateTemplates: Array.isArray(automatic.candidateTemplates) ? automatic.candidateTemplates : [],
-        reasons: automatic.mappingReason ? [automatic.mappingReason] : [],
-      },
-      automatic,
-    } : { ...routing, automatic };
-    return ok(c, { ...analysis, routing: effectiveRouting });
-  }
+  try { return ok(c, await loadResearchInvestmentAnalysis(c.env, code)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -883,7 +799,7 @@ researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/r
   if (scopeNote && scopeNote.length > 4000) return fail(c, 400, "routing scopeNote must be at most 4000 characters");
   const companyScope = body.companyScope && typeof body.companyScope === "object" && !Array.isArray(body.companyScope) ? body.companyScope as Record<string, unknown> : {};
   try {
-    const current = await loadLowDependencyResearchOperatingAnalysis(c.env.DB, code);
+    const current = await loadLowDependencyResearchOperatingAnalysis(c.env.DB, code) as { stages: Array<{ stageKey: string; artifactId?: string | null }> };
     const routing = await loadResearchOperatingAnalysisRouting(c.env.DB, code);
     const security = (await getSecurity(c.env.DB, code)) ?? fallbackResearchSecurity(code);
     const identity = await loadResearchIdentityFinancials(c.env.DB, security);
@@ -913,7 +829,7 @@ researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/r
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  try { return ok(c, await enqueueLowDependencyResearchOperatingAnalysis(c.env.DB, code, body.force === true, body.reasoningEffort, body.model, body.stageKeys)); }
+  try { return ok(c, await enqueueResearchInvestmentAnalysis(c.env, code, { reasoningEffort: typeof body.reasoningEffort === "string" ? body.reasoningEffort : null })); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
@@ -922,7 +838,7 @@ researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/r
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  try { return ok(c, await resumeLowDependencyResearchOperatingAnalysis(c.env.DB, code, body.reasoningEffort, body.model, body.runId)); }
+  try { return ok(c, await resumeResearchInvestmentAnalysis(c.env, code, typeof body.reasoningEffort === "string" ? body.reasoningEffort : null)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

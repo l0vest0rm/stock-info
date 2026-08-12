@@ -22,12 +22,10 @@ import {
   GENERIC_LLM_RAW_MODEL_TASK_TYPE,
   type GenericLlmTaskRunClaim,
 } from "../../../shared/local-job-protocol";
-import { prepareCompanyReportDiscoveryExecution } from "../../company/api/company.routes";
 import {
   prepareClaimedInformationProcessingJob,
   type InformationProcessingJob,
 } from "../../knowledge/application/information-processing-jobs";
-import { prepareResearchWebSearchPackageExecution } from "../../research/application/research-web-search-packages";
 
 export const localLlmRoutes = new Hono<AppEnv>();
 
@@ -227,30 +225,6 @@ localLlmRoutes.post("/llm-tasks/:runId/complete", async (c) => {
 async function prepareGenericTask(env: AppEnv["Bindings"], claim: GenericLlmTaskRunClaim) {
   const handler = claim.task.handlerKey || claim.task.taskType;
   switch (handler) {
-    case "company_report_discovery": {
-      const request = await prepareCompanyReportDiscoveryExecution(env.DB, claim.task.targetId, claim.task.taskId);
-      return {
-        handlerKey: handler,
-        request: {
-          ...request,
-          taskId: claim.task.taskId,
-          runId: claim.run.runId,
-          attempt: claim.run.attempt,
-          runnerInstanceId: claim.run.leaseOwner,
-          taskType: claim.task.taskType,
-          targetType: claim.task.targetType,
-          targetId: claim.task.targetId,
-          idempotencyKey: claim.task.idempotencyKey,
-          protocolVersion: claim.task.protocolVersion,
-          progress: claim.run.progress,
-        },
-      };
-    }
-    case "research_web_search": {
-      const metadata = claim.task.metadata && typeof claim.task.metadata === "object" && !Array.isArray(claim.task.metadata) ? claim.task.metadata as Record<string, unknown> : {};
-      const request = await prepareResearchWebSearchPackageExecution(env.DB, claim.task.targetId, String(metadata.packageKind || ""));
-      return { handlerKey: handler, request: { ...request, taskId: claim.task.taskId, runId: claim.run.runId, attempt: claim.run.attempt, runnerInstanceId: claim.run.leaseOwner } };
-    }
     case "information_processing": {
       const prepared = await prepareClaimedInformationProcessingJob(env, {
         taskId: claim.task.taskId, docId: claim.task.targetId, attempt: claim.run.attempt,

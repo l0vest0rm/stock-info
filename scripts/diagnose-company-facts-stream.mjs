@@ -328,17 +328,17 @@ function loadPersistedSource({ dbPath, code, sourceRunId }) {
     const failed = db.prepare(`
       SELECT t.task_id AS taskId, r.run_id AS runId, r.attempt, a.terminal_metadata_json AS metadataJson,
              r.started_at AS startedAt
-      FROM llm_tasks t JOIN llm_runs r ON r.task_id=t.task_id
+      FROM workflow_tasks t JOIN llm_runs r ON r.task_id=t.task_id
       JOIN llm_run_artifacts a ON a.run_id=r.run_id AND a.step_key=?
       WHERE t.target_id=? AND t.stage_key=? AND r.status='failed'
       ORDER BY r.started_at DESC LIMIT 1
     `).get(STAGE_KEY, code, STAGE_KEY);
     const rows = sourceRunId
       ? db.prepare(`SELECT t.task_id AS taskId, r.run_id AS runId, r.attempt, a.terminal_metadata_json AS metadataJson
-          FROM llm_tasks t JOIN llm_runs r ON r.task_id=t.task_id JOIN llm_run_artifacts a ON a.run_id=r.run_id AND a.step_key=?
+          FROM workflow_tasks t JOIN llm_runs r ON r.task_id=t.task_id JOIN llm_run_artifacts a ON a.run_id=r.run_id AND a.step_key=?
           WHERE r.run_id=? LIMIT 1`).all(STAGE_KEY, sourceRunId)
       : db.prepare(`SELECT t.task_id AS taskId, r.run_id AS runId, r.attempt, a.terminal_metadata_json AS metadataJson
-          FROM llm_tasks t JOIN llm_runs r ON r.task_id=t.task_id JOIN llm_run_artifacts a ON a.run_id=r.run_id AND a.step_key=?
+          FROM workflow_tasks t JOIN llm_runs r ON r.task_id=t.task_id JOIN llm_run_artifacts a ON a.run_id=r.run_id AND a.step_key=?
           WHERE t.target_id=? AND t.stage_key=? AND a.status='complete'
           ORDER BY (t.task_id=? ) DESC, (r.attempt < ?) DESC, r.completed_at DESC`).all(STAGE_KEY, code, STAGE_KEY, failed?.taskId || "", failed?.attempt || 0);
     const candidate = rows.find((row) => {

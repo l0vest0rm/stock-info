@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildWebQaRequest,
+  createWebQaTaskdClient,
   deriveWebQaSession,
   normalizeWebQaSnapshot,
   runWebQaJob,
@@ -67,6 +68,32 @@ function job(progress = null) {
   };
 }
 
+test("taskd caller uses only a business name for submit, read, and cancel", async () => {
+  const calls = [];
+  const client = createWebQaTaskdClient({
+    baseUrl: "https://task.example.test/",
+    namespace: "stock-info",
+    bearerToken: "caller-token",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ task_id: 7, client_task_name: "analysis:300308.SZ", status: "queued" }), { status: 200 });
+    },
+  });
+
+  await client.submit("analysis:300308.SZ", { input: "prompt" });
+  await client.get("analysis:300308.SZ");
+  await client.cancel("analysis:300308.SZ");
+
+  assert.equal(calls[0].url, "https://task.example.test/v1/namespaces/stock-info/tasks");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    task_type: "webqa.chatgpt.v1",
+    client_task_name: "analysis:300308.SZ",
+    input: { input: "prompt" },
+  });
+  assert.equal(calls[1].url, "https://task.example.test/v1/namespaces/stock-info/tasks/by-name/analysis%3A300308.SZ");
+  assert.equal(calls[2].url, "https://task.example.test/v1/namespaces/stock-info/tasks/by-name/analysis%3A300308.SZ/cancel");
+});
+
 test("WebQA request uses neutral raw input and stable lower-layer identity", () => {
   const first = buildWebQaRequest(job(), config);
   const second = buildWebQaRequest(job(), config);
@@ -85,6 +112,11 @@ test("WebQA request uses neutral raw input and stable lower-layer identity", () 
     protocolVersion: "llm-task-protocol.v1",
     promptVersion: "investment-analysis.staged.v1",
   }, config).conversationId);
+});
+
+test("WebQA request omits reasoning_effort when neither the job nor config defines it", () => {
+  const request = buildWebQaRequest(job(), { ...config, reasoningEffort: null });
+  assert.equal(Object.hasOwn(request, "reasoning_effort"), false);
 });
 
 test("WebQA submits once, persists task id, polls terminal state, and writes no partial artifact", async () => {

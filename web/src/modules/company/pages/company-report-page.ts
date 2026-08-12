@@ -88,7 +88,7 @@ type CompanyReportStateEvent = CustomEvent<{
   status?: string
   error?: boolean
   discoveryEnabled?: boolean
-  discoveryTaskId?: string | null
+  discoveryTaskName?: string | null
   discoveryStatus?: string
   discoveryMessage?: string
   discoveryBusy?: boolean
@@ -242,7 +242,7 @@ const CompanyReportPage = defineComponent({
     const statusText = ref('加载公司研报中...')
     const statusDanger = ref(false)
     const discoveryEnabled = ref(false)
-    const discoveryTaskId = ref<string | null>(null)
+    const discoveryTaskName = ref<string | null>(null)
     const discoveryStatus = ref('idle')
     const discoveryMessage = ref('')
     const discoveryBusy = ref(false)
@@ -298,7 +298,7 @@ const CompanyReportPage = defineComponent({
         return
       }
       const wasBusy = discoveryBusy.value
-      const wasTaskId = discoveryTaskId.value
+      const wasTaskName = discoveryTaskName.value
       if (Array.isArray(detail.rows)) {
         rows.value = detail.rows
       }
@@ -317,8 +317,8 @@ const CompanyReportPage = defineComponent({
       if (typeof detail.discoveryEnabled === 'boolean') {
         discoveryEnabled.value = detail.discoveryEnabled
       }
-      if (detail.discoveryTaskId !== undefined) {
-        discoveryTaskId.value = typeof detail.discoveryTaskId === 'string' ? detail.discoveryTaskId : null
+      if (detail.discoveryTaskName !== undefined) {
+        discoveryTaskName.value = typeof detail.discoveryTaskName === 'string' ? detail.discoveryTaskName : null
       }
       if (typeof detail.discoveryStatus === 'string') {
         discoveryStatus.value = detail.discoveryStatus
@@ -340,7 +340,7 @@ const CompanyReportPage = defineComponent({
       }
 
       const hasDiscoveryPatch = detail.discoveryEnabled !== undefined
-        || detail.discoveryTaskId !== undefined
+        || detail.discoveryTaskName !== undefined
         || detail.discoveryStatus !== undefined
         || detail.discoveryMessage !== undefined
         || detail.discoveryBusy !== undefined
@@ -367,7 +367,7 @@ const CompanyReportPage = defineComponent({
         : startedAt || updatedAt || createdAt
       if (timingStart !== null) {
         discoveryElapsedStartAt.value = timingStart
-      } else if (nextBusy && (!wasBusy || wasTaskId !== discoveryTaskId.value || discoveryElapsedStartAt.value === null)) {
+      } else if (nextBusy && (!wasBusy || wasTaskName !== discoveryTaskName.value || discoveryElapsedStartAt.value === null)) {
         // The click dispatches a busy state before the POST response has a
         // durable timestamp. Replace this fallback with task timestamps as
         // soon as the queued task is returned.

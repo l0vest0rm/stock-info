@@ -1,6 +1,6 @@
 import runtimeConfig from "../../config/local-job-runtime.json";
 
-type HandlerName = "researchWebSearch" | "researchOperatingAnalysis" | "informationProcessing";
+type HandlerName = "researchOperatingAnalysis" | "informationProcessing";
 
 const config = runtimeConfig as {
   version: string;
@@ -21,7 +21,7 @@ export const GENERIC_LLM_TASK_DEFAULT_PRIORITY = 500;
 export const GENERIC_LLM_RAW_MODEL_TASK_TYPE = "generic_raw_model";
 export const GENERIC_LLM_RAW_MODEL_HANDLER_KEY = "generic_raw_model";
 export const GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP = "raw_model";
-export const GENERIC_LLM_TASK_SEQUENCE_NAME = "llm_tasks";
+export const GENERIC_LLM_TASK_SEQUENCE_NAME = "workflow_tasks";
 export const GENERIC_LLM_GLOBAL_MODEL_CONCURRENCY = 5;
 /** The run ledger requires a provider/model even for deterministic work. */
 export const GENERIC_LLM_ENGINEERING_PROVIDER = "engineering";
@@ -326,7 +326,7 @@ export async function allocateGenericLlmQueueSequence(db: D1Database): Promise<n
     // A pre-0110 database is handled by the legacy insert path below.
   }
   try {
-    const row = await db.prepare("select coalesce(max(queue_sequence), 0) + 1 as nextSequence from llm_tasks")
+    const row = await db.prepare("select coalesce(max(queue_sequence), 0) + 1 as nextSequence from workflow_tasks")
       .first<{ nextSequence: number }>();
     const sequence = Number(row?.nextSequence);
     return Number.isInteger(sequence) && sequence > 0 ? sequence : 0;
@@ -339,7 +339,7 @@ export async function addGenericLlmTaskDependencies(db: D1Database, taskId: stri
   const task = requiredGeneric(taskId, "taskId");
   const ids = normalizeGenericLlmIdArray(dependsOnTaskIds, "dependsOnTaskIds");
   if (!ids.length) {
-    await db.prepare("update llm_tasks set ready_at=coalesce(ready_at,?), updated_at=? where task_id=? and status='queued'")
+    await db.prepare("update workflow_tasks set ready_at=coalesce(ready_at,?), updated_at=? where task_id=? and status='queued'")
       .bind(now, now, task).run().catch(() => {});
     return;
   }
@@ -354,7 +354,7 @@ export async function loadGenericLlmTaskDependencies(db: D1Database, taskId: str
   try {
     const rows = await db.prepare(`select d.task_id as taskId, d.depends_on_task_id as dependsOnTaskId,
       d.required_status as requiredStatus, t.status
-      from llm_task_dependencies d left join llm_tasks t on t.task_id=d.depends_on_task_id
+      from llm_task_dependencies d left join workflow_tasks t on t.task_id=d.depends_on_task_id
       where d.task_id=? order by d.depends_on_task_id`).bind(task).all<Record<string, unknown>>();
     return rows.results.map((row) => ({
       taskId: requiredGeneric(row.taskId, "taskId"),
@@ -377,14 +377,14 @@ export async function refreshGenericLlmTaskDependencyState(db: D1Database, taskI
   const task = requiredGeneric(taskId, "taskId");
   const evaluation = await evaluateGenericLlmTaskDependencies(db, task);
   if (evaluation.state === "ready") {
-    await db.prepare("update llm_tasks set ready_at=coalesce(ready_at,?), updated_at=? where task_id=? and status='queued'")
+    await db.prepare("update workflow_tasks set ready_at=coalesce(ready_at,?), updated_at=? where task_id=? and status='queued'")
       .bind(now, now, task).run().catch(() => {});
   } else if (evaluation.state === "blocked") {
-    await db.prepare(`update llm_tasks set status='blocked', last_error_code='dependency_blocked',
+    await db.prepare(`update workflow_tasks set status='blocked', last_error_code='dependency_blocked',
       last_error_message=?, completed_at=?, updated_at=? where task_id=? and status='queued'`)
       .bind(`blocked by failed dependencies: ${evaluation.failedTaskIds.join(", ")}`, now, now, task).run().catch(() => {});
   } else {
-    await db.prepare("update llm_tasks set ready_at=null, updated_at=? where task_id=? and status='queued'")
+    await db.prepare("update workflow_tasks set ready_at=null, updated_at=? where task_id=? and status='queued'")
       .bind(now, task).run().catch(() => {});
   }
   return evaluation;
@@ -394,7 +394,7 @@ export async function refreshGenericLlmTaskDependencyState(db: D1Database, taskI
 export async function reconcileGenericLlmTaskDependencies(db: D1Database, now = Date.now()): Promise<{ ready: number; blocked: number }> {
   try {
     const statement = db.prepare(`select distinct d.task_id as taskId from llm_task_dependencies d
-      join llm_tasks t on t.task_id=d.task_id where t.status='queued'`);
+      join workflow_tasks t on t.task_id=d.task_id where t.status='queued'`);
     if (typeof (statement as unknown as { all?: unknown }).all !== "function") return { ready: 0, blocked: 0 };
     const rows = await statement.all<{ taskId: string }>();
     let ready = 0; let blocked = 0;
@@ -493,19 +493,17 @@ export async function reconcileLocalJobProviderSlots(db: D1Database, now = Date.
     : "";
   await db.batch([
     db.prepare(`delete from local_job_provider_leases where provider_id=? and not exists (
-      select 1 from research_web_search_package_jobs j where j.job_id=local_job_provider_leases.job_id and j.job_type=local_job_provider_leases.job_type and j.status='running' and j.attempt=local_job_provider_leases.attempt and j.lease_owner=local_job_provider_leases.lease_owner and j.lease_until>=?
-      union all
       select 1 from research_operating_analysis_jobs j where j.job_id=local_job_provider_leases.job_id and j.job_type=local_job_provider_leases.job_type and j.status='running' and j.attempt=local_job_provider_leases.attempt and j.lease_owner=local_job_provider_leases.lease_owner and j.lease_until>=?
       union all
       select 1 from information_processing_jobs j where j.job_id=local_job_provider_leases.job_id and j.job_type=local_job_provider_leases.job_type and j.status='running' and j.attempt=local_job_provider_leases.attempt and j.lease_owner=local_job_provider_leases.lease_owner and j.lease_until>=?
       ${genericLeaseGuard}
-    )`).bind(LOCAL_JOB_PROVIDER_ID, now, now, now, ...(genericProtocolAvailable ? [now] : [])),
+    )`).bind(LOCAL_JOB_PROVIDER_ID, now, now, ...(genericProtocolAvailable ? [now] : [])),
     db.prepare(`update local_job_provider_slots set active_count=(select count(*) from local_job_provider_leases where provider_id=?), concurrency_limit=?, updated_at=? where provider_id=?`)
       .bind(LOCAL_JOB_PROVIDER_ID, config.provider.globalConcurrency, now, LOCAL_JOB_PROVIDER_ID),
   ]);
 }
 
-export async function renewLocalJobLease(db: D1Database, table: "research_web_search_package_jobs" | "research_operating_analysis_jobs" | "information_processing_jobs", whereSql: string, whereBindings: unknown[], attempt: number, leaseOwner: string, now = Date.now()): Promise<boolean> {
+export async function renewLocalJobLease(db: D1Database, table: "research_operating_analysis_jobs" | "information_processing_jobs", whereSql: string, whereBindings: unknown[], attempt: number, leaseOwner: string, now = Date.now()): Promise<boolean> {
   const result = await db.prepare(`update ${table} set lease_until=?, heartbeat_at=?, updated_at=? where ${whereSql} and status='running' and attempt=? and lease_owner=?`)
     .bind(localJobLeaseUntil(now), now, now, ...whereBindings, attempt, leaseOwner).run();
   return Boolean(result.meta.changes);
@@ -513,19 +511,17 @@ export async function renewLocalJobLease(db: D1Database, table: "research_web_se
 
 export async function loadLocalJobRuntimeState(db: D1Database) {
   const genericProtocolAvailable = await hasGenericLlmProtocol(db);
-  const [provider, webSearch, operating, information] = await Promise.all([
+  const [provider, operating, information] = await Promise.all([
     db.prepare("select provider_id as providerId, active_count as activeCount, concurrency_limit as concurrencyLimit, updated_at as updatedAt from local_job_provider_slots where provider_id=?").bind(LOCAL_JOB_PROVIDER_ID).first(),
-    db.prepare("select status, count(*) as count from research_web_search_package_jobs group by status").all(),
     db.prepare("select status, count(*) as count from research_operating_analysis_jobs group by status").all(),
     db.prepare("select status, count(*) as count from information_processing_jobs group by status").all(),
   ]);
   const generic = genericProtocolAvailable
-    ? await db.prepare("select status, count(*) as count from llm_tasks group by status").all()
+    ? await db.prepare("select status, count(*) as count from workflow_tasks group by status").all()
     : { results: [] as unknown[] };
   return {
     provider,
     handlers: {
-      researchWebSearch: { ...config.handlers.researchWebSearch, states: webSearch.results },
       researchOperatingAnalysis: { ...config.handlers.researchOperatingAnalysis, states: operating.results },
       informationProcessing: { ...config.handlers.informationProcessing, states: information.results },
     },
@@ -559,7 +555,7 @@ export async function createGenericLlmTask(db: D1Database, spec: GenericLlmTaskS
   const queueSequence = await allocateGenericLlmQueueSequence(db);
   let inserted: { meta: { changes?: number } };
   try {
-    inserted = await db.prepare(`insert or ignore into llm_tasks (
+    inserted = await db.prepare(`insert or ignore into workflow_tasks (
       task_id, task_type, target_type, target_id, idempotency_key, protocol_version, prompt_version, status,
       requested_model, requested_reasoning_effort, metadata_json, priority, queue_sequence, handler_key,
       execution_mode, parent_task_id, stage_key, ready_at, created_at, updated_at
@@ -571,7 +567,7 @@ export async function createGenericLlmTask(db: D1Database, spec: GenericLlmTaskS
     // Keep callers usable while a local database is being upgraded. The next
     // migration is additive; no scheduler claim should run until it exists.
     if (!/no such column|no such table/i.test(String(error))) throw error;
-    inserted = await db.prepare(`insert or ignore into llm_tasks (
+    inserted = await db.prepare(`insert or ignore into workflow_tasks (
       task_id, task_type, target_type, target_id, idempotency_key, protocol_version, prompt_version, status,
       requested_model, requested_reasoning_effort, metadata_json, created_at, updated_at
     ) values (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`)
@@ -594,7 +590,7 @@ export async function loadGenericLlmTask(db: D1Database, taskId: string): Promis
       priority, queue_sequence as queueSequence, handler_key as handlerKey, execution_mode as executionMode,
       parent_task_id as parentTaskId, stage_key as stageKey, ready_at as readyAt,
       created_at as createdAt, started_at as startedAt, completed_at as completedAt, updated_at as updatedAt
-      from llm_tasks where task_id=?`).bind(id).first<Record<string, unknown>>());
+      from workflow_tasks where task_id=?`).bind(id).first<Record<string, unknown>>());
   } catch (error) {
     if (!/no such column/i.test(String(error))) throw error;
     return normalizeGenericTask(await db.prepare(`select task_id as taskId, task_type as taskType, target_type as targetType, target_id as targetId,
@@ -602,7 +598,7 @@ export async function loadGenericLlmTask(db: D1Database, taskId: string): Promis
       requested_model as requestedModel, requested_reasoning_effort as requestedReasoningEffort, last_run_id as lastRunId,
       metadata_json as metadataJson, last_error_code as lastErrorCode, last_error_message as lastErrorMessage,
       created_at as createdAt, started_at as startedAt, completed_at as completedAt, updated_at as updatedAt
-      from llm_tasks where task_id=?`).bind(id).first<Record<string, unknown>>());
+      from workflow_tasks where task_id=?`).bind(id).first<Record<string, unknown>>());
   }
 }
 
@@ -617,7 +613,7 @@ export async function loadGenericLlmChildTasks(db: D1Database, parentTaskId: str
       priority, queue_sequence as queueSequence, handler_key as handlerKey, execution_mode as executionMode,
       parent_task_id as parentTaskId, stage_key as stageKey, ready_at as readyAt,
       created_at as createdAt, started_at as startedAt, completed_at as completedAt, updated_at as updatedAt
-      from llm_tasks where parent_task_id=? order by queue_sequence asc, created_at asc, task_id asc`).bind(parent).all<Record<string, unknown>>();
+      from workflow_tasks where parent_task_id=? order by queue_sequence asc, created_at asc, task_id asc`).bind(parent).all<Record<string, unknown>>();
     // A compatibility D1 adapter may return a shared `all()` fixture for
     // unrelated queries. Child rows always carry a non-empty parent ID; ignore
     // malformed/non-child rows instead of letting their artifact status poison
@@ -647,7 +643,7 @@ export async function requeueGenericLlmTask(db: D1Database, taskId: string, now 
   const sourceRun = sourceTask?.status === "failed" && sourceTask.lastRunId
     ? await loadGenericLlmRun(db, sourceTask.lastRunId)
     : null;
-  const result = await db.prepare(`update llm_tasks set status='queued', last_run_id=null, last_error_code=null, last_error_message=null,
+  const result = await db.prepare(`update workflow_tasks set status='queued', last_run_id=null, last_error_code=null, last_error_message=null,
     started_at=null, completed_at=null, updated_at=? where task_id=? and status in ('failed', 'blocked', 'completed')`).bind(now, id).run();
   if (result.meta.changes && sourceTask && sourceRun) {
     await persistGenericWebQaRecoveryMetadata(db, sourceTask, sourceRun, now);
@@ -688,7 +684,7 @@ async function persistGenericWebQaRecoveryMetadata(db: D1Database, sourceTask: G
   const metadata = sourceTask.metadata && typeof sourceTask.metadata === "object" && !Array.isArray(sourceTask.metadata)
     ? sourceTask.metadata as Record<string, unknown>
     : {};
-  await db.prepare("update llm_tasks set metadata_json=?, updated_at=? where task_id=? and status='queued'")
+  await db.prepare("update workflow_tasks set metadata_json=?, updated_at=? where task_id=? and status='queued'")
     .bind(JSON.stringify({
       ...metadata,
       recoveryExternal,
@@ -753,14 +749,14 @@ export async function recoverGenericWebQaFinalReport(db: D1Database, input: {
 
   const requeued = await requeueGenericLlmTask(db, sourceTask.taskId, now);
   if (!requeued) throw new Error("generic WebQA recovery source task could not be requeued");
-  await db.prepare("update llm_tasks set metadata_json=?, updated_at=? where task_id=? and status='queued'")
+  await db.prepare("update workflow_tasks set metadata_json=?, updated_at=? where task_id=? and status='queued'")
     .bind(JSON.stringify(recoveryMetadata), now, sourceTask.taskId).run();
 
   let finalReportTaskId: string | null = null;
   let coordinatorTaskId: string | null = null;
   try {
     const childRows = await db.prepare(`select task_id as taskId, parent_task_id as parentTaskId, status, metadata_json as metadataJson
-      from llm_tasks where task_type='research_operating_analysis_low_dependency_work_package'
+      from workflow_tasks where task_type='research_operating_analysis_low_dependency_work_package'
         and target_id=? and stage_key='final_report'
       order by created_at desc limit 1`).bind(sourceTask.targetId).all<Record<string, unknown>>();
     const child = childRows.results[0];
@@ -775,7 +771,7 @@ export async function recoverGenericWebQaFinalReport(db: D1Database, input: {
       nextChildMetadata.recoveryRawTaskId = sourceTask.taskId;
       nextChildMetadata.recoveredFromRunId = sourceRun.runId;
       nextChildMetadata.recoveryGatewayTaskId = gatewayTaskId;
-      await db.prepare("update llm_tasks set metadata_json=?, updated_at=? where task_id=?")
+      await db.prepare("update workflow_tasks set metadata_json=?, updated_at=? where task_id=?")
         .bind(JSON.stringify(nextChildMetadata), now, finalReportTaskId).run();
       if (["failed", "blocked", "completed"].includes(textGeneric(child.status))) await requeueGenericLlmTask(db, finalReportTaskId, now);
       if (coordinatorTaskId) {
@@ -891,8 +887,8 @@ async function claimGenericLlmTaskRunInternal(db: D1Database, runnerInstanceId: 
     claimBindings.push(now);
     claimConditions.push(`not exists (
       select 1 from llm_task_dependencies d
-      join llm_tasks dependency on dependency.task_id=d.depends_on_task_id
-      where d.task_id=llm_tasks.task_id and dependency.status<>'completed'
+      join workflow_tasks dependency on dependency.task_id=d.depends_on_task_id
+      where d.task_id=workflow_tasks.task_id and dependency.status<>'completed'
     )`);
   } else if (taskType) {
     claimConditions.push("task_type=?");
@@ -913,18 +909,18 @@ async function claimGenericLlmTaskRunInternal(db: D1Database, runnerInstanceId: 
     last_error_message as lastErrorMessage, priority, queue_sequence as queueSequence, handler_key as handlerKey,
     execution_mode as executionMode, parent_task_id as parentTaskId, stage_key as stageKey, ready_at as readyAt,
     created_at as createdAt, started_at as startedAt, completed_at as completedAt, updated_at as updatedAt
-    from llm_tasks where ${claimConditions.join(" and ")}
+    from workflow_tasks where ${claimConditions.join(" and ")}
     order by priority desc, queue_sequence asc, created_at asc, task_id asc limit 1`;
   const legacyConditions = ["status='queued'", ...(!globalQueue && taskType ? ["task_type=?"] : []), ...(protocolVersion ? ["protocol_version=?"] : []), ...(promptVersion ? ["prompt_version=?"] : []), ...(!globalQueue && requestedExecutionMode ? ["execution_mode=?"] : [])];
   const legacySelect = `select task_id as taskId, task_type as taskType, target_type as targetType, target_id as targetId,
     idempotency_key as idempotencyKey, protocol_version as protocolVersion, prompt_version as promptVersion,
     requested_model as requestedModel, requested_reasoning_effort as requestedReasoningEffort
-    from llm_tasks where ${legacyConditions.join(" and ")}
+    from workflow_tasks where ${legacyConditions.join(" and ")}
     order by created_at, task_id limit 1`;
   const legacySelectWithoutExecutionMode = `select task_id as taskId, task_type as taskType, target_type as targetType, target_id as targetId,
     idempotency_key as idempotencyKey, protocol_version as protocolVersion, prompt_version as promptVersion,
     requested_model as requestedModel, requested_reasoning_effort as requestedReasoningEffort
-    from llm_tasks where ${legacyConditions.filter((condition) => condition !== "execution_mode=?").join(" and ")}
+    from workflow_tasks where ${legacyConditions.filter((condition) => condition !== "execution_mode=?").join(" and ")}
     order by created_at, task_id limit 1`;
   let candidate: Record<string, unknown> | null;
   try {
@@ -969,7 +965,7 @@ async function claimGenericLlmTaskRunInternal(db: D1Database, runnerInstanceId: 
   const inputJson = serializeGenericJson(options.input, "input");
   const promptJson = serializeGenericJson(options.prompt, "prompt");
   try {
-    const taskUpdate = await db.prepare(`update llm_tasks set status='running', last_run_id=?, last_error_code=null, last_error_message=null,
+    const taskUpdate = await db.prepare(`update workflow_tasks set status='running', last_run_id=?, last_error_code=null, last_error_message=null,
       started_at=coalesce(started_at, ?), completed_at=null, updated_at=? where task_id=? and status='queued'`)
       .bind(runId, now, now, taskId).run();
     if (!taskUpdate.meta.changes) {
@@ -990,7 +986,7 @@ async function claimGenericLlmTaskRunInternal(db: D1Database, runnerInstanceId: 
     return { task, run };
   } catch (error) {
     if (providerLeaseRequired) await releaseLocalJobProviderSlot(db, taskId, attempt, runner, now);
-    await db.prepare(`update llm_tasks set status='queued', last_run_id=null, updated_at=? where task_id=? and status='running' and last_run_id=?`)
+    await db.prepare(`update workflow_tasks set status='queued', last_run_id=null, updated_at=? where task_id=? and status='running' and last_run_id=?`)
       .bind(now, taskId, runId).run().catch(() => {});
     throw error;
   }
@@ -1004,7 +1000,7 @@ export async function heartbeatGenericLlmRun(db: D1Database, runId: string, task
     where run_id=? and task_id=? and status='running' and attempt=? and lease_owner=? and lease_until>=?`)
     .bind(localJobLeaseUntil(now), now, now, run, task, attempt, runner, now).run();
   if (result.meta.changes) {
-    await db.prepare("update llm_tasks set updated_at=? where task_id=? and status='running' and last_run_id=?")
+    await db.prepare("update workflow_tasks set updated_at=? where task_id=? and status='running' and last_run_id=?")
       .bind(now, task, run).run();
   }
   return Boolean(result.meta.changes);
@@ -1196,7 +1192,7 @@ export async function completeGenericLlmRun(db: D1Database, input: GenericLlmRun
     .bind(input.status, metadataJson, errorCode, errorMessage, now, now, runId, taskId, input.attempt, runner, now).run();
   if (!runUpdate.meta.changes) throw new Error("generic LLM run lease is no longer owned by this runner");
   const taskStatus: GenericLlmTaskStatus = input.status === "blocked" ? "blocked" : input.status;
-  const taskUpdate = await db.prepare(`update llm_tasks set status=?, last_error_code=?, last_error_message=?, completed_at=?, updated_at=?
+  const taskUpdate = await db.prepare(`update workflow_tasks set status=?, last_error_code=?, last_error_message=?, completed_at=?, updated_at=?
     where task_id=? and status='running' and last_run_id=?`).bind(taskStatus, errorCode, errorMessage, now, now, taskId, runId).run();
   if (!taskUpdate.meta.changes) throw new Error("generic LLM task was no longer running when run completed");
   if (executionMode === "model") await releaseLocalJobProviderSlot(db, taskId, input.attempt, runner, now);
@@ -1225,7 +1221,7 @@ export async function requeueExpiredGenericLlmTaskRuns(db: D1Database, now = Dat
       where run_id=? and task_id=? and status='running' and attempt=? and lease_owner=? and lease_until<?`)
       .bind("generic LLM run lease expired; requeued from the last terminal artifact", now, now, runId, taskId, attempt, owner, now).run();
     if (!runUpdate.meta.changes) continue;
-    const taskUpdate = await db.prepare(`update llm_tasks set status='queued', last_error_code='lease_expired', last_error_message=?, completed_at=null, updated_at=?
+    const taskUpdate = await db.prepare(`update workflow_tasks set status='queued', last_error_code='lease_expired', last_error_message=?, completed_at=null, updated_at=?
       where task_id=? and status='running' and last_run_id=?`).bind("generic LLM run lease expired; requeued from the last terminal artifact", now, taskId, runId).run();
     if (taskUpdate.meta.changes) {
       count += 1;
@@ -1260,7 +1256,7 @@ export async function requeueExpiredGenericLlmRun(db: D1Database, input: {
     where run_id=? and task_id=? and status='running' and attempt=? and lease_owner=? and lease_until<?`)
     .bind(message, now, now, runId, taskId, attempt, leaseOwner, now).run();
   if (!runUpdate.meta.changes) return false;
-  const taskUpdate = await db.prepare(`update llm_tasks set status='queued', last_error_code='lease_expired', last_error_message=?, completed_at=null, updated_at=?
+  const taskUpdate = await db.prepare(`update workflow_tasks set status='queued', last_error_code='lease_expired', last_error_message=?, completed_at=null, updated_at=?
     where task_id=? and status='running' and last_run_id=?`).bind(message, now, taskId, runId).run();
   if (taskUpdate.meta.changes) {
     const sourceTask = await loadGenericLlmTask(db, taskId);
@@ -1288,7 +1284,7 @@ async function findGenericLlmTask(db: D1Database, identity: {
       priority, queue_sequence as queueSequence, handler_key as handlerKey, execution_mode as executionMode,
       parent_task_id as parentTaskId, stage_key as stageKey, ready_at as readyAt,
       created_at as createdAt, started_at as startedAt, completed_at as completedAt, updated_at as updatedAt
-      from llm_tasks where task_type=? and target_type=? and target_id=? and idempotency_key=? and protocol_version=? and prompt_version=?`)
+      from workflow_tasks where task_type=? and target_type=? and target_id=? and idempotency_key=? and protocol_version=? and prompt_version=?`)
       .bind(...bindings).first<Record<string, unknown>>());
   } catch (error) {
     if (!/no such column/i.test(String(error))) throw error;
@@ -1297,7 +1293,7 @@ async function findGenericLlmTask(db: D1Database, identity: {
       requested_model as requestedModel, requested_reasoning_effort as requestedReasoningEffort, last_run_id as lastRunId,
       metadata_json as metadataJson, last_error_code as lastErrorCode, last_error_message as lastErrorMessage,
       created_at as createdAt, started_at as startedAt, completed_at as completedAt, updated_at as updatedAt
-      from llm_tasks where task_type=? and target_type=? and target_id=? and idempotency_key=? and protocol_version=? and prompt_version=?`)
+      from workflow_tasks where task_type=? and target_type=? and target_id=? and idempotency_key=? and protocol_version=? and prompt_version=?`)
       .bind(...bindings).first<Record<string, unknown>>());
   }
 }
@@ -1424,7 +1420,7 @@ async function nearestGenericLlmRunId(db: D1Database, taskId: string): Promise<s
 
 async function loadGenericLlmExecutionMode(db: D1Database, taskId: string): Promise<GenericLlmExecutionMode> {
   try {
-    const row = await db.prepare("select execution_mode as executionMode from llm_tasks where task_id=?")
+    const row = await db.prepare("select execution_mode as executionMode from workflow_tasks where task_id=?")
       .bind(taskId).first<Record<string, unknown>>();
     return normalizeGenericLlmExecutionMode(row?.executionMode);
   } catch (error) {
@@ -1435,7 +1431,7 @@ async function loadGenericLlmExecutionMode(db: D1Database, taskId: string): Prom
 
 async function hasGenericLlmProtocol(db: D1Database): Promise<boolean> {
   try {
-    const row = await db.prepare(`select count(*) as count from sqlite_master where type='table' and name in ('llm_tasks','llm_runs','llm_run_artifacts')`).first<{ count: number }>();
+    const row = await db.prepare(`select count(*) as count from sqlite_master where type='table' and name in ('workflow_tasks','llm_runs','llm_run_artifacts')`).first<{ count: number }>();
     return Number(row?.count) === 3;
   } catch {
     return false;

@@ -76,21 +76,28 @@ function normalizeHandlerTransports(value) {
 function normalizeWebQaConfig(value) {
   if (value === undefined || value === null) throw new Error("generic LLM WebQA config is required");
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("generic LLM WebQA config must be an object");
-  const baseUrl = String(value.gatewayBaseUrl || "").trim().replace(/\/+$/, "");
-  if (!baseUrl) throw new Error("generic LLM WebQA gatewayBaseUrl is required");
+  const gatewayBaseUrl = String(value.gatewayBaseUrl || "").trim().replace(/\/+$/, "");
+  const taskdBaseUrl = String(value.taskdBaseUrl || "").trim().replace(/\/+$/, "");
+  if (!gatewayBaseUrl && !taskdBaseUrl) throw new Error("generic LLM WebQA gatewayBaseUrl or taskdBaseUrl is required");
   const provider = String(value.provider || "chatgpt-web").trim();
   const platform = String(value.platform || "stock-info").trim();
   if (!provider) throw new Error("generic LLM WebQA provider is required");
   if (!platform) throw new Error("generic LLM WebQA platform is required");
   return {
-    gatewayBaseUrl: baseUrl,
+    ...(gatewayBaseUrl ? { gatewayBaseUrl } : {}),
+    ...(taskdBaseUrl ? { taskdBaseUrl } : {}),
+    taskdNamespace: String(value.taskdNamespace || "stock-info").trim() || "stock-info",
+    taskdTaskType: String(value.taskdTaskType || "webqa.chatgpt.v1").trim() || "webqa.chatgpt.v1",
+    taskdTokenEnv: String(value.taskdTokenEnv || "STOCK_INFO_TASKD_CALLER_TOKEN").trim() || "STOCK_INFO_TASKD_CALLER_TOKEN",
     provider,
     platform,
     pollIntervalMs: positiveInteger(value.pollIntervalMs, 1200),
     taskTimeoutMs: positiveInteger(value.taskTimeoutMs, 1200000),
     cancelGraceMs: positiveInteger(value.cancelGraceMs, 30000),
     heartbeatIntervalMs: positiveInteger(value.heartbeatIntervalMs, 10000),
-    reasoningEffort: String(value.reasoningEffort || "high").trim() || "high",
+    reasoningEffort: typeof value.reasoningEffort === "string" && value.reasoningEffort.trim()
+      ? value.reasoningEffort.trim()
+      : null,
     newSession: value.newSession === true,
     singleTabMode: value.singleTabMode === true,
     attachments: normalizeAttachments(value.attachments),

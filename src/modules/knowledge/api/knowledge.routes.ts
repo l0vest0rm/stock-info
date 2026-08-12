@@ -2381,7 +2381,7 @@ async function enqueueUnprocessedInformationDocuments(
       where d.sort_time >= ?
         ${titleClause}
         and not exists (
-          select 1 from llm_tasks j
+          select 1 from workflow_tasks j
            where j.task_type = ? and j.target_type = ? and j.target_id = d.doc_id
              and j.prompt_version = ?
              and (j.status = 'queued' or (j.status = 'running' and j.updated_at >= ?))

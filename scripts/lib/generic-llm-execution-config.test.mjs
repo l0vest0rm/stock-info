@@ -23,6 +23,17 @@ test("checked-in runtime config routes operating-analysis tasks to WebQA without
   const value = await loadGenericLlmExecutionConfig();
   assert.equal(selectGenericLlmExecutionTransport(value, { handlerKey: "generic_raw_model", taskType: "generic_raw_model", originTaskType: "research_operating_analysis_low_dependency_stage" }), "webqa");
   assert.equal(selectGenericLlmExecutionTransport(value, { handlerKey: "generic_raw_model", taskType: "generic_raw_model" }), "openai");
-  assert.equal(selectGenericLlmExecutionTransport(value, { handlerKey: "company_report_discovery", taskType: "company_report_discovery" }), "webqa");
   assert.equal(value.webqa.newSession, true);
+  assert.equal(value.webqa.taskdBaseUrl, "https://task.m2ai.cc");
+  assert.equal(value.webqa.taskdNamespace, "stock-info");
+  assert.equal(value.webqa.reasoningEffort, null);
+});
+
+test("WebQA config preserves omitted reasoning effort instead of injecting high", () => {
+  const value = normalizeGenericLlmExecutionConfig({
+    version: "test",
+    executionTransport: "webqa",
+    webqa: { gatewayBaseUrl: "http://127.0.0.1:8766", provider: "chatgpt-web", platform: "stock-info" },
+  });
+  assert.equal(value.webqa.reasoningEffort, null);
 });

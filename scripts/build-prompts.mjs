@@ -96,34 +96,6 @@ const promptEntries = [
   { exportName: "RESEARCH_OPERATING_ANALYSIS_FINANCIAL_STAGE_PROMPT", source: "prompts/research/operating-analysis/financial-analysis.md" },
   { exportName: "RESEARCH_OPERATING_ANALYSIS_VALUATION_INPUTS_PROMPT", source: "prompts/research/operating-analysis/valuation-inputs.md" },
   { exportName: "RESEARCH_OPERATING_ANALYSIS_VALUATION_CONCLUSION_PROMPT", source: "prompts/research/operating-analysis/valuation-conclusion.md" },
-  {
-    exportName: "RESEARCH_WEB_SEARCH_SOURCE_PACKAGE_SYSTEM_PROMPT",
-    source: "prompts/research/web-search-source-package-system.md",
-  },
-  {
-    exportName: "RESEARCH_WEB_SEARCH_LATEST_ANNUAL_REPORT_PROMPT",
-    source: "prompts/research/web-search/latest-annual-report.md",
-  },
-  {
-    exportName: "RESEARCH_WEB_SEARCH_RECENT_FILINGS_PROMPT",
-    source: "prompts/research/web-search/recent-filings.md",
-  },
-  {
-    exportName: "RESEARCH_WEB_SEARCH_INDUSTRY_MARKET_PROMPT",
-    source: "prompts/research/web-search/industry-market.md",
-  },
-  {
-    exportName: "RESEARCH_WEB_SEARCH_PEER_SET_PROMPT",
-    source: "prompts/research/web-search/peer-set.md",
-  },
-  {
-    exportName: "RESEARCH_WEB_SEARCH_FORECAST_CONSENSUS_PROMPT",
-    source: "prompts/research/web-search/forecast-consensus.md",
-  },
-  {
-    exportName: "RESEARCH_WEB_SEARCH_EVENT_RISK_PROMPT",
-    source: "prompts/research/web-search/event-risk.md",
-  },
 ];
 
 const generatedTsPath = resolve(PROJECT_ROOT, "src/generated/prompt-text.ts");

@@ -1,3 +1,4 @@
+import { taskdCallerClient, type TaskdTask, type TaskdTaskStatus } from "./taskd-client";
 import {
   createGenericLlmTask,
   loadGenericLlmRun,
@@ -11,6 +12,9 @@ import {
 } from "./local-job-protocol";
 import type { Bindings } from "../types";
 
+/** taskd currently routes explicit discovery requests through input-gateway's ChatGPT WebQA executor. */
+const TASKD_WEBQA_TASK_TYPE = "webqa.chatgpt.v1";
+
 export type SupportedLlmModel = "gpt-5.4-mini" | "gpt-5.6-luna";
 
 export type LlmMessage = {
@@ -19,6 +23,7 @@ export type LlmMessage = {
 };
 
 export type LlmTextRequest = {
+  /** Retained as business audit metadata. taskd's current executor is ChatGPT WebQA. */
   model: SupportedLlmModel;
   messages: LlmMessage[];
   temperature?: number;
@@ -26,26 +31,22 @@ export type LlmTextRequest = {
   reasoningEffort?: "low" | "medium" | "high" | "xhigh";
   cacheTtlMs?: number;
   cacheEnabled?: boolean;
-  /** Web search is opt-in per explicit user task.  Callers must not attach it
-   * to ordinary page reads or background refreshes. */
   webSearch?: {
     searchContextSize?: "low" | "medium" | "high";
     allowedDomains?: string[];
     required?: boolean;
   };
-  /** Durable queue identity.  Callers with a natural id should provide it so
-   * repeated requests deduplicate; omitted identities remain one-shot. */
+  /**
+   * Business task name. Re-submitting the same name deliberately creates a
+   * newer taskd task and supersedes stale work; it is not an idempotency key.
+   */
   idempotencyKey?: string;
   targetType?: string;
   targetId?: string;
   promptVersion?: string;
   requestId?: string;
   priority?: number | null;
-  /** Immutable caller identity for a nested generic raw task. It selects only
-   * the lower transport; provider/business request fields remain unchanged. */
   originTaskType?: string;
-  /** Polling bounds apply to the request waiter only.  They never cancel the
-   * queued/running task or its provider stream. */
   pollIntervalMs?: number;
   waitTimeoutMs?: number;
   stream?: boolean;
@@ -68,10 +69,7 @@ export type LlmTextResponse = {
   raw: unknown;
 };
 
-export async function requestLlmText(
-  env: Bindings,
-  request: LlmTextRequest,
-): Promise<LlmTextResponse> {
+export async function requestLlmText(env: Bindings, request: LlmTextRequest): Promise<LlmTextResponse> {
   assertLocalLlmRuntime(env);
   const provider = providerForModel(request.model);
   const { instructions, input } = normalizeMessages(request.messages);
@@ -109,30 +107,13 @@ export async function requestLlmText(
     priority: normalizeGenericLlmPriority(request.priority),
     metadata: { rawModelRequest: rawRequest, ...(originTaskType ? { originTaskType } : {}) },
   });
-  return await awaitGenericLlmText(env.DB, created.task.taskId, {
-    model: request.model,
-    pollIntervalMs: request.pollIntervalMs,
-    waitTimeoutMs: request.waitTimeoutMs,
-    onText: request.onText,
-    onStatus: request.onStatus,
-  });
+  return await awaitGenericLlmText(env.DB, created.task.taskId, request);
 }
 
-export type ScheduledLlmWaitOptions = {
-  model?: SupportedLlmModel;
-  pollIntervalMs?: number;
-  waitTimeoutMs?: number;
-  onText?: (delta: string) => Promise<void> | void;
-  onStatus?: (status: "queued" | "running" | "completed" | "failed" | "blocked") => Promise<void> | void;
-};
-
-/** Read a raw/model task's persisted partial and terminal artifacts.  This
- * waiter intentionally never observes or forwards the caller's AbortSignal:
- * a dropped HTTP/SSE connection must not cancel durable model work. */
 export async function awaitGenericLlmText(
   db: D1Database,
   taskId: string,
-  options: ScheduledLlmWaitOptions = {},
+  options: Pick<LlmTextRequest, "model" | "pollIntervalMs" | "waitTimeoutMs" | "onText" | "onStatus">,
 ): Promise<LlmTextResponse> {
   const pollIntervalMs = boundedPositive(options.pollIntervalMs, 250, 5_000);
   const waitTimeoutMs = boundedPositive(options.waitTimeoutMs, 15 * 60_000, 24 * 60 * 60_000);
@@ -150,10 +131,8 @@ export async function awaitGenericLlmText(
     }
     const run = task.lastRunId ? await loadGenericLlmRun(db, task.lastRunId) : null;
     const artifacts = run ? await loadGenericLlmRunArtifacts(db, run.runId) : [];
-    const partials = artifacts.filter((artifact) => artifact.stepKey === GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP && artifact.status === "partial");
-    const latestPartial = partials.at(-1);
-    const latestPartialOutput = record(latestPartial?.output);
-    const partialText = text(latestPartialOutput?.text);
+    const latestPartial = artifacts.filter((artifact) => artifact.stepKey === GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP && artifact.status === "partial").at(-1);
+    const partialText = text(record(latestPartial?.output)?.text);
     if (callbackHealthy && options.onText && partialText) {
       const delta = partialText.startsWith(emittedText) ? partialText.slice(emittedText.length) : partialText;
       if (delta) {
@@ -162,9 +141,7 @@ export async function awaitGenericLlmText(
       }
     }
     if (["completed", "failed", "blocked"].includes(task.status)) {
-      if (task.status !== "completed") {
-        throw new Error(task.lastErrorMessage || run?.errorMessage || `generic LLM task ${task.status}`);
-      }
+      if (task.status !== "completed") throw new Error(task.lastErrorMessage || run?.errorMessage || `generic LLM task ${task.status}`);
       const terminal = artifacts.find((artifact) => artifact.stepKey === GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP && artifact.status === "complete");
       const output = record(terminal?.output);
       const resultText = text(output?.text) || emittedText;
@@ -179,25 +156,94 @@ export async function awaitGenericLlmText(
     }
     await delay(pollIntervalMs);
   }
-  // Timing out the waiter is deliberately non-terminal.  The dispatcher still
-  // owns the task lease and a later reconnect can read its persisted state.
   throw new Error(`generic LLM task wait timed out: ${taskId}`);
+}
+
+type TaskdGet = (name: string) => Promise<TaskdTask | null>;
+
+export async function awaitTaskdLlmText(
+  get: TaskdGet,
+  name: string,
+  initial: TaskdTask,
+  options: Pick<LlmTextRequest, "model" | "pollIntervalMs" | "waitTimeoutMs" | "onText" | "onStatus">,
+): Promise<LlmTextResponse> {
+  const pollIntervalMs = boundedPositive(options.pollIntervalMs, 1_000, 5_000);
+  const waitTimeoutMs = boundedPositive(options.waitTimeoutMs, 15 * 60_000, 24 * 60 * 60_000);
+  const deadline = Date.now() + waitTimeoutMs;
+  let task = initial;
+  let previousStatus: TaskdTaskStatus | null = null;
+  let statusCallbackHealthy = Boolean(options.onStatus);
+  while (Date.now() <= deadline) {
+    if (statusCallbackHealthy && options.onStatus && task.status !== previousStatus) {
+      previousStatus = task.status;
+      try { await options.onStatus(localStatus(task.status)); } catch { statusCallbackHealthy = false; }
+    }
+    if (task.status === "succeeded") {
+      const response = responseFromTaskdTask(task, options.model);
+      // taskd deliberately exposes no text deltas. A caller that still has an
+      // SSE UI receives one final text event, never persisted partial output.
+      if (options.onText && response.text) await options.onText(response.text);
+      return response;
+    }
+    if (task.status === "failed") throw new Error(task.errorMessage || `taskd task failed: ${name}`);
+    if (task.status === "cancelled") throw new Error(`taskd task cancelled: ${name}`);
+    if (task.status === "superseded") throw new Error(`taskd task superseded: ${name}`);
+    await delay(pollIntervalMs);
+    const latest = await get(name);
+    if (!latest) throw new Error(`taskd task not found: ${name}`);
+    task = latest;
+  }
+  throw new Error(`taskd task wait timed out: ${name}`);
+}
+
+export function taskdWebQaInput(env: Pick<Bindings, "TASKD_NAMESPACE">, request: LlmTextRequest, name: string): Record<string, unknown> {
+  return {
+    platform: env.TASKD_NAMESPACE || "stock-info",
+    conversation_id: `stock-info:${name}`,
+    provider: "chatgpt-web",
+    input: renderPrompt(request.messages),
+    ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
+    new_session: true,
+    timeout_ms: boundedPositive(request.waitTimeoutMs, 60 * 60_000, 24 * 60 * 60_000),
+    mode: "ask",
+  };
+}
+
+export function responseFromTaskdTask(task: TaskdTask, model: SupportedLlmModel): LlmTextResponse {
+  const result = record(task.result);
+  const answer = record(result?.answer);
+  const content = record(answer?.content);
+  const text = string(content?.markdown);
+  if (!text) throw new Error(`taskd succeeded task has no WebQA answer text: ${task.name}`);
+  const citations = Array.isArray(answer?.citations) ? answer.citations : [];
+  return {
+    model,
+    text,
+    cached: false,
+    webSearch: {
+      searched: true,
+      queries: [],
+      citations: citations.flatMap(normalizeCitation),
+    },
+    raw: result,
+  };
 }
 
 export function isLocalLlmRuntime(env: Pick<Bindings, "LLM_RUNTIME">): boolean {
   return env.LLM_RUNTIME === "local";
 }
 
-function assertLocalLlmRuntime(env: Pick<Bindings, "LLM_RUNTIME">): void {
-  if (!isLocalLlmRuntime(env)) {
-    throw new Error("LLM calls are disabled outside local Node development");
-  }
+function taskName(request: LlmTextRequest): string {
+  const explicit = string(request.idempotencyKey);
+  if (explicit) return explicit;
+  const targetType = string(request.targetType) || "llm_request";
+  const targetId = string(request.targetId) || string(request.requestId) || crypto.randomUUID();
+  const promptVersion = string(request.promptVersion) || "v1";
+  return `${targetType}:${targetId}:${promptVersion}`;
 }
 
 function providerForModel(model: SupportedLlmModel): "openai" {
-  if (model === "gpt-5.4-mini" || model === "gpt-5.6-luna") {
-    return "openai";
-  }
+  if (model === "gpt-5.4-mini" || model === "gpt-5.6-luna") return "openai";
   throw new Error(`unsupported llm model: ${model}`);
 }
 
@@ -206,16 +252,41 @@ function normalizeMessages(messages: LlmMessage[]): {
   input: Array<{ role: "user" | "assistant" | "system"; content: Array<{ type: "input_text"; text: string }> }>;
 } {
   const systemMessages = messages.filter((item) => item.role === "system").map((item) => item.content.trim()).filter(Boolean);
-  const conversational = messages
-    .filter((item) => item.role !== "system")
-    .map((item) => ({
-      role: item.role,
-      content: [{ type: "input_text" as const, text: item.content }],
-    }));
+  const conversational = messages.filter((item) => item.role !== "system").map((item) => ({
+    role: item.role,
+    content: [{ type: "input_text" as const, text: item.content }],
+  }));
   return {
     instructions: systemMessages.join("\n\n"),
     input: conversational.length > 0 ? conversational : [{ role: "user", content: [{ type: "input_text", text: "" }] }],
   };
+}
+
+function renderPrompt(messages: LlmMessage[]): string {
+  const rendered = messages
+    .map((message) => ({ role: message.role, content: string(message.content) }))
+    .filter((message) => message.content)
+    .map((message) => `${message.role === "system" ? "系统指令" : message.role === "assistant" ? "已有助手内容" : "用户输入"}：\n${message.content}`);
+  if (rendered.length === 0) throw new Error("LLM request requires at least one non-empty message");
+  return rendered.join("\n\n");
+}
+
+function localStatus(status: TaskdTaskStatus): "queued" | "running" | "completed" | "failed" | "blocked" {
+  if (status === "queued" || status === "leased") return "queued";
+  if (status === "running") return "running";
+  if (status === "succeeded") return "completed";
+  return status === "failed" ? "failed" : "blocked";
+}
+
+function normalizeCitation(value: unknown): Array<{ title: string; url: string; start?: number; end?: number }> {
+  const item = record(value);
+  const title = string(item?.title);
+  const url = string(item?.url);
+  return title && url ? [{ title, url }] : [];
+}
+
+function assertLocalLlmRuntime(env: Pick<Bindings, "LLM_RUNTIME">): void {
+  if (!isLocalLlmRuntime(env)) throw new Error("LLM calls are disabled outside local Node development");
 }
 
 function boundedPositive(value: unknown, fallback: number, max: number): number {
@@ -231,10 +302,16 @@ function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
+function string(value: unknown): string { return text(value); }
+
 function normalizeWebSearch(value: unknown): LlmWebSearchMetadata | undefined {
   const item = record(value);
   if (!item || typeof item.searched !== "boolean" || !Array.isArray(item.queries) || !Array.isArray(item.citations)) return undefined;
-  return { searched: item.searched, queries: item.queries.filter((query): query is string => typeof query === "string"), citations: item.citations.filter((citation): citation is { title: string; url: string; start?: number; end?: number } => Boolean(record(citation)?.title && record(citation)?.url)).map((citation) => ({ title: String(record(citation)?.title), url: String(record(citation)?.url), ...(Number.isFinite(record(citation)?.start) ? { start: Number(record(citation)?.start) } : {}), ...(Number.isFinite(record(citation)?.end) ? { end: Number(record(citation)?.end) } : {}) })) };
+  return {
+    searched: item.searched,
+    queries: item.queries.filter((query): query is string => typeof query === "string"),
+    citations: item.citations.flatMap((citation) => normalizeCitation(citation)),
+  };
 }
 
 function delay(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }

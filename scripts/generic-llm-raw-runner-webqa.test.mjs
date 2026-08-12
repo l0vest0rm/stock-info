@@ -32,6 +32,20 @@ async function body(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
+function terminalEvidence(markdown = "terminal") {
+  return {
+    schemaVersion: "webqa.completion-evidence.v1",
+    outcome: "succeeded",
+    provider: "chatgpt-web",
+    providerUrl: "https://chatgpt.com/c/provider-session",
+    resultKind: "text",
+    signals: ["dom_stable", "sse_done"],
+    contentSha256: `sha256:${markdown.length}`,
+    contentChars: markdown.length,
+    terminalAt: "2026-08-11T00:00:00Z",
+  };
+}
+
 test("generic raw runner selects WebQA from lower task-type config without partial artifacts", async () => {
   const calls = [];
   const answer = { formatVersion: "webqa.answer.v1", content: { markdown: "terminal" }, citations: [], sources: [], rawSnapshot: { complete: true } };
@@ -43,7 +57,13 @@ test("generic raw runner selects WebQA from lower task-type config without parti
       return;
     }
     if (request.method === "GET" && url.pathname === "/api/webqa/tasks/gateway-task%3Arunner") {
-      sendGateway(response, { task_id: "gateway-task:runner", status: "completed", provider: "chatgpt-web", answer });
+      sendGateway(response, {
+        task_id: "gateway-task:runner",
+        status: "succeeded",
+        provider: "chatgpt-web",
+        answer,
+        terminal_evidence: terminalEvidence("terminal"),
+      });
       return;
     }
     response.writeHead(404);

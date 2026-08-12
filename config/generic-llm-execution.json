@@ -2,8 +2,7 @@
   "version": "generic-llm-execution.v1",
   "executionTransport": "openai",
   "handlerTransports": {
-    "generic_raw_model": "openai",
-    "company_report_discovery": "webqa"
+    "generic_raw_model": "openai"
   },
   "taskTypeTransports": {},
   "originTaskTypeTransports": {
@@ -11,14 +10,16 @@
     "research_financial_analysis*": "webqa"
   },
   "webqa": {
-    "gatewayBaseUrl": "http://127.0.0.1:8766",
+    "taskdBaseUrl": "https://task.m2ai.cc",
+    "taskdNamespace": "stock-info",
+    "taskdTokenEnv": "STOCK_INFO_TASKD_CALLER_TOKEN",
+    "taskdTaskType": "webqa.chatgpt.v1",
     "provider": "chatgpt-web",
     "platform": "stock-info",
     "pollIntervalMs": 1200,
     "taskTimeoutMs": 1200000,
     "cancelGraceMs": 30000,
     "heartbeatIntervalMs": 10000,
-    "reasoningEffort": "high",
     "newSession": true,
     "singleTabMode": false,
     "attachments": []

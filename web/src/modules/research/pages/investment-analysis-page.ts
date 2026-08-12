@@ -16,7 +16,7 @@ type AnalysisWorkPackage = { key: string; label?: string; execution?: "model" | 
 type ReportJob = { taskId?: string | null; runId?: string | null; status?: "queued" | "running" | "completed" | "failed" | "blocked"; reasoningEffort?: ReasoningEffort; lastError?: string | null; createdAt?: number; startedAt?: number; completedAt?: number; updatedAt?: number; attempt?: number; attemptCount?: number; lineageRunId?: string | null; rerunStageKeys?: string[]; prompt?: ModelPrompt | null; streamStats?: StreamStats | null; stages?: AnalysisStage[]; workflowPackages?: AnalysisWorkPackage[] };
 type LowDependencyRun = { runId?: string; attempt?: number; lineageRunId?: string | null; model?: string | null; reasoningEffort?: ReasoningEffort | null; status?: string; startedAt?: number | null; completedAt?: number | null; updatedAt?: number | null; currentStepKey?: string | null };
 type LowDependencyReport = { status?: "complete" | "partial" | "blocked" | "not_applicable" | "failed"; artifactId?: string | null; markdown?: string | null; blockers?: unknown[]; projectionFingerprint?: string | null; evidence?: ReportEvidence | null };
-type LowDependencyTask = ReportJob & { taskId?: string; jobId?: string; runId?: string | null; protocolVersion?: string; promptVersion?: string; securityCode?: string; currentStepKey?: string | null };
+type LowDependencyTask = ReportJob & { taskId?: string; jobId?: string; runId?: string | null; protocolVersion?: string; promptVersion?: string; securityCode?: string; currentStepKey?: string | null; errorMessage?: string | null };
 type ResumeEligibility = { available?: boolean; reason?: string; runId?: string | null; failedStageKeys?: string[]; reusableStageKeys?: string[]; promptVersion?: string | null; codeVersion?: string | null; currentPromptVersion?: string; currentCodeVersion?: string };
 type OperatingAnalysis = { availability?: "available" | "empty" | "unavailable"; protocolVersion?: string; promptVersion?: string; run?: LowDependencyRun | null; task?: LowDependencyTask | null; report?: LowDependencyReport | null; stages?: AnalysisStage[]; workflowPackages?: AnalysisWorkPackage[]; finalArtifactId?: string | null; scopeEnvelopeAvailable?: boolean; resume?: ResumeEligibility | null; resumeAvailable?: boolean };
 type RoutingReason = { code?: string; message?: string; fields?: string[] };
@@ -90,6 +90,9 @@ function date(value: unknown): string {
 function isRunning(job: ReportJob | null | undefined): boolean { return job?.status === "queued" || job?.status === "running"; }
 function stageStatusLabel(status: AnalysisStage["status"]): string { return ({ queued: "等待", running: "处理中", complete: "已完成", partial: "部分完成", blocked: "已阻断", not_applicable: "不适用", failed: "失败" } as Record<string, string>)[status || "queued"] || "等待"; }
 function lowDependencyTaskStatus(status: unknown): ReportJob["status"] {
+  if (status === "queued" || status === "leased") return "queued";
+  if (status === "cancel_requested" || status === "running") return "running";
+  if (status === "succeeded") return "completed";
   if (status === "completed") return "completed";
   if (status === "failed") return "failed";
   if (status === "blocked") return "blocked";
@@ -105,7 +108,7 @@ function projectLowDependencyJob(model: OperatingAnalysis | null): ReportJob | n
   const prompt = activePackage?.prompt || finalReportPackage?.prompt || model?.stages?.find((stage) => stage.status === "running")?.prompt || null;
   return {
     taskId: task.taskId || task.jobId || null, runId: run?.runId || task.runId || null,
-    status: lowDependencyTaskStatus(task.status), reasoningEffort: task.reasoningEffort, lastError: task.lastError,
+    status: lowDependencyTaskStatus(task.status), reasoningEffort: task.reasoningEffort, lastError: task.lastError || task.errorMessage || null,
     createdAt: task.createdAt, startedAt: run?.startedAt ?? task.startedAt, completedAt: run?.completedAt ?? task.completedAt,
     updatedAt: task.updatedAt, attempt: run?.attempt ?? task.attempt, attemptCount: run?.attempt ?? task.attemptCount,
     lineageRunId: run?.lineageRunId ?? task.lineageRunId ?? null, rerunStageKeys: task.rerunStageKeys || [], prompt,
@@ -779,8 +782,7 @@ const App = defineComponent({
             ]) : null,
             h("div", [
               h("p", { class: "ia-financial-link" }, ["三表、确定性风险信号与完整财务结论请查看 ", h("a", { href: `company-finance.html?code=${encodeURIComponent(code)}#financial-analysis` }, "深入财务分析")]),
-              routingPanel({ routing: operating.value?.routing, companyProfile: companyProfile.value, confirming: routingConfirming.value, selectedCategoryId: routingCategoryId.value, selectedTemplateId: routingTemplateId.value, requestError: operatingError.value, success: routingSuccess.value, onCategoryChange: (categoryId, templateId) => { routingCategoryId.value = categoryId; routingTemplateId.value = templateId; }, onTemplateChange: (templateId, categoryId) => { routingCategoryId.value = categoryId; routingTemplateId.value = templateId; }, onConfirm: () => { void confirmRouting(); } }),
-              reportCard({ title: "完整投资研究", description: "S0.1 工程基线和 S0.2 本地路由完成后，由实际工作包执行确定性基础与一份完整投资研究报告；页面只读取低依赖 read model，生成由本地任务 worker 执行。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后，本地任务会执行实际工作包并生成完整研究。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.report?.markdown ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, onResume: () => { void resumeOperatingAnalysis(); }, resumeAvailable: operating.value?.resume?.available === true, onStageRerun: (stageKey) => { void rerunStage(stageKey); }, disabled: isRunning(displayJob) }),
+              reportCard({ title: "完整投资研究", description: "stock-info 先工程化采集证券与财务必要输入并冻结，再将完整研究提交给 taskd 的 ChatGPT 执行器；页面只读取最终状态和经校验的报告。", report: activeReport, job: displayJob, requestError: operatingError.value, emptyMessage: `尚无 ${code} 的研究报告。点击生成后将提交 ChatGPT 投资分析任务。`, now: elapsedNow.value, reasoningEffort: selectedReasoningEffort.value, onReasoningEffortChange: (value) => { selectedReasoningEffort.value = value; }, buttonLabel: operating.value?.report?.markdown ? "重新生成报告" : "生成完整研究", onRefresh: () => { void refreshOperatingAnalysis(); }, onResume: () => { void resumeOperatingAnalysis(); }, resumeAvailable: operating.value?.resume?.available === true, disabled: isRunning(displayJob) }),
             ]),
           ]),
         ]),

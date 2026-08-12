@@ -15,7 +15,6 @@
     "gracefulShutdownMs": 30000
   },
   "handlers": {
-    "researchWebSearch": { "concurrency": 2, "pollIntervalMs": 2000 },
     "researchOperatingAnalysis": { "concurrency": 5, "pollIntervalMs": 5000 },
     "informationProcessing": { "concurrency": 3, "pollIntervalMs": 2000 }
   }

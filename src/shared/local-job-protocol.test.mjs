@@ -130,9 +130,6 @@ test("engineering artifact writes execute against the migrated SQLite schema", a
         primary key (provider_id, job_id, attempt),
         unique (job_id, attempt)
       );
-      create table research_web_search_package_jobs (
-        job_id text, job_type text, status text, attempt integer, lease_owner text, lease_until integer
-      );
       create table research_operating_analysis_jobs (
         job_id text, job_type text, status text, attempt integer, lease_owner text, lease_until integer
       );
@@ -144,6 +141,7 @@ test("engineering artifact writes execute against the migrated SQLite schema", a
       "0107_generic_llm_task_protocol.sql",
       "0108_research_operating_analysis_artifact_contract.sql",
       "0110_generic_llm_scheduler_foundation.sql",
+      "0111_workflow_task_ledger_rename.sql",
     ]) {
       await db.exec(await readFile(join(process.cwd(), "migrations", filename), "utf8"));
     }
@@ -198,7 +196,7 @@ test("engineering artifact writes execute against the migrated SQLite schema", a
 });
 
 test("artifact recovery migration preserves stable IDs through run links", async () => {
-  const migration = await readFile(new URL("../../migrations/0108_research_operating_analysis_artifact_contract.sql", import.meta.url), "utf8");
+  const migration = await readFile(join(process.cwd(), "migrations", "0108_research_operating_analysis_artifact_contract.sql"), "utf8");
   assert.match(migration, /alter table llm_runs add column lineage_run_id/);
   assert.match(migration, /create table if not exists llm_run_artifact_links/);
   assert.match(migration, /primary key \(run_id, step_key\)/);
@@ -206,7 +204,7 @@ test("artifact recovery migration preserves stable IDs through run links", async
 });
 
 test("generic scheduler migration defines ordered modes, dependency edges, and workflow links", async () => {
-  const migration = await readFile(new URL("../../migrations/0110_generic_llm_scheduler_foundation.sql", import.meta.url), "utf8");
+  const migration = await readFile(join(process.cwd(), "migrations", "0110_generic_llm_scheduler_foundation.sql"), "utf8");
   assert.match(migration, /add column priority integer not null default 500/);
   assert.match(migration, /add column queue_sequence integer not null default 0/);
   assert.match(migration, /add column execution_mode text not null default 'model'/);
@@ -218,8 +216,14 @@ test("generic scheduler migration defines ordered modes, dependency edges, and w
   assert.match(migration, /foreign key \(child_task_id\) references llm_tasks/);
 });
 
+test("workflow ledger rename migration removes llm_tasks as the live table name", async () => {
+  const migration = await readFile(join(process.cwd(), "migrations", "0111_workflow_task_ledger_rename.sql"), "utf8");
+  assert.match(migration, /alter table llm_tasks rename to workflow_tasks/);
+  assert.match(migration, /set sequence_name='workflow_tasks'/);
+});
+
 test("global dispatcher is the only new model claim path and uses the shared cap", async () => {
-  const protocol = await readFile(new URL("./local-job-protocol.ts", import.meta.url), "utf8");
+  const protocol = await readFile(join(process.cwd(), "src", "shared", "local-job-protocol.ts"), "utf8");
   assert.match(protocol, /export async function claimNextGenericLlmTaskRun/);
   assert.match(protocol, /executionMode: options\.executionMode \|\| "model"/);
   assert.match(protocol, /GENERIC_LLM_GLOBAL_MODEL_CONCURRENCY\)/);
@@ -250,9 +254,6 @@ test("global claim excludes a saturated handler before reserving a provider slot
         primary key (provider_id, job_id, attempt),
         unique (job_id, attempt)
       );
-      create table research_web_search_package_jobs (
-        job_id text, job_type text, status text, attempt integer, lease_owner text, lease_until integer
-      );
       create table research_operating_analysis_jobs (
         job_id text, job_type text, status text, attempt integer, lease_owner text, lease_until integer
       );
@@ -264,6 +265,7 @@ test("global claim excludes a saturated handler before reserving a provider slot
       "0107_generic_llm_task_protocol.sql",
       "0108_research_operating_analysis_artifact_contract.sql",
       "0110_generic_llm_scheduler_foundation.sql",
+      "0111_workflow_task_ledger_rename.sql",
     ]) await db.exec(await readFile(join(process.cwd(), "migrations", filename), "utf8"));
 
     const now = Date.now();
