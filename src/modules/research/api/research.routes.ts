@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getSecurity } from "../../security/application/search-securities";
 import { loadKline } from "../../market/application/load-kline";
 import { D1SituationRepository } from "../../situation/application/situation-repository";
@@ -123,12 +123,8 @@ import { importIndexedStatutoryDisclosureToKnowledge } from "../application/impo
 import { extractResearchAutoFilingInsights, loadResearchAutoBusinessDriverTree, loadResearchAutoFilingDocumentVersions, loadResearchAutoFilingFactInputs, loadResearchAutoFilingInsights, loadResearchAutoFilingModuleRebuilds, loadResearchAutoForecastInputGate, loadResearchAutoGovernanceCapitalLedger, loadResearchAutoIndustryCompetitionInputs, loadResearchAutoMarketSpaceInputs, loadResearchAutoRiskLedger, loadResearchAutoRiskQuantitativeInputGate, loadResearchAutoRiskSnapshotHistory, loadResearchAutoSecurityStructureCandidates, rebuildResearchAutoFilingReadModels } from "../application/research-auto-filing-insights";
 import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } from "../application/research-industry-source-series";
 import { loadLocalJobRuntimeState } from "../../../shared/local-job-protocol";
-import { claimResearchOperatingAnalysisJob, completeResearchOperatingAnalysisJob, completeResearchOperatingAnalysisStage, enqueueResearchOperatingAnalysis, failResearchOperatingAnalysisJob, heartbeatResearchOperatingAnalysisJob, loadResearchOperatingAnalysis, loadResearchOperatingAnalysisRun, requeueInterruptedResearchOperatingAnalysisJob, startResearchOperatingAnalysisStage, type OperatingAnalysisStageKey, type OperatingAnalysisStageStatus } from "../application/research-operating-analysis";
-import { claimLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisJob, completeLowDependencyResearchOperatingAnalysisStage, enqueueLowDependencyResearchOperatingAnalysis, failLowDependencyResearchOperatingAnalysisJob, heartbeatLowDependencyResearchOperatingAnalysisJob, loadLowDependencyResearchOperatingAnalysis, requeueInterruptedLowDependencyResearchOperatingAnalysisJob, resumeLowDependencyResearchOperatingAnalysis, startLowDependencyResearchOperatingAnalysisStage, unlockLowDependencyRoutingAfterConfirmation } from "../application/research-operating-analysis-low-dependency";
-import { enqueueResearchInvestmentAnalysis, loadResearchInvestmentAnalysis, resumeResearchInvestmentAnalysis } from "../application/research-investment-analysis";
-import { loadResearchOperatingAnalysisRouting, recordResearchOperatingAnalysisRoutingConfirmation, isRegisteredResearchIndustryTemplate } from "../application/research-operating-analysis-routing";
+import { enqueueResearchInvestmentAnalysis, loadResearchInvestmentAnalysis } from "../application/research-investment-analysis";
 import { enqueueResearchFinancialAnalysis, loadResearchFinancialAnalysis, resumeResearchFinancialAnalysis } from "../application/research-financial-analysis";
-import { renewResearchOperatingAnalysisRunnerLease } from "../application/research-operating-analysis-runner-lease";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
 import {
   loadResearchOperatingSourceFactBindings,
@@ -732,23 +728,16 @@ researchRoutes.get("/research/local-job-runtime", async (c) => {
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
-// The full operating analysis is a local llm-client artifact. GET is safe in
-// every runtime; the Node runner periodically persists streamed text to D1.
-researchRoutes.get("/research/company/:code/operating-analysis", async (c) => {
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try { return ok(c, await loadResearchOperatingAnalysis(c.env.DB, code)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
 // The investment-analysis page prepares its bounded engineering input in
 // stock-info, then submits one latest-only ChatGPT WebQA task to taskd.
-researchRoutes.get("/research/company/:code/operating-analysis-low-dependency", async (c) => {
+async function getResearchInvestmentAnalysis(c: Context<AppEnv, "/research/company/:code/investment-analysis">) {
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   try { return ok(c, await loadResearchInvestmentAnalysis(c.env, code)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
+}
+
+researchRoutes.get("/research/company/:code/investment-analysis", getResearchInvestmentAnalysis);
 
 // Deep financial analysis is a single-security, source-bound report.  The
 // existing company-finance page remains the primary surface for its detailed
@@ -781,255 +770,16 @@ researchRoutes.post("/research/company/:code/financial-analysis/resume", async (
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
-researchRoutes.get("/research/company/:code/operating-analysis-low-dependency/routing", async (c) => {
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try { return ok(c, await loadResearchOperatingAnalysisRouting(c.env.DB, code)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/routing/confirm", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency routing confirmation is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  const selectedTemplateId = requiredText(body.selectedTemplateId, "selectedTemplateId");
-  if (!isRegisteredResearchIndustryTemplate(selectedTemplateId)) return fail(c, 400, `unregistered research analysis template: ${selectedTemplateId}`);
-  const scopeNote = stringOrNull(body.scopeNote);
-  if (scopeNote && scopeNote.length > 4000) return fail(c, 400, "routing scopeNote must be at most 4000 characters");
-  const companyScope = body.companyScope && typeof body.companyScope === "object" && !Array.isArray(body.companyScope) ? body.companyScope as Record<string, unknown> : {};
-  try {
-    const current = await loadLowDependencyResearchOperatingAnalysis(c.env.DB, code) as { stages: Array<{ stageKey: string; artifactId?: string | null }> };
-    const routing = await loadResearchOperatingAnalysisRouting(c.env.DB, code);
-    const security = (await getSecurity(c.env.DB, code)) ?? fallbackResearchSecurity(code);
-    const identity = await loadResearchIdentityFinancials(c.env.DB, security);
-    const companyId = (identity.operatingCompany as { companyId?: string } | null)?.companyId ?? null;
-    const baselineArtifact = current.stages.find((stage) => stage.stageKey === "engineering_baseline");
-    const now = Date.now();
-    const confirmation = await recordResearchOperatingAnalysisRoutingConfirmation(c.env.DB, {
-      confirmationId: `routing-confirmation:${crypto.randomUUID()}`,
-      securityCode: code,
-      companyId,
-      actorKey: stringOrNull(body.actorKey) ?? "local-user",
-      routingStateBefore: routing.current.state,
-      selectedTemplateId,
-      scopeNote,
-      companyScope,
-      candidateTemplates: routing.current.candidateTemplates,
-      sourceArtifactId: baselineArtifact?.artifactId ?? null,
-      createdAt: now,
-    });
-    const unlock = await unlockLowDependencyRoutingAfterConfirmation(c.env.DB, code);
-    return ok(c, { confirmation, unlock, routing: await loadResearchOperatingAnalysisRouting(c.env.DB, code) });
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/refresh", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis refresh is only available in local research runtime");
+async function refreshResearchInvestmentAnalysis(c: Context<AppEnv, "/research/company/:code/investment-analysis/refresh">) {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "investment analysis refresh is only available in local research runtime");
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
   try { return ok(c, await enqueueResearchInvestmentAnalysis(c.env, code, { reasoningEffort: typeof body.reasoningEffort === "string" ? body.reasoningEffort : null })); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
+}
 
-researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/resume", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis resume is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  try { return ok(c, await resumeResearchInvestmentAnalysis(c.env, code, typeof body.reasoningEffort === "string" ? body.reasoningEffort : null)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-// Targeted recovery starts a fresh fenced run while preserving compatible
-// sibling artifacts. The runner invalidates the selected stage and naturally
-// invalidates only descendants whose upstream artifact IDs changed.
-researchRoutes.post("/research/company/:code/operating-analysis-low-dependency/rerun", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis rerun is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (!Array.isArray(body.stageKeys) || body.stageKeys.length === 0) return fail(c, 400, "stageKeys is required for targeted low-dependency rerun");
-  try { return ok(c, await enqueueLowDependencyResearchOperatingAnalysis(c.env.DB, code, true, body.reasoningEffort, body.model, body.stageKeys)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-low-dependency-jobs/claim-next", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis is only available in local research runtime");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-  try { return ok(c, await claimLowDependencyResearchOperatingAnalysisJob(c.env.DB, body.runnerInstanceId)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-low-dependency-jobs/:code/stages/:stageKey/start", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (!body || (body.prompt !== undefined && (!body.prompt || typeof body.prompt !== "object" || Array.isArray(body.prompt)))) return fail(c, 400, "prompt must be an object when provided");
-  if (body.lineage !== undefined && (!body.lineage || typeof body.lineage !== "object" || Array.isArray(body.lineage))) return fail(c, 400, "lineage must be an object when provided");
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-  try { return ok(c, await startLowDependencyResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey"), body.input, body.prompt, body.runnerInstanceId, body.attempt as number, (body.lineage || {}) as Record<string, unknown>, body.reuse !== false, typeof body.taskId === "string" ? body.taskId : undefined, typeof body.runId === "string" ? body.runId : undefined)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-low-dependency-jobs/:code/stages/:stageKey/complete", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (body.lineage !== undefined && (!body.lineage || typeof body.lineage !== "object" || Array.isArray(body.lineage))) return fail(c, 400, "lineage must be an object when provided");
-  if (typeof body.runnerInstanceId !== "string" || typeof body.status !== "string" || !Number.isInteger(body.attempt)) return fail(c, 400, "status, runnerInstanceId and attempt are required");
-  if (body.metadata !== undefined && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata))) return fail(c, 400, "metadata must be an object when provided");
-  if (body.errorCode !== undefined && typeof body.errorCode !== "string") return fail(c, 400, "errorCode must be a string when provided");
-  if (body.errorMessage !== undefined && typeof body.errorMessage !== "string") return fail(c, 400, "errorMessage must be a string when provided");
-  try { return ok(c, await completeLowDependencyResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey"), body.output, body.status, body.runnerInstanceId, body.attempt as number, (body.lineage || {}) as Record<string, unknown>, body.metadata, body.errorCode, body.errorMessage, typeof body.taskId === "string" ? body.taskId : undefined, typeof body.runId === "string" ? body.runId : undefined)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-low-dependency-jobs/:code/complete", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-  try { return ok(c, await completeLowDependencyResearchOperatingAnalysisJob(c.env.DB, code, body.runnerInstanceId, body.attempt as number, body.reportStatus, body.reportArtifactId)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-low-dependency-jobs/:code/fail", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-  try { return ok(c, await failLowDependencyResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "low-dependency runner failed", body.runnerInstanceId, body.attempt as number)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-low-dependency-jobs/:code/requeue", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-  try { return ok(c, { requeued: await requeueInterruptedLowDependencyResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "low-dependency runner became unavailable", body.runnerInstanceId, body.attempt as number) }); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-low-dependency-jobs/:code/heartbeat", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "low-dependency operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (!isSupportedCompanyCode(code) || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-  try { return ok(c, { active: await heartbeatLowDependencyResearchOperatingAnalysisJob(c.env.DB, code, body.runnerInstanceId, body.attempt as number) }); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.get("/research/company/:code/operating-analysis/runs/:runId", async (c) => {
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try {
-    const run = await loadResearchOperatingAnalysisRun(c.env.DB, code, c.req.param("runId"));
-    return run ? ok(c, run) : fail(c, 404, "operating analysis version not found");
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/company/:code/operating-analysis/refresh", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis refresh is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  try { return ok(c, await enqueueResearchOperatingAnalysis(c.env.DB, code, body.force === true, body.reasoningEffort, body.model)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-jobs/claim-next", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-  try { return ok(c, await claimResearchOperatingAnalysisJob(c.env.DB, body.runnerInstanceId)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-runner-lease/heartbeat", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating-analysis runner lease is only available in local research runtime");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-  try { return ok(c, { active: await renewResearchOperatingAnalysisRunnerLease(c.env.DB, body.runnerInstanceId) }); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-jobs/:code/complete", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try {
-    const body = await c.req.json<Record<string, unknown>>();
-    if (typeof body.reportMarkdown !== "string" || typeof body.inputFingerprint !== "string") return fail(c, 400, "reportMarkdown and inputFingerprint are required");
-    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-    return ok(c, await completeResearchOperatingAnalysisJob(c.env.DB, code, body.input, body.prompt, body.reportMarkdown,
-      typeof body.reasoningMarkdown === "string" ? body.reasoningMarkdown : "", body.inputFingerprint, body.runnerInstanceId, body.attempt as number, body.streamStats));
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-jobs/:code/stages/:stageKey/start", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  try {
-    const body = await c.req.json<Record<string, unknown>>();
-    if (!body || typeof body.prompt !== "object" || !body.prompt || Array.isArray(body.prompt)) return fail(c, 400, "prompt is required");
-    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-    return ok(c, await startResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey") as OperatingAnalysisStageKey, body.input, body.prompt, body.runnerInstanceId, body.attempt as number));
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-jobs/:code/stages/:stageKey/complete", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  try {
-    if (typeof body.runnerInstanceId !== "string" || typeof body.status !== "string" || !Number.isInteger(body.attempt)) return fail(c, 400, "status, runnerInstanceId and attempt are required");
-    return ok(c, await completeResearchOperatingAnalysisStage(c.env.DB, code, c.req.param("stageKey") as OperatingAnalysisStageKey, body.output, body.status as OperatingAnalysisStageStatus, body.runnerInstanceId, body.attempt as number));
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-jobs/:code/fail", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  try {
-    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-    return ok(c, await failResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "local operating-analysis runner failed", body.runnerInstanceId, body.attempt as number));
-  }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-jobs/:code/requeue", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  try {
-    if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-    return ok(c, { requeued: await requeueInterruptedResearchOperatingAnalysisJob(c.env.DB, code, typeof body.error === "string" ? body.error : "local Node runtime became unavailable", body.runnerInstanceId, body.attempt as number) });
-  }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.post("/research/operating-analysis-jobs/:code/heartbeat", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "operating analysis is only available in local research runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (!isSupportedCompanyCode(code) || typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim() || !Number.isInteger(body.attempt)) return fail(c, 400, "runnerInstanceId and attempt are required");
-  try { return ok(c, { active: await heartbeatResearchOperatingAnalysisJob(c.env.DB, code, body.runnerInstanceId, body.attempt as number) }); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
+researchRoutes.post("/research/company/:code/investment-analysis/refresh", refreshResearchInvestmentAnalysis);
 
 researchRoutes.get("/research/company/:code/statutory-disclosure-revision-candidates", async (c) => {
   const code = normalizeSecurityCode(c.req.param("code"));

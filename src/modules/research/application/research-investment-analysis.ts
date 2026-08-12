@@ -80,10 +80,6 @@ export async function loadResearchInvestmentAnalysis(env: AppEnv["Bindings"], se
   };
 }
 
-export async function resumeResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string, reasoningEffort?: string | null) {
-  return enqueueResearchInvestmentAnalysis(env, securityCode, { reasoningEffort });
-}
-
 async function prepareResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string) {
   const code = securityCode.trim().toUpperCase();
   const security = await env.DB.prepare("select code, name, market, type, currency from securities where code=?").bind(code).first<{ code: string; name: string; market: string; type: string; currency: string | null }>();
@@ -118,10 +114,11 @@ function buildPrompt(input: Record<string, unknown>): string {
 
 async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input: Record<string, unknown>, task: TaskdTask) {
   const result = object(task.result);
+  validateResearchInvestmentAnalysisTerminalEvidence(result);
   const answer = object(result?.answer);
   const content = object(answer?.content);
   const markdown = text(content?.markdown);
-  validateMarkdown(markdown);
+  validateResearchInvestmentAnalysisMarkdown(markdown);
   const securityCode = text(object(input.security)?.code);
   if (!securityCode) throw new Error("investment analysis input has no security code");
   const projectedAt = Date.now();
@@ -149,7 +146,17 @@ async function loadResult(db: D1Database, securityCode: string): Promise<ResultR
     from research_investment_analysis_results where security_code=?`).bind(securityCode).first<ResultRow>();
 }
 
-function validateMarkdown(markdown: string) {
+export function validateResearchInvestmentAnalysisTerminalEvidence(result: Record<string, unknown> | null): void {
+  const evidence = object(result?.terminal_evidence);
+  if (
+    text(evidence?.schemaVersion) !== "webqa.completion-evidence.v1"
+    || text(evidence?.outcome) !== "succeeded"
+  ) {
+    throw new Error("investment analysis taskd result lacks terminal WebQA completion evidence");
+  }
+}
+
+export function validateResearchInvestmentAnalysisMarkdown(markdown: string): void {
   if (markdown.length < 800) throw new Error("investment analysis result is shorter than 800 characters");
   const headings = new Set([...markdown.matchAll(/^# ([1-9]|1[0-2])\. /gm)].map((match) => match[1]));
   if (headings.size !== 12) throw new Error("investment analysis result must contain all twelve numbered H1 headings");
