@@ -155,7 +155,7 @@ export function buildFinancialAnalysisRiskFlags(observations: ResearchFinancialO
 }
 
 export function financialAnalysisPrompt(snapshot: FinancialAnalysisSnapshot): string {
-  return RESEARCH_FINANCIAL_ANALYSIS_USER_PROMPT.replace("{{INPUT_DATA}}", JSON.stringify(compactFinancialAnalysisPromptInput(snapshot)));
+  return RESEARCH_FINANCIAL_ANALYSIS_USER_PROMPT.replace("{{INPUT_DATA}}", JSON.stringify(projectFinancialAnalysisPromptInput(snapshot)));
 }
 
 /** Do not spend a model run on a report that lacks one of the primary
@@ -175,7 +175,12 @@ export function assertFinancialAnalysisSnapshotCanRun(snapshot: FinancialAnalysi
 /** The full frozen snapshot is durable audit evidence.  WebQA receives a
  * bounded projection instead: enough history to analyse, never a repeated
  * copy of every provenance chain and every unavailable observation. */
-function compactFinancialAnalysisPromptInput(snapshot: FinancialAnalysisSnapshot) {
+/**
+ * A model-facing financial projection shared by financial analysis and the
+ * full investment-analysis task. The complete quality read model is for
+ * application inspection only and must never be sent to a remote executor.
+ */
+export function projectFinancialAnalysisPromptInput(snapshot: FinancialAnalysisSnapshot) {
   const flagObservationIds = new Set(snapshot.deterministicFlags.flatMap((flag) => [flag.observationId, flag.comparisonObservationId].filter(Boolean)));
   const latestBySeries = new Map<string, number>();
   for (const observation of [...snapshot.derivedObservations].sort(compareProjectedObservation)) {

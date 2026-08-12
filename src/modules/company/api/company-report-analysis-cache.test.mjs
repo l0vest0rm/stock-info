@@ -80,33 +80,21 @@ test("rejects malformed model output instead of turning it into a successful emp
   );
 });
 
-test("keeps explicit valuation evidence from a news report while rejecting ordinary news", () => {
+test("parses unified news report analysis and clears ordinary news results", () => {
   assert.deepEqual(
     parseCompanyNewsReportAnalysis(JSON.stringify({
       isCompanyReport: true,
       forecasts: [{ year: 2026, netProfit: 123.4, pe: 18 }],
-      valuation: {
-        rating: "买入",
-        targetPrice: 51.51,
-        targetPriceCurrency: "人民币",
-        targetPe: 20,
-        valuationMethod: "PE",
-      },
+      targetPrice: 51.51,
     })),
     {
       isCompanyReport: true,
       forecasts: [{ year: 2026, netProfit: 123.4, pe: 18 }],
-      valuation: {
-        rating: "买入",
-        targetPrice: 51.51,
-        targetPriceCurrency: "人民币",
-        targetPe: 20,
-        valuationMethod: "PE",
-      },
+      targetPrice: 51.51,
     },
   );
   assert.deepEqual(
-    parseCompanyNewsReportAnalysis('{"isCompanyReport":false,"forecasts":[{"year":2026,"netProfit":99}],"valuation":{"rating":"买入"}}'),
-    { isCompanyReport: false, forecasts: [], valuation: {} },
+    parseCompanyNewsReportAnalysis('{"isCompanyReport":false,"forecasts":[{"year":2026,"netProfit":99}],"targetPrice":88}'),
+    { isCompanyReport: false, forecasts: [], targetPrice: null },
   );
 });

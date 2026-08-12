@@ -100,7 +100,9 @@ export function taskdCallerClient(env: Bindings): TaskdCallerClient {
   return createTaskdCallerClient({
     baseUrl: env.TASKD_BASE_URL || "",
     namespace: env.TASKD_NAMESPACE || "stock-info",
-    token: env.STOCK_INFO_TASKD_CALLER_TOKEN || "",
+    // TASKD_CALLER_TOKEN is taskd's generic caller-secret name. Keep the
+    // stock-info name first so existing local credential files remain valid.
+    token: env.STOCK_INFO_TASKD_CALLER_TOKEN || env.TASKD_CALLER_TOKEN || "",
   });
 }
 

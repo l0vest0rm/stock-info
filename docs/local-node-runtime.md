@@ -34,6 +34,20 @@ HTTP 服务、`node:sqlite` 和文件系统对象存储；生产仍由 Cloudflar
 HTTP 写入与一次性维护脚本可以并存；维护脚本只在锁等待超时后显式失败，不会静默跳过记录。
 HTTP 批量写入等待锁超过 100ms 会输出 `local_sqlite_write_lock_wait` JSON 日志，供本地运行日志检索。
 
+### taskd 调用凭据
+
+投资分析、财务分析和公司报告发现通过 taskd 执行。首次本地配置时，将 taskd 为
+`stock-info` 签发的调用方 token 写入仓库根目录的忽略文件 `.dev.vars`：
+
+```text
+STOCK_INFO_TASKD_CALLER_TOKEN="<taskd-stock-info-caller-token>"
+```
+
+`createLocalBindings()` 会在 HTTP 服务启动前加载该文件；日常直接运行
+`./start-local.sh` 即可，不需要在 shell 中传入或导出 token。`TASKD_BASE_URL` 与
+`TASKD_NAMESPACE` 由启动脚本默认设为 `https://task.m2ai.cc` 和 `stock-info`。
+不要把 token 写入 `wrangler.jsonc`、源码或提交到 Git；生产 Worker 不允许调用 taskd。
+
 ## 命令
 
 ```bash

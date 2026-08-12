@@ -16,8 +16,6 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { parseKnowledgeFilename } from "./lib/knowledge-filename-parser.mjs";
 import {
-  KNOWLEDGE_ENRICH_SYSTEM_PROMPT,
-  KNOWLEDGE_ENRICH_USER_PROMPT,
   TOPIC_BATCH_SYSTEM_PROMPT,
   TOPIC_BATCH_USER_PROMPT,
 } from "./generated/prompt-text.mjs";

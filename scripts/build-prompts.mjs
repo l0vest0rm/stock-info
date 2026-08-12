@@ -21,24 +21,12 @@ const promptEntries = [
     source: "prompts/company/news-report-analyze-system.md",
   },
   {
-    exportName: "NEWS_REPORT_ANALYZE_USER_PROMPT",
-    source: "prompts/company/news-report-analyze-user.md",
-  },
-  {
     exportName: "REPORT_DISCOVERY_SYSTEM_PROMPT",
     source: "prompts/company/report-discovery-system.md",
   },
   {
     exportName: "REPORT_DISCOVERY_USER_PROMPT",
     source: "prompts/company/report-discovery-user.md",
-  },
-  {
-    exportName: "KNOWLEDGE_ENRICH_SYSTEM_PROMPT",
-    source: "prompts/knowledge/enrich-structured-system.md",
-  },
-  {
-    exportName: "KNOWLEDGE_ENRICH_USER_PROMPT",
-    source: "prompts/knowledge/enrich-structured-user.md",
   },
   {
     exportName: "TOPIC_BATCH_SYSTEM_PROMPT",
@@ -73,29 +61,13 @@ const promptEntries = [
     source: "prompts/research/financial-analysis-user.md",
   },
   {
-    exportName: "RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT",
-    source: "prompts/research/operating-analysis-system.md",
-  },
-  {
     exportName: "RESEARCH_OPERATING_ANALYSIS_PROMPT",
     source: "prompts/research/operating-analysis.md",
   },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_COMPANY_BASELINE_PROMPT", source: "prompts/research/operating-analysis/company-baseline.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_INDUSTRY_VALIDATION_PROMPT", source: "prompts/research/operating-analysis/industry-validation.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_COMPANY_FACTS_PROMPT", source: "prompts/research/operating-analysis/company-facts.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_INDUSTRY_STRUCTURE_PROMPT", source: "prompts/research/operating-analysis/industry-structure.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_SUPPLY_DEMAND_CYCLE_PROMPT", source: "prompts/research/operating-analysis/supply-demand-cycle.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_COMPETITION_PEERS_PROMPT", source: "prompts/research/operating-analysis/competition-peers.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_COMPANY_OPERATING_DRIVERS_PROMPT", source: "prompts/research/operating-analysis/company-operating-drivers.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_FINANCIAL_QUALITY_PROMPT", source: "prompts/research/operating-analysis/financial-quality.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_MARKET_VALUATION_FACTS_PROMPT", source: "prompts/research/operating-analysis/market-valuation-facts.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_OPERATING_THESIS_PROMPT", source: "prompts/research/operating-analysis/operating-thesis.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_SCENARIO_VALUATION_PROMPT", source: "prompts/research/operating-analysis/scenario-valuation.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_INVESTMENT_CONCLUSION_PROMPT", source: "prompts/research/operating-analysis/investment-conclusion.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_OPERATING_STAGE_PROMPT", source: "prompts/research/operating-analysis/operating-analysis.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_FINANCIAL_STAGE_PROMPT", source: "prompts/research/operating-analysis/financial-analysis.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_VALUATION_INPUTS_PROMPT", source: "prompts/research/operating-analysis/valuation-inputs.md" },
-  { exportName: "RESEARCH_OPERATING_ANALYSIS_VALUATION_CONCLUSION_PROMPT", source: "prompts/research/operating-analysis/valuation-conclusion.md" },
+  {
+    exportName: "RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT",
+    source: "prompts/research/operating-analysis-system.md",
+  },
 ];
 
 const generatedTsPath = resolve(PROJECT_ROOT, "src/generated/prompt-text.ts");

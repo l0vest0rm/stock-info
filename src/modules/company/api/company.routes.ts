@@ -19,7 +19,6 @@ import {
 } from "../../../shared/local-job-protocol";
 import {
   NEWS_REPORT_ANALYZE_SYSTEM_PROMPT,
-  NEWS_REPORT_ANALYZE_USER_PROMPT,
   REPORT_ANALYZE_SYSTEM_PROMPT,
   REPORT_ANALYZE_USER_PROMPT,
   REPORT_DISCOVERY_SYSTEM_PROMPT,
@@ -81,7 +80,7 @@ type CompanyNewsReportAnalysis = {
   analysisSucceeded: true;
   isCompanyReport: boolean;
   forecasts: CompanyReportForecast[];
-  valuation: CompanyReportValuation;
+  targetPrice: number | null;
   updatedAt: number;
 };
 
@@ -137,7 +136,7 @@ const REPORT_RECENT_DAYS = 90;
 const REPORT_FORECAST_MAX_CALLS = 10;
 const NEWS_REPORT_CANDIDATE_LIMIT = 40;
 const NEWS_REPORT_ANALYSIS_MAX_CALLS = 5;
-const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v1";
+const NEWS_REPORT_ANALYSIS_CACHE_VERSION = "v2";
 const REPORT_LLM_MODEL: SupportedLlmModel = "gpt-5.6-luna";
 const REPORT_DISCOVERY_PROMPT_VERSION = "company-report-discovery.v5";
 const REPORT_DISCOVERY_TASK_TYPE = "webqa.chatgpt.v1";
@@ -1103,7 +1102,7 @@ async function readKnowledgeNewsReportAnalysis(
     && cached.analysisSucceeded === true
     && typeof cached.isCompanyReport === "boolean"
     && Array.isArray(cached.forecasts)
-    && cached.valuation && typeof cached.valuation === "object"
+    && Object.prototype.hasOwnProperty.call(cached, "targetPrice")
     ? cached
     : null;
 }
@@ -1271,7 +1270,7 @@ async function annotateReportItemsWithForecasts(
           ...item,
           forecastSource: "llm_news_report",
           forecasts: analysis.forecasts,
-          valuation: analysis.valuation,
+          targetPrice: analysis.targetPrice,
           llmRawResponse,
         });
       }
@@ -1435,10 +1434,10 @@ export async function extractCompanyNewsReportByLlm(
     return {
       isCompanyReport: false,
       forecasts: [],
-      valuation: {},
+      targetPrice: null,
     };
   }
-  const prompt = NEWS_REPORT_ANALYZE_USER_PROMPT
+  const prompt = REPORT_ANALYZE_USER_PROMPT
     .replace("{{TITLE}}", title)
     .replace("{{CONTENT}}", trimmed);
   const response = await requestLlmText(c.env, {
@@ -1635,21 +1634,12 @@ export function parseCompanyNewsReportAnalysis(textBody: string): Omit<CompanyNe
     throw new Error("LLM news report response did not contain the required fields");
   }
   if (!parsed.isCompanyReport) {
-    return { isCompanyReport: false, forecasts: [], valuation: {} };
+    return { isCompanyReport: false, forecasts: [], targetPrice: null };
   }
-  const valuation = parsed.valuation && typeof parsed.valuation === "object" && !Array.isArray(parsed.valuation)
-    ? parsed.valuation as Record<string, unknown>
-    : {};
   return {
     isCompanyReport: true,
     forecasts: parseCompanyReportForecastRows(parsed.forecasts),
-    valuation: {
-      ...(nonEmptyTextOrUndefined(valuation.rating) ? { rating: nonEmptyTextOrUndefined(valuation.rating) } : {}),
-      ...(positiveNumberOrUndefined(valuation.targetPrice) !== undefined ? { targetPrice: positiveNumberOrUndefined(valuation.targetPrice) } : {}),
-      ...(nonEmptyTextOrUndefined(valuation.targetPriceCurrency) ? { targetPriceCurrency: nonEmptyTextOrUndefined(valuation.targetPriceCurrency) } : {}),
-      ...(positiveNumberOrUndefined(valuation.targetPe) !== undefined ? { targetPe: positiveNumberOrUndefined(valuation.targetPe) } : {}),
-      ...(nonEmptyTextOrUndefined(valuation.valuationMethod) ? { valuationMethod: nonEmptyTextOrUndefined(valuation.valuationMethod) } : {}),
-    },
+    targetPrice: parseCompanyReportTargetPrice(parsed.targetPrice),
   };
 }
 

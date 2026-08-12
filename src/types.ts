@@ -21,6 +21,7 @@ export type Bindings = {
   TASKD_BASE_URL?: string;
   TASKD_NAMESPACE?: string;
   STOCK_INFO_TASKD_CALLER_TOKEN?: string;
+  TASKD_CALLER_TOKEN?: string;
   LLM_DAILY_LIMIT?: string;
   HTTP_PROXY_URL?: string;
   HTTP_PROXY_RELAY_URL?: string;

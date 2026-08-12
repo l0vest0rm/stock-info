@@ -1,17 +1,42 @@
-import type { AppEnv } from "../../../types";
-import { RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT } from "../../../generated/prompt-text";
+import type { AppEnv, KlineBar } from "../../../types";
+import { RESEARCH_OPERATING_ANALYSIS_PROMPT, RESEARCH_OPERATING_ANALYSIS_SYSTEM_PROMPT } from "../../../generated/prompt-text";
 import { taskdWebQaInput } from "../../../shared/llm-client";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
-import { loadResearchFinancialProfile } from "./research-financial-profile";
-import { loadResearchFinancialQuality } from "./research-financials";
+import { loadKline } from "../../market/application/load-kline";
+import industryProfiles from "../../../../config/research-eastmoney-em2016-industry-profiles.json";
+import companyProfiles from "../../../../config/eastmoney-company-em2016-profiles.json";
 
 const TASK_TYPE = "webqa.chatgpt.v1";
 const MODEL = "gpt-5.6-luna" as const;
 const DEFAULT_REASONING_EFFORT = "xhigh";
-const PROMPT_VERSION = "investment-analysis.taskd.v1";
+const PROMPT_VERSION = "investment-analysis.taskd.v2";
 
 type Row = Record<string, unknown>;
+type AnalysisFramework = {
+  primaryFormula: string;
+  operatingMetrics: string[];
+  valuationMethods: string[];
+  stressFactors: string[];
+};
+type InvestmentAnalysisInput = {
+  schemaVersion: "investment-analysis-input.v2";
+  promptVersion: string;
+  preparedAt: string;
+  security: { code: string; name: string; market: string; type: string; currency: string | null };
+  marketSnapshot: {
+    asOf: string;
+    source: "xueqiu";
+    latestPrice: number | null;
+    marketCapYi: number | null;
+    peTtm: number | null;
+    pb: number | null;
+    psTtm: number | null;
+    pcfTtm: number | null;
+  };
+  businessBoundary: { status: "confirmed" | "unknown"; note: string | null; products: string[]; customers: string[]; regions: string[] };
+  analysisFramework: AnalysisFramework | null;
+};
 type ResultRow = {
   securityCode: string;
   inputJson: string;
@@ -84,33 +109,95 @@ async function prepareResearchInvestmentAnalysis(env: AppEnv["Bindings"], securi
   const code = securityCode.trim().toUpperCase();
   const security = await env.DB.prepare("select code, name, market, type, currency from securities where code=?").bind(code).first<{ code: string; name: string; market: string; type: string; currency: string | null }>();
   if (!security) throw new Error("security was not found");
-  const profile = await loadResearchFinancialProfile(env.DB, code);
-  const financials = await loadResearchFinancialQuality(env, code, { entityType: profile.qualityEntityType });
-  const input = {
-    schemaVersion: "investment-analysis-input.v1",
+  const [marketSnapshot, localProfile] = await Promise.all([
+    loadInvestmentAnalysisMarketSnapshot(env, code),
+    Promise.resolve(localCompanyProfile(code)),
+  ]);
+  const input: InvestmentAnalysisInput = {
+    schemaVersion: "investment-analysis-input.v2",
     promptVersion: PROMPT_VERSION,
     preparedAt: new Date().toISOString(),
     security: { code: security.code, name: security.name, market: security.market, type: security.type, currency: security.currency },
-    financialProfile: { entityType: profile.qualityEntityType },
-    financials: {
-      availability: financials.availability,
-      sourcePolicy: financials.sourcePolicy,
-      statutoryGate: financials.statutoryGate,
-      statements: financials.statements,
-      quality: financials.quality,
-    },
+    marketSnapshot,
+    // This local routing state does not inject unlinked business facts for
+    // the model to repeat as public disclosure; Web Search must verify them.
+    businessBoundary: { status: localProfile ? "confirmed" : "unknown", note: null, products: [], customers: [], regions: [] },
+    analysisFramework: localProfile ? frameworkForIndustry(localProfile.industry) : null,
   };
-  return { securityCode: code, input, prompt: buildPrompt(input) };
+  return { securityCode: code, input, prompt: buildResearchInvestmentAnalysisPrompt(input) };
 }
 
-function buildPrompt(input: Record<string, unknown>): string {
-  return [
-    "请基于以下由 stock-info 工程侧采集并冻结的必要输入，使用 ChatGPT 的公开 Web 检索补充可核验的公司、行业、竞争与风险证据，撰写完整中文投资分析报告。",
-    "只输出 Markdown 正文；不得输出任务日志、JSON、内部 ID 或单独来源附录。缺失、冲突或未核验的事实必须明确保留为未知，不能以模型记忆补数。工程输入中的财务口径、期间和来源优先于搜索摘要。",
-    "报告必须使用以下 12 个一级标题：# 1. 研究范围与事实边界 至 # 12. 最终结论；每章给出结论、依据、期间/口径、限制和待验证问题。正文附近自然放置可核验链接。估值须区分事实与估计，不编造目标价或确定性结论。",
-    "\n## 工程冻结输入\n```json\n" + JSON.stringify(input, null, 2) + "\n```",
-  ].join("\n\n");
+export function buildResearchInvestmentAnalysisPrompt(input: InvestmentAnalysisInput): string {
+  return RESEARCH_OPERATING_ANALYSIS_PROMPT.replace("{{INPUT_DATA}}", investmentAnalysisBrief(input));
 }
+
+async function loadInvestmentAnalysisMarketSnapshot(env: AppEnv["Bindings"], code: string): Promise<InvestmentAnalysisInput["marketSnapshot"]> {
+  const today = new Date().toISOString().slice(0, 10);
+  const kline = await loadKline(env, code, "day", "normal", `${new Date().getUTCFullYear() - 1}-01-01`, today);
+  const latest = kline.rows.filter((row): row is KlineBar => "close" in row).at(-1);
+  if (!latest) throw new Error(`Xueqiu K-line is empty for investment analysis: ${code}`);
+  return {
+    asOf: latest.date,
+    source: "xueqiu",
+    latestPrice: latest.close,
+    marketCapYi: latest.marketCapital === null ? null : latest.marketCapital / 100_000_000,
+    peTtm: latest.peTtm,
+    pb: latest.pb,
+    psTtm: latest.ps,
+    pcfTtm: latest.pcf,
+  };
+}
+
+function localCompanyProfile(code: string) {
+  return companyProfiles.profiles.find((profile) => profile.code === code && profile.availability === "available" && profile.industry) ?? null;
+}
+
+function frameworkForIndustry(industry: string): AnalysisFramework | null {
+  const profile = industryProfiles.profiles.find((candidate) => candidate.industries.includes(industry));
+  return profile ? {
+    primaryFormula: profile.primaryFormula,
+    operatingMetrics: [...profile.operatingMetrics],
+    valuationMethods: [...profile.valuationMethods],
+    stressFactors: [...profile.stressFactors],
+  } : null;
+}
+
+function investmentAnalysisBrief(input: InvestmentAnalysisInput): string {
+  const market = input.marketSnapshot;
+  const boundary = input.businessBoundary;
+  const framework = input.analysisFramework;
+  return [
+    "## 研究对象",
+    `- 公司：${input.security.name}`,
+    `- 证券代码：${input.security.code}`,
+    `- 报告时点：${input.preparedAt}`,
+    "",
+    "## 当前市场快照（工程实时获取）",
+    `- 截至：${market.asOf}`,
+    `- 数据源：${market.source}`,
+    `- 最新价格：${display(market.latestPrice, input.security.currency ?? undefined)}`,
+    `- 总市值：${display(market.marketCapYi, "亿元")}`,
+    `- PE（TTM）：${display(market.peTtm)}`,
+    `- PB：${display(market.pb)}`,
+    `- PS（TTM）：${display(market.psTtm)}`,
+    `- PCF（TTM）：${display(market.pcfTtm)}`,
+    "",
+    "## 本地业务边界状态",
+    `- 状态：${boundary.status}`,
+    `- 说明：${boundary.note ?? "未提供"}`,
+    `- 已确认产品：${boundary.products.join("、") || "未提供"}`,
+    `- 已确认客户：${boundary.customers.join("、") || "未提供"}`,
+    `- 已确认地区：${boundary.regions.join("、") || "未提供"}`,
+    "",
+    "## 分析框架（工程配置，不是公司事实）",
+    `- 量价成本主公式：${framework?.primaryFormula ?? "未配置"}`,
+    `- 优先核验指标：${framework?.operatingMetrics.join("、") || "未配置"}`,
+    `- 可用估值方法：${framework?.valuationMethods.join("、") || "未配置"}`,
+    `- 压力因素：${framework?.stressFactors.join("、") || "未配置"}`,
+  ].join("\n");
+}
+
+function display(value: number | null, unit = ""): string { return value === null ? "未提供" : `${value}${unit ? ` ${unit}` : ""}`; }
 
 async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input: Record<string, unknown>, task: TaskdTask) {
   const result = object(task.result);

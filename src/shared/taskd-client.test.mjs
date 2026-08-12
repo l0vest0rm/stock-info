@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createTaskdCallerClient } from "./taskd-client.ts";
+import { createTaskdCallerClient, taskdCallerClient } from "./taskd-client.ts";
 import { reconcileTaskdResult } from "./taskd-result-projection.ts";
 
 const task = {
@@ -43,6 +43,15 @@ test("taskd caller submits and manages a task by business name only", async () =
   });
   assert.equal(calls[1].url, "https://task.example.test/v1/namespaces/stock-info/tasks/by-name/investment-analysis%3A300308.SZ");
   assert.equal(calls[2].url, "https://task.example.test/v1/namespaces/stock-info/tasks/by-name/investment-analysis%3A300308.SZ/cancel");
+});
+
+test("taskd caller accepts taskd's generic caller-token environment name", async () => {
+  assert.doesNotThrow(() => taskdCallerClient({
+    LLM_RUNTIME: "local",
+    TASKD_BASE_URL: "https://task.example.test",
+    TASKD_NAMESPACE: "stock-info",
+    TASKD_CALLER_TOKEN: "token",
+  }));
 });
 
 test("taskd result projection is retry-safe at the business boundary", async () => {

@@ -26,6 +26,12 @@ export HTTP_PROXY_DOMAINS="${HTTP_PROXY_DOMAINS:-yahoo.com}"
 export HTTP_DOMAIN_CONCURRENCY="${HTTP_DOMAIN_CONCURRENCY:-5}"
 export HTTP_REQUEST_TIMEOUT_MS="${HTTP_REQUEST_TIMEOUT_MS:-10000}"
 export LLM_RUNTIME="local"
+# taskd is the local-development execution service for the explicit ChatGPT
+# research flows.  The Node binding loader reads STOCK_INFO_TASKD_CALLER_TOKEN
+# from this repository's ignored .dev.vars before starting the HTTP server;
+# callers therefore run this script directly without exporting a token.
+export TASKD_BASE_URL="${TASKD_BASE_URL:-https://task.m2ai.cc}"
+export TASKD_NAMESPACE="${TASKD_NAMESPACE:-stock-info}"
 export LLM_DAILY_LIMIT="${LLM_DAILY_LIMIT:-1000000}"
 export XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS="${XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
 export XUEQIU_COOKIE_REFRESH_RETRY_SECONDS="${XUEQIU_COOKIE_REFRESH_RETRY_SECONDS:-300}"
