@@ -15,11 +15,9 @@ test("investment analysis uses one stable latest-only taskd name per security", 
 });
 
 test("investment analysis projects only a completed WebQA result", () => {
-  assert.doesNotThrow(() => validateResearchInvestmentAnalysisTerminalEvidence({
-    terminal_evidence: { schemaVersion: "webqa.completion-evidence.v1", outcome: "succeeded" },
-  }));
+  assert.doesNotThrow(() => validateResearchInvestmentAnalysisTerminalEvidence({ schemaVersion: "webqa.completion-evidence.v1", outcome: "succeeded" }));
   assert.throws(
-    () => validateResearchInvestmentAnalysisTerminalEvidence({ terminal_evidence: { schemaVersion: "webqa.completion-evidence.v1", outcome: "incomplete" } }),
+    () => validateResearchInvestmentAnalysisTerminalEvidence({ schemaVersion: "webqa.completion-evidence.v1", outcome: "incomplete" }),
     /lacks terminal WebQA completion evidence/,
   );
 });

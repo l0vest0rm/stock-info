@@ -1,4 +1,5 @@
 import { taskdCallerClient, type TaskdTask, type TaskdTaskStatus } from "./taskd-client";
+import { extractTaskdWebQaResult } from "./taskd-webqa-result";
 import {
   createGenericLlmTask,
   loadGenericLlmRun,
@@ -210,10 +211,9 @@ export function taskdWebQaInput(env: Pick<Bindings, "TASKD_NAMESPACE">, request:
 }
 
 export function responseFromTaskdTask(task: TaskdTask, model: SupportedLlmModel): LlmTextResponse {
-  const result = record(task.result);
-  const text = string(result?.markdown);
+  const result = extractTaskdWebQaResult(task.result);
+  const text = string(result.content.markdown);
   if (!text) throw new Error(`taskd succeeded task has no WebQA answer text: ${task.name}`);
-  const citations = Array.isArray(result?.citations) ? result.citations : [];
   return {
     model,
     text,
@@ -221,7 +221,7 @@ export function responseFromTaskdTask(task: TaskdTask, model: SupportedLlmModel)
     webSearch: {
       searched: true,
       queries: [],
-      citations: citations.flatMap(normalizeCitation),
+      citations: result.citations.flatMap(normalizeCitation),
     },
     raw: result,
   };

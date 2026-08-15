@@ -12,6 +12,7 @@ import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "..
 import { requestLlmText, taskdWebQaInput, type LlmWebSearchMetadata, type SupportedLlmModel } from "../../../shared/llm-client";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
+import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
 import {
   loadGenericLlmRun,
   loadGenericLlmRunArtifacts,
@@ -794,10 +795,10 @@ async function loadCachedCompanyReportDiscoveryKnownReports(
 }
 
 async function projectCompanyReportDiscovery(c: Context<AppEnv>, securityCode: string, task: TaskdTask) {
-  const result = asRecord(task.result);
-  validateCompanyReportDiscoveryTerminalEvidence(result);
-  const responseText = text(result?.markdown);
-  const webSearch = companyReportDiscoveryWebQaSearch(result);
+  const result = extractTaskdWebQaResult(task.result);
+  validateCompanyReportDiscoveryTerminalEvidence(result.terminalEvidence);
+  const responseText = text(result.content.markdown);
+  const webSearch = companyReportDiscoveryWebQaSearch(result.citations, result.sources);
   const citations = validateCompanyReportDiscoveryWebSearch(webSearch);
   const code = normalizeSecurityCode(securityCode);
   const parsed = parseCompanyReportDiscoveryWithDiagnostics(responseText, code, citations);
@@ -817,8 +818,7 @@ async function projectCompanyReportDiscovery(c: Context<AppEnv>, securityCode: s
   return projection;
 }
 
-export function validateCompanyReportDiscoveryTerminalEvidence(result: Record<string, unknown> | null): void {
-  const evidence = asRecord(result?.terminal_evidence);
+export function validateCompanyReportDiscoveryTerminalEvidence(evidence: Record<string, unknown> | null): void {
   if (
     text(evidence?.schemaVersion) !== "webqa.completion-evidence.v1"
     || text(evidence?.outcome) !== "succeeded"
@@ -827,14 +827,14 @@ export function validateCompanyReportDiscoveryTerminalEvidence(result: Record<st
   }
 }
 
-function companyReportDiscoveryWebQaSearch(answer: Record<string, unknown> | null): CompanyReportDiscoveryWebSearchMetadata {
-  const records = [...(Array.isArray(answer?.citations) ? answer.citations : []), ...(Array.isArray(answer?.sources) ? answer.sources : [])];
-  const citations = records.flatMap((item) => {
+function companyReportDiscoveryWebQaSearch(citations: unknown[], sources: unknown[]): CompanyReportDiscoveryWebSearchMetadata {
+  const records = [...citations, ...sources];
+  const normalizedCitations = records.flatMap((item) => {
     const record = asRecord(item);
     const url = text(record?.url);
     return url ? [{ title: text(record?.title) || url, url }] : [];
   });
-  return { searched: true, queries: [], citations, responseCompleted: true, responseStatus: "completed", webSearchCallCompleted: true, transport: "webqa" };
+  return { searched: true, queries: [], citations: normalizedCitations, responseCompleted: true, responseStatus: "completed", webSearchCallCompleted: true, transport: "webqa" };
 }
 
 function companyReportDiscoveryTaskView(task: TaskdTask) {

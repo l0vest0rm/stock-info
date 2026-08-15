@@ -194,6 +194,7 @@ export function normalizeTaskdWebQaSnapshot(value, { clientTaskName } = {}) {
   const input = item.input && typeof item.input === "object" && !Array.isArray(item.input) ? item.input : {};
   const checkpoint = item.checkpoint && typeof item.checkpoint === "object" && !Array.isArray(item.checkpoint) ? item.checkpoint : {};
   const result = item.result && typeof item.result === "object" && !Array.isArray(item.result) ? item.result : {};
+  const execution = result.execution && typeof result.execution === "object" && !Array.isArray(result.execution) ? result.execution : {};
   const answer = normalizeTaskdWebQaAnswer(result, { required: text(item.status) === "succeeded" });
   const terminalEvidence = normalizeTerminalEvidence(result.terminal_evidence || result.completionEvidence);
   if (text(item.status) === "succeeded" && !terminalEvidence) {
@@ -213,22 +214,22 @@ export function normalizeTaskdWebQaSnapshot(value, { clientTaskName } = {}) {
   return {
     taskId,
     taskdTaskId: text(item.task_id),
-    gatewayTaskId: text(checkpoint.gateway_task_id) || text(result.gateway_task_id),
+    gatewayTaskId: text(checkpoint.gateway_task_id) || text(execution.gateway_task_id),
     mode: text(input.mode || checkpoint.mode),
     status,
-    platform: text(result.platform || checkpoint.platform || input.platform),
-    requestConversationId: text(result.conversation_id || checkpoint.conversation_id || input.conversation_id),
-    provider: text(result.provider || checkpoint.provider || input.provider),
+    platform: text(execution.platform || checkpoint.platform || input.platform),
+    requestConversationId: text(execution.conversation_id || checkpoint.conversation_id || input.conversation_id),
+    provider: text(execution.provider || checkpoint.provider || input.provider),
     idempotencyKey: text(input.idempotency_key),
-    reasoningEffort: text(result.reasoning_effort || checkpoint.reasoning_effort || input.reasoning_effort),
+    reasoningEffort: text(execution.reasoning_effort || checkpoint.reasoning_effort || input.reasoning_effort),
     answer,
     terminalEvidence,
-    providerConversationId: text(result.provider_conversation_id || checkpoint.provider_conversation_id),
-    providerUrl: text(result.provider_url || checkpoint.provider_url),
+    providerConversationId: text(execution.provider_conversation_id || checkpoint.provider_conversation_id),
+    providerUrl: text(execution.provider_url || checkpoint.provider_url),
     error: text(item.error_message || result.error || checkpoint.error),
     interruptRequested: text(item.status) === "interrupt_requested",
     events: [],
-    updatedAt: text(result.updated_at || checkpoint.updated_at || item.updated_at),
+    updatedAt: text(execution.updated_at || checkpoint.updated_at || item.updated_at),
     raw,
   };
 }
@@ -240,6 +241,7 @@ function normalizeWebQaAnswer(value, { required = true } = {}) {
   }
   const formatVersion = text(value.formatVersion);
   const markdown = typeof value.content?.markdown === "string" ? value.content.markdown : "";
+  const assets = Array.isArray(value.content?.assets) ? value.content.assets : null;
   if (formatVersion !== "webqa.answer.v1" || typeof value.content !== "object" || Array.isArray(value.content) || typeof value.content.markdown !== "string") {
     throw new WebQaAdapterError("webqa_invalid_response", "WebQA task response has an invalid structured answer");
   }
@@ -248,7 +250,7 @@ function normalizeWebQaAnswer(value, { required = true } = {}) {
   }
   return {
     formatVersion,
-    content: { markdown },
+    content: { markdown, ...(assets ? { assets } : {}) },
     citations: value.citations,
     sources: value.sources,
     rawSnapshot: value.rawSnapshot,
@@ -258,18 +260,22 @@ function normalizeWebQaAnswer(value, { required = true } = {}) {
 function normalizeTaskdWebQaAnswer(value, { required = true } = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     if (!required) return null;
-    throw new WebQaAdapterError("webqa_invalid_response", "WebQA completed task lacks result Markdown");
+    throw new WebQaAdapterError("webqa_invalid_response", "WebQA completed task lacks taskd.webqa.result.v2");
   }
-  if (typeof value.markdown !== "string") {
+  if (value.format !== "taskd.webqa.result.v2") {
     if (!required) return null;
-    throw new WebQaAdapterError("webqa_invalid_response", "WebQA completed task lacks result.markdown");
+    throw new WebQaAdapterError("webqa_invalid_response", "WebQA completed task must use taskd.webqa.result.v2");
   }
-  if (!Array.isArray(value.citations) || !Array.isArray(value.sources) || !value.raw_snapshot || typeof value.raw_snapshot !== "object" || Array.isArray(value.raw_snapshot)) {
-    throw new WebQaAdapterError("webqa_invalid_response", "WebQA task result must preserve citations, sources and raw_snapshot");
+  const content = value.content && typeof value.content === "object" && !Array.isArray(value.content) ? value.content : null;
+  if (content?.format !== "web-helper.rich-content.v1" || typeof content.markdown !== "string" || !Array.isArray(content.assets)) {
+    throw new WebQaAdapterError("webqa_invalid_response", "WebQA task result must preserve web-helper.rich-content.v1 content");
+  }
+  if (!Array.isArray(value.citations) || !Array.isArray(value.sources) || !value.raw_snapshot || typeof value.raw_snapshot !== "object" || Array.isArray(value.raw_snapshot) || !value.execution || typeof value.execution !== "object" || Array.isArray(value.execution)) {
+    throw new WebQaAdapterError("webqa_invalid_response", "WebQA task result must preserve citations, sources, raw_snapshot and execution");
   }
   return {
     formatVersion: "webqa.answer.v1",
-    content: { markdown: value.markdown },
+    content: { markdown: content.markdown, assets: content.assets },
     citations: value.citations,
     sources: value.sources,
     rawSnapshot: value.raw_snapshot,

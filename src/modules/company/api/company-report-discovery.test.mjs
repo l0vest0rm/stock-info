@@ -126,9 +126,7 @@ test("uses a stable caller-owned discovery name without a local task id", () => 
 });
 
 test("requires taskd terminal WebQA completion evidence before projecting reports", () => {
-  assert.doesNotThrow(() => validateCompanyReportDiscoveryTerminalEvidence({
-    terminal_evidence: { schemaVersion: "webqa.completion-evidence.v1", outcome: "succeeded" },
-  }));
+  assert.doesNotThrow(() => validateCompanyReportDiscoveryTerminalEvidence({ schemaVersion: "webqa.completion-evidence.v1", outcome: "succeeded" }));
   assert.throws(() => validateCompanyReportDiscoveryTerminalEvidence({}), /lacks terminal WebQA completion evidence/);
 });
 

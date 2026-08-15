@@ -4,6 +4,7 @@ import { RESEARCH_OPERATING_ANALYSIS_PROMPT } from "../../../generated/prompt-te
 import { taskdWebQaInput } from "../../../shared/llm-client";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
+import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
 import { loadKline } from "../../market/application/load-kline";
 import industryProfiles from "../../../../config/research-eastmoney-em2016-industry-profiles.json";
 import companyProfiles from "../../../../config/eastmoney-company-em2016-profiles.json";
@@ -236,9 +237,9 @@ function display(value: number | null, unit = ""): string {
 }
 
 async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input: Record<string, unknown>, task: TaskdTask) {
-  const result = object(task.result);
-  validateResearchInvestmentAnalysisTerminalEvidence(result);
-  const markdown = text(result?.markdown);
+  const result = extractTaskdWebQaResult(task.result);
+  validateResearchInvestmentAnalysisTerminalEvidence(result.terminalEvidence);
+  const markdown = text(result.content.markdown);
   validateResearchInvestmentAnalysisMarkdown(markdown);
   const securityCode = text(object(input.security)?.code);
   if (!securityCode) throw new Error("investment analysis input has no security code");
@@ -246,9 +247,9 @@ async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input:
   const stored = {
     inputJson: JSON.stringify(input),
     markdown,
-    citationsJson: JSON.stringify(Array.isArray(result?.citations) ? result.citations : []),
-    sourcesJson: JSON.stringify(Array.isArray(result?.sources) ? result.sources : []),
-    terminalEvidenceJson: JSON.stringify(result?.terminal_evidence ?? null),
+    citationsJson: JSON.stringify(result.citations),
+    sourcesJson: JSON.stringify(result.sources),
+    terminalEvidenceJson: JSON.stringify(result.terminalEvidence),
     projectedAt,
     task: taskView(task),
   } satisfies StoredResultValue;
@@ -293,8 +294,7 @@ export async function readStoredResearchInvestmentAnalysis(
   };
 }
 
-export function validateResearchInvestmentAnalysisTerminalEvidence(result: Record<string, unknown> | null): void {
-  const evidence = object(result?.terminal_evidence);
+export function validateResearchInvestmentAnalysisTerminalEvidence(evidence: Record<string, unknown> | null): void {
   if (
     text(evidence?.schemaVersion) !== "webqa.completion-evidence.v1"
     || text(evidence?.outcome) !== "succeeded"

@@ -95,20 +95,27 @@ test("taskd caller uses only a business name for submit, read, and interrupt", a
   assert.equal(calls[2].url, "https://task.example.test/v1/namespaces/stock-info/tasks/by-name/analysis%3A300308.SZ/interrupt");
 });
 
-test("taskd WebQA result has one canonical Markdown field", () => {
+test("taskd WebQA result uses the v2 rich-content envelope", () => {
   const snapshot = normalizeTaskdWebQaSnapshot({
     task_id: 7,
     client_task_name: "analysis:300308.SZ",
     status: "succeeded",
     result: {
-      markdown: "# 完整答案",
+      format: "taskd.webqa.result.v2",
+      content: {
+        format: "web-helper.rich-content.v1",
+        markdown: "# 完整答案",
+        assets: [{ kind: "image", url: "https://example.test/image.png", intrinsic: { width: 800, height: 600 } }],
+      },
       citations: [{ text: "citation", url: "https://example.test/citation", title: "Citation" }],
       sources: [{ text: "source", url: "https://example.test/source", title: "Source" }],
       raw_snapshot: { complete: true },
       terminal_evidence: terminalEvidence("# 完整答案"),
+      execution: { provider: "chatgpt-web", gateway_task_id: "gateway-task:7" },
     },
   });
   assert.equal(snapshot.answer.content.markdown, "# 完整答案");
+  assert.equal(snapshot.answer.content.assets.length, 1);
   assert.equal(snapshot.answer.citations.length, 1);
 });
 

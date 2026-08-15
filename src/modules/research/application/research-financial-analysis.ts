@@ -2,6 +2,7 @@ import type { AppEnv } from "../../../types";
 import { taskdWebQaInput } from "../../../shared/llm-client";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
+import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
 import { loadResearchFinancialQuality } from "./research-financials";
 import { loadResearchFinancialProfile } from "./research-financial-profile";
 import {
@@ -88,8 +89,8 @@ export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], s
 }
 
 async function projectResearchFinancialAnalysis(env: AppEnv["Bindings"], snapshot: FinancialAnalysisSnapshot, task: TaskdTask) {
-  const result = object(task.result);
-  const markdown = text(result?.markdown);
+  const result = extractTaskdWebQaResult(task.result);
+  const markdown = text(result.content.markdown);
   validateFinancialMarkdown(markdown);
   const now = Date.now();
   await env.DB.prepare(`insert into research_financial_analysis_results (
@@ -106,9 +107,9 @@ async function projectResearchFinancialAnalysis(env: AppEnv["Bindings"], snapsho
       FINANCIAL_ANALYSIS_PROMPT_VERSION,
       JSON.stringify(snapshot),
       markdown,
-      JSON.stringify(Array.isArray(result?.citations) ? result.citations : []),
-      JSON.stringify(Array.isArray(result?.sources) ? result.sources : []),
-      JSON.stringify(result?.terminal_evidence ?? null),
+      JSON.stringify(result.citations),
+      JSON.stringify(result.sources),
+      JSON.stringify(result.terminalEvidence),
       now,
     ).run();
   return { securityCode: snapshot.securityCode, inputFingerprint: snapshot.lineage.inputFingerprint, projectedAt: now };
