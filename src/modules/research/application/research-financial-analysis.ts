@@ -89,9 +89,7 @@ export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], s
 
 async function projectResearchFinancialAnalysis(env: AppEnv["Bindings"], snapshot: FinancialAnalysisSnapshot, task: TaskdTask) {
   const result = object(task.result);
-  const answer = object(result?.answer);
-  const content = object(answer?.content);
-  const markdown = text(content?.markdown);
+  const markdown = text(result?.markdown);
   validateFinancialMarkdown(markdown);
   const now = Date.now();
   await env.DB.prepare(`insert into research_financial_analysis_results (
@@ -108,8 +106,8 @@ async function projectResearchFinancialAnalysis(env: AppEnv["Bindings"], snapsho
       FINANCIAL_ANALYSIS_PROMPT_VERSION,
       JSON.stringify(snapshot),
       markdown,
-      JSON.stringify(Array.isArray(answer?.citations) ? answer.citations : []),
-      JSON.stringify(Array.isArray(answer?.sources) ? answer.sources : []),
+      JSON.stringify(Array.isArray(result?.citations) ? result.citations : []),
+      JSON.stringify(Array.isArray(result?.sources) ? result.sources : []),
       JSON.stringify(result?.terminal_evidence ?? null),
       now,
     ).run();

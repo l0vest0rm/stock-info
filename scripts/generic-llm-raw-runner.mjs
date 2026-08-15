@@ -36,7 +36,7 @@ export async function runJob(job, owner = runnerInstanceId) {
     try {
       return await runWebQaJob(job, owner, { config: execution.webqa, runtimePost: post });
     } catch (error) {
-      // The adapter persists provider-reported failed/cancelled terminal
+      // The adapter persists provider-reported failed/interrupted terminal
       // states itself. Transport/configuration errors are thrown instead;
       // fence those through the same generic failure endpoint so the durable
       // ledger keeps a stable WebQA code and transport metadata rather than

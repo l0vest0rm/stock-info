@@ -125,7 +125,7 @@ export async function loadResearchInvestmentAnalysis(env: AppEnv["Bindings"], se
         break;
       case "pending":
       case "failed":
-      case "cancelled":
+      case "interrupted":
       case "superseded":
         task = taskView(state.task);
         result = await persistTaskSnapshot(env.DB, code, result, taskBusinessInput(state.task) || cachedInput || (await ensurePrepared()).input, state.task);
@@ -238,9 +238,7 @@ function display(value: number | null, unit = ""): string {
 async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input: Record<string, unknown>, task: TaskdTask) {
   const result = object(task.result);
   validateResearchInvestmentAnalysisTerminalEvidence(result);
-  const answer = object(result?.answer);
-  const content = object(answer?.content);
-  const markdown = text(content?.markdown);
+  const markdown = text(result?.markdown);
   validateResearchInvestmentAnalysisMarkdown(markdown);
   const securityCode = text(object(input.security)?.code);
   if (!securityCode) throw new Error("investment analysis input has no security code");
@@ -248,8 +246,8 @@ async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input:
   const stored = {
     inputJson: JSON.stringify(input),
     markdown,
-    citationsJson: JSON.stringify(Array.isArray(answer?.citations) ? answer.citations : []),
-    sourcesJson: JSON.stringify(Array.isArray(answer?.sources) ? answer.sources : []),
+    citationsJson: JSON.stringify(Array.isArray(result?.citations) ? result.citations : []),
+    sourcesJson: JSON.stringify(Array.isArray(result?.sources) ? result.sources : []),
     terminalEvidenceJson: JSON.stringify(result?.terminal_evidence ?? null),
     projectedAt,
     task: taskView(task),
@@ -398,10 +396,10 @@ function parseStoredTask(value: unknown): StoredTaskValue | null {
   };
 }
 function isPendingTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean {
-  return task?.status === "queued" || task?.status === "leased" || task?.status === "running" || task?.status === "cancel_requested";
+  return task?.status === "queued" || task?.status === "leased" || task?.status === "running" || task?.status === "interrupt_requested";
 }
 function isTaskStatus(value: string): value is TaskdTask["status"] {
-  return new Set<TaskdTask["status"]>(["queued", "leased", "running", "cancel_requested", "succeeded", "failed", "cancelled", "superseded"]).has(value as TaskdTask["status"]);
+  return new Set<TaskdTask["status"]>(["queued", "leased", "running", "interrupt_requested", "succeeded", "failed", "interrupted", "superseded"]).has(value as TaskdTask["status"]);
 }
 function object(value: unknown): Row | null { return value && typeof value === "object" && !Array.isArray(value) ? value as Row : null; }
 function text(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }

@@ -19,7 +19,7 @@ name 都由 taskd 创建一个新的、SQLite 自增的 `task_id`；只有最新
 claim。所有读取、取消和删除均按 `namespace + client_task_name` 进行。
 
 同 name 的旧 queued task 会变为 `superseded`；旧 leased/running task 会变为
-`cancel_requested`。taskd 的 `task_id` 是执行器租约、heartbeat 和完成回调的内部
+`interrupt_requested`。taskd 的 `task_id` 是执行器租约、heartbeat 和完成回调的内部
 主键，不是 stock-info 的映射字段。
 
 ## 交付清单

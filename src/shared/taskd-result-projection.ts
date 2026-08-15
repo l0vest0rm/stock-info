@@ -10,7 +10,7 @@ export type TaskdProjectionState<T> =
   | { state: "pending"; task: TaskdTask }
   | { state: "failed"; task: TaskdTask }
   | { state: "superseded"; task: TaskdTask }
-  | { state: "cancelled"; task: TaskdTask }
+  | { state: "interrupted"; task: TaskdTask }
   | { state: "projected"; task: TaskdTask; value: T };
 
 /**
@@ -31,8 +31,8 @@ export async function reconcileTaskdResult<T>(
       return { state: "projected", task, value: await projection.project(task) };
     case "failed":
       return { state: "failed", task };
-    case "cancelled":
-      return { state: "cancelled", task };
+    case "interrupted":
+      return { state: "interrupted", task };
     case "superseded":
       return { state: "superseded", task };
     default:

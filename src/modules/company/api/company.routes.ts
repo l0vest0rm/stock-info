@@ -796,10 +796,8 @@ async function loadCachedCompanyReportDiscoveryKnownReports(
 async function projectCompanyReportDiscovery(c: Context<AppEnv>, securityCode: string, task: TaskdTask) {
   const result = asRecord(task.result);
   validateCompanyReportDiscoveryTerminalEvidence(result);
-  const answer = asRecord(result?.answer);
-  const content = asRecord(answer?.content);
-  const responseText = text(content?.markdown);
-  const webSearch = companyReportDiscoveryWebQaSearch(answer);
+  const responseText = text(result?.markdown);
+  const webSearch = companyReportDiscoveryWebQaSearch(result);
   const citations = validateCompanyReportDiscoveryWebSearch(webSearch);
   const code = normalizeSecurityCode(securityCode);
   const parsed = parseCompanyReportDiscoveryWithDiagnostics(responseText, code, citations);
@@ -2291,7 +2289,7 @@ async function loadCompanyReportDiscoverySnapshot(
       return await readStoredCompanyReportDiscovery(c.env.DB, code);
     case "pending":
     case "failed":
-    case "cancelled":
+    case "interrupted":
     case "superseded":
       stored = await persistCompanyReportDiscoveryTaskSnapshot(c.env.DB, code, stored, state.task);
       return stored;

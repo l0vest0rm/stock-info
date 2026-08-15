@@ -5,6 +5,7 @@ import {
   createWebQaTaskdClient,
   deriveWebQaSession,
   normalizeWebQaSnapshot,
+  normalizeTaskdWebQaSnapshot,
   runWebQaJob,
   WebQaAdapterError,
 } from "./generic-webqa-adapter.mjs";
@@ -68,7 +69,7 @@ function job(progress = null) {
   };
 }
 
-test("taskd caller uses only a business name for submit, read, and cancel", async () => {
+test("taskd caller uses only a business name for submit, read, and interrupt", async () => {
   const calls = [];
   const client = createWebQaTaskdClient({
     baseUrl: "https://task.example.test/",
@@ -82,7 +83,7 @@ test("taskd caller uses only a business name for submit, read, and cancel", asyn
 
   await client.submit("analysis:300308.SZ", { input: "prompt" });
   await client.get("analysis:300308.SZ");
-  await client.cancel("analysis:300308.SZ");
+  await client.interrupt("analysis:300308.SZ");
 
   assert.equal(calls[0].url, "https://task.example.test/v1/namespaces/stock-info/tasks");
   assert.deepEqual(JSON.parse(calls[0].init.body), {
@@ -91,7 +92,24 @@ test("taskd caller uses only a business name for submit, read, and cancel", asyn
     input: { input: "prompt" },
   });
   assert.equal(calls[1].url, "https://task.example.test/v1/namespaces/stock-info/tasks/by-name/analysis%3A300308.SZ");
-  assert.equal(calls[2].url, "https://task.example.test/v1/namespaces/stock-info/tasks/by-name/analysis%3A300308.SZ/cancel");
+  assert.equal(calls[2].url, "https://task.example.test/v1/namespaces/stock-info/tasks/by-name/analysis%3A300308.SZ/interrupt");
+});
+
+test("taskd WebQA result has one canonical Markdown field", () => {
+  const snapshot = normalizeTaskdWebQaSnapshot({
+    task_id: 7,
+    client_task_name: "analysis:300308.SZ",
+    status: "succeeded",
+    result: {
+      markdown: "# 完整答案",
+      citations: [{ text: "citation", url: "https://example.test/citation", title: "Citation" }],
+      sources: [{ text: "source", url: "https://example.test/source", title: "Source" }],
+      raw_snapshot: { complete: true },
+      terminal_evidence: terminalEvidence("# 完整答案"),
+    },
+  });
+  assert.equal(snapshot.answer.content.markdown, "# 完整答案");
+  assert.equal(snapshot.answer.citations.length, 1);
 });
 
 test("WebQA request uses neutral raw input and stable lower-layer identity", () => {
@@ -157,12 +175,12 @@ test("WebQA submits once, persists task id, polls terminal state, and writes no 
   assert.equal(persisted.filter((item) => item.path.endsWith("/complete")).length, 1);
 });
 
-test("WebQA retries reuse a saved gateway task id and map cancellation to generic failure", async () => {
+test("WebQA retries reuse a saved gateway task id and map interruption to generic failure", async () => {
   const calls = [];
   const gateway = {
     async submit() { throw new Error("submit must not be called for a saved task"); },
-    async get(taskId) { calls.push(taskId); return { task_id: taskId, status: "cancelled", provider: config.provider, answer: answer(""), error: "stopped" }; },
-    async cancel() { throw new Error("cancel must not be called"); },
+    async get(taskId) { calls.push(taskId); return { task_id: taskId, status: "interrupted", provider: config.provider, answer: answer(""), error: "stopped" }; },
+    async interrupt() { throw new Error("interrupt must not be called"); },
   };
   const persisted = [];
   await runWebQaJob(job({ external: { kind: "webqa", taskId: "gateway-task:saved", platform: config.platform, conversationId: "saved-session", provider: config.provider, idempotencyKey: "webqa-saved", mode: "ask", providerUrl: "https://chatgpt.com/c/saved" } }), "runner:webqa-test", {
@@ -173,7 +191,7 @@ test("WebQA retries reuse a saved gateway task id and map cancellation to generi
   });
   assert.deepEqual(calls, ["gateway-task:saved"]);
   const failure = persisted.find((item) => item.path.endsWith("/fail"));
-  assert.equal(failure.body.errorCode, "webqa_cancelled");
+  assert.equal(failure.body.errorCode, "webqa_interrupted");
   assert.equal(persisted.some((item) => item.path.endsWith("/artifact")), false);
 });
 
@@ -223,7 +241,7 @@ test("legacy completed and incomplete gateway states never become generic succes
   const gateway = {
     async submit() { return { task_id: "gateway-task:legacy", status: "completed", provider: config.provider, answer: answer("old prefix") }; },
     async get() { return { task_id: "gateway-task:legacy", status: "completed", provider: config.provider, answer: answer("old prefix") }; },
-    async cancel() { throw new Error("legacy terminal must not be cancelled"); },
+    async interrupt() { throw new Error("legacy terminal must not be interrupted"); },
   };
   await runWebQaJob(job(), "runner:webqa-test", {
     config,
@@ -236,7 +254,7 @@ test("legacy completed and incomplete gateway states never become generic succes
   assert.equal(persisted.some((item) => item.path.endsWith("/complete")), false);
 });
 
-test("bounded WebQA timeout requests gateway cancellation and waits for cancelled terminal state", async () => {
+test("bounded WebQA timeout requests gateway interruption and waits for interrupted terminal state", async () => {
   const calls = [];
   let reads = 0;
   let clock = 0;
@@ -245,9 +263,9 @@ test("bounded WebQA timeout requests gateway cancellation and waits for cancelle
     async get() {
       calls.push("get");
       reads += 1;
-      return { task_id: "gateway-task:timeout", status: reads > 1 ? "cancelled" : "queued", provider: config.provider, answer: answer(""), error: reads > 1 ? "stopped" : "" };
+      return { task_id: "gateway-task:timeout", status: reads > 1 ? "interrupted" : "queued", provider: config.provider, answer: answer(""), error: reads > 1 ? "stopped" : "" };
     },
-    async cancel() { calls.push("cancel"); return { task_id: "gateway-task:timeout", status: "cancelling", cancel_requested: true, provider: config.provider, answer: answer("") }; },
+    async interrupt() { calls.push("interrupt"); return { task_id: "gateway-task:timeout", status: "interrupting", interrupt_requested: true, provider: config.provider, answer: answer("") }; },
   };
   const persisted = [];
   await runWebQaJob(job(), "runner:webqa-test", {
@@ -257,6 +275,6 @@ test("bounded WebQA timeout requests gateway cancellation and waits for cancelle
     sleep: async () => {},
     runtimePost: async (path, body) => { persisted.push({ path, body }); return { active: true }; },
   });
-  assert.deepEqual(calls, ["submit", "get", "cancel", "get"]);
-  assert.equal(persisted.find((item) => item.path.endsWith("/fail")).body.errorCode, "webqa_cancelled");
+  assert.deepEqual(calls, ["submit", "get", "interrupt", "get"]);
+  assert.equal(persisted.find((item) => item.path.endsWith("/fail")).body.errorCode, "webqa_interrupted");
 });

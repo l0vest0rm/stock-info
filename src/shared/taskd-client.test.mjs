@@ -41,16 +41,16 @@ test("taskd caller remains unavailable outside the local LLM runtime", () => {
 });
 
 test("taskd result projection is retry-safe at the business boundary", async () => {
-  const completed = { ...task, status: "succeeded", result: { answer: "final" } };
+  const completed = { ...task, status: "succeeded", result: { markdown: "final" } };
   let projections = 0;
   const client = { get: async () => completed };
   const first = await reconcileTaskdResult(client, {
     name: task.client_task_name,
-    project: async (remote) => { projections += 1; return remote.result.answer; },
+    project: async (remote) => { projections += 1; return remote.result.markdown; },
   });
   const second = await reconcileTaskdResult(client, {
     name: task.client_task_name,
-    project: async (remote) => { projections += 1; return remote.result.answer; },
+    project: async (remote) => { projections += 1; return remote.result.markdown; },
   });
   assert.equal(first.state, "projected");
   assert.equal(second.state, "projected");

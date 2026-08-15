@@ -186,7 +186,7 @@ export async function awaitTaskdLlmText(
       return response;
     }
     if (task.status === "failed") throw new Error(task.errorMessage || `taskd task failed: ${name}`);
-    if (task.status === "cancelled") throw new Error(`taskd task cancelled: ${name}`);
+    if (task.status === "interrupted") throw new Error(`taskd task interrupted: ${name}`);
     if (task.status === "superseded") throw new Error(`taskd task superseded: ${name}`);
     await delay(pollIntervalMs);
     const latest = await get(name);
@@ -211,11 +211,9 @@ export function taskdWebQaInput(env: Pick<Bindings, "TASKD_NAMESPACE">, request:
 
 export function responseFromTaskdTask(task: TaskdTask, model: SupportedLlmModel): LlmTextResponse {
   const result = record(task.result);
-  const answer = record(result?.answer);
-  const content = record(answer?.content);
-  const text = string(content?.markdown);
+  const text = string(result?.markdown);
   if (!text) throw new Error(`taskd succeeded task has no WebQA answer text: ${task.name}`);
-  const citations = Array.isArray(answer?.citations) ? answer.citations : [];
+  const citations = Array.isArray(result?.citations) ? result.citations : [];
   return {
     model,
     text,

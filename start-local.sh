@@ -7,6 +7,7 @@
 set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")" && pwd)
+LOCAL_START_LOG_FILE="${LOCAL_START_LOG_FILE:-$PROJECT_ROOT/data/logs/stock-info-local-start.log}"
 PORT="${PORT:-8000}"
 CONTENT_PORT="${KNOWLEDGE_CONTENT_LOCAL_PORT:-8788}"
 CONTENT_DIR="${KNOWLEDGE_CONTENT_LOCAL_DIR:-/Users/terry/git/data/stock-info/knowledge/content-cache}"
@@ -66,5 +67,6 @@ if ! curl -fsS "$proxy_health_url" >/dev/null; then
   exit 1
 fi
 
-print "Starting foreground local supervisor (local-http, local-job-worker, local-scheduler)..."
-exec node scripts/local-supervisor.mjs
+print "Starting local supervisor; runtime output will be written to ${LOCAL_START_LOG_FILE}..."
+mkdir -p "${LOCAL_START_LOG_FILE:h}"
+exec node scripts/local-supervisor.mjs >>"$LOCAL_START_LOG_FILE" 2>&1

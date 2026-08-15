@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const WEBQA_ARTIFACT_STEP = "raw_model";
-const WEBQA_STATUSES = new Set(["queued", "waiting_for_browser", "streaming", "finalizing", "recovering", "cancelling", "succeeded", "incomplete", "completed", "failed", "cancelled"]);
+const WEBQA_STATUSES = new Set(["queued", "waiting_for_browser", "streaming", "finalizing", "recovering", "interrupting", "succeeded", "incomplete", "completed", "failed", "interrupted"]);
 const DEFAULT_TASKD_TASK_TYPE = "webqa.chatgpt.v1";
 
 /** A stable, user-visible error code that survives the generic runner boundary. */
@@ -48,7 +48,7 @@ export function createWebQaGatewayClient({ baseUrl, fetchImpl = globalThis.fetch
   return {
     submit: (body) => request("/api/webqa/tasks", { method: "POST", body }),
     get: (taskId) => request(`/api/webqa/tasks/${encodeURIComponent(taskId)}`),
-    cancel: (taskId) => request(`/api/webqa/tasks/${encodeURIComponent(taskId)}/cancel`, { method: "POST", body: {} }),
+    interrupt: (taskId) => request(`/api/webqa/tasks/${encodeURIComponent(taskId)}/interrupt`, { method: "POST", body: {} }),
   };
 }
 
@@ -103,7 +103,7 @@ export function createWebQaTaskdClient({
       },
     }),
     get: (clientTaskName) => request(`${prefix}/by-name/${encodeURIComponent(clientTaskName)}`),
-    cancel: (clientTaskName) => request(`${prefix}/by-name/${encodeURIComponent(clientTaskName)}/cancel`, { method: "POST", body: {} }),
+    interrupt: (clientTaskName) => request(`${prefix}/by-name/${encodeURIComponent(clientTaskName)}/interrupt`, { method: "POST", body: {} }),
   };
 }
 
@@ -181,7 +181,7 @@ export function normalizeWebQaSnapshot(value) {
     providerConversationId: text(item.conversation_id_provider),
     providerUrl: text(item.provider_url),
     error: text(item.error),
-    cancelRequested: item.cancel_requested === true,
+    interruptRequested: item.interrupt_requested === true,
     events: Array.isArray(item.events) ? item.events.slice(-8).map(normalizeEvent).filter(Boolean) : [],
     updatedAt: text(item.updated_at),
     raw: item,
@@ -194,7 +194,7 @@ export function normalizeTaskdWebQaSnapshot(value, { clientTaskName } = {}) {
   const input = item.input && typeof item.input === "object" && !Array.isArray(item.input) ? item.input : {};
   const checkpoint = item.checkpoint && typeof item.checkpoint === "object" && !Array.isArray(item.checkpoint) ? item.checkpoint : {};
   const result = item.result && typeof item.result === "object" && !Array.isArray(item.result) ? item.result : {};
-  const answer = normalizeWebQaAnswer(result.answer, { required: text(item.status) === "succeeded" });
+  const answer = normalizeTaskdWebQaAnswer(result, { required: text(item.status) === "succeeded" });
   const terminalEvidence = normalizeTerminalEvidence(result.terminal_evidence || result.completionEvidence);
   if (text(item.status) === "succeeded" && !terminalEvidence) {
     throw new WebQaAdapterError("webqa_unverified_completion", "taskd completed WebQA task without completionEvidence.v1");
@@ -207,8 +207,8 @@ export function normalizeTaskdWebQaSnapshot(value, { clientTaskName } = {}) {
   if (!taskId) throw new WebQaAdapterError("webqa_invalid_response", "taskd task response lacks client_task_name");
   const raw = answer?.rawSnapshot && typeof answer.rawSnapshot === "object" && !Array.isArray(answer.rawSnapshot)
     ? answer.rawSnapshot
-    : result.rawSnapshot && typeof result.rawSnapshot === "object" && !Array.isArray(result.rawSnapshot)
-      ? result.rawSnapshot
+    : result.raw_snapshot && typeof result.raw_snapshot === "object" && !Array.isArray(result.raw_snapshot)
+      ? result.raw_snapshot
       : item;
   return {
     taskId,
@@ -226,7 +226,7 @@ export function normalizeTaskdWebQaSnapshot(value, { clientTaskName } = {}) {
     providerConversationId: text(result.provider_conversation_id || checkpoint.provider_conversation_id),
     providerUrl: text(result.provider_url || checkpoint.provider_url),
     error: text(item.error_message || result.error || checkpoint.error),
-    cancelRequested: text(item.status) === "cancel_requested",
+    interruptRequested: text(item.status) === "interrupt_requested",
     events: [],
     updatedAt: text(result.updated_at || checkpoint.updated_at || item.updated_at),
     raw,
@@ -252,6 +252,27 @@ function normalizeWebQaAnswer(value, { required = true } = {}) {
     citations: value.citations,
     sources: value.sources,
     rawSnapshot: value.rawSnapshot,
+  };
+}
+
+function normalizeTaskdWebQaAnswer(value, { required = true } = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    if (!required) return null;
+    throw new WebQaAdapterError("webqa_invalid_response", "WebQA completed task lacks result Markdown");
+  }
+  if (typeof value.markdown !== "string") {
+    if (!required) return null;
+    throw new WebQaAdapterError("webqa_invalid_response", "WebQA completed task lacks result.markdown");
+  }
+  if (!Array.isArray(value.citations) || !Array.isArray(value.sources) || !value.raw_snapshot || typeof value.raw_snapshot !== "object" || Array.isArray(value.raw_snapshot)) {
+    throw new WebQaAdapterError("webqa_invalid_response", "WebQA task result must preserve citations, sources and raw_snapshot");
+  }
+  return {
+    formatVersion: "webqa.answer.v1",
+    content: { markdown: value.markdown },
+    citations: value.citations,
+    sources: value.sources,
+    rawSnapshot: value.raw_snapshot,
   };
 }
 
@@ -350,7 +371,7 @@ export async function runWebQaJob(job, owner, {
       providerConversationId: snapshot?.providerConversationId || extra.providerConversationId || externalFromProgress?.providerConversationId || "",
       answer: snapshot?.answer || externalFromProgress?.answer || null,
       answerLength: answerMarkdown(snapshot?.answer).length,
-      cancelRequested: snapshot?.cancelRequested === true,
+      interruptRequested: snapshot?.interruptRequested === true,
       lastEventAt: snapshot?.updatedAt || extra.lastEventAt || "",
       ...(extra.submittedAt ? { submittedAt: extra.submittedAt } : {}),
       ...(extra.recovered ? { recovered: true } : {}),
@@ -462,33 +483,33 @@ export async function runWebQaJob(job, owner, {
         await failRun(runtimePost, job, owner, stableGatewayError(latest.error, "webqa_provider_failed"), latest.error || "WebQA provider failed", terminalMetadataFor(latest, request, externalTaskId));
         return { taskId: externalTaskId, snapshot: latest };
       }
-      if (latest.status === "cancelled") {
-        await failRun(runtimePost, job, owner, "webqa_cancelled", latest.error || "WebQA task was cancelled", terminalMetadataFor(latest, request, externalTaskId));
+      if (latest.status === "interrupted") {
+        await failRun(runtimePost, job, owner, "webqa_interrupted", latest.error || "WebQA task was interrupted", terminalMetadataFor(latest, request, externalTaskId));
         return { taskId: externalTaskId, snapshot: latest };
       }
       await sleep(normalizedConfig.pollIntervalMs);
     }
 
     // A bounded waiter timeout is visible and recoverable. Request provider
-    // cancellation, then give the gateway a short grace window to confirm it.
+    // interruption, then give the gateway a short grace window to confirm it.
     try {
-      const response = await client.cancel(externalTaskId);
+      const response = await client.interrupt(externalTaskId);
       latest = isTaskd
         ? normalizeTaskdWebQaSnapshot(response, { clientTaskName: externalTaskId })
         : normalizeWebQaSnapshot(response);
       await persistProgress(latest);
     } catch (error) {
-      throw asWebQaError(error, "webqa_cancel_failed");
+      throw asWebQaError(error, "webqa_interrupt_failed");
     }
-    const cancelDeadline = now() + normalizedConfig.cancelGraceMs;
-    while (now() <= cancelDeadline) {
+    const interruptDeadline = now() + normalizedConfig.cancelGraceMs;
+    while (now() <= interruptDeadline) {
       if (latest.status === "succeeded") {
-        // The provider completed while cancellation was being requested; do
+        // The provider completed while interruption was being requested; do
         // not discard a terminal answer.
         return await completeFromSnapshot({ latest, request, externalTaskId, job, owner, runtimePost, persistProgress, onCompleted });
       }
-      if (latest.status === "cancelled") {
-        await failRun(runtimePost, job, owner, "webqa_cancelled", latest.error || "WebQA task was cancelled after timeout", terminalMetadataFor(latest, request, externalTaskId));
+      if (latest.status === "interrupted") {
+        await failRun(runtimePost, job, owner, "webqa_interrupted", latest.error || "WebQA task was interrupted after timeout", terminalMetadataFor(latest, request, externalTaskId));
         return { taskId: externalTaskId, snapshot: latest };
       }
       await sleep(normalizedConfig.pollIntervalMs);
@@ -498,7 +519,7 @@ export async function runWebQaJob(job, owner, {
         : normalizeWebQaSnapshot(response);
       await persistProgress(latest);
     }
-    throw new WebQaAdapterError("webqa_cancel_timeout", `WebQA cancellation did not reach a terminal state: ${latest.status}`);
+    throw new WebQaAdapterError("webqa_interrupt_timeout", `WebQA interruption did not reach a terminal state: ${latest.status}`);
   } catch (error) {
     const normalized = asWebQaError(error, "webqa_provider_failed");
     if (normalized.code === "webqa_lease_lost") throw normalized;
@@ -676,7 +697,7 @@ function terminalMetadataFor(snapshot, request, taskId) {
     providerUrl: snapshot.providerUrl,
     mode: snapshot.mode || request.mode,
     reasoningEffort: snapshot.reasoningEffort || request.reasoning_effort,
-    cancelRequested: snapshot.cancelRequested,
+    interruptRequested: snapshot.interruptRequested,
     completionEvidence: snapshot.terminalEvidence,
     events: snapshot.events,
     updatedAt: snapshot.updatedAt,
@@ -700,8 +721,8 @@ function mapTaskdStatus(taskdStatus, gatewayStatus) {
   const gateway = text(gatewayStatus);
   if (remote === "succeeded") return "succeeded";
   if (remote === "failed") return "failed";
-  if (remote === "cancelled") return "cancelled";
-  if (remote === "cancel_requested") return "cancelling";
+  if (remote === "interrupted") return "interrupted";
+  if (remote === "interrupt_requested") return "interrupting";
   if (gateway && WEBQA_STATUSES.has(gateway)) return gateway;
   if (remote === "running" || remote === "leased") return "streaming";
   if (remote === "queued") return "queued";
