@@ -12,7 +12,7 @@ import companyProfiles from "../../../../config/eastmoney-company-em2016-profile
 const TASK_TYPE = "webqa.chatgpt.v1";
 const MODEL = "gpt-5.6-luna" as const;
 const DEFAULT_REASONING_EFFORT = "xhigh";
-const PROMPT_VERSION = "investment-analysis.taskd.v3";
+const PROMPT_VERSION = "investment-analysis.taskd.v4";
 const INVESTMENT_ANALYSIS_NAMESPACE = "research_investment_analysis";
 
 type Row = Record<string, unknown>;
