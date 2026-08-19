@@ -1,18 +1,18 @@
 # 数据表梳理与收缩评审清单
 
-> 审计时间：2026-08-19（本地 SQLite 只读快照）
+> 最近核验：2026-08-19（本地 SQLite 只读快照；`PRAGMA user_version=129`）
 >
-> 目标：按用户可见页面与后台功能说明每张**当前存在**的数据表的职责，并给出可共同评审的保留、删除或优化方向。本文件不执行迁移，也不删除数据。
+> 目标：按用户可见页面与后台功能说明每张**当前存在**的数据表的职责，并给出可共同评审的保留、删除或优化方向。本文同时记录已实施迁移与已批准但尚未实施的删除，状态以本地 schema、迁移和当前源码为准。
 >
-> 证据：`data/local/stock-info.sqlite` 的 `sqlite_master`、`dbstat`、行数；`src/**`、`scripts/**`、`web/src/**` 的当前引用；迁移 `0119_drop_retired_local_llm_workflow_tables.sql`。`web/dist` 不作为运行时证据。
+> 证据：`data/local/stock-info.sqlite` 的 `sqlite_master`、`dbstat`、行数；`src/**`、`scripts/**`、`web/src/**` 的当前引用；迁移 `0119_drop_retired_local_llm_workflow_tables.sql`、`0120_drop_security_discovery_cache.sql`、`0121_drop_local_knowledge_content_cache.sql`。`web/dist` 不作为运行时证据。
 
 ## 先看结论
 
-- 当前本地库有 **41 张业务表**；表页合计约 **413.6 MiB**，索引约 **10 MiB**，SQLite 文件本身约 **460 MiB**（其中还会包含空闲页及 WAL 状态）。问题首先是缓存体积和生命周期，不是“研究表数量”本身。
-- `http_cache` 单表约 **350.2 MiB（约 85% 的表页）**。它是可再生 HTTP 缓存，应该优先建立按来源/用途的 TTL、大小预算和淘汰任务；不能删掉表或全量清空来代替缓存策略。
+- 当前本地库有 **37 张业务表**；表页合计约 **416.2 MiB**，索引约 **4.8 MiB**，SQLite 文件本身约 **465 MiB**（其中还会包含空闲页及 WAL 状态）。四张历史重复/发现缓存表已由 `0120`、`0121` 删除。问题首先是缓存体积和生命周期，不是“研究表数量”本身。
+- `http_cache` 单表约 **356.4 MiB（约 86% 的表页）**。它是可再生 HTTP 缓存，应该优先建立按来源/用途的 TTL、大小预算和淘汰任务；不能删掉表或全量清空来代替缓存策略。
 - `kv_cache` 约 **19.4 MiB**，已承担多个业务结果投影（公司研报、财务/投资分析、信息处理检查点）。保留该表，但要把 namespace、TTL、单键大小和清理责任写成明确契约，防止再次成为无边界通用存储。
-- `sync_jobs` 只有宏观同步和财务预告同步两个写入方，当前没有读取方或恢复逻辑；它是可合并到 `kv_cache` 的最新同步状态，不需要保留逐次运行历史。
-- 本地知识正文目前同时存在文件系统和 `knowledge_local_content_cache` / `_chunks`：本地 3,411 个缓存 key 与 3,411 个正文文件完全一一对应。文件系统已是本地 `KNOWLEDGE_CONTENT_BUCKET`，这两张 SQLite 表是应清除的历史副本。
+- `sync_jobs` 仍有宏观同步和财务预告同步两个写入方，当前没有读取方或恢复逻辑；已批准收敛到 `kv_cache`，但尚未迁移或删表。
+- 本地知识正文已只保存在 `KNOWLEDGE_CONTENT_BUCKET`（本地文件系统 / 生产 R2）。重复的 `knowledge_local_content_cache` / `_chunks` 已由 `0121` 删除。
 - 态势模块存在一条需要深入评审的重复投影：`knowledge_docs`、`situation_knowledge_imports`、`situation_evidence` 当前均为 3,835 行；每个导入均指向一个证据，证据 URL 与知识文档 URL 3,835/3,835 相同。它可能是合理的“独立证据领域模型”，也可能是双写冗余；在确认未来是否需要非知识库来源证据前，**不能直接删除** `situation_evidence`。
 - 现有 `0119` 已明确删除已退役的本地 LLM/队列账本；当前本地库已经没有这些表。新库/远端是否已应用该迁移必须作为部署核验项，不能从本地快照推断。
 
@@ -24,14 +24,27 @@
 | 优化 | 表继续保留，但要补生命周期、容量、索引或写入边界。 |
 | 评审候选 | 有可验证的重叠、仅离线脚本使用或可再生属性；先完成列出的验证，再决定迁移。 |
 | 已计划删除 | 已有迁移明确删除，且现行源码无生产者/消费者；仍需单独核验迁移覆盖。 |
+| 已实施删除 | 迁移已存在且当前本地 schema 不含该表；仍须按环境核验远端 D1。 |
+| 已批准、待实施 | 已获删除/收敛决定，但当前 schema 或源码仍依赖；不得按已删除处理。 |
 
-以下“体量”是当前本地 `dbstat` 的表页大小，不含其索引；“入口”列既包含页面，也包含只在后台/脚本中运行的功能。
+以下“体量”是最近核验时本地 `dbstat` 的表页大小，不含其索引；“入口”列既包含页面，也包含只在后台/脚本中运行的功能。
+
+## 最新 schema 状态核验
+
+| 分类 | 表 | 当前本地状态 | 依据 |
+| --- | --- | --- | --- |
+| 已实施删除 | `securities`、`security_search_prefixes` | 不存在 | `0120_drop_security_discovery_cache.sql`；`sqlite_master` 无匹配表。 |
+| 已实施删除 | `knowledge_local_content_cache`、`knowledge_local_content_cache_chunks` | 不存在 | `0121_drop_local_knowledge_content_cache.sql`；`sqlite_master` 无匹配表。 |
+| 已批准、待实施 | `sync_jobs` | 存在，716 行 / 692 KiB | 宏观与财务预告同步仍写入；尚无后续 drop migration。 |
+| 已批准、待实施 | 9 张 `research_*` 身份、权利与法定披露表 | 全部存在 | 当前源码仍有读写；尚无后续 drop migration。具体范围见第五节。 |
+| 仍是评审候选 | `knowledge_stock_aliases`、`knowledge_ingest_runs`、`situation_evidence` | 存在 | 尚未获删除决定，需先验证替代契约和恢复需求。 |
+| 保留 / 优化 | 其余 24 张当前业务表 | 存在 | 仍有明确页面/API/后台职责；按各节的容量与生命周期建议治理。 |
 
 ## 页面 / 功能到表的总览
 
 | 页面或功能 | 主要表组 |
 | --- | --- |
-| 首页、全局搜索、公司入口 | `securities`、`security_search_prefixes`（按需发现缓存），以及通用 `http_cache` / `kv_cache` |
+| 首页、全局搜索、公司入口 | 上游证券建议接口，以及通用 `http_cache` / `kv_cache`；本地 `securities` 与 `security_search_prefixes` 已删除 |
 | 公司详情、公司研报、投资分析、财务与行业研究 | `research_*` 身份/证券权利/法定披露表；`knowledge_*` 文档和结构化结果；`kv_cache` 业务结果投影 |
 | 信息整理、知识文档弹窗、公司新闻/研报文档 | 全部 `knowledge_*` 表 |
 | 宏观页 | 全部 `macro_*` 表 |
@@ -42,16 +55,16 @@
 
 | 表 | 当前数据 | 页面 / 功能 | 作用 | 评审结论 |
 | --- | ---: | --- | --- | --- |
-| `http_cache` | 2,513 行 / 350.2 MiB | 所有外部抓取与同步 | 以 `cache_key` 保存 URL、请求方法、响应状态/头/正文和过期时间，减少重复外部请求。 | **优化，P0**：保留。按调用方/来源定义 TTL 与最大体积，定期删除已过期正文并记录命中率；先统计最大 `url`/调用方，再决定是否把超大正文迁往对象存储。 |
+| `http_cache` | 2,533 行 / 356.4 MiB | 所有外部抓取与同步 | 以 `cache_key` 保存 URL、请求方法、响应状态/头/正文和过期时间，减少重复外部请求。 | **优化，P0**：保留。按调用方/来源定义 TTL 与最大体积，定期删除已过期正文并记录命中率；先统计最大 `url`/调用方，再决定是否把超大正文迁往对象存储。 |
 | `kv_cache` | 987 行 / 19.4 MiB | 公司研报、财务/投资分析、信息处理后台 | `namespace + key` 的通用业务结果投影；保存 JSON、过期时间和更新时间。 | **优化，P1**：保留。为每个 namespace 注册 owner、JSON schema、TTL、单值上限与清理任务；可承载受 TTL 约束的业务运行审计，但禁止重建 taskd 内部任务账本或写入无期限原始大文本。 |
-| `sync_jobs` | 704 行 / 680 KiB | 财务预告、宏观数据等后台同步 | 记录同步任务的状态、起止时间、错误和统计。当前只有宏观同步、财务预告同步两个写入方；未发现现行读取方、状态查询 API 或恢复逻辑。 | **可删除，迁移到 `kv_cache`**：以 `namespace=sync_state`、`key=job_type` 保存该类同步的最新 `{status,startedAt,finishedAt,error,stats}`，固定 key 覆盖更新，不保留无消费方的逐次运行历史。 |
+| `sync_jobs` | 716 行 / 692 KiB | 财务预告、宏观数据等后台同步 | 记录同步任务的状态、起止时间、错误和统计。当前只有宏观同步、财务预告同步两个写入方；未发现现行读取方、状态查询 API 或恢复逻辑。 | **已批准、待实施**：计划以 `namespace=sync_state`、`key=job_type` 保存最新 `{status,startedAt,finishedAt,error,stats}`，固定 key 覆盖更新；当前迁移和代码改造尚未提交，故表仍存在且运行时继续写入。 |
 
 ## 二、证券身份与搜索
 
 | 表 | 当前数据 | 页面 / 功能 | 作用 | 评审结论 |
 | --- | ---: | --- | --- | --- |
-| `securities` | 183 行 / 16 KiB | 首页搜索、公司页、财务页、研究页 | 已发现证券的 write-through 缓存：市场、类型、名称、币种、交易所和来源。搜索会同时请求东财建议接口并缓存远端结果；按代码直取仅在本地未命中时远端查询后写回，K 线加载也会写入。 | **可删除（已确定候选）**：它不是全量证券主数据。当前仍有搜索、代码解析、K 线和投资分析读写，故本轮仅标记，不能直接执行 `DROP TABLE`；实施时改为远端发现或由调用方携带身份资料，并移除全部读写。 |
-| `security_search_prefixes` | 3,100 行 / 88 KiB | 首页和顶部证券搜索 | 为 `securities` 当前已缓存的代码/名称预计算前缀候选与优先级；远端建议接口补足未缓存标的。 | **可删除（随 `securities` 一起）**：这是发现缓存的派生索引。当前本地优先搜索 SQL 依赖它；删除实施必须先替换该查询，不能单独删表。 |
+| `securities` | 已删除 | 首页搜索、公司页、财务页、研究页 | 曾是已发现证券的非权威 write-through 缓存。 | **已实施删除**：`0120_drop_security_discovery_cache.sql` 已删除该表；运行时已改为使用上游建议接口，当前 `sqlite_master` 无此表。 |
+| `security_search_prefixes` | 已删除 | 首页和顶部证券搜索 | 曾为 `securities` 预计算前缀候选与优先级的派生索引。 | **已实施删除**：随 `securities` 由 `0120` 删除；当前 `sqlite_master` 无此表。 |
 
 ## 三、知识文档与信息整理
 
@@ -89,10 +102,10 @@
 | --- | ---: | --- | --- | --- |
 | `macro_series` | 25 行 / 12 KiB | `macro.html` | 宏观指标目录、地区/频率/单位、来源、传导关系和启用状态。 | **保留**：宏观模块配置主表。 |
 | `macro_series_history` | 20 行 / 1.9 MiB | `macro.html` 的修订/历史视图 | 每个指标的版本化观测历史 JSON。 | **优化，P2**：保留历史语义，但 20 行占 1.9 MiB；定义每指标最大 vintage 数和压缩/归档策略，防止单 JSON 行无界增长。 |
-| `macro_events` | 253 行 / 64 KiB | `macro.html` 日历 | 宏观事件的时间、地区、重要性、预期/实际/前值和来源。 | **保留**。 |
+| `macro_events` | 303 行 / 76 KiB | `macro.html` 日历 | 宏观事件的时间、地区、重要性、预期/实际/前值和来源。 | **保留**。 |
 | `macro_source_health` | 9 行 / 4 KiB | `macro.html` 状态、后台同步 | 数据源探测结果、连续失败与下次重试。 | **保留**：运行状态，不应被当作历史事件表。 |
 | `macro_user_watch_configs` | 1 行 / 4 KiB | `macro.html` 自选/告警设置 | 用户/owner 对指标的关注、排序、告警与展示偏好。 | **保留**：用户配置。 |
-| `macro_alert_history` | 3 行 / 4 KiB | `macro.html` 告警历史 | 已计算告警、阈值、通知状态和来源。 | **保留，优化**：定义告警审计保留期，避免与 watch 配置混在一起无限累积。 |
+| `macro_alert_history` | 4 行 / 4 KiB | `macro.html` 告警历史 | 已计算告警、阈值、通知状态和来源。 | **保留，优化**：定义告警审计保留期，避免与 watch 配置混在一起无限累积。 |
 
 ## 五、公司研究身份、权利与法定披露
 

@@ -87,6 +87,20 @@ function metricCard(label: string, value: string, note = '') {
   ])
 }
 
+function automaticStrategyName(code: string, legs: StrategyLeg[]): string {
+  const underlyingCode = code.trim().toUpperCase() || '未命名标的'
+  if (legs.length === 0) return `${underlyingCode} 期权组合`
+  const legNames = legs.map((leg) => [
+    leg.side === 'buy' ? '买' : '卖',
+    leg.type === 'call' ? 'Call' : 'Put',
+    formatNumber(leg.strike),
+    `权利金${formatNumber(leg.premium, 4)}`,
+    leg.expiration,
+    `${leg.quantity}张×${leg.multiplier}`,
+  ].join(' '))
+  return `${underlyingCode} · ${legNames.join(' + ')}`
+}
+
 function payoffChartStrategies(current: PayoffChartStrategy, history: Strategy[], code: string): PayoffChartStrategy[] {
   const normalizedCode = code.trim().toUpperCase()
   if (!normalizedCode) return current.legs.length ? [current] : []
@@ -124,7 +138,7 @@ const OptionStrategyPage = defineComponent({
 
     const spot = computed(() => number(underlying.value.spot))
     const metrics = computed(() => calculateStrategyMetrics(legs.value, spot.value))
-    const strategyTitle = computed(() => strategyName.value.trim() || `${underlying.value.code || '未命名标的'} 期权组合`)
+    const strategyTitle = computed(() => strategyName.value.trim() || automaticStrategyName(underlying.value.code, legs.value))
     const chartStrategies = computed(() => payoffChartStrategies({ id: 'current', name: `${strategyTitle.value}（当前）`, legs: legs.value }, history.value, underlying.value.code))
     const chartableStrategies = computed(() => chartStrategies.value.filter((strategy) => strategyEntryCapital(strategy.legs) > 0))
     const excludedChartStrategies = computed(() => chartStrategies.value.length - chartableStrategies.value.length)
@@ -439,7 +453,7 @@ const OptionStrategyPage = defineComponent({
             h('span', { class: 'small text-muted' }, '当前组合 + 最近 10 个同标的历史组合'),
           ]),
           h('div', { id: 'optionStrategyPayoffChart', style: 'height: 420px; min-width: 300px;' }),
-          h('p', { class: 'small text-muted mb-0' }, '纵轴为到期损益 ÷ 1.00 亿：每个组合按净权利金支出等比例放大到 1.00 亿，币种与标的交易币种相同。'),
+          h('p', { class: 'small text-muted mb-0' }, '纵轴为到期损益 ÷ 1.00 亿：按每个组合的净权利金支出，以原有各腿比例重复买入完整组合，最多使用 1.00 亿资金；余额按现金、收益率为 0 处理，币种与标的交易币种相同。'),
           chartStrategies.value.length === 0 ? h('p', { class: 'small text-muted mt-2 mb-0' }, '加入至少一条期权腿后显示到期收益率曲线。') : null,
           excludedChartStrategies.value > 0 ? h('p', { class: 'small text-warning mt-2 mb-0' }, `${excludedChartStrategies.value} 个净收权利金或零成本组合未纳入图表；该类策略需要保证金口径，不能按“投入 1.00 亿”直接计算收益率。`) : null,
         ]),

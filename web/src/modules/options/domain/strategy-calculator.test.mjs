@@ -33,11 +33,11 @@ test('short put has signed time income and bounded expiry payoff', () => {
   assert.equal(strategyReturnRateAtExpiry(legs, 90), null)
 })
 
-test('debit strategy return rate scales each complete package to the same capital', () => {
+test('debit strategy return rate buys complete packages within the fixed capital', () => {
   const legs = [
     { id: '1', side: 'buy', type: 'call', strike: 100, expiration: '2026-09-18', premium: 10, quantity: 1, multiplier: 100 },
     { id: '2', side: 'sell', type: 'call', strike: 110, expiration: '2026-09-18', premium: 4, quantity: 1, multiplier: 100 },
   ]
   assert.equal(strategyEntryCapital(legs), 600)
-  assert.ok(Math.abs(strategyReturnRateAtExpiry(legs, 120) - 66.66666666666666) < 0.000001)
+  assert.ok(Math.abs(strategyReturnRateAtExpiry(legs, 120) - 66.6664) < 0.000001)
 })

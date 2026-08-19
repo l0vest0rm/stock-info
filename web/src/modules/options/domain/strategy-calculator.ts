@@ -1,6 +1,8 @@
 export type OptionSide = 'buy' | 'sell'
 export type OptionType = 'call' | 'put'
 
+export const STRATEGY_CHART_CAPITAL = 100_000_000
+
 export type StrategyLeg = {
   id: string
   side: OptionSide
@@ -54,9 +56,8 @@ export function strategyPayoffAtExpiry(legs: StrategyLeg[], price: number): numb
 }
 
 /**
- * Cash paid to open one complete strategy package.  Each leg's quantity and
- * multiplier stay in their stated ratio, so this is also the denominator for
- * scaling a debit strategy to a fixed investment amount.
+ * Cash paid to open one complete strategy package. Each leg's quantity and
+ * multiplier stay in their stated ratio.
  */
 export function strategyEntryCapital(legs: StrategyLeg[]): number {
   return legs
@@ -65,13 +66,14 @@ export function strategyEntryCapital(legs: StrategyLeg[]): number {
 }
 
 /**
- * Percentage return at expiry when the complete strategy is proportionally
- * scaled to a fixed amount of entry capital.  The fixed amount (for example,
- * 100 million) cancels out, so the result is independent of its currency.
+ * Percentage return at expiry after buying as many complete strategy packages
+ * as a fixed capital amount permits. Any residual cash is assumed to earn no
+ * return, which keeps the denominator at the full 100 million investment.
  */
-export function strategyReturnRateAtExpiry(legs: StrategyLeg[], price: number): number | null {
+export function strategyReturnRateAtExpiry(legs: StrategyLeg[], price: number, capital = STRATEGY_CHART_CAPITAL): number | null {
   const entryCapital = strategyEntryCapital(legs)
-  return entryCapital > 0 ? strategyPayoffAtExpiry(legs, price) / entryCapital * 100 : null
+  const packageCount = entryCapital > 0 && capital > 0 ? Math.floor(capital / entryCapital) : 0
+  return packageCount > 0 ? strategyPayoffAtExpiry(legs, price) * packageCount / capital * 100 : null
 }
 
 export function calculateStrategyMetrics(legs: StrategyLeg[], spot: number, now = new Date()): StrategyMetrics {
