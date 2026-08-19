@@ -155,9 +155,7 @@ export class LocalAssets {
       return new Response(content, { headers: { "content-type": contentType(path) } });
     } catch (error) {
       if (!isNotFound(error)) throw error;
-      const index = join(this.root, "index.html");
-      const content = await readFile(index);
-      return new Response(content, { headers: { "content-type": "text/html; charset=utf-8" } });
+      return new Response("not found", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
     }
   }
 }

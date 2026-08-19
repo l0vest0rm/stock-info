@@ -51,7 +51,6 @@ import { loadResearchFinancialProfile } from "../application/research-financial-
 import { insertResearchGovernance, loadResearchGovernance } from "../application/research-governance";
 import { loadFinancialStatutoryVerifications } from "../application/financial-statutory-verification";
 import {
-  loadResearchIndustryProfiles,
   loadResearchCompanyIndustryExposures,
   loadResearchPeerUniverses,
 } from "../application/research-industry-profile";
@@ -60,7 +59,6 @@ import {
   insertResearchIndustryTrackProfile,
   insertResearchPeerComparisonSet,
   loadResearchCompanyTrackExposures,
-  loadResearchIndustryTrackProfiles,
   loadResearchPeerComparisonSets,
 } from "../application/research-industry-comparability";
 import {
@@ -1896,35 +1894,6 @@ researchRoutes.post("/research/company/:code/operating-driver-plans/:operatingDr
     const bindings = await loadResearchIndustryKpiDriverBindings(c.env.DB, code, plan.operatingDriverPlanId);
     return ok(c, projectIndustryKpiDriverTransmission(plan, bindings, body.valuation as Parameters<typeof projectIndustryKpiDriverTransmission>[2]));
   } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.get("/research/industry", async (c) => {
-  const industry = String(c.req.query("industry") ?? "").trim();
-  if (!industry || industry.length > 80) return fail(c, 400, "industry is required");
-  const now = Date.now();
-  const repository = new D1SituationRepository(c.env.DB);
-  const [impacts, snapshot, sources, macroEvents, profile, typedProfiles] = await Promise.all([
-    repository.listImpacts({ asOf: now, targetType: "industry", targetIds: [industry] }),
-    repository.latestSnapshot("industry", industry, now),
-    repository.listSources(),
-    c.env.DB.prepare("select event_id as eventId, title, scheduled_at as scheduledAt, importance, source_url as sourceUrl from macro_events where scheduled_at>=? order by scheduled_at asc limit 12").bind(now).all(),
-    loadResearchIndustryProfiles(c.env.DB, { industryKey: industry, asOf: now }),
-    loadResearchIndustryTrackProfiles(c.env.DB, { industryKey: industry, asOf: now }),
-  ]);
-  const events = (await Promise.all(impacts.filter((item) => item.eventId).map((item) => repository.getEvent(item.eventId!, now)))).filter(Boolean);
-  const evidence = events.flatMap((event) => event!.evidence.map((item) => ({ evidenceId: item.evidenceId, title: item.title, url: item.url, publishedAt: item.publishedAt, sourceId: item.sourceId, grade: item.evidenceGrade, eventStatus: event!.status })));
-  const support = impacts.filter((item) => item.direction === "support").length;
-  const pressure = impacts.filter((item) => item.direction === "pressure").length;
-  return ok(c, {
-    generatedAt: now, industry, profile, typedProfiles, snapshot, impacts, evidence: evidence.slice(0, 30),
-    assessment: {
-      state: !snapshot && evidence.length === 0 ? "资料待补" : evidence.some((item) => item.grade === "conflicting") || pressure > support ? "证伪复核" : "持续研究",
-      summary: !snapshot && evidence.length === 0 ? "当前没有可审计的行业快照或精确关联证据。" : `支持影响 ${support} 条，压力影响 ${pressure} 条；行业结论以证据和快照为准。`,
-      nextSteps: ["补齐行业到公司的暴露映射。", "核对真实中观数据、行业资金流与原始出处。", "将冲突证据保留在档案中，不以摘要覆盖。"],
-    },
-    sources: sources.map((item) => ({ sourceId: item.sourceId, name: item.name, state: item.state, lastSuccessAt: item.lastSuccessAt, lastError: item.lastError })),
-    upcomingMacroEvents: macroEvents.results ?? [],
-  });
 });
 
 researchRoutes.post("/research/industry/tracks", async (c) => {

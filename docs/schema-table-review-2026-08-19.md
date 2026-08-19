@@ -95,7 +95,7 @@
 
 ## 五、公司研究身份、权利与法定披露
 
-这些表共同服务 `company-research.html`、`company-finance.html`、`investment-analysis.html`、`industry-research.html` 和研究 API。虽然当前行数小，但它们描述的是不同层次的事实，不能以“现在数据少”作为删除依据。
+这些表共同服务 `company-research.html`、`company-finance.html`、`investment-analysis.html` 和研究 API。虽然当前行数小，但它们描述的是不同层次的事实，不能以“现在数据少”作为删除依据。
 
 | 表 | 当前数据 | 页面 / 功能 | 作用 | 评审结论 |
 | --- | ---: | --- | --- | --- |

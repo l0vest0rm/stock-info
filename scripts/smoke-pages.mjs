@@ -20,7 +20,6 @@ const klineRegressions = [
 
 const stockPages = [
   "company.html",
-  "company-research.html",
   "company-trade.html",
   "company-finance.html",
   "company-holders.html",
@@ -55,68 +54,6 @@ await check("situation pages and API schemas", async () => {
     assert(html.includes(rootId), `${pageName} root is missing`);
     assert(html.includes(bundle), `${pageName} bundle is missing`);
   }
-  const companyResearchBundle = await (await fetchWithTimeout(`${baseUrl}/js/company-research-page.js`)).text();
-  assert(companyResearchBundle.includes("data-financial-statement-sources"), "company research does not distinguish financial origin from cache delivery");
-  assert(companyResearchBundle.includes("交易币种"), "company research does not expose security trading currency separately from company reporting currency");
-  assert(companyResearchBundle.includes("字段化行业与同行工作台"), "company research does not expose the typed industry workflow");
-  assert(companyResearchBundle.includes("经营模型、驱动树与市场空间工作台"), "company research does not expose the typed operating-model workflow");
-  assert(companyResearchBundle.includes("风险压力、复核与公共快照工作台"), "company research does not expose the risk review workflow");
-  assert(companyResearchBundle.includes("来源结果 → 精确复核队列"), "company research does not expose the source-bound formal/event impact review workflow");
-  assert(companyResearchBundle.includes("记录最终处置"), "company research does not expose local thesis/risk impact disposition controls");
-  assert(companyResearchBundle.includes("原命题或风险及既有快照均未被改写"), "company research does not disclose immutable impact disposition boundary");
-  assert(companyResearchBundle.includes("研究深度门禁"), "company research does not expose explicit basic/standard/deep gates");
-  assert(companyResearchBundle.includes("行业 KPI → 分部驱动 → 财务传导"), "company research does not expose the source-bound KPI transmission workflow");
-  assert(companyResearchBundle.includes("经营披露来源事实账本"), "company research does not expose the immutable operating-source-fact ledger");
-  assert(companyResearchBundle.includes("反向估值、敏感性和每股价值须由完整经营模型"), "company research does not disclose the reverse-valuation evidence boundary");
-  assert(companyResearchBundle.includes("主估值原型与辅助相对估值工作台"), "company research does not expose the source-bound relative-valuation workbench");
-  assert(companyResearchBundle.includes("六项可比性门禁（全部必填）"), "company research does not require all relative-valuation comparability gates");
-  assert(companyResearchBundle.includes("data-research-cockpit"), "company research lacks the canonical overview DOM contract");
-  assert(companyResearchBundle.includes("data-research-layer-map"), "company research lacks the explicit four-layer navigation map");
-  assert(companyResearchBundle.includes("市场与上市结构层"), "company research does not distinguish the current security from the operating company");
-  assert(companyResearchBundle.includes("data-research-core-results"), "company research lacks the framework-aligned core results overview");
-  assert(companyResearchBundle.includes("data-research-forecast-summary"), "company research routes the forecast reading card only into a hidden workbench");
-  assert(companyResearchBundle.includes("research-competition"), "company research lacks a visible industry/competition reading anchor");
-  assert(companyResearchBundle.includes("research-market"), "company research lacks a visible market-status reading anchor");
-  assert(companyResearchBundle.includes("research-evidence"), "company research lacks a visible source-evidence reading anchor");
-  assert(companyResearchBundle.includes("来源预测、来源情景、确定性汇总、校准和估值版本均由已保存输入自动生成或自动阻断"), "company research does not expose the persisted calibration boundary");
-  assert(companyResearchBundle.includes("区分已发生、管理层指引和外部预期，并标明影响的假设。"), "company research does not visibly distinguish management guidance from external expectations");
-  assert(companyResearchBundle.includes("正式财务覆盖："), "company research does not surface the formal-financial coverage boundary");
-  assert(companyResearchBundle.includes("data-statutory-revision-candidate"), "company research does not expose a stable statutory-revision candidate audit contract");
-  assert(companyResearchBundle.includes("被修订原始文件 ID"), "company research does not display the reviewed restatement's original filing reference");
-  assert(companyResearchBundle.includes("未创建正式实际、校准或估值"), "company research does not explain the 409 restatement-verification no-write boundary");
-  assert(companyResearchBundle.includes("本地服务返回非 JSON 响应"), "company research leaks raw parser failures from a statutory-restatement verification response");
-  assert(companyResearchBundle.includes("data-research-anchor"), "company research lacks stable research-section DOM anchors");
-  assert(companyResearchBundle.includes("data-research-workbench"), "company research does not separate local write workbenches from the reading flow");
-  assert(companyResearchBundle.includes('"dossier-records"'), "company research does not place dossier writes in a dedicated collapsed workbench");
-  assert(companyResearchBundle.includes('"governance-capital-facts"'), "company research exposes governance-candidate writes outside a dedicated local workbench");
-  assert(companyResearchBundle.includes('"statutory-disclosure-index"'), "company research does not isolate statutory-index refresh writes in a local workbench");
-  assert(companyResearchBundle.includes('"sec-statutory-verification"'), "company research does not isolate SEC verification writes in a local workbench");
-  assert(companyResearchBundle.includes('"company-focus-profile"'), "company research does not mark focus-profile writes as a local workbench");
-  assert(!companyResearchBundle.includes('"新增个人笔记"'), "company research still exposes personal-note creation directly in the reading flow");
-  assert(companyResearchBundle.includes('"financial-entity-profile"'), "company research does not isolate financial-entity profile writes in a local workbench");
-  assert(companyResearchBundle.includes('"financial-specialty-metrics"'), "company research does not isolate financial-specialty fact writes in a local workbench");
-  assert(companyResearchBundle.includes("data-us-financial-period-equivalence-workbench"),
-    "company research does not expose the local-only Yahoo-to-SEC period-equivalence workbench");
-  assert(companyResearchBundle.includes("Yahoo—SEC 非自然财年报告期等价映射"),
-    "company research does not label the audited non-calendar Yahoo-to-SEC mapping boundary");
-  assert(companyResearchBundle.includes('"public-research-snapshot"'), "company research does not keep public snapshot writes in a dedicated local workbench");
-  assert(companyResearchBundle.includes("本地研究工作台：冻结公共研究快照"), "company research does not label the default-collapsed public snapshot write workbench");
-  assert(companyResearchBundle.includes("data-public-research-snapshots"), "company research does not retain the visible read-only public snapshot history contract");
-  assert(companyResearchBundle.includes("data-owner-holding-snapshot-references"),
-    "company research does not expose the private owner-holding to public-snapshot reference boundary");
-  assert(companyResearchBundle.includes('"owner-holding-snapshot-references"'),
-    "owner holding snapshot writes are not isolated in a default-collapsed local workbench");
-  assert(companyResearchBundle.includes("系统行动候选不被当作个人交易计划"),
-    "company research does not disclose that system candidates are not a substitute for a user trade-plan model");
-  assert(companyResearchBundle.includes("data-research-review-queue"), "company research does not provide the progressive-disclosure review queue contract");
-  assert(companyResearchBundle.includes("data-research-review-action"), "company research review queue cannot route an item to its read-only research section");
-  assert(companyResearchBundle.includes("本次读取"), "company research labels read time as a false global data cutoff");
-  assert(companyResearchBundle.includes("data-research-hero-scope"), "company research hero does not expose the primary-track and valuation-gate state");
-  assert(companyResearchBundle.includes("波动率和流动性：当前读模型未接入"), "company research market card overstates unavailable volatility or liquidity coverage");
-  assert(companyResearchBundle.includes("上游阻断"), "company research does not make blocked review evidence visible");
-  assert(companyResearchBundle.includes("focus-profile"), "company research cannot deep-link a public focus profile");
-  assert(!companyResearchBundle.includes("研究工作流"), "company research still renders a duplicate workflow blocker summary");
-
   const today = await fetchApi("/api/situations/today");
   assert(today.data && typeof today.data === "object", "situation today payload is missing");
   const status = await fetchApi("/api/situations/status");
@@ -213,10 +150,8 @@ await check("company report counts", async () => {
   );
 });
 
-await check("research workbench pages and API schemas", async () => {
+await check("research APIs and workbench pages", async () => {
   const pages = [
-    ["company-research.html?code=300750.SZ", "company-research-vue-root", "js/company-research-page.js"],
-    ["industry-research.html?industry=%E9%80%9A%E4%BF%A1%E8%AE%BE%E5%A4%87", "industry-research-vue-root", "js/industry-research-page.js"],
     ["fund-compare.html", "fund-compare-vue-root", "js/fund-compare-page.js"],
   ];
   for (const [pageName, rootId, bundle] of pages) {
@@ -226,6 +161,10 @@ await check("research workbench pages and API schemas", async () => {
     assert(html.includes(rootId), `${pageName} root is missing`);
     assert(html.includes(bundle), `${pageName} bundle is missing`);
   }
+  const removedIndustryPage = await fetchWithTimeout(`${baseUrl}/industry-research.html`);
+  assert(removedIndustryPage.status === 404, `removed industry research page status=${removedIndustryPage.status}`);
+  const removedIndustryApi = await fetchWithTimeout(`${baseUrl}/api/research/industry?industry=${encodeURIComponent("通信设备")}`);
+  assert(removedIndustryApi.status === 404, `removed industry research API status=${removedIndustryApi.status}`);
   const company = await fetchApi("/api/research/company/300750.SZ");
   assert(Array.isArray(company.data?.decision?.gates) && company.data.decision.gates.length === 4, "company research gates are incomplete");
   assert(Array.isArray(company.data?.evidence), "company research evidence is invalid");
@@ -316,8 +255,6 @@ await check("research workbench pages and API schemas", async () => {
         `forecast consolidation audit members are incomplete: ${code}`);
     }
   }
-  const industry = await fetchApi(`/api/research/industry?industry=${encodeURIComponent("通信设备")}`);
-  assert(typeof industry.data?.assessment?.state === "string", "industry research assessment is missing");
   const funds = await fetchApi("/api/fund/compare?codes=513100.OF,510300.OF");
   assert(Array.isArray(funds.data?.rows) && funds.data.rows.length === 2, "fund comparison rows are incomplete");
 });
@@ -336,29 +273,19 @@ await check("frozen representative research acceptance package", async () => {
   assert(Object.values(representativeAcceptance.sharedAssertions?.prohibitedOutputs || {}).every(Boolean),
     "representative acceptance lacks depth-level prohibited conclusions");
 
-  const pageBundle = await (await fetchWithTimeout(`${baseUrl}/js/company-research-page.js`)).text();
-  for (const marker of representativeAcceptance.sharedAssertions.requiredBundleMarkers || []) {
-    assert(pageBundle.includes(marker), `company research bundle lacks representative page marker: ${marker}`);
-  }
   for (const sampleCase of representativeAcceptance.cases) {
     const records = await Promise.all(sampleCase.securities.map(async (security) => ({
       security,
-      page: await fetchWithTimeout(pageUrl("company-research.html", security.code)),
       research: await fetchApi(`/api/research/company/${encodeURIComponent(security.code)}`),
     })));
     const observedBoundaryConclusions = new Set();
-    for (const { security, page, research } of records) {
-      const pageHtml = await page.text();
+    for (const { security, research } of records) {
       const data = research.data;
       const identity = data?.identity;
       const listedSecurity = identity?.listedSecurity;
       const financials = data?.financials;
       const sourceHealth = new Map((data?.dataRequirementCoverage?.sourceHealth || []).map((item) => [item.sourceId, item.status]));
       const depths = new Map((data?.researchDepth?.levels || []).map((item) => [item.depth, item]));
-      assert(page.status < 400, `${sampleCase.label} ${security.code} research page status=${page.status}`);
-      for (const marker of representativeAcceptance.sharedAssertions.pageShellMarkers || []) {
-        assert(pageHtml.includes(marker), `${sampleCase.label} ${security.code} research page entry lacks ${marker}`);
-      }
       assert(listedSecurity?.code === security.code && listedSecurity?.market === security.market,
         `${sampleCase.label} ${security.code} market identity is incorrect`);
       assert(listedSecurity?.instrumentKind === security.instrumentKind && listedSecurity?.mappingStatus === security.mappingStatus,

@@ -4,9 +4,7 @@
   "purpose": "冻结当前代表性证券的边界验收契约。它证明 API、来源状态和研究页面能诚实呈现已知资料与阻断；不把任一案例称为标准或深度研究完成。",
   "changeControl": "当来源、映射或研究深度真实变化时，必须连同对应证据和本文件更新；不得仅放宽断言或把缺失默认成通过。",
   "sharedAssertions": {
-    "pageShellMarkers": ["company-research-vue-root", "js/company-research-page.js"],
     "requiredDepthRuleVersion": "research-depth.v1",
-    "requiredBundleMarkers": ["研究深度门禁", "不得输出：", "事实需求、来源健康与研究缺口", "不计算完成率"],
     "prohibitedOutputs": {
       "basic": "完整价值区间、确定性竞争优势或长期盈利结论。",
       "standard": "缺少关键股本、现金流或市场边界时的精确目标价。",
