@@ -55,8 +55,8 @@ export async function extractResearchAutoFilingInsights(env: Bindings, securityC
     return { securityCode: code, documentId: source.documentId, sourceUrl: source.documentUrl, promptVersion: config.version,
       model: cached?.model ?? config.model, processedAt: cached?.processedAt ?? now, items: Number(cached?.count), materialized, version, guidance, scenarios, cached: true };
   }
-  const content = await filingContent(env.DB, source.documentUrl);
-  if (!content) throw new Error("indexed statutory disclosure has not been imported to the local knowledge content cache");
+  const content = await filingContent(env, source.documentUrl);
+  if (!content) throw new Error("indexed statutory disclosure content is unavailable from the knowledge content bucket");
   const response = await requestLocalDirectLlmText(env, {
     model: config.model,
     maxTokens: config.maxOutputTokens,
@@ -1674,15 +1674,12 @@ export async function loadResearchAutoForecastInputGate(db: D1Database, security
   }
 }
 
-async function filingContent(db: D1Database, sourceUrl: string): Promise<string> {
-  const ref = await db.prepare(`select content.content_key as contentKey from knowledge_docs doc
+async function filingContent(env: Pick<Bindings, "DB" | "KNOWLEDGE_CONTENT_BUCKET">, sourceUrl: string): Promise<string> {
+  const ref = await env.DB.prepare(`select content.content_key as contentKey from knowledge_docs doc
       join knowledge_doc_content_refs content on content.doc_id=doc.doc_id where doc.url=? order by doc.updated_at desc limit 1`).bind(sourceUrl).first<{ contentKey: string }>();
   if (!ref?.contentKey) return "";
-  const chunks = await db.prepare("select payload_base64 as payloadBase64 from knowledge_local_content_cache_chunks where content_key=? order by chunk_index")
-    .bind(ref.contentKey).all<{ payloadBase64: string }>();
-  if (!chunks.results.length) return "";
-  const raw = atob(chunks.results.map((row) => row.payloadBase64).join(""));
-  return new TextDecoder().decode(Uint8Array.from(raw, (value) => value.charCodeAt(0))).slice(0, 1_800_000);
+  const object = await env.KNOWLEDGE_CONTENT_BUCKET?.get(ref.contentKey);
+  return object ? (await object.text()).slice(0, 1_800_000) : "";
 }
 
 function parse(raw: string): Extracted[] {

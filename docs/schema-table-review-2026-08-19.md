@@ -12,6 +12,7 @@
 - `http_cache` 单表约 **350.2 MiB（约 85% 的表页）**。它是可再生 HTTP 缓存，应该优先建立按来源/用途的 TTL、大小预算和淘汰任务；不能删掉表或全量清空来代替缓存策略。
 - `kv_cache` 约 **19.4 MiB**，已承担多个业务结果投影（公司研报、财务/投资分析、信息处理检查点）。保留该表，但要把 namespace、TTL、单键大小和清理责任写成明确契约，防止再次成为无边界通用存储。
 - `sync_jobs` 只有宏观同步和财务预告同步两个写入方，当前没有读取方或恢复逻辑；它是可合并到 `kv_cache` 的最新同步状态，不需要保留逐次运行历史。
+- 本地知识正文目前同时存在文件系统和 `knowledge_local_content_cache` / `_chunks`：本地 3,411 个缓存 key 与 3,411 个正文文件完全一一对应。文件系统已是本地 `KNOWLEDGE_CONTENT_BUCKET`，这两张 SQLite 表是应清除的历史副本。
 - 态势模块存在一条需要深入评审的重复投影：`knowledge_docs`、`situation_knowledge_imports`、`situation_evidence` 当前均为 3,835 行；每个导入均指向一个证据，证据 URL 与知识文档 URL 3,835/3,835 相同。它可能是合理的“独立证据领域模型”，也可能是双写冗余；在确认未来是否需要非知识库来源证据前，**不能直接删除** `situation_evidence`。
 - 现有 `0119` 已明确删除已退役的本地 LLM/队列账本；当前本地库已经没有这些表。新库/远端是否已应用该迁移必须作为部署核验项，不能从本地快照推断。
 
@@ -79,8 +80,8 @@
 
 | 表 | 当前数据 | 页面 / 功能 | 作用 | 评审结论 |
 | --- | ---: | --- | --- | --- |
-| `knowledge_local_content_cache` | 3,411 行 / 764 KiB | 本地 Node 开发导入、文档读取、信息处理 | 本地缓存内容的元信息与完整性校验。 | **保留，优化**：与 chunks 一起视为一个逻辑缓存；明确“可由内容引用重新物化”的条件和 TTL。 |
-| `knowledge_local_content_cache_chunks` | 3,411 行 / 2.7 MiB | 同上 | 按 `content_key + chunk_index` 保存 Base64 内容块，避免单行过大。 | **保留，优化**：分块不是重复表。若将来迁移为只从 R2/内容源按需读取，需先证明本地导入、离线处理和校验均可重建。 |
+| `knowledge_local_content_cache` | 已删除 | 本地导入与历史 chunk 读取路径 | 曾是 SQLite 副本的元信息与编码/哈希；同一内容的定位和校验信息已在 `knowledge_doc_content_refs`，正文在本地对象文件中。 | **已实施删除**：`0121_drop_local_knowledge_content_cache.sql` 与 chunks 同时删除。 |
+| `knowledge_local_content_cache_chunks` | 已删除 | 曾供信息处理、两处本地研究抽取 | 曾按 `content_key + chunk_index` 保存 Base64 正文。其 3,411 个 key 与本地文件系统 3,411 个文件完全一一对应。 | **已实施删除，P1 完成**：所有读取改为 `KNOWLEDGE_CONTENT_BUCKET`；导入/API 双写和启动物化均已移除，并由 `0121` 删除两表。 |
 
 ## 四、宏观页与宏观同步
 
@@ -138,8 +139,9 @@
 1. **先批准缓存治理与 `sync_jobs` 收敛：** 为 `http_cache`、`kv_cache`、`situation_signals`、`situation_snapshots`、`macro_series_history` 制定 owner、TTL、容量上限、清理任务和观测指标；同时将 `sync_jobs` 收敛为固定 key 的 `kv_cache.sync_state` 最新状态。此项可直接解决绝大部分数据库体积和一张重复表。
 2. **决定态势证据模型：** 明确是否永远需要独立于知识库的外部证据来源。若答案是否定的，设计一次迁移，把 `situation_evidence` 收敛为 `knowledge_docs` 的投影/视图契约，同时迁移 `situation_event_evidence` 的引用；若答案是肯定的，则保留两表并消除当前重复字段的双写。
 3. **实施已选删除候选：** `securities` 与 `security_search_prefixes` 是一组，先替换本地发现缓存的搜索/直取/K 线写入路径，再用同一迁移删除两表；不能以本轮标记代替代码迁移和页面/API 验证。
-4. **审计脚本专用表：** 对 `knowledge_stock_aliases`、`knowledge_ingest_runs` 的真实调用和恢复需求做一次运行级验证，再决定合并或保留期；不要用“没有页面”作为删除理由。
-5. **最后处理研究域：** 当前 9 张 `research_*` 表是身份、证券权利、法定披露和可溯源研究事实的分层，并无已证实的重复。先补当前功能的真实数据与页面验收，再基于查询和写入路径讨论收敛。
+4. **收敛本地知识正文：已完成。** 本地 `KNOWLEDGE_CONTENT_BUCKET`/文件系统已成为唯一正文源；`knowledge_local_content_cache` 与 `_chunks` 的读写、启动物化和双写已移除，并由 `0121` 删除两表。
+5. **审计脚本专用表：** 对 `knowledge_stock_aliases`、`knowledge_ingest_runs` 的真实调用和恢复需求做一次运行级验证，再决定合并或保留期；不要用“没有页面”作为删除理由。
+6. **最后处理研究域：** 当前 9 张 `research_*` 表是身份、证券权利、法定披露和可溯源研究事实的分层，并无已证实的重复。先补当前功能的真实数据与页面验收，再基于查询和写入路径讨论收敛。
 
 ## 防回归规则
 

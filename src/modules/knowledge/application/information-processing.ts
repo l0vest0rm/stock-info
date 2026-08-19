@@ -312,28 +312,7 @@ async function loadDocumentContent(env: Bindings, document: SourceDocument): Pro
   if (!document.content_key) return document.content_preview || "";
   const fromBucket = await env.KNOWLEDGE_CONTENT_BUCKET?.get(document.content_key);
   if (fromBucket) return await fromBucket.text();
-  const header = await env.DB.prepare("select content_encoding from knowledge_local_content_cache where content_key = ?")
-    .bind(document.content_key).first<{ content_encoding: string }>();
-  const chunks = await env.DB.prepare("select payload_base64 from knowledge_local_content_cache_chunks where content_key = ? order by chunk_index")
-    .bind(document.content_key).all<{ payload_base64: string }>();
-  if (!header || chunks.results.length === 0) return document.content_preview || "";
-  if (header.content_encoding !== "identity") {
-    const localBaseUrl = env.LLM_RUNTIME === "local" ? String(env.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL || "").replace(/\/$/, "") : "";
-    const urls = [
-      localBaseUrl ? `${localBaseUrl}/${document.content_key}` : "",
-      document.content_url || "",
-    ].filter((url, index, values) => Boolean(url) && values.indexOf(url) === index);
-    if (urls.length === 0) throw new Error(`unsupported local knowledge content encoding: ${header.content_encoding}`);
-    let lastStatus = 0;
-    for (const url of urls) {
-      const response = await fetch(url);
-      if (response.ok) return (await response.text()).trim();
-      lastStatus = response.status;
-    }
-    const location = localBaseUrl ? "local cache or source" : "source";
-    throw new Error(`knowledge document content unavailable in ${location}: ${lastStatus || "unavailable"}`);
-  }
-  return new TextDecoder().decode(base64ToBytes(chunks.results.map((row) => row.payload_base64).join("")));
+  return document.content_preview || "";
 }
 
 async function ensureVersion(db: D1Database, document: SourceDocument, contentHash: string): Promise<{ versionId: string }> {
@@ -431,7 +410,6 @@ function nullableText(value: unknown): string | null {
   return result && !/^(?:无|不详|暂无|-)$/.test(result) ? result : null;
 }
 async function digestHex(value: string): Promise<string> { const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join(""); }
-function base64ToBytes(value: string): Uint8Array { const binary = atob(value); return Uint8Array.from(binary, (char) => char.charCodeAt(0)); }
 
 function assertExpectedReturnedModel(raw: unknown): string {
   const candidate = object(raw).model;

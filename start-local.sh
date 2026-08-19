@@ -68,9 +68,6 @@ npm run build:local
 print "Applying migrations to the explicit local Node SQLite database..."
 npm run db:migrate:local
 
-print "Materializing local knowledge content files..."
-node scripts/materialize-local-knowledge-content.mjs --content-dir "$CONTENT_DIR"
-
 proxy_health_url="${HTTP_PROXY_RELAY_URL%/}/__health"
 if ! curl -fsS "$proxy_health_url" >/dev/null; then
   print -u2 "External proxy client fetch relay is unavailable: ${proxy_health_url}"

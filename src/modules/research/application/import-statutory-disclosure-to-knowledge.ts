@@ -40,7 +40,7 @@ const MAX_CONVERTED_MARKDOWN_BYTES = 2 * 1024 * 1024;
  * materialization is overwritten.
  */
 export async function importIndexedStatutoryDisclosureToKnowledge(
-  env: Pick<Bindings, "DB" | "KNOWLEDGE_REPORT_CONVERTER_URL">,
+  env: Pick<Bindings, "DB" | "KNOWLEDGE_CONTENT_BUCKET" | "KNOWLEDGE_REPORT_CONVERTER_URL">,
   securityCode: string,
   statutoryDocumentId: string,
   importedAt = Date.now(),
@@ -83,6 +83,8 @@ export async function importIndexedStatutoryDisclosureToKnowledge(
   const existing = await env.DB.prepare("select doc_id from knowledge_docs where doc_id=?")
     .bind(knowledgeDocumentId).first<{ doc_id: string }>();
   if (!existing) {
+    if (!env.KNOWLEDGE_CONTENT_BUCKET) throw new Error("knowledge content bucket is unavailable");
+    await env.KNOWLEDGE_CONTENT_BUCKET.put(contentKey, content, { httpMetadata: { contentType: "text/markdown; charset=utf-8" } });
     await insertImmutableKnowledgeDocument(env.DB, {
       disclosure, knowledgeDocumentId, contentKey, content, contentSha256, contentBytes: bytes.byteLength, importedAt,
     });
@@ -127,7 +129,6 @@ async function insertImmutableKnowledgeDocument(
     importedAt,
   });
   const fetchedAt = new Date(importedAt).toISOString();
-  const base64 = bytesToBase64(new TextEncoder().encode(content));
   const statements: D1PreparedStatement[] = [
     db.prepare(`insert into knowledge_docs (
       doc_id, source_type, report_type, source_name, title, url, published_at, fetched_at,
@@ -150,11 +151,6 @@ async function insertImmutableKnowledgeDocument(
     ) values (?, ?, '', 'text/markdown; charset=utf-8', 'identity', ?, ?, ?)
     on conflict(doc_id) do nothing`)
       .bind(knowledgeDocumentId, contentKey, contentBytes, contentSha256, importedAt),
-    db.prepare(`insert into knowledge_local_content_cache (
-      content_key, content_type, content_encoding, content_sha256, content_bytes, updated_at
-    ) values (?, 'text/markdown; charset=utf-8', 'identity', ?, ?, ?)
-    on conflict(content_key) do nothing`)
-      .bind(contentKey, contentSha256, contentBytes, importedAt),
     db.prepare("insert into knowledge_doc_tags (doc_id, tag) values (?, ?) on conflict(doc_id, tag) do nothing")
       .bind(knowledgeDocumentId, "statutory_disclosure"),
     db.prepare("insert into knowledge_doc_tags (doc_id, tag) values (?, ?) on conflict(doc_id, tag) do nothing")
@@ -162,12 +158,6 @@ async function insertImmutableKnowledgeDocument(
     db.prepare("insert into knowledge_doc_security_links (doc_id, code) values (?, ?) on conflict(doc_id, code) do nothing")
       .bind(knowledgeDocumentId, disclosure.securityCode),
   ];
-  const chunkSize = 20_000;
-  for (let index = 0; index * chunkSize < base64.length; index += 1) {
-    statements.push(db.prepare(`insert into knowledge_local_content_cache_chunks (content_key, chunk_index, payload_base64)
-      values (?, ?, ?) on conflict(content_key, chunk_index) do nothing`)
-      .bind(contentKey, index, base64.slice(index * chunkSize, (index + 1) * chunkSize)));
-  }
   await db.batch(statements);
 }
 
@@ -216,4 +206,3 @@ function required(value: unknown, label: string): string { const text = String(v
 function optional(value: unknown): string | null { const text = String(value ?? "").trim(); return text || null; }
 function finite(value: unknown, label: string): number { const result = Number(value); if (!Number.isFinite(result)) throw new Error(`${label} is invalid`); return result; }
 async function sha256Hex(bytes: Uint8Array): Promise<string> { const digest = await crypto.subtle.digest("SHA-256", bytes); return Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, "0")).join(""); }
-function bytesToBase64(bytes: Uint8Array): string { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); }

@@ -29,7 +29,6 @@ const maxSqlBatchBytes = positiveInteger(
   process.env.KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES,
   args.remote ? 700000 : 64000000
 );
-const maxLocalContentChunkChars = positiveInteger(process.env.KNOWLEDGE_IMPORT_LOCAL_CONTENT_CHUNK_CHARS, 20000);
 const docChunkSize = positiveInteger(process.env.KNOWLEDGE_IMPORT_DOC_CHUNK_SIZE, args.remote ? 400 : 1000);
 const contentOptions = buildContentOptions(args);
 const localCompanyCodeResolver = loadLocalCompanyCodeResolver(process.cwd());
@@ -197,7 +196,6 @@ function statementsForDoc(item) {
         updated_at=excluded.updated_at;`,
     contentRefStatement("knowledge_doc_content_refs", item),
     securityLinkStatements(item),
-    localContentCacheStatement(item),
     `delete from knowledge_doc_tags where doc_id = ${q(item.docId)};`,
     ...item.tags.map((tag) =>
       `insert into knowledge_doc_tags (doc_id, tag) values (${q(item.docId)}, ${q(tag.toLowerCase())});`
@@ -232,37 +230,6 @@ function contentRefStatement(table, item) {
       content_bytes=excluded.content_bytes,
       content_sha256=excluded.content_sha256,
       updated_at=excluded.updated_at;`;
-}
-
-function localContentCacheStatement(item) {
-  if (args.remote || args.uploadContentRemote) {
-    return [
-      `delete from knowledge_local_content_cache_chunks where content_key = ${q(item.contentKey)};`,
-      `delete from knowledge_local_content_cache where content_key = ${q(item.contentKey)};`,
-    ];
-  }
-  if (!text(item.contentKey) || !text(item.payloadBase64)) {
-    return [
-      `delete from knowledge_local_content_cache_chunks where content_key = ${q(item.contentKey)};`,
-      `delete from knowledge_local_content_cache where content_key = ${q(item.contentKey)};`,
-    ];
-  }
-  return [
-    `delete from knowledge_local_content_cache_chunks where content_key = ${q(item.contentKey)};`,
-    `insert into knowledge_local_content_cache (
-      content_key, content_type, content_encoding, content_sha256, content_bytes, updated_at
-    ) values (
-      ${q(item.contentKey)}, ${q(item.contentType)}, ${q(item.contentEncoding)},
-      ${q(item.contentSha256)}, ${item.contentBytes}, ${item.updatedAt}
-    )
-    on conflict(content_key) do update set
-      content_type=excluded.content_type,
-      content_encoding=excluded.content_encoding,
-      content_sha256=excluded.content_sha256,
-      content_bytes=excluded.content_bytes,
-      updated_at=excluded.updated_at;`,
-    ...buildLocalContentChunkStatements(item),
-  ];
 }
 
 function securityLinkStatements(item) {
@@ -311,25 +278,6 @@ function buildSqlBatches(items) {
     batches.push({ statements: current, docs: currentDocs, items: currentItems });
   }
   return batches;
-}
-
-function buildLocalContentChunkStatements(item) {
-  const payloadBase64 = text(item.payloadBase64);
-  if (!payloadBase64) {
-    return [];
-  }
-  const statements = [];
-  for (let index = 0; index < payloadBase64.length; index += maxLocalContentChunkChars) {
-    const chunk = payloadBase64.slice(index, index + maxLocalContentChunkChars);
-    statements.push(`insert into knowledge_local_content_cache_chunks (
-        content_key, chunk_index, payload_base64
-      ) values (
-        ${q(item.contentKey)}, ${index / maxLocalContentChunkChars}, ${q(chunk)}
-      )
-      on conflict(content_key, chunk_index) do update set
-        payload_base64=excluded.payload_base64;`);
-  }
-  return statements;
 }
 
 function parseArgs(argv) {

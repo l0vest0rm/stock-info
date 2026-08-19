@@ -24,7 +24,7 @@ export async function syncResearchIndustrySourceSeries(env: Bindings, securityCo
     const cached = await env.DB.prepare(`select count(*) as count from research_industry_source_series_observations
       where security_code=? and source_doc_id=? and prompt_version=?`).bind(code, document.docId, config.version).first<{ count: number }>();
     if (Number(cached?.count) > 0) { outcomes.push({ docId: document.docId, status: "cached", items: Number(cached?.count) }); continue; }
-    const content = await documentContent(env.DB, document.contentKey);
+    const content = await documentContent(env.KNOWLEDGE_CONTENT_BUCKET, document.contentKey);
     if (!content) { outcomes.push({ docId: document.docId, status: "skipped", items: 0, reason: "imported_content_missing" }); continue; }
     const response = await requestLocalDirectLlmText(env, {
       model: config.model,
@@ -83,11 +83,9 @@ async function sourceDocuments(db: D1Database, code: string): Promise<SourceDocu
     return config.allowedSourceTypes.includes(sourceType) && docId && title && url && contentKey ? [{ docId, sourceType, title, url, contentKey }] : [];
   });
 }
-async function documentContent(db: D1Database, contentKey: string): Promise<string> {
-  const rows = await db.prepare("select payload_base64 as payloadBase64 from knowledge_local_content_cache_chunks where content_key=? order by chunk_index").bind(contentKey).all<{ payloadBase64: string }>();
-  if (!rows.results.length) return "";
-  const raw = atob(rows.results.map((row) => row.payloadBase64).join(""));
-  return new TextDecoder().decode(Uint8Array.from(raw, (value) => value.charCodeAt(0))).slice(0, 1_800_000);
+async function documentContent(bucket: Bindings["KNOWLEDGE_CONTENT_BUCKET"], contentKey: string): Promise<string> {
+  const object = await bucket?.get(contentKey);
+  return object ? (await object.text()).slice(0, 1_800_000) : "";
 }
 function parse(raw: string): Extracted[] {
   let value: unknown; try { value = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, "")); } catch { throw new Error("industry source model response was not JSON"); }

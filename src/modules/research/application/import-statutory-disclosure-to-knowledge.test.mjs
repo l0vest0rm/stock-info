@@ -29,8 +29,14 @@ function database({ row = indexed, existing = null } = {}) {
   };
 }
 
+function contentBucket() {
+  const writes = [];
+  return { writes, async put(key, value, options) { writes.push({ key, value, options }); } };
+}
+
 test("indexed statutory import only accepts the stored official URL and creates an immutable knowledge source ready for explicit processing", async () => {
   const db = database();
+  const bucket = contentBucket();
   const originalFetch = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, init) => {
@@ -38,7 +44,7 @@ test("indexed statutory import only accepts the stored official URL and creates 
     return new Response("# 公告\n\n公司计划回购股份。", { status: 200, headers: { "content-type": "text/markdown" } });
   };
   try {
-    const output = await importIndexedStatutoryDisclosureToKnowledge({ DB: db, KNOWLEDGE_REPORT_CONVERTER_URL: "http://127.0.0.1:8788/__convert-report" }, "300308.sz", indexed.documentId, 123);
+    const output = await importIndexedStatutoryDisclosureToKnowledge({ DB: db, KNOWLEDGE_CONTENT_BUCKET: bucket, KNOWLEDGE_REPORT_CONVERTER_URL: "http://127.0.0.1:8788/__convert-report" }, "300308.sz", indexed.documentId, 123);
     assert.equal(output.created, true);
     assert.equal(output.processing.status, "not_started");
     assert.equal(output.processing.documentId, output.knowledgeDocumentId);
@@ -55,8 +61,11 @@ test("indexed statutory import only accepts the stored official URL and creates 
     const sql = db.writes.map((item) => item.sql).join("\n");
     assert.match(sql, /insert into knowledge_docs/);
     assert.match(sql, /insert into knowledge_doc_content_refs/);
-    assert.match(sql, /insert into knowledge_local_content_cache/);
+    assert.doesNotMatch(sql, /knowledge_local_content_cache/);
     assert.match(sql, /knowledge_doc_security_links/);
+    assert.equal(bucket.writes.length, 1);
+    assert.equal(bucket.writes[0].key, output.contentKey);
+    assert.equal(bucket.writes[0].value, "# 公告\n\n公司计划回购股份。");
     assert.doesNotMatch(sql, /research_(operating_model|operating_driver|market_space|valuation)/);
   } finally {
     globalThis.fetch = originalFetch;
@@ -70,7 +79,7 @@ test("a poisoned indexed URL is rejected before contacting a converter or writin
   globalThis.fetch = async () => { called = true; throw new Error("must not fetch"); };
   try {
     await assert.rejects(
-      () => importIndexedStatutoryDisclosureToKnowledge({ DB: db, KNOWLEDGE_REPORT_CONVERTER_URL: "http://127.0.0.1:8788/__convert-report" }, "300308.SZ", indexed.documentId),
+      () => importIndexedStatutoryDisclosureToKnowledge({ DB: db, KNOWLEDGE_CONTENT_BUCKET: contentBucket(), KNOWLEDGE_REPORT_CONVERTER_URL: "http://127.0.0.1:8788/__convert-report" }, "300308.SZ", indexed.documentId),
       /not an allowlisted CNINFO HTTPS PDF/,
     );
     assert.equal(called, false);
@@ -85,9 +94,11 @@ test("an already materialized hash-specific source is not rewritten", async () =
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response("# 公告\n\n公司计划回购股份。", { status: 200 });
   try {
-    const output = await importIndexedStatutoryDisclosureToKnowledge({ DB: db, KNOWLEDGE_REPORT_CONVERTER_URL: "http://127.0.0.1:8788/__convert-report" }, "300308.SZ", indexed.documentId);
+    const bucket = contentBucket();
+    const output = await importIndexedStatutoryDisclosureToKnowledge({ DB: db, KNOWLEDGE_CONTENT_BUCKET: bucket, KNOWLEDGE_REPORT_CONVERTER_URL: "http://127.0.0.1:8788/__convert-report" }, "300308.SZ", indexed.documentId);
     assert.equal(output.created, false);
     assert.equal(db.writes.length, 0);
+    assert.equal(bucket.writes.length, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

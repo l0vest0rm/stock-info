@@ -3,7 +3,9 @@ import test from 'node:test'
 import {
   calculateStrategyMetrics,
   intrinsicValue,
+  strategyEntryCapital,
   strategyPayoffAtExpiry,
+  strategyReturnRateAtExpiry,
 } from './strategy-calculator.ts'
 
 const date = new Date('2026-08-19T12:00:00')
@@ -16,6 +18,8 @@ test('long call calculates breakeven, time cost, and expiry distance', () => {
   assert.equal(metrics.timeCostCash, 500)
   assert.equal(metrics.minimumDaysToExpiry, 30)
   assert.equal(strategyPayoffAtExpiry(legs, 110), 500)
+  assert.equal(strategyEntryCapital(legs), 500)
+  assert.equal(strategyReturnRateAtExpiry(legs, 110), 100)
 })
 
 test('short put has signed time income and bounded expiry payoff', () => {
@@ -26,4 +30,14 @@ test('short put has signed time income and bounded expiry payoff', () => {
   assert.equal(metrics.timeCostCash, -400)
   assert.equal(intrinsicValue('put', 90, 100), 10)
   assert.equal(strategyPayoffAtExpiry(legs, 90), -600)
+  assert.equal(strategyReturnRateAtExpiry(legs, 90), null)
+})
+
+test('debit strategy return rate scales each complete package to the same capital', () => {
+  const legs = [
+    { id: '1', side: 'buy', type: 'call', strike: 100, expiration: '2026-09-18', premium: 10, quantity: 1, multiplier: 100 },
+    { id: '2', side: 'sell', type: 'call', strike: 110, expiration: '2026-09-18', premium: 4, quantity: 1, multiplier: 100 },
+  ]
+  assert.equal(strategyEntryCapital(legs), 600)
+  assert.ok(Math.abs(strategyReturnRateAtExpiry(legs, 120) - 66.66666666666666) < 0.000001)
 })

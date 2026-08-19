@@ -657,12 +657,11 @@ knowledgeRoutes.post("/knowledge/filtered/keep", async (c) => {
     content_sha256: localDoc.contentSha256,
   }, now);
   await replaceKnowledgeDocSecurityLinks(c.env.DB, localDoc.docId, extractKnowledgeSecurityCodes(localDoc.targetCode, localDoc.metadata));
-  await replaceKnowledgeLocalContentCache(c.env.DB, {
+  await replaceKnowledgeContentObject(c.env.KNOWLEDGE_CONTENT_BUCKET, {
     contentKey: localDoc.contentKey,
     contentType: localDoc.contentType,
-    contentEncoding: "identity",
     content: localDoc.content,
-  }, now);
+  });
   await replaceKnowledgeDocTags(c.env.DB, localDoc.docId, localDoc.tags);
   return ok(c, { kept: true, doc_id: id });
 });
@@ -2211,50 +2210,16 @@ async function pathExists(file: string): Promise<boolean> {
   }
 }
 
-async function replaceKnowledgeLocalContentCache(
-  db: AppEnv["Bindings"]["DB"],
-  payload: { contentKey: string; contentType: string; contentEncoding: string; content: string },
-  updatedAt: number,
+async function replaceKnowledgeContentObject(
+  bucket: AppEnv["Bindings"]["KNOWLEDGE_CONTENT_BUCKET"],
+  payload: { contentKey: string; contentType: string; content: string },
 ): Promise<void> {
   const contentKey = String(payload.contentKey || "").trim();
-  await db.prepare("delete from knowledge_local_content_cache_chunks where content_key = ?").bind(contentKey).run();
-  await db.prepare("delete from knowledge_local_content_cache where content_key = ?").bind(contentKey).run();
   if (!contentKey || !payload.content) {
     return;
   }
-  const bufferModule = getNodeBuiltin("node:buffer");
-  const BufferCtor = bufferModule?.Buffer;
-  const base64 = BufferCtor
-    ? String(BufferCtor.from(payload.content, "utf8").toString("base64"))
-    : bytesToBase64(new TextEncoder().encode(payload.content));
-  const bytes = new TextEncoder().encode(payload.content);
-  const sha256 = await sha256Hex(bytes);
-  await db.prepare(
-    `insert into knowledge_local_content_cache (
-      content_key, content_type, content_encoding, content_sha256, content_bytes, updated_at
-    ) values (?, ?, ?, ?, ?, ?)
-    on conflict(content_key) do update set
-      content_type=excluded.content_type,
-      content_encoding=excluded.content_encoding,
-      content_sha256=excluded.content_sha256,
-      content_bytes=excluded.content_bytes,
-      updated_at=excluded.updated_at`
-  )
-    .bind(contentKey, payload.contentType, payload.contentEncoding, sha256, bytes.byteLength, updatedAt)
-    .run();
-  const chunkInsert = db.prepare(
-    `insert into knowledge_local_content_cache_chunks (content_key, chunk_index, payload_base64)
-     values (?, ?, ?)
-     on conflict(content_key, chunk_index) do update set payload_base64=excluded.payload_base64`
-  );
-  const chunkSize = 20000;
-  const chunks: ReturnType<typeof chunkInsert.bind>[] = [];
-  for (let index = 0; index * chunkSize < base64.length; index += 1) {
-    chunks.push(chunkInsert.bind(contentKey, index, base64.slice(index * chunkSize, (index + 1) * chunkSize)));
-  }
-  if (chunks.length > 0) {
-    await db.batch(chunks);
-  }
+  if (!bucket) throw new Error("knowledge content bucket is unavailable");
+  await bucket.put(contentKey, payload.content, { httpMetadata: { contentType: payload.contentType } });
 }
 
 async function replaceKnowledgeDocTags(
@@ -2272,21 +2237,6 @@ async function replaceKnowledgeDocTags(
      on conflict(doc_id, tag) do nothing`
   );
   await db.batch(tags.map((tag) => stmt.bind(docId, tag.toLowerCase())));
-}
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
-  }
-  return btoa(binary);
 }
 
 function isLocalInformationProcessingRuntime(env: AppEnv["Bindings"]): boolean {

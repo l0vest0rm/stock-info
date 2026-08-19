@@ -53,9 +53,30 @@ export function strategyPayoffAtExpiry(legs: StrategyLeg[], price: number): numb
   }, 0)
 }
 
+/**
+ * Cash paid to open one complete strategy package.  Each leg's quantity and
+ * multiplier stay in their stated ratio, so this is also the denominator for
+ * scaling a debit strategy to a fixed investment amount.
+ */
+export function strategyEntryCapital(legs: StrategyLeg[]): number {
+  return legs
+    .filter((leg) => leg.strike > 0 && leg.premium >= 0 && leg.quantity > 0 && leg.multiplier > 0)
+    .reduce((total, leg) => total + (leg.side === 'buy' ? 1 : -1) * leg.premium * leg.quantity * leg.multiplier, 0)
+}
+
+/**
+ * Percentage return at expiry when the complete strategy is proportionally
+ * scaled to a fixed amount of entry capital.  The fixed amount (for example,
+ * 100 million) cancels out, so the result is independent of its currency.
+ */
+export function strategyReturnRateAtExpiry(legs: StrategyLeg[], price: number): number | null {
+  const entryCapital = strategyEntryCapital(legs)
+  return entryCapital > 0 ? strategyPayoffAtExpiry(legs, price) / entryCapital * 100 : null
+}
+
 export function calculateStrategyMetrics(legs: StrategyLeg[], spot: number, now = new Date()): StrategyMetrics {
   const validLegs = legs.filter((leg) => leg.strike > 0 && leg.premium >= 0 && leg.quantity > 0 && leg.multiplier > 0)
-  const netPremiumCash = validLegs.reduce((total, leg) => total + (leg.side === 'buy' ? 1 : -1) * leg.premium * leg.quantity * leg.multiplier, 0)
+  const netPremiumCash = strategyEntryCapital(validLegs)
   const timeCostCash = validLegs.reduce((total, leg) => {
     const extrinsic = Math.max(0, leg.premium - intrinsicValue(leg.type, spot, leg.strike))
     return total + (leg.side === 'buy' ? 1 : -1) * extrinsic * leg.quantity * leg.multiplier
