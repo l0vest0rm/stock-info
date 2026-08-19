@@ -97,7 +97,6 @@ function deleteDocuments(databaseFile, docIds) {
     writeFileSync(sqlFile, `
       create temp table historical_blacklist_doc_ids (doc_id text primary key);
       ${values}
-      delete from information_processing_jobs where doc_id in (${selectedDocs});
       delete from knowledge_information_records where result_id in (
         select result_id from knowledge_document_results where run_id in (${selectedRuns})
       );

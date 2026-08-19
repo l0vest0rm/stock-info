@@ -1,9 +1,8 @@
 import { Hono } from "hono";
 import { fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
-import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../../../db/queries";
+import { deleteKvCache, getKvCache, getKvCacheByLegacyKey, putKvCache, putKvCacheByLegacyKey } from "../../../db/queries";
 import { fail, ok } from '../../../shared/http';
 import { externalHttpOptions } from '../../../shared/http';
-import { loadGenericLlmRun, loadGenericLlmRunArtifacts, loadGenericLlmTask } from "../../../shared/local-job-protocol";
 import { normalizeSupportedCompanyCode } from "../../../shared/codes";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
 import { extractCompanyReportAnalysisByLlm, type CompanyReportForecast } from "../../company/api/company.routes";
@@ -15,17 +14,8 @@ import {
 } from "../../company/application/report-analysis-cache";
 import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
 import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income-statements";
-import { INFORMATION_PROCESSING_PROMPT_VERSION, type InformationProcessingModelRequest } from "../application/information-processing";
+import { INFORMATION_PROCESSING_PROMPT_VERSION, processInformationDocument, type InformationProcessResult } from "../application/information-processing";
 import { listKnowledgeCompanyCodeMappings, refreshKnowledgeCompanyCodeMappings } from "../application/company-code-mappings";
-import {
-  claimAndPrepareInformationProcessingJob,
-  completeClaimedInformationProcessingJob,
-  enqueueInformationProcessingTasks,
-  failClaimedInformationProcessingJob,
-  heartbeatInformationProcessingJob,
-  INFORMATION_PROCESSING_TARGET_TYPE,
-  INFORMATION_PROCESSING_TASK_TYPE,
-} from "../application/information-processing-jobs";
 import type { AppEnv } from '../../../types';
 
 export const knowledgeRoutes = new Hono<AppEnv>();
@@ -79,6 +69,8 @@ type KnowledgeReportAnalysis = {
 };
 
 const KNOWLEDGE_REPORT_ANALYSIS_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const INFORMATION_PROCESSING_CURSOR_NAMESPACE = "knowledge_information_processing";
+const INFORMATION_PROCESSING_CURSOR_KEY = `automatic:${INFORMATION_PROCESSING_PROMPT_VERSION}`;
 const DEFAULT_KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY = 2;
 let knowledgeReportAnalysisActive = 0;
 const knowledgeReportAnalysisWaiters: Array<() => void> = [];
@@ -367,22 +359,6 @@ knowledgeRoutes.get("/knowledge/processing-runs/:id", async (c) => {
   return ok(c, mapInformationRow(run));
 });
 
-// Generic task/run read model. It exposes only terminal artifacts and the
-// active/latest run metadata; streaming text is never read from the queue.
-knowledgeRoutes.get("/knowledge/processing-tasks/:id", async (c) => {
-  const task = await loadGenericLlmTask(c.env.DB, c.req.param("id"));
-  if (!task || task.taskType !== INFORMATION_PROCESSING_TASK_TYPE || task.targetType !== INFORMATION_PROCESSING_TARGET_TYPE) {
-    return fail(c, 404, "information processing task not found");
-  }
-  let run = task.lastRunId ? await loadGenericLlmRun(c.env.DB, task.lastRunId) : null;
-  if (!run) {
-    const latest = await c.env.DB.prepare("select run_id as runId from llm_runs where task_id=? order by attempt desc limit 1")
-      .bind(task.taskId).first<{ runId: string }>();
-    run = latest?.runId ? await loadGenericLlmRun(c.env.DB, latest.runId) : null;
-  }
-  return ok(c, { task, run, artifacts: run ? await loadGenericLlmRunArtifacts(c.env.DB, run.runId) : [] });
-});
-
 knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
   if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
   const body = await c.req.json().catch(() => ({})) as {
@@ -392,88 +368,63 @@ knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
     concurrency?: number;
     maxDocuments?: number;
     maxAgeDays?: number;
-    triggerSource?: string;
     titleKeywords?: string[];
   };
   const requestedIds = [body.documentId, ...(Array.isArray(body.documentIds) ? body.documentIds : [])]
     .map((id) => String(id || "").trim()).filter(Boolean);
-  const triggerSource = normalizeInformationTriggerSource(body.triggerSource);
   const titleKeywords = (Array.isArray(body.titleKeywords) ? body.titleKeywords : [])
     .map((keyword) => String(keyword || "").trim()).filter(Boolean).slice(0, 100);
-  const requestedTasks = requestedIds.length > 0
-    ? await enqueueInformationDocuments(c.env.DB, [...new Set(requestedIds)], triggerSource)
-    : [];
   if (requestedIds.length === 0 && !body.auto) return fail(c, 400, "missing documentId");
   const maxDocuments = Math.min(200, Math.max(1, Number(body.maxDocuments) || Number(body.concurrency) || 1));
   const maxAgeDays = Math.min(365, Math.max(1, Number(body.maxAgeDays) || 30));
-  const automatic = body.auto
-    ? await enqueueUnprocessedInformationDocuments(c.env.DB, maxAgeDays, maxDocuments, titleKeywords, triggerSource)
-    : { documentIds: [], tasks: [] };
+  const explicitDocumentIds = [...new Set(requestedIds)];
+  let automaticDocumentIds: string[] = [];
+  let cursorReset = false;
+  if (body.auto) {
+    const cursor = await loadInformationProcessingCursor(c.env.DB);
+    automaticDocumentIds = await selectUnprocessedInformationDocuments(c.env.DB, {
+      maxAgeDays,
+      limit: maxDocuments,
+      titleKeywords,
+      cursor,
+    });
+    // End-of-scan is a completed pass, not an instruction to loop back within
+    // this request. A later scheduler run starts a fresh, filtered scan.
+    if (automaticDocumentIds.length === 0 && cursor) {
+      await deleteKvCache(c.env.DB, INFORMATION_PROCESSING_CURSOR_NAMESPACE, INFORMATION_PROCESSING_CURSOR_KEY);
+      cursorReset = true;
+    }
+  }
+  const documentIds = [...explicitDocumentIds, ...automaticDocumentIds.filter((id) => !explicitDocumentIds.includes(id))];
+  const results: InformationProcessingRouteResult[] = [];
+  for (const documentId of documentIds) {
+    let result: InformationProcessingRouteResult;
+    try {
+      result = mapInformationProcessingResult(documentId, await processInformationDocument(c.env, documentId));
+    } catch (error) {
+      result = { documentId, status: "failed", error: error instanceof Error ? error.message : String(error) };
+    }
+    results.push(result);
+    // Advance only after a terminal attempt. A crash can at worst replay the
+    // current document; a successful business result is reused on the scan.
+    if (body.auto) await advanceInformationProcessingCursor(c.env.DB, documentId);
+  }
   return ok(c, {
     automatic: Boolean(body.auto),
-    enqueued: requestedIds.length,
-    auto_enqueued: automatic.documentIds.length,
-    tasks: [...requestedTasks, ...automatic.tasks],
+    enqueued: 0,
+    auto_enqueued: automaticDocumentIds.length,
+    requested: documentIds.length,
+    processed: results.filter((result) => result.status !== "failed").length,
+    failed: results.filter((result) => result.status === "failed").length,
+    results,
+    cursor_reset: cursorReset,
+    // Knowledge documents deliberately execute one-by-one, without generic
+    // generic local task/run records. The cache cursor is the batch checkpoint.
+    concurrency: 1,
     max_documents: maxDocuments,
     max_age_days: body.auto ? maxAgeDays : null,
-    status: "queued",
+    status: "completed",
   });
-});
-
-// These three endpoints form the local Node-runner boundary. The Worker only
-// prepares/persists D1/R2 state; it must never await a remote model stream.
-knowledgeRoutes.post("/knowledge/processing-jobs/claim-next", async (c) => {
-  if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  if (typeof body.runnerInstanceId !== "string" || !body.runnerInstanceId.trim()) return fail(c, 400, "runnerInstanceId is required");
-  try {
-    return ok(c, { job: await claimAndPrepareInformationProcessingJob(c.env, body.runnerInstanceId) });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    // This endpoint is polled by local-job-worker. A SQLite/API failure remains
-    // an explicit retryable boundary response rather than an opaque route error.
-    return fail(c, 503, `information processing queue unavailable: ${message}`);
-  }
-});
-
-knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/complete", async (c) => {
-  if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; text?: unknown; raw?: unknown; cached?: unknown; runnerInstanceId?: unknown; attempt?: unknown; runId?: unknown } | null;
-  const request = body?.request;
-  const runnerInstanceId = typeof body?.runnerInstanceId === "string" ? body.runnerInstanceId : "";
-  const attempt = Number(body?.attempt);
-  const runId = typeof body?.runId === "string" ? body.runId.trim() : "";
-  if (!request || typeof body?.text !== "string" || !runnerInstanceId || !Number.isInteger(attempt)) return fail(c, 400, "invalid information processing completion");
-  try {
-    return ok(c, await completeClaimedInformationProcessingJob(c.env, c.req.param("jobId"), { request, text: body.text, raw: body.raw, cached: body.cached === true, runnerInstanceId, attempt, runId: runId || undefined }));
-  } catch (error) {
-    return fail(c, /lease is no longer owned/.test(error instanceof Error ? error.message : String(error)) ? 409 : 400, error instanceof Error ? error.message : String(error));
-  }
-});
-
-knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/fail", async (c) => {
-  if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const body = await c.req.json().catch(() => null) as { request?: InformationProcessingModelRequest; error?: unknown; runnerInstanceId?: unknown; attempt?: unknown; runId?: unknown } | null;
-  const request = body?.request;
-  const runnerInstanceId = typeof body?.runnerInstanceId === "string" ? body.runnerInstanceId : "";
-  const attempt = Number(body?.attempt);
-  const runId = typeof body?.runId === "string" ? body.runId.trim() : "";
-  if (!request || !runnerInstanceId || !Number.isInteger(attempt)) return fail(c, 400, "invalid information processing failure");
-  const message = typeof body?.error === "string" && body.error.trim() ? body.error.trim() : "local information processing runner failed";
-  try { await failClaimedInformationProcessingJob(c.env, c.req.param("jobId"), { request, error: message, runnerInstanceId, attempt, runId: runId || undefined }); return ok(c, { status: "failed" }); }
-  catch (error) { return fail(c, /lease is no longer owned/.test(error instanceof Error ? error.message : String(error)) ? 409 : 400, error instanceof Error ? error.message : String(error)); }
-});
-
-knowledgeRoutes.post("/knowledge/processing-jobs/:jobId/heartbeat", async (c) => {
-  if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-  const runnerInstanceId = typeof body.runnerInstanceId === "string" ? body.runnerInstanceId : "";
-  const runId = typeof body.runId === "string" ? body.runId.trim() : "";
-  const attempt = Number(body.attempt);
-  if (!runnerInstanceId.trim() || !runId || !Number.isInteger(attempt)) return fail(c, 400, "runnerInstanceId, runId and attempt are required");
-  try {
-    return ok(c, { active: await heartbeatInformationProcessingJob(c.env.DB, c.req.param("jobId"), runId, runnerInstanceId, attempt) });
-  } catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 
 knowledgeRoutes.post("/knowledge/processing-jobs/:id/retry", async (c) => {
@@ -481,8 +432,11 @@ knowledgeRoutes.post("/knowledge/processing-jobs/:id/retry", async (c) => {
   const row = await c.env.DB.prepare("select v.doc_id from knowledge_processing_runs r join knowledge_document_versions v on v.version_id = r.version_id where r.run_id = ?")
     .bind(c.req.param("id")).first<{ doc_id: string }>();
   if (!row) return fail(c, 404, "knowledge processing run not found");
-  const [task] = await enqueueInformationDocuments(c.env.DB, [row.doc_id], "manual");
-  return ok(c, { documentId: row.doc_id, taskId: task?.taskId || null, status: "queued" });
+  try {
+    return ok(c, mapInformationProcessingResult(row.doc_id, await processInformationDocument(c.env, row.doc_id)));
+  } catch (error) {
+    return fail(c, 500, error instanceof Error ? error.message : String(error));
+  }
 });
 
 knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
@@ -2355,37 +2309,77 @@ function mapInformationRow(row: Record<string, unknown>): Record<string, unknown
   return mapped;
 }
 
-async function enqueueInformationDocuments(
-  db: AppEnv["Bindings"]["DB"],
-  documentIds: string[],
-  triggerSource: "automatic" | "cli" | "manual",
-): Promise<Array<{ taskId: string; docId: string; status: string; created: boolean; deduplicated: boolean }>> {
-  return enqueueInformationProcessingTasks(db, documentIds, triggerSource, { force: true });
+type InformationProcessingCursor = {
+  sortTime: string;
+  docId: string;
+  updatedAt: number;
+};
+
+type InformationProcessingRouteResult = {
+  documentId: string;
+  status: "completed" | "needs_review" | "failed";
+  versionId?: string;
+  runId?: string | null;
+  action?: InformationProcessResult["action"];
+  outcome?: InformationProcessResult["outcome"];
+  recordCount?: number;
+  needsReview?: boolean;
+  error?: string;
+};
+
+async function loadInformationProcessingCursor(db: AppEnv["Bindings"]["DB"]): Promise<InformationProcessingCursor | null> {
+  const cached = await getKvCache(db, INFORMATION_PROCESSING_CURSOR_NAMESPACE, INFORMATION_PROCESSING_CURSOR_KEY);
+  if (!cached) return null;
+  try {
+    const value = JSON.parse(cached.valueJson) as Partial<InformationProcessingCursor>;
+    if (typeof value.sortTime !== "string" || !value.sortTime || typeof value.docId !== "string" || !value.docId) return null;
+    return { sortTime: value.sortTime, docId: value.docId, updatedAt: Number(value.updatedAt) || cached.updatedAt };
+  } catch {
+    return null;
+  }
 }
 
-async function enqueueUnprocessedInformationDocuments(
+async function advanceInformationProcessingCursor(db: AppEnv["Bindings"]["DB"], docId: string): Promise<void> {
+  const row = await db.prepare("select sort_time as sortTime from knowledge_docs where doc_id=?").bind(docId).first<{ sortTime: string | null }>();
+  if (!row?.sortTime) return;
+  const updatedAt = Date.now();
+  await putKvCache(db, {
+    namespace: INFORMATION_PROCESSING_CURSOR_NAMESPACE,
+    key: INFORMATION_PROCESSING_CURSOR_KEY,
+    valueJson: JSON.stringify({ sortTime: row.sortTime, docId, updatedAt }),
+    expiresAt: null,
+    updatedAt,
+  });
+}
+
+function mapInformationProcessingResult(documentId: string, result: InformationProcessResult): InformationProcessingRouteResult {
+  return {
+    documentId,
+    status: result.needsReview ? "needs_review" : "completed",
+    versionId: result.versionId,
+    runId: result.runId,
+    action: result.action,
+    outcome: result.outcome,
+    recordCount: result.recordCount,
+    needsReview: result.needsReview,
+  };
+}
+
+async function selectUnprocessedInformationDocuments(
   db: AppEnv["Bindings"]["DB"],
-  maxAgeDays: number,
-  limit: number,
-  titleKeywords: string[],
-  triggerSource: "automatic" | "cli" | "manual",
-): Promise<{ documentIds: string[]; tasks: Array<{ taskId: string; docId: string; status: string; created: boolean; deduplicated: boolean }> }> {
-  const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
-  const activeProcessingCutoff = Date.now() - 2 * 60 * 1000;
-  const titleClause = titleKeywords.length > 0
-    ? ` and (${titleKeywords.map(() => "d.title like ? escape '\\'").join(" or ")})`
+  input: { maxAgeDays: number; limit: number; titleKeywords: string[]; cursor: InformationProcessingCursor | null },
+): Promise<string[]> {
+  const cutoff = new Date(Date.now() - input.maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+  const titleClause = input.titleKeywords.length > 0
+    ? ` and (${input.titleKeywords.map(() => "d.title like ? escape '\\'").join(" or ")})`
     : "";
+  const cursorClause = " and (? is null or d.sort_time < ? or (d.sort_time = ? and d.doc_id < ?))";
   const candidates = await db.prepare(
     `select d.doc_id
        from knowledge_docs d
       where d.sort_time >= ?
         ${titleClause}
-        and not exists (
-          select 1 from workflow_tasks j
-           where j.task_type = ? and j.target_type = ? and j.target_id = d.doc_id
-             and j.prompt_version = ?
-             and (j.status = 'queued' or (j.status = 'running' and j.updated_at >= ?))
-        )
+        ${cursorClause}
         and coalesce((
           select p.action
             from knowledge_preprocessing_decisions p
@@ -2406,14 +2400,17 @@ async function enqueueUnprocessedInformationDocuments(
         )
       order by d.sort_time desc, d.doc_id desc
       limit ?`,
-  ).bind(cutoff, ...titleKeywords.map((keyword) => `%${escapeLike(keyword)}%`), INFORMATION_PROCESSING_TASK_TYPE, INFORMATION_PROCESSING_TARGET_TYPE, INFORMATION_PROCESSING_PROMPT_VERSION, activeProcessingCutoff, INFORMATION_PROCESSING_PROMPT_VERSION, limit).all<{ doc_id: string }>();
-  const documentIds = candidates.results.map((row) => row.doc_id);
-  const tasks = documentIds.length > 0 ? await enqueueInformationDocuments(db, documentIds, triggerSource) : [];
-  return { documentIds, tasks };
-}
-
-function normalizeInformationTriggerSource(value: unknown): "automatic" | "cli" | "manual" {
-  return value === "automatic" || value === "cli" ? value : "manual";
+  ).bind(
+    cutoff,
+    ...input.titleKeywords.map((keyword) => `%${escapeLike(keyword)}%`),
+    input.cursor?.sortTime ?? null,
+    input.cursor?.sortTime ?? null,
+    input.cursor?.sortTime ?? null,
+    input.cursor?.docId ?? null,
+    INFORMATION_PROCESSING_PROMPT_VERSION,
+    input.limit,
+  ).all<{ doc_id: string }>();
+  return candidates.results.map((row) => row.doc_id);
 }
 
 function escapeLike(value: string): string {

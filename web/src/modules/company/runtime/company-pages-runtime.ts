@@ -578,6 +578,15 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     return `最近暂无公司研报，第 ${page} 页为空`
   }
 
+  function companyReportForecastFailureStatus(failures: any[]): string {
+    const titles = failures
+      .map((item: any) => String(item?.title || '').trim())
+      .filter(Boolean)
+    const firstMessage = String(failures[0]?.message || '').trim()
+    const subject = titles.length > 0 ? `《${titles[0]}》` : '部分研报'
+    return `${subject}预测提取失败，未将其显示为空数据${firstMessage ? `：${firstMessage}` : ''}`
+  }
+
   function closeCompanyReportStream(): void {
     if (companyReportStream) {
       companyReportStream.close()
@@ -988,6 +997,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     if (companyReportCurrentPage === 1 && typeof EventSource !== 'undefined') {
       const streamURL = `${server}/api/company/reports/stream?code=${encodeURIComponent(code)}&page=${companyReportCurrentPage}`
       let finished = false
+      let forecastFailures: any[] = []
       companyReportStream = new EventSource(streamURL)
       companyReportStream.onmessage = (event) => {
         let payload: any = null
@@ -1013,6 +1023,10 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
           void drawValuationTrendChart(code, actualFinancialMap, items)
           return
         }
+        if (payload.type === 'forecast_failures') {
+          forecastFailures = Array.isArray(payload.failures) ? payload.failures : []
+          return
+        }
         if (payload.type === 'error') {
           finished = true
           emitCompanyReportState({
@@ -1029,6 +1043,12 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
           finished = true
           const items = Array.isArray(payload.data) ? payload.data : []
           renderCompanyReportRows(items, actualFinancialMap)
+          if (forecastFailures.length > 0) {
+            emitCompanyReportState({
+              status: companyReportForecastFailureStatus(forecastFailures),
+              error: true,
+            })
+          }
           closeCompanyReportStream()
           void drawValuationTrendChart(code, actualFinancialMap, items)
         }

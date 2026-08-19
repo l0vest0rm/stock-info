@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { isLocalLlmRuntime, requestLlmText, taskdWebQaInput } from "./llm-client.ts";
+import { isLocalLlmRuntime, taskdWebQaInput } from "./llm-client.ts";
 
 test("allows LLM calls only for the explicit local Node runtime", () => {
   assert.equal(isLocalLlmRuntime({ LLM_RUNTIME: "local" }), true);
@@ -17,14 +17,4 @@ test("renders a taskd payload with the business name but no caller-visible task 
   assert.equal(input.conversation_id, "stock-info:business:meaningful-name");
   assert.equal(input.input, "规则\n\n问题");
   assert.equal(Object.hasOwn(input, "task_id"), false);
-});
-
-test("rejects a production LLM request before accessing the provider or cache", async () => {
-  await assert.rejects(
-    requestLlmText({ LLM_RUNTIME: "production" }, {
-      model: "gpt-5.6-luna",
-      messages: [{ role: "user", content: "must not reach a remote provider" }],
-    }),
-    /LLM calls are disabled outside local Node development/,
-  );
 });

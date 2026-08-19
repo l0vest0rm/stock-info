@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import runtimeConfig from "../../config/local-job-runtime.json" with { type: "json" };
 import { assembleLowDependencyOperatingAnalysisReport, assembleOperatingAnalysisReport } from "./operating-analysis-report.mjs";
 import { runOperatingAnalysisStageWaves, runResearchOperatingAnalysisStageWaves, researchOperatingAnalysisStageWaves } from "./operating-analysis-stage-plan.mjs";
 
@@ -73,14 +72,10 @@ test("target registry drives the S0-S7 scope wave and applies a resource cap", a
   assert.equal(settled.length, 14);
 });
 
-test("local runtime capacity covers all independent S1-S7 stages while preserving the S8-S12 chain", () => {
+test("taskd workflow stages retain their dependency waves without a local scheduler", () => {
   const waves = researchOperatingAnalysisStageWaves({ scopeEnvelopeAvailable: true });
   const independent = waves[2];
   assert.deepEqual(independent.map((stage) => stage.key), ["company_facts", "industry_structure", "supply_demand_cycle", "competition_peers", "company_operating_drivers", "financial_quality", "market_valuation_facts"]);
-  // Independent stages are admitted by the central DB provider ledger; the
-  // durable cap intentionally stays below the seven-stage fan-out.
-  assert.equal(runtimeConfig.provider.globalConcurrency, 5);
-  assert(runtimeConfig.handlers.researchOperatingAnalysis.concurrency >= 1);
   assert.deepEqual(waves.slice(3).map((wave) => wave.map((stage) => stage.key)), [["operating_thesis"], ["scenario_valuation"], ["deterministic_valuation"], ["investment_conclusion"], ["report_assembly"]]);
 });
 

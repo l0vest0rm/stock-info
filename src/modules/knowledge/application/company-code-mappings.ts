@@ -1,5 +1,4 @@
 import { isSupportedCompanyCode, normalizeSupportedCompanyCode } from "../../../shared/codes";
-import { externalHttpOptions } from "../../../shared/http";
 import type { Bindings } from "../../../types";
 import { searchSecurities } from "../../security/application/search-securities";
 
@@ -27,7 +26,7 @@ export async function refreshKnowledgeCompanyCodeMappings(
   let mappedSecurities = 0;
 
   for (const companyName of candidates) {
-    const matches = (await searchSecurities(env.DB, companyName, { httpOptions: externalHttpOptions(env) }))
+    const matches = (await searchSecurities(env.DB, companyName))
       .filter((item) => normalizeComparableName(item.name) === normalizeComparableName(companyName))
       .map((item) => ({
         code: normalizeSupportedCompanyCode(item.code),

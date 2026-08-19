@@ -131,9 +131,8 @@ test("focus endpoints are 404 for production writes and production reads ignore 
   const db = {
     prepare(sql) {
       return { bind() {
-        if (sql.includes("from securities where code")) {
-          return { first: async () => ({ code: "00700.HK", market: "hk", type: "stock", name: "腾讯控股", currency: "HKD", exchangeName: null, source: "test", updatedAt: 100 }) };
-        }
+        if (sql.includes("from http_cache")) return { first: async () => null };
+        if (sql.includes("insert into http_cache")) return { run: async () => ({ success: true }) };
         if (sql.includes("research_company_focus_memberships")) membershipQuery = true;
         if (sql.includes("research_listed_securities where security_code")) return { first: async () => ({ companyId, metadataJson: "{}" }), all: async () => ({ results: [] }) };
         if (sql.includes("from research_operating_companies where company_id")) return { first: async () => ({ companyId, canonicalName: "腾讯", reportingCurrency: "CNY", fiscalYearEnd: "12-31", identityStatus: "confirmed", metadataJson: "{}" }) };
@@ -141,12 +140,20 @@ test("focus endpoints are 404 for production writes and production reads ignore 
       } };
     },
   };
-  const response = await researchRoutes.request("http://example.test/research/company/00700.HK/focus-profile?owner=alice", {}, { DB: db, LLM_RUNTIME: "production" });
-  const payload = await response.json();
-  assert.equal(response.status, 200);
-  assert.equal(membershipQuery, false);
-  assert.equal(Object.hasOwn(payload.data, "membership"), false);
-  assert.equal(JSON.stringify(payload.data).includes("alice"), false);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    GubaCodeTable: { Data: [{ OuterCode: "HK00700", ShortName: "腾讯控股" }] },
+  }), { status: 200 });
+  try {
+    const response = await researchRoutes.request("http://example.test/research/company/00700.HK/focus-profile?owner=alice", {}, { DB: db, LLM_RUNTIME: "production" });
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(membershipQuery, false);
+    assert.equal(Object.hasOwn(payload.data, "membership"), false);
+    assert.equal(JSON.stringify(payload.data).includes("alice"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("membership append returns an owner-redacted record", async () => {

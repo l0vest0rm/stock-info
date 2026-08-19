@@ -1,11 +1,9 @@
 import {
-  inferSecurityType,
   normalizeSecurityCode,
-  securityMarket,
 } from "../shared/codes";
 import { cachedFetchText, numberOrNull, parseJsonOrJsonp } from "../shared/http";
 import type { ExternalHttpOptions } from "../shared/http";
-import type { KlineBar, SecurityRecord } from "../types";
+import type { KlineBar } from "../types";
 
 type XueqiuKlineResponse = {
   data?: {
@@ -34,7 +32,7 @@ export async function fetchXueqiuStockKline(
   to: string,
   httpOptions: ExternalHttpOptions | undefined,
   xueqiuCookie: string | undefined
-): Promise<{ security?: SecurityRecord; rows: KlineBar[]; rawResponseText: string }> {
+): Promise<{ rows: KlineBar[]; rawResponseText: string }> {
   const normalized = normalizeSecurityCode(code);
   const symbol = xueqiuSymbol(normalized);
   if (!symbol) {
@@ -58,18 +56,8 @@ export async function fetchXueqiuStockKline(
     throw new Error(`Xueqiu cookie expired or rejected: ${body.error_description ?? body.error_code}`);
   }
   const now = Date.now();
-  const security = body.data?.name
-    ? ({
-        code: normalized,
-        market: securityMarket(normalized),
-        type: inferSecurityType(normalized),
-        name: body.data.name,
-        source: "xueqiu",
-        updatedAt: now,
-      } satisfies SecurityRecord)
-    : undefined;
   const rows = mapXueqiuKlineRows(body, { code: normalized, period, fq, updatedAt: now });
-  return { security, rows, rawResponseText };
+  return { rows, rawResponseText };
 }
 
 export function createXueqiuKlineRequest(

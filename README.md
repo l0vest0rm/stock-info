@@ -47,8 +47,8 @@ chmod +x ./start-local.sh
 
 默认访问地址是 `http://127.0.0.1:8000`。
 
-`start-local.sh` 最终以前台 `local-supervisor` 运行，并管理 `local-http`、
-`local-job-worker` 和 `local-scheduler` 三个常驻角色。`local-http` 同时监听 8000 API
+`start-local.sh` 最终以前台 `local-supervisor` 运行，并管理 `local-http` 与
+`local-scheduler` 两个常驻角色。`local-http` 同时监听 8000 API
 与 8788 知识正文端点；宏观数据直接请求 allowlist 官方来源，8791 不再有本地 relay。
 调度器直接读取 `wrangler.jsonc` 的 `triggers.crons`，按 Cloudflare 一致的 UTC cron
 配置调用共享 scheduled 分发函数；以后新增定时任务只维护线上同一份配置。Supervisor 的
@@ -58,6 +58,10 @@ cron 时，可以在已构建 Node runtime 后运行：
 ```bash
 npm run dev:cron:once
 ```
+
+知识库的 PDF 转 Markdown 不会在本地启动或运行期间自动执行：
+`config/knowledge-processing.json` 中的 `automation` 默认关闭。需要处理时，显式运行
+`npm run process:knowledge` 或 `./process-knowledge-local-full.sh`；前者是增量处理，后者是全量重跑。
 
 第一步用 `--omit=optional` 跳过容易卡住的可选依赖构建；第二步补齐
 `rollup` 的平台包，但禁用安装脚本，避免 `fsevents` 之类的可选包拖慢安装。

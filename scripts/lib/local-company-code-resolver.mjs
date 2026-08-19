@@ -25,14 +25,7 @@ export function loadLocalCompanyCodeResolver(projectRoot) {
         `.timeout ${LOCAL_SQLITE_BUSY_TIMEOUT_MS}`,
         dbPath,
         `select code, alias
-           from (
-             select code, name as alias, updated_at
-               from securities
-              where type = 'stock'
-             union all
-             select code, alias, updated_at
-               from knowledge_stock_aliases
-           )
+           from knowledge_stock_aliases
           where (
               code like '%.SH'
               or code like '%.SZ'

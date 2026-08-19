@@ -1,5 +1,5 @@
 import extractionConfig from "../../../../config/research-filing-extraction.json";
-import { requestLlmText } from "../../../shared/llm-client";
+import { requestLocalDirectLlmText } from "../../../shared/local-direct-llm";
 import { isSupportedCompanyCode, normalizeSecurityCode } from "../../../shared/codes";
 import type { Bindings } from "../../../types";
 import { insertSecurityRightsLink, upsertCompanySecurityRelationship } from "./research-identity";
@@ -57,15 +57,11 @@ export async function extractResearchAutoFilingInsights(env: Bindings, securityC
   }
   const content = await filingContent(env.DB, source.documentUrl);
   if (!content) throw new Error("indexed statutory disclosure has not been imported to the local knowledge content cache");
-  const response = await requestLlmText(env, {
-    model: config.model, maxTokens: config.maxOutputTokens, reasoningEffort: "low", cacheEnabled: false,
-    targetType: "statutory_disclosure_document", targetId: source.documentId,
-    idempotencyKey: `research-auto-filing:${code}:${source.documentId}:${config.version}`,
-    promptVersion: config.version, priority: 500,
-    messages: [
-      { role: "system", content: config.systemPrompt },
-      { role: "user", content: `${render(config.userTemplate, { SECURITY_CODE: code, TITLE: source.title, PUBLISHED_AT: source.publishedAt, CONTENT: content })}\n\n单位经济结构化契约：${config.businessUnitEconomicsFactKeyContract || "未配置；不得输出不可配对的单位经济计算。"}\n\n商业传导结构化契约：${config.businessFinancialTransmissionFactKeyContract || "未配置；不得输出经营因果传导。"}\n\n商业驱动树结构化契约：${config.businessDriverTreeFactKeyContract || "未配置；不得输出驱动树节点。"}\n\n市场情景结构化契约：${config.marketScenarioFactKeyContract || "未配置；不得输出市场三情景计算。"}\n\n行业到公司传导契约：${config.industryTransmissionFactKeyContract || "未配置；不得输出行业到公司传导。"}\n\n行业竞争持续性契约：${config.industryDurabilityFactKeyContract || "未配置；不得输出市场边界或持续期。"}` },
-    ],
+  const response = await requestLocalDirectLlmText(env, {
+    model: config.model,
+    maxTokens: config.maxOutputTokens,
+    instructions: config.systemPrompt,
+    input: [{ role: "user", content: [{ type: "input_text", text: `${render(config.userTemplate, { SECURITY_CODE: code, TITLE: source.title, PUBLISHED_AT: source.publishedAt, CONTENT: content })}\n\n单位经济结构化契约：${config.businessUnitEconomicsFactKeyContract || "未配置；不得输出不可配对的单位经济计算。"}\n\n商业传导结构化契约：${config.businessFinancialTransmissionFactKeyContract || "未配置；不得输出经营因果传导。"}\n\n商业驱动树结构化契约：${config.businessDriverTreeFactKeyContract || "未配置；不得输出驱动树节点。"}\n\n市场情景结构化契约：${config.marketScenarioFactKeyContract || "未配置；不得输出市场三情景计算。"}\n\n行业到公司传导契约：${config.industryTransmissionFactKeyContract || "未配置；不得输出行业到公司传导。"}\n\n行业竞争持续性契约：${config.industryDurabilityFactKeyContract || "未配置；不得输出市场边界或持续期。"}` }] }],
   });
   const items = parse(response.text);
   const statements = items.map((item) => env.DB.prepare(`insert into research_auto_filing_insights (

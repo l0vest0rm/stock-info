@@ -14,13 +14,13 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { createResponsesProvider } from "@m2ai/shared-llm-client";
 import { parseKnowledgeFilename } from "./lib/knowledge-filename-parser.mjs";
 import {
   TOPIC_BATCH_SYSTEM_PROMPT,
   TOPIC_BATCH_USER_PROMPT,
 } from "./generated/prompt-text.mjs";
 import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
-import { createGenericLlmSchedulerClient, toGenericRawRequest } from "./lib/generic-llm-client.mjs";
 import { executeLocalD1Sql } from "./lib/local-d1-sqlite.mjs";
 import { shouldKeepOriginalReportPdf, topicFilterBypassDecision, topicFilterKeywordDecision } from "./lib/knowledge-topic-filter.mjs";
 import {
@@ -1023,9 +1023,14 @@ async function reviewTopicBatchWithLlm(items, cfg, context = {}) {
 }
 
 async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user }) {
-  const scheduler = createGenericLlmSchedulerClient({ baseUrl });
-  const request = toGenericRawRequest({ provider: "openai", model, instructions: system, user, maxTokens, temperature: 0, cacheEnabled: false });
-  let result = await scheduler.requestText({ request, targetType: "knowledge_topic_filter", targetId: sha256(JSON.stringify({ model, user })), idempotencyKey: `knowledge-topic-filter:${sha256(JSON.stringify({ model, user }))}`, priority: 500, source: "process-knowledge-once" });
+  const provider = createResponsesProvider({ name: "openai", baseUrl, apiKey });
+  let result = await provider.stream({
+    model,
+    instructions: system,
+    input: [{ role: "user", content: [{ type: "input_text", text: user }] }],
+    maxOutputTokens: maxTokens,
+    temperature: 0,
+  });
   let parsed = parseJsonObjectFromText(result.text);
   if (!parsed && shouldRetryJsonRequest(result)) {
     logProgress("retrying llm json request after empty or incomplete output", {
@@ -1033,14 +1038,20 @@ async function requestLlmJson({ baseUrl, apiKey, model, maxTokens, system, user 
       model,
       maxTokens,
     });
-    result = await scheduler.requestText({ request: { ...request, maxOutputTokens: Math.max(maxTokens * 2, 2400), cacheEnabled: false }, targetType: "knowledge_topic_filter", targetId: sha256(JSON.stringify({ model, user, retry: true })), idempotencyKey: `knowledge-topic-filter:${sha256(JSON.stringify({ model, user, retry: true }))}`, priority: 500, source: "process-knowledge-once" });
+    result = await provider.stream({
+      model,
+      instructions: system,
+      input: [{ role: "user", content: [{ type: "input_text", text: user }] }],
+      maxOutputTokens: Math.max(maxTokens * 2, 2400),
+      temperature: 0,
+    });
     parsed = parseJsonObjectFromText(result.text);
   }
   if (!parsed) {
     const responseStatus = text(result.raw?.status || result.raw?.incomplete_details?.reason);
     throw new Error(`LLM response is not JSON: status=${responseStatus || "unknown"} text=${result.text.slice(0, 300)}`);
   }
-  return { response: parsed, cached: result.cached };
+  return { response: parsed, cached: false };
 }
 
 async function requestLlmJsonCached(cacheKey, request) {
@@ -1077,10 +1088,12 @@ function resolveTopicFilterLlmRequest(cfg) {
   const model = text(envModel || filter.llmModel || "gpt-5.6-luna");
   const provider = "openai";
   const baseUrl = text(
-    process.env.KNOWLEDGE_PROCESS_SERVER
-      || process.env.KNOWLEDGE_PROCESS_TOPIC_SCHEDULER_URL
-      || cfg.informationProcessing?.server
-      || "http://127.0.0.1:8000",
+    process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_BASE_URL
+      || process.env.KNOWLEDGE_PROCESS_LLM_BASE_URL
+      || llm.baseUrl
+      || process.env.OPENAI_BASE_URL
+      || process.env.LLM_BASE_URL
+      || "https://api.m2ai.cc/api/v1/openai",
   ).replace(/\/$/, "");
   const apiKeyEnv = text(
     process.env.KNOWLEDGE_PROCESS_TOPIC_LLM_API_KEY_ENV

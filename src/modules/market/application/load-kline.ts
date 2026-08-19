@@ -2,7 +2,6 @@ import {
   fetchEastmoneyFundNav,
 } from "../../../adapters/eastmoney";
 import { fetchXueqiuStockKline } from "../../../adapters/xueqiu";
-import { upsertSecurity } from "../../../db/queries";
 import {
   fullKlineHistoryStartDate,
   getFundNavSnapshot,
@@ -12,7 +11,7 @@ import {
   sliceKlineRows,
   snapshotCoversRange,
 } from "../../../storage/market-data";
-import { inferSecurityType, normalizeSecurityCode } from "../../../shared/codes";
+import { normalizeSecurityCode } from "../../../shared/codes";
 import { marketDataCacheExpiresAtMsForCode } from "../../../shared/cache-policy";
 import { externalHttpOptions } from "../../../shared/http";
 import type { Bindings, FundNavRow, KlineBar } from "../../../types";
@@ -43,7 +42,7 @@ export async function loadKline(
     throw new Error(`unsupported kline period: ${period}`);
   }
   const code = normalizeSecurityCode(rawCode);
-  if (inferSecurityType(code) === "fund" || code.endsWith(".OF")) {
+  if (usesFundNetValueHistory(code)) {
     const fundCode = code.endsWith(".OF") ? code : `${code.split(".")[0]}.OF`;
     const snapshot = await getFundNavSnapshot(env, fundCode);
     if (snapshot && isFreshEnough(fundCode, snapshot.updatedAt) && snapshotCoversRequestedRange(snapshot, from, to)) {
@@ -73,13 +72,19 @@ export async function loadKline(
     externalHttpOptions(env),
     env.XUEQIU_COOKIE
   );
-  if (fetched.security) {
-    await upsertSecurity(env.DB, fetched.security);
-  }
   if (fetched.rows.length > 0) {
     await putKlineSnapshot(env, code, fq, fetched.rows, { rawResponseText: fetched.rawResponseText });
   }
   return { code, source: "xueqiu", rows: sliceKlineRows(fetched.rows, from, to) };
+}
+
+/**
+ * Do not infer a data source from an exchange-code prefix. Exchange-traded
+ * ETFs such as 588000.SH have stock-style Xueqiu K-lines; only off-exchange
+ * fund identifiers belong to the Eastmoney NAV history boundary.
+ */
+export function usesFundNetValueHistory(code: string): boolean {
+  return /\.(OF|SF|ZF)$/.test(normalizeSecurityCode(code));
 }
 
 function isFreshEnough(code: string, updatedAt: number | undefined): boolean {

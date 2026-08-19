@@ -122,7 +122,6 @@ import { produceResearchStatutoryOperatingEvidenceCandidates } from "../applicat
 import { importIndexedStatutoryDisclosureToKnowledge } from "../application/import-statutory-disclosure-to-knowledge";
 import { extractResearchAutoFilingInsights, loadResearchAutoBusinessDriverTree, loadResearchAutoFilingDocumentVersions, loadResearchAutoFilingFactInputs, loadResearchAutoFilingInsights, loadResearchAutoFilingModuleRebuilds, loadResearchAutoForecastInputGate, loadResearchAutoGovernanceCapitalLedger, loadResearchAutoIndustryCompetitionInputs, loadResearchAutoMarketSpaceInputs, loadResearchAutoRiskLedger, loadResearchAutoRiskQuantitativeInputGate, loadResearchAutoRiskSnapshotHistory, loadResearchAutoSecurityStructureCandidates, rebuildResearchAutoFilingReadModels } from "../application/research-auto-filing-insights";
 import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } from "../application/research-industry-source-series";
-import { loadLocalJobRuntimeState } from "../../../shared/local-job-protocol";
 import { enqueueResearchInvestmentAnalysis, loadResearchInvestmentAnalysis } from "../application/research-investment-analysis";
 import { enqueueResearchFinancialAnalysis, loadResearchFinancialAnalysis, resumeResearchFinancialAnalysis } from "../application/research-financial-analysis";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
@@ -719,12 +718,6 @@ researchRoutes.post("/research/company/:code/sync-industry-source-series", async
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   try { return ok(c, await syncResearchIndustrySourceSeries(c.env, code)); }
-  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
-});
-
-researchRoutes.get("/research/local-job-runtime", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "local job runtime is only available in local research runtime");
-  try { return ok(c, await loadLocalJobRuntimeState(c.env.DB)); }
   catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
 });
 

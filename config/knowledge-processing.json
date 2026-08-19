@@ -13,9 +13,9 @@
     "purgeExisting": false
   },
   "automation": {
-    "enabled": true,
+    "enabled": false,
     "cron": "*/15 * * * *",
-    "runOnStart": true
+    "runOnStart": false
   },
   "storageRetention": {
     "enabled": false,

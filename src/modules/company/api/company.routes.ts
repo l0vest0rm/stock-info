@@ -9,16 +9,11 @@ import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
 import { cachedFetchJson, externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
-import { requestLlmText, taskdWebQaInput, type LlmWebSearchMetadata, type SupportedLlmModel } from "../../../shared/llm-client";
+import { taskdWebQaInput, type LlmWebSearchMetadata, type SupportedLlmModel } from "../../../shared/llm-client";
+import { requestLocalDirectLlmText } from "../../../shared/local-direct-llm";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
-import {
-  loadGenericLlmRun,
-  loadGenericLlmRunArtifacts,
-  loadGenericLlmTaskByIdentity,
-  GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP,
-} from "../../../shared/local-job-protocol";
 import {
   REPORT_ANALYZE_SYSTEM_PROMPT,
   REPORT_ANALYZE_USER_PROMPT,
@@ -65,6 +60,8 @@ type ReportForecastExtraction = {
   forecasts: CompanyReportForecast[];
   targetPrice?: number | null;
   analysisSucceeded?: boolean;
+  /** Exact valid model output retained for the report-row hover surface. */
+  rawResponseText?: string;
 };
 
 type SharedReportAnalysis = {
@@ -73,6 +70,7 @@ type SharedReportAnalysis = {
   targetPrice?: number | null;
   updatedAt: number;
   analysisSucceeded?: boolean;
+  rawResponseText?: string;
 };
 
 type CompanyNewsReportAnalysis = {
@@ -82,6 +80,7 @@ type CompanyNewsReportAnalysis = {
   forecasts: CompanyReportForecast[];
   targetPrice: number | null;
   updatedAt: number;
+  rawResponseText?: string;
 };
 
 type ReportForecastProgress = {
@@ -95,6 +94,12 @@ type ReportForecastStreamEvent = {
   items?: Array<Record<string, unknown>>;
   delta?: string;
   status?: "queued" | "running" | "completed" | "failed" | "blocked";
+  failures?: ReportForecastFailure[];
+};
+
+type ReportForecastFailure = {
+  title: string;
+  message: string;
 };
 type LlmExtractionOptions = { onText?: (delta: string) => Promise<void> | void; onStatus?: (status: "queued" | "running" | "completed" | "failed" | "blocked") => Promise<void> | void; targetId?: string; idempotencyKey?: string };
 
@@ -286,6 +291,7 @@ companyRoutes.get("/company/reports/stream", async (c) => {
           }
           if (event.status === "queued") controller.enqueue(encodeSseData({ type: "queued" }));
           if (event.status === "running") controller.enqueue(encodeSseData({ type: "claimed" }));
+          if (event.failures?.length) controller.enqueue(encodeSseData({ type: "forecast_failures", failures: event.failures }));
         });
         controller.enqueue(encodeSseData({ type: "result", data: items }));
       } catch (error) {
@@ -377,9 +383,8 @@ async function fetchCompanyOverview(c: Context<AppEnv>, code: string): Promise<C
 
 async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Promise<CompanyOverview> {
   const normalized = normalizeSecurityCode(code);
-  const httpOptions = externalHttpOptions(c.env);
   const [security, kline] = await Promise.all([
-    getSecurity(c.env.DB, normalized, { httpOptions }).catch(() => null),
+    getSecurity(c.env.DB, normalized).catch(() => null),
     loadKline(c.env, normalized, "day", "normal", "1990-01-01", today())
       .catch(() => ({ rows: [] as KlineBar[] })),
   ]);
@@ -528,7 +533,8 @@ async function getCompanyReportsWithProgress(
   ]);
   let items = sourceItems;
   if (page === 1) {
-    await ensureReportForecastsForItemsWithProgress(c, code, items, overview, actualAnnualProfitByYear, onProgress);
+    const failures = await ensureReportForecastsForItemsWithProgress(c, code, items, overview, actualAnnualProfitByYear, onProgress);
+    if (failures.length > 0) onProgress({ failures });
   } else {
     onProgress({ progress: { completed: 0, total: 0, title: "" } });
   }
@@ -754,7 +760,6 @@ export async function prepareCompanyReportDiscoveryExecution(
   const code = normalizeSecurityCode(securityCode);
   if (!isCnCode(code)) throw new Error("company report discovery only supports mainland company codes");
   const reasoningEffort = normalizeCompanyReportDiscoveryReasoningEffort(requestedReasoningEffort);
-  const security = await db.prepare("select name from securities where code=?").bind(code).first<{ name?: unknown }>();
   const recentSince = reportDiscoveryRecentSince();
   const knownReports = await loadCachedCompanyReportDiscoveryKnownReports(db, code);
   return {
@@ -766,7 +771,7 @@ export async function prepareCompanyReportDiscoveryExecution(
     promptVersion: REPORT_DISCOVERY_PROMPT_VERSION,
     prompt: renderCompanyReportDiscoveryPrompt(REPORT_DISCOVERY_PROMPT, {
       SECURITY_CODE: code,
-      COMPANY_NAME: text(security?.name) || code,
+      COMPANY_NAME: code,
       RECENT_SINCE: recentSince,
       KNOWN_REPORTS_JSON: JSON.stringify(knownReports),
     }),
@@ -973,7 +978,7 @@ async function ensureReportForecastsForItemsWithProgress(
   overview: CompanyOverview | null,
   actualAnnualProfitByYear: Map<number, number>,
   onProgress: (event: ReportForecastStreamEvent) => void
-): Promise<void> {
+): Promise<ReportForecastFailure[]> {
   const normalized = normalizeSecurityCode(code);
   const newsCandidates = items
     .filter(isKnowledgeNewsReportCandidate)
@@ -984,6 +989,7 @@ async function ensureReportForecastsForItemsWithProgress(
     .filter((item) => reportForecastNeedsLlmRefresh(item))
     .slice(0, REPORT_FORECAST_MAX_CALLS - newsCandidates.length);
   const candidates = [...newsCandidates, ...standardCandidates];
+  const failures: ReportForecastFailure[] = [];
   onProgress({
     progress: { completed: 0, total: candidates.length, title: "" },
     items: applyCurrentPeToReportItems(items, overview, actualAnnualProfitByYear),
@@ -996,10 +1002,12 @@ async function ensureReportForecastsForItemsWithProgress(
         onStatus: (status) => onProgress({ status }),
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push({ title: text(item.title), message });
       console.error("company report forecast extraction failed", {
         code: normalized,
         title: text(item.title),
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       });
     } finally {
       onProgress({
@@ -1012,6 +1020,7 @@ async function ensureReportForecastsForItemsWithProgress(
       });
     }
   }
+  return failures;
 }
 
 async function ensureSingleReportForecast(
@@ -1029,6 +1038,13 @@ async function ensureSingleReportForecast(
     return;
   }
   const cacheKey = reportForecastCacheKey(reportId);
+  const cached = await readAppJson<ReportForecastExtraction>(c.env.DB, cacheKey);
+  // Sina reports have no Eastmoney AP code and therefore no shared cache key.
+  // A successful per-report cache is still terminal, including a legitimate
+  // empty forecast response, so do not re-call the model on every page load.
+  if (isSuccessfulReportAnalysis(cached)) {
+    return;
+  }
   const sharedCacheKey = sharedReportCacheKeyForItem(item);
   let shared = await readSharedReportAnalysis(c.env.DB, sharedCacheKey);
   if (shared?.analysisCalled) {
@@ -1044,12 +1060,10 @@ async function ensureSingleReportForecast(
     if (!reportContent) {
       return;
     }
-    const analysis = await extractCompanyReportAnalysisByLlm(c, text(item.title), reportContent.content, {
+    const extractionResult = await extractCompanyReportAnalysisWithRawByLlm(c, text(item.title), reportContent.content, {
       onText: callbacks.onText,
-      onStatus: callbacks.onStatus,
-      targetId: reportId,
-      idempotencyKey: `company-report-forecast:${reportId}`,
     });
+    const analysis = extractionResult.analysis;
     const updatedAt = Date.now();
     const extraction: ReportForecastExtraction = {
       reportId,
@@ -1060,10 +1074,11 @@ async function ensureSingleReportForecast(
       forecasts: analysis.forecasts,
       targetPrice: analysis.targetPrice,
       analysisSucceeded: true,
+      rawResponseText: extractionResult.rawResponseText,
     };
     await Promise.all([
       writeAppJson(c.env.DB, cacheKey, extraction, REPORT_FORECAST_CACHE_TTL_MS),
-      writeSharedReportAnalysis(c.env.DB, item, analysis.forecasts, updatedAt, analysis.targetPrice),
+      writeSharedReportAnalysis(c.env.DB, item, analysis.forecasts, updatedAt, analysis.targetPrice, extractionResult.rawResponseText),
     ]);
   });
 }
@@ -1151,14 +1166,6 @@ async function readKnowledgeNewsReportAnalysis(
 
 type CompanyReportLlmRawResponse = Record<string, unknown> | string | null;
 
-type CompanyReportLlmTaskIdentity = {
-  taskType: string;
-  targetType: string;
-  targetId: string;
-  idempotencyKey: string;
-  promptVersion: string;
-};
-
 /**
  * Keep the exact report object returned by the latest discovery taskd result.
  */
@@ -1175,68 +1182,6 @@ export function findCompanyReportDiscoveryRawReport(
   return reports.find((candidate) => (
     isRecord(candidate) && companyReportRawIdentityMatches(candidate, item)
   )) as Record<string, unknown> | undefined || null;
-}
-
-function companyReportLlmTaskIdentity(item: Record<string, unknown>): CompanyReportLlmTaskIdentity | null {
-  if (isKnowledgeNewsReportCandidate(item)) {
-    const docId = text(item.knowledgeDocId);
-    return docId ? {
-      taskType: "generic_raw_model",
-      targetType: "company_news_report",
-      targetId: docId,
-      idempotencyKey: `company-news-report:${docId}`,
-      promptVersion: NEWS_REPORT_ANALYSIS_CACHE_VERSION,
-    } : null;
-  }
-  const reportId = companyReportId(item);
-  return reportId ? {
-    taskType: "generic_raw_model",
-    targetType: "company_report_forecast",
-    targetId: reportId,
-    idempotencyKey: `company-report-forecast:${reportId}`,
-    promptVersion: REPORT_FORECAST_PROMPT_VERSION,
-  } : null;
-}
-
-export function normalizeCompanyReportLlmRawResponse(output: unknown): CompanyReportLlmRawResponse {
-  const record = asRecord(output);
-  const outputText = text(record?.text);
-  if (!outputText) {
-    return null;
-  }
-  return parseJsonObjectFromText(outputText) || outputText;
-}
-
-async function loadCompanyReportLlmRawResponse(
-  c: Context<AppEnv>,
-  item: Record<string, unknown>,
-): Promise<CompanyReportLlmRawResponse | undefined> {
-  if (c.env.LLM_RUNTIME !== "local") {
-    return undefined;
-  }
-  try {
-    const discovery = await loadCompanyReportDiscoveryRawReport(c, item);
-    if (discovery) {
-      return discovery;
-    }
-    const identity = companyReportLlmTaskIdentity(item);
-    if (!identity) {
-      return undefined;
-    }
-    const task = await loadGenericLlmTaskByIdentity(c.env.DB, identity);
-    if (!task || task.status !== "completed" || !task.lastRunId) return null;
-    const run = await loadGenericLlmRun(c.env.DB, task.lastRunId);
-    if (!run || run.taskId !== task.taskId || run.status !== "completed") return null;
-    const artifact = (await loadGenericLlmRunArtifacts(c.env.DB, run.runId))
-      .find((candidate) => candidate.stepKey === GENERIC_LLM_RAW_MODEL_ARTIFACT_STEP && candidate.status === "complete");
-    return artifact ? normalizeCompanyReportLlmRawResponse(artifact.output) : null;
-  } catch (error) {
-    console.warn("company report raw model response unavailable", {
-      title: text(item.title),
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return null;
-  }
 }
 
 async function loadCompanyReportDiscoveryRawReport(
@@ -1306,7 +1251,8 @@ async function annotateReportItemsWithForecasts(
     if (isKnowledgeNewsReportCandidate(item)) {
       const analysis = await readKnowledgeNewsReportAnalysis(c.env.DB, knowledgeNewsReportAnalysisCacheKey(item));
       if (analysis?.isCompanyReport) {
-        const llmRawResponse = await loadCompanyReportLlmRawResponse(c, item);
+        const llmRawResponse = await loadCompanyReportDiscoveryRawReport(c, item)
+          ?? normalizeCompanyReportRawResponseText(analysis.rawResponseText);
         results.push({
           ...item,
           forecastSource: "llm_news_report",
@@ -1322,12 +1268,14 @@ async function annotateReportItemsWithForecasts(
       results.push(item);
       continue;
     }
-    const llmRawResponse = await loadCompanyReportLlmRawResponse(c, item);
+    const discoveryLlmRawResponse = await loadCompanyReportDiscoveryRawReport(c, item);
     const shared = await readSharedReportAnalysis(c.env.DB, sharedReportCacheKeyForItem(item));
-    const cached = hasReportAnalysisValues(shared)
+    const reportCache = await readAppJson<ReportForecastExtraction>(c.env.DB, reportForecastCacheKey(reportId));
+    const cached = hasReportAnalysisValues(shared) || isSuccessfulReportAnalysis(shared)
       ? shared
-      : await readAppJson<ReportForecastExtraction>(c.env.DB, reportForecastCacheKey(reportId));
-    if (hasReportAnalysisValues(cached)) {
+      : reportCache;
+    const llmRawResponse = discoveryLlmRawResponse ?? normalizeCompanyReportRawResponseText(cached?.rawResponseText);
+    if (hasReportAnalysisValues(cached) || isSuccessfulReportAnalysis(cached)) {
       const targetPrice = positiveNumberOrUndefined(cached.targetPrice)
         ?? positiveNumberOrUndefined(item.targetPrice);
       results.push({
@@ -1357,6 +1305,17 @@ function hasReportAnalysisValues(
 ): value is Pick<ReportForecastExtraction, "forecasts" | "targetPrice"> {
   return Boolean(value && Array.isArray(value.forecasts)
     && (value.forecasts.length > 0 || positiveNumberOrUndefined(value.targetPrice) !== undefined));
+}
+
+function isSuccessfulReportAnalysis(
+  value: Pick<ReportForecastExtraction, "forecasts" | "analysisSucceeded"> | SharedReportAnalysis | null | undefined,
+): value is Pick<ReportForecastExtraction, "forecasts" | "analysisSucceeded"> {
+  return Boolean(value && Array.isArray(value.forecasts) && value.analysisSucceeded === true);
+}
+
+function normalizeCompanyReportRawResponseText(value: unknown): CompanyReportLlmRawResponse | null {
+  const rawResponseText = text(value);
+  return rawResponseText ? parseJsonObjectFromText(rawResponseText) || rawResponseText : null;
 }
 
 async function loadReportContentForForecast(
@@ -1419,32 +1378,44 @@ export type CompanyReportAnalysis = {
   targetPrice: number | null;
 };
 
+type CompanyReportAnalysisWithRaw = {
+  analysis: CompanyReportAnalysis;
+  rawResponseText: string;
+};
+
 async function requestCompanyReportAnalysisByLlm(
   c: Context<AppEnv>,
   title: string,
   trimmedContent: string,
-  options: LlmExtractionOptions & { targetType?: string; promptVersion?: string } = {},
-): Promise<CompanyReportAnalysis> {
+  options: Pick<LlmExtractionOptions, "onText"> = {},
+): Promise<CompanyReportAnalysisWithRaw> {
   const prompt = REPORT_ANALYZE_USER_PROMPT
     .replace("{{TITLE}}", title)
     .replace("{{CONTENT}}", trimmedContent);
-  const response = await requestLlmText(c.env, {
+  const response = await requestLocalDirectLlmText(c.env, {
     model: REPORT_LLM_MODEL,
-    messages: [
-      { role: "system", content: REPORT_ANALYZE_SYSTEM_PROMPT },
-      { role: "user", content: prompt },
+    instructions: REPORT_ANALYZE_SYSTEM_PROMPT,
+    input: [
+      { role: "user", content: [{ type: "input_text", text: prompt }] },
     ],
     maxTokens: 4096,
-    cacheTtlMs: REPORT_FORECAST_CACHE_TTL_MS,
-    targetType: options.targetType || "company_report_forecast",
-    targetId: options.targetId || title,
-    idempotencyKey: options.idempotencyKey,
-    promptVersion: options.promptVersion || REPORT_FORECAST_PROMPT_VERSION,
-    priority: 500,
     onText: options.onText,
-    onStatus: options.onStatus,
   });
-  return parseCompanyReportAnalysis(response.text);
+  return { analysis: parseCompanyReportAnalysis(response.text), rawResponseText: response.text };
+}
+
+async function extractCompanyReportAnalysisWithRawByLlm(
+  c: Context<AppEnv>,
+  title: string,
+  content: string,
+  options: Pick<LlmExtractionOptions, "onText"> = {},
+): Promise<CompanyReportAnalysisWithRaw> {
+  if (c.env.LLM_RUNTIME !== "local") throw new Error("company report LLM extraction is only available in local Node runtime");
+  const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
+  if (!trimmed) {
+    return { analysis: { forecasts: [], targetPrice: null }, rawResponseText: '{"forecasts":[],"targetPrice":null}' };
+  }
+  return requestCompanyReportAnalysisByLlm(c, title, trimmed, options);
 }
 
 export async function extractCompanyReportAnalysisByLlm(
@@ -1453,12 +1424,7 @@ export async function extractCompanyReportAnalysisByLlm(
   content: string,
   options: LlmExtractionOptions = {},
 ): Promise<CompanyReportAnalysis> {
-  if (c.env.LLM_RUNTIME !== "local") throw new Error("company report LLM extraction is only available in local LLM runtime");
-  const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
-  if (!trimmed) {
-    return { forecasts: [], targetPrice: null };
-  }
-  return requestCompanyReportAnalysisByLlm(c, title, trimmed, options);
+  return (await extractCompanyReportAnalysisWithRawByLlm(c, title, content, options)).analysis;
 }
 
 /** Backward-compatible forecast-only helper used by knowledge processing. */
@@ -1478,7 +1444,7 @@ export async function extractCompanyNewsReportByLlm(
   content: string,
   options: LlmExtractionOptions = {},
 ): Promise<Omit<CompanyNewsReportAnalysis, "analysisCalled" | "analysisSucceeded" | "updatedAt">> {
-  if (c.env.LLM_RUNTIME !== "local") throw new Error("company news report LLM extraction is only available in local LLM runtime");
+  if (c.env.LLM_RUNTIME !== "local") throw new Error("company news report LLM extraction is only available in local Node runtime");
   const trimmed = trimText(formatCompanyReportTextForLlm(content), 12000);
   if (!trimmed || !isLikelyCompanyNewsReport(title, trimmed)) {
     return {
@@ -1487,15 +1453,12 @@ export async function extractCompanyNewsReportByLlm(
       targetPrice: null,
     };
   }
-  const analysis = await requestCompanyReportAnalysisByLlm(c, title, trimmed, {
-    ...options,
-    targetType: "company_news_report",
-    promptVersion: NEWS_REPORT_ANALYSIS_CACHE_VERSION,
-  });
+  const result = await requestCompanyReportAnalysisByLlm(c, title, trimmed, options);
   return {
     isCompanyReport: true,
-    forecasts: analysis.forecasts,
-    targetPrice: analysis.targetPrice,
+    forecasts: result.analysis.forecasts,
+    targetPrice: result.analysis.targetPrice,
+    rawResponseText: result.rawResponseText,
   };
 }
 
@@ -1815,6 +1778,7 @@ async function writeSharedReportAnalysis(
   forecasts: CompanyReportForecast[],
   updatedAt: number,
   targetPrice?: number | null,
+  rawResponseText?: string,
 ): Promise<void> {
   const cacheKey = sharedReportCacheKeyForItem(item);
   if (!cacheKey) {
@@ -1825,6 +1789,7 @@ async function writeSharedReportAnalysis(
     analysisSucceeded: true,
     forecasts,
     ...(positiveNumberOrUndefined(targetPrice) !== undefined ? { targetPrice: positiveNumberOrUndefined(targetPrice) } : {}),
+    ...(text(rawResponseText) ? { rawResponseText: text(rawResponseText) } : {}),
     updatedAt,
   } satisfies SharedReportAnalysis, REPORT_FORECAST_CACHE_TTL_MS);
 }

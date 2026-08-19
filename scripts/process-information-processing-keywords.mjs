@@ -12,18 +12,20 @@ const dryRun = args.dryRun === true;
 const all = args.all === true;
 const maxDocuments = all ? Infinity : positiveInteger(args.maxDocuments, 100, "--max-documents");
 const maxAgeDays = positiveInteger(args.maxAgeDays, 30, "--max-age-days");
-const concurrency = Math.min(20, positiveInteger(args.concurrency, 3, "--concurrency"));
-const retryStaleProcessingMinutes = positiveInteger(args.retryStaleProcessingMinutes, 2, "--retry-stale-processing-minutes");
+// A direct document call owns its complete prepare → model → persist cycle.
+// Keep this command sequential so it has the same at-least-once behavior as
+// the automatic kv_cache cursor path.
+const concurrency = 1;
 const progressPath = resolve(root, String(args.progressFile || `data/stock-info/knowledge/state/institutional-top300-information-processing-${runStamp()}.jsonl`));
 const input = parseInput(JSON.parse(await readFile(inputPath, "utf8")));
-const promptVersion = String(args.promptVersion || "information-processing-v16").trim();
+const promptVersion = String(args.promptVersion || "information-processing-v19").trim();
 if (!promptVersion) throw new Error("--prompt-version must not be empty");
 const databaseFile = resolveLocalD1Database({ root, requiredTable: "knowledge_docs" });
-const documents = loadDocuments(databaseFile, promptVersion, retryStaleProcessingMinutes, maxAgeDays);
+const documents = loadDocuments(databaseFile, promptVersion, maxAgeDays);
 const selection = selectDocuments(input, documents, maxDocuments);
 
-console.log(`关键词：${input.keywords.length} 个；最近 ${maxAgeDays} 天标题匹配：${selection.matched} 篇；已处理：${selection.alreadyProcessed} 篇；预筛跳过：${selection.preprocessedSkip} 篇；已排队/处理中：${selection.activeJobs} 篇；本次待处理：${selection.selected.length} 篇${all ? "（全部）" : `（上限 ${maxDocuments}）`}；并发：${concurrency}`);
-console.log(`范围：每个关键词只处理最近 ${maxAgeDays} 天；排序：机构持仓优先级升序；同一关键词内按时间从近到远；${retryStaleProcessingMinutes} 分钟未更新的“处理中”任务会重试。输入：${inputPath}`);
+console.log(`关键词：${input.keywords.length} 个；最近 ${maxAgeDays} 天标题匹配：${selection.matched} 篇；已处理：${selection.alreadyProcessed} 篇；预筛跳过：${selection.preprocessedSkip} 篇；本次待处理：${selection.selected.length} 篇${all ? "（全部）" : `（上限 ${maxDocuments}）`}；并发：${concurrency}`);
+console.log(`范围：每个关键词只处理最近 ${maxAgeDays} 天；排序：机构持仓优先级升序；同一关键词内按时间从近到远；逐篇完成持久化后再处理下一篇。输入：${inputPath}`);
 if (selection.selected.length === 0) {
   console.log("没有符合条件的未处理文档。");
   process.exit(0);
@@ -82,8 +84,7 @@ function formatProgressLine(label, title, status, detail, durationSeconds) {
   return `${label} · ${status}，${detail} · ${title}；完成时间：${formatLocalTime(finishedAt)}；本篇耗时 ${durationSeconds}s；进度 ${processed}/${selection.selected.length}，累计完成 ${completed}，失败 ${failed}；总耗时 ${secondsSince(startedAt)}s，平均单篇耗时 ${averageItemSeconds(totalItemDurationMs, processed)}s。`;
 }
 
-function loadDocuments(database, promptVersion, retryStaleProcessingMinutes, maxAgeDays) {
-  const activeProcessingCutoff = Date.now() - retryStaleProcessingMinutes * 60 * 1000;
+function loadDocuments(database, promptVersion, maxAgeDays) {
   const documentCutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
   const sql = `
     select d.doc_id, d.title, d.sort_time,
@@ -99,11 +100,6 @@ function loadDocuments(database, promptVersion, retryStaleProcessingMinutes, max
           and r.prompt_version = ${sqlString(promptVersion)}
           and r.status in ('succeeded', 'needs_review')
       ) as is_processed,
-      exists (
-        select 1 from information_processing_jobs j
-        where j.doc_id = d.doc_id
-          and (j.status = 'queued' or (j.status = 'running' and j.updated_at >= ${activeProcessingCutoff}))
-      ) as has_active_job,
       coalesce((
         select p.action
         from knowledge_preprocessing_decisions p
@@ -119,7 +115,7 @@ function loadDocuments(database, promptVersion, retryStaleProcessingMinutes, max
   `;
   return queryLocalD1Sql(sql, { path: database, requiredTable: "knowledge_docs", maxBuffer: 50 * 1024 * 1024 }).map((row) => ({
     docId: String(row.doc_id || ""), title: String(row.title || ""), sortTime: String(row.sort_time || ""),
-    processed: Number(row.is_processed) === 1, activeJob: Number(row.has_active_job) === 1,
+    processed: Number(row.is_processed) === 1,
     preprocessedSkip: isTerminalPreprocessingAction(row.preprocessing_action),
   }));
 }
@@ -130,7 +126,6 @@ function selectDocuments(input, documents, maxDocuments) {
   let matched = 0;
   let alreadyProcessed = 0;
   let preprocessedSkip = 0;
-  let activeJobs = 0;
   for (const keyword of input.keywords) {
     const matches = documents.filter((document) => keyword.titleKeywords.some((needle) => document.title.includes(needle)));
     for (const document of matches) {
@@ -139,14 +134,13 @@ function selectDocuments(input, documents, maxDocuments) {
       matched += 1;
       if (document.processed) { alreadyProcessed += 1; continue; }
       if (document.preprocessedSkip) { preprocessedSkip += 1; continue; }
-      if (document.activeJob) { activeJobs += 1; continue; }
       candidates.push({ ...document, priority: keyword.priority, name: keyword.name });
     }
   }
   candidates.sort((left, right) => left.priority - right.priority
     || newestFirst(left.sortTime, right.sortTime)
     || left.docId.localeCompare(right.docId));
-  return { matched, alreadyProcessed, preprocessedSkip, activeJobs, selected: candidates.slice(0, maxDocuments) };
+  return { matched, alreadyProcessed, preprocessedSkip, selected: candidates.slice(0, maxDocuments) };
 }
 
 async function processDocument(server, documentId) {

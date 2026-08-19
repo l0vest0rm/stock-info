@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import financeMappings from "../../../../shared/finance-mappings.json";
 import { fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
 import { loadFinancialStatementReadModel, parseStatementType } from "../application/load-financial-statements";
+import { cashDividends } from "../domain/dividend-yield";
 import { loadKline } from "../../market/application/load-kline";
 import { externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
 import { normalizeSecurityCode } from "../../../shared/codes";
@@ -315,10 +316,10 @@ async function fetchDividendYield(
     }),
     loadKline(env, normalized, "day", "normal", "1990-01-01", todayDate()),
   ]);
-  const decisions = rawRows
+  const decisions = cashDividends(rawRows
     .map(toDividendDecision)
     .filter((item): item is DividendDecision => item !== null)
-    .sort((a, b) => a.announcedAt.localeCompare(b.announcedAt));
+    .sort((a, b) => a.announcedAt.localeCompare(b.announcedAt)));
   const bars = klineResult.rows.filter((row): row is KlineBar => "close" in row && Boolean(row.date));
   if (!decisions.length || !bars.length) {
     return emptyDividendYield();
@@ -346,14 +347,13 @@ async function fetchDividendYield(
   const annualizedCashPerShare = trailingFourQuarterCash(activeByQuarter);
   const latestClose = [...bars].reverse().find((bar) => bar.close && bar.close > 0)?.close ?? 0;
   const currentYield = latestClose > 0 ? 100 * annualizedCashPerShare / latestClose : 0;
-  const cashEvents = decisions.filter((item) => item.cashPerShare > 0);
   return {
     currentYield,
     annualizedCash: annualizedCashPerShare,
     annualizedCashPerShare,
-    latestEventDate: cashEvents.at(-1)?.eventDate ?? "",
+    latestEventDate: decisions.at(-1)?.eventDate ?? "",
     series,
-    events: cashEvents.map((item) => ({
+    events: decisions.map((item) => ({
       ts: Date.parse(`${item.eventDate}T00:00:00.000Z`),
       plan: item.plan,
       reportDate: item.reportDate,

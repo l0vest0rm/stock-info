@@ -5,8 +5,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { createResponsesProvider } from "@m2ai/shared-llm-client";
 
-import { createGenericLlmSchedulerClient, toGenericRawRequest } from "./lib/generic-llm-client.mjs";
 
 import {
   aggregateCurrentFundHoldings,
@@ -130,28 +130,16 @@ async function main() {
         OUTPUT_PATH: item.outputPath,
         EVIDENCE_JSON: JSON.stringify(evidence, null, 2),
       });
-      const llmResult = await llm.scheduler.requestText({
-        request: toGenericRawRequest({
-          provider: llm.provider,
-          model: llm.model,
-          instructions: promptSystem,
-          user: prompt,
-          maxTokens: config.llm.maxOutputTokens,
-          temperature: config.llm.temperature,
-          reasoningEffort: config.llm.reasoningEffort,
-          cacheTtlMs: config.llm.cacheTtlMs,
-          cacheEnabled: true,
-        }),
-        targetType: "fund_quarterly_research",
-        targetId: `${item.fund.code}:${reportQuarter}`,
-        idempotencyKey: `fund-quarterly-research:${item.fund.code}:${reportQuarter}`,
-        promptVersion: "fund-quarterly-research.v1",
-        priority: 500,
-        source: "fund-quarterly-research",
+      const llmResult = await llm.provider.stream({
+        model: llm.model,
+        instructions: promptSystem,
+        input: [{ role: "user", content: [{ type: "input_text", text: prompt }] }],
+        maxOutputTokens: config.llm.maxOutputTokens,
+        temperature: config.llm.temperature,
       });
       const markdown = validateGeneratedReport(stripMarkdownFence(llmResult.text), item.fund);
       await atomicWrite(item.outputPath, `${markdown}\n`);
-      log("written", { code: item.fund.code, outputPath: item.outputPath, llmCached: llmResult.cached });
+      log("written", { code: item.fund.code, outputPath: item.outputPath, llmCached: false });
       return { status: "written", fund: item.fund, outputPath: item.outputPath, evidencePath };
     } catch (error) {
       log("failed_analysis", { code: item.fund.code, name: item.fund.name, error: errorMessage(error) });
@@ -579,13 +567,10 @@ async function fetchJsonWithRetry(url, sourceConfig) {
 async function createLlmClient(config, stateDir) {
   const model = process.env.FUND_RESEARCH_LLM_MODEL || config.llm.model;
   const baseUrl = String(process.env.FUND_RESEARCH_LLM_BASE_URL || process.env.LLM_BASE_URL || config.llm.baseUrl).replace(/\/$/, "");
-  const provider = "openai";
   const apiKeyEnv = process.env.FUND_RESEARCH_LLM_API_KEY_ENV || config.llm.apiKeyEnv;
-  // Credentials are resolved by the local generic dispatcher, not this CLI;
-  // keeping the configured provider URL only for diagnostics avoids a second
-  // per-process provider client/concurrency gate.
-  const schedulerBaseUrl = String(process.env.FUND_RESEARCH_SCHEDULER_URL || config.baseUrl || "http://127.0.0.1:8000").replace(/\/$/, "");
-  return { scheduler: createGenericLlmSchedulerClient({ baseUrl: schedulerBaseUrl, waitTimeoutMs: Number(process.env.FUND_RESEARCH_LLM_WAIT_TIMEOUT_MS) || 60 * 60_000 }), provider, model, baseUrl };
+  const apiKey = await resolveApiKey(config.llm, apiKeyEnv);
+  if (!apiKey) throw new Error(`missing fund research LLM credential: ${apiKeyEnv}`);
+  return { model, baseUrl, provider: createResponsesProvider({ name: "openai", baseUrl, apiKey }) };
 }
 
 async function resolveApiKey(llmConfig, apiKeyEnv) {

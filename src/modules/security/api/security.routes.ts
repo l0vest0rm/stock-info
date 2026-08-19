@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getSecurity, searchSecurities } from "../application/search-securities";
-import { externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
+import { fail, ok, requireQuery } from "../../../shared/http";
 import type { AppEnv } from "../../../types";
 
 export const securityRoutes = new Hono<AppEnv>();
@@ -10,7 +10,7 @@ securityRoutes.get("/search", async (c) => {
   if (q instanceof Response) {
     return q;
   }
-  const data = await searchSecurities(c.env.DB, q, { httpOptions: externalHttpOptions(c.env) });
+  const data = await searchSecurities(c.env.DB, q);
   return ok(c, data);
 });
 
@@ -19,7 +19,7 @@ securityRoutes.get("/suggest", async (c) => {
   if (q instanceof Response) {
     return q;
   }
-  const data = await searchSecurities(c.env.DB, q, { httpOptions: externalHttpOptions(c.env) });
+  const data = await searchSecurities(c.env.DB, q);
   return ok(
     c,
     data.map((item) => ({
@@ -39,14 +39,14 @@ securityRoutes.get("/code/name", async (c) => {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean)) {
-    const record = await getSecurity(c.env.DB, item, { httpOptions: externalHttpOptions(c.env) });
+    const record = await getSecurity(c.env.DB, item);
     result[item] = record?.name || item;
   }
   return ok(c, result);
 });
 
 securityRoutes.get("/securities/:code", async (c) => {
-  const record = await getSecurity(c.env.DB, c.req.param("code"), { httpOptions: externalHttpOptions(c.env) });
+  const record = await getSecurity(c.env.DB, c.req.param("code"));
   if (!record) {
     return fail(c, 404, "security not found");
   }

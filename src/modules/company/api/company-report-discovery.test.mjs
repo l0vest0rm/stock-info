@@ -40,9 +40,6 @@ class FakeD1 {
             if (args[2] != null && row.expiresAt != null && row.expiresAt <= args[2]) return null;
             return row;
           }
-          if (normalized.includes("from securities")) {
-            return null;
-          }
           if (normalized.includes("from http_cache")) {
             return this.httpCache.get(args[0]) ?? null;
           }
@@ -150,7 +147,6 @@ test("prepares the structured discovery prompt with the current report identity 
         bind() {
           return {
         first: async () => {
-          if (sql.includes("from securities")) return { name: "示例公司" };
           if (sql.includes("from kv_cache")) return {
             valueJson: JSON.stringify([{
               title: "示例公司深度报告",
@@ -170,7 +166,7 @@ test("prepares the structured discovery prompt with the current report identity 
   const prepared = await prepareCompanyReportDiscoveryExecution(db, "000001.SZ", "xhigh");
   assert.equal(prepared.promptVersion, "company-report-discovery.v6");
   assert.match(prepared.prompt, /证券代码：000001\.SZ/);
-  assert.match(prepared.prompt, /公司名称：示例公司/);
+  assert.match(prepared.prompt, /公司名称：000001\.SZ/);
   assert.match(prepared.prompt, /"forecasts"/);
   assert.match(prepared.prompt, /"targetPrice"/);
   assert.match(prepared.prompt, /示例公司深度报告/);

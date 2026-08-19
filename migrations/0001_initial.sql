@@ -1,16 +1,3 @@
-create table if not exists securities (
-  code text primary key,
-  market text not null,
-  type text not null,
-  name text not null,
-  currency text,
-  exchange_name text,
-  source text,
-  updated_at integer not null
-);
-
-create index if not exists idx_securities_type_name on securities(type, name);
-
 create table if not exists security_aliases (
   alias text not null,
   code text not null,

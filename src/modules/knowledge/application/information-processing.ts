@@ -4,7 +4,7 @@ import {
   INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
   INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT,
 } from "../../../generated/prompt-text";
-import { requestLlmText } from "../../../shared/llm-client";
+import { requestLocalDirectLlmText } from "../../../shared/local-direct-llm";
 import type { Bindings } from "../../../types";
 
 const MODEL = "gpt-5.6-luna" as const;
@@ -71,22 +71,13 @@ export async function processInformationDocument(env: Bindings, docId: string): 
   const prepared = await prepareInformationDocument(env, docId);
   if (prepared.kind === "complete") return prepared.result;
   try {
-    const response = await requestLlmText(env, {
+    const response = await requestLocalDirectLlmText(env, {
       model: prepared.request.model,
+      instructions: prepared.request.instructions,
+      input: [{ role: "user", content: [{ type: "input_text", text: prepared.request.input }] }],
       maxTokens: prepared.request.maxTokens,
-      reasoningEffort: "low",
-      cacheEnabled: false,
-      messages: [
-        { role: "system", content: prepared.request.instructions },
-        { role: "user", content: prepared.request.input },
-      ],
-      targetType: "knowledge_document",
-      targetId: prepared.request.versionId,
-      idempotencyKey: `information-document:${prepared.request.versionId}:${INFORMATION_PROCESSING_PROMPT_VERSION}`,
-      promptVersion: INFORMATION_PROCESSING_PROMPT_VERSION,
-      priority: 500,
     });
-    return await completeInformationProcessing(env, prepared.request, response.text, response.raw, response.cached);
+    return await completeInformationProcessing(env, prepared.request, response.text, response.raw, false);
   } catch (error) {
     await failInformationProcessing(env, prepared.request, error);
     throw error;

@@ -7,7 +7,6 @@ import { fundRoutes } from "../modules/fund/api/fund.routes";
 import { healthRoutes } from "../modules/health/api/health.routes";
 import { knowledgeRoutes } from "../modules/knowledge/api/knowledge.routes";
 import { localDataRoutes } from "../modules/local-data/api/local-data.routes";
-import { localLlmRoutes } from "../modules/llm/api/local-llm.routes";
 import { macroRoutes } from "../modules/macro/api/macro.routes";
 import { marketRoutes } from "../modules/market/api/market.routes";
 import { klineRoutes } from "../modules/market/api/kline.routes";
@@ -23,8 +22,11 @@ import type { AppEnv } from "../types";
 
 export function createRouter(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
+  const requestLogger = logger();
 
-  app.use("*", logger());
+  // The local supervisor probes this route every five seconds. Its successful
+  // responses are liveness noise, not request diagnostics.
+  app.use("*", (c, next) => c.req.path === "/api/health" ? next() : requestLogger(c, next));
   app.use("/api/*", cors());
 
   app.route("/api", healthRoutes);
@@ -39,9 +41,14 @@ export function createRouter(): Hono<AppEnv> {
   app.route("/api", thirteenFRoutes);
   app.route("/api", knowledgeRoutes);
   app.route("/api", localDataRoutes);
-  app.route("/api", localLlmRoutes);
   app.route("/api", macroRoutes);
   app.route("/api", situationRoutes);
+
+  // Do not let a retired scheduler URL fall through to the HTML SPA fallback:
+  // callers must fail explicitly instead of mistaking a page for an API result.
+  const retiredLocalLlmScheduler = (c: Parameters<typeof fail>[0]) => fail(c, 410, "local generic LLM scheduler was removed; use a direct business operation or taskd");
+  app.all("/api/llm-tasks", retiredLocalLlmScheduler);
+  app.all("/api/llm-tasks/*", retiredLocalLlmScheduler);
 
   app.get("/", (c) => {
     if (!c.env.ASSETS) {

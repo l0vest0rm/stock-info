@@ -56,9 +56,6 @@ async function main() {
   const http = startCore("local-http", process.execPath, [resolve(root, "data/local/runtime/server.mjs")]);
   await waitForHealthy(`http://${host}:${httpPort}/api/health`, "local-http");
   await waitForHealthy(`http://${host}:${contentPort}/__health`, "local-http-content");
-  const worker = startCore("local-job-worker", process.execPath, [resolve(root, "scripts/local-job-worker.mjs")]);
-  await waitForReady(worker, "local-job-worker");
-
   const cron = await startLocalCronScheduler({
     configPath: resolve(process.env.LOCAL_CRON_CONFIG || "wrangler.jsonc"),
     onEvent: (event, details) => log("local-scheduler", `cron_${event}`, details),
@@ -77,7 +74,7 @@ async function main() {
   log("local-supervisor", "ready", {
     http_url: `http://${host}:${httpPort}`,
     content_url: `http://${host}:${contentPort}`,
-    roles: ["local-http", "local-job-worker", "local-scheduler"],
+    roles: ["local-http", "local-scheduler"],
   });
 }
 
@@ -119,17 +116,7 @@ function startCore(role, command, args) {
   return state;
 }
 
-function childEnvironment(role) {
-  const env = { ...process.env, LOCAL_SUPERVISOR_RUN_ID: runId };
-  if (role !== "local-job-worker") return env;
-  const baseUrl = `http://${host}:${httpPort}`;
-  return {
-    ...env,
-    WEB_SEARCH_PACKAGE_RUNNER_BASE_URL: env.WEB_SEARCH_PACKAGE_RUNNER_BASE_URL || baseUrl,
-    OPERATING_ANALYSIS_RUNNER_BASE_URL: env.OPERATING_ANALYSIS_RUNNER_BASE_URL || baseUrl,
-    INFORMATION_PROCESSING_RUNNER_BASE_URL: env.INFORMATION_PROCESSING_RUNNER_BASE_URL || baseUrl,
-  };
-}
+function childEnvironment() { return { ...process.env, LOCAL_SUPERVISOR_RUN_ID: runId }; }
 
 function attachChildOutput(role, child) {
   for (const [stream, level] of [[child.stdout, "stdout"], [child.stderr, "stderr"]]) {
@@ -194,11 +181,6 @@ function scheduleHealthChecks() {
   healthTimer = setInterval(() => {
     void checkHealth("local-http", `http://${host}:${httpPort}/api/health`);
     void checkHealth("local-http-content", `http://${host}:${contentPort}/__health`);
-    const worker = children.get("local-job-worker");
-    if (!worker?.child || worker.exited || !worker.ready) {
-      failure("local-supervisor", "liveness_failed", new Error("local-job-worker is not live"), { role: "local-job-worker" });
-      requestCoreRestart("local-job-worker");
-    }
   }, healthIntervalMs);
 }
 
@@ -371,9 +353,10 @@ function isSupervisorCommand(command) {
   if (command.includes("--stop-previous")) return false;
   const tokens = command.trim().split(/\s+/);
   const scriptIndex = tokens.findIndex((token) => token === "scripts/local-supervisor.mjs" || token === resolve(root, "scripts/local-supervisor.mjs"));
-  if (scriptIndex < 0) return false;
-  if (scriptIndex === 0) return tokens[0] === resolve(root, "scripts/local-supervisor.mjs");
-  return /(?:^|\/)node(?:js)?$/.test(tokens[0]);
+  // Only the process that directly executes this script owns the local
+  // supervisor role. A logging wrapper also carries this path as a child
+  // argument and must never be mistaken for a previous supervisor.
+  return scriptIndex === 1 && /(?:^|\/)node(?:js)?$/.test(tokens[0]);
 }
 
 async function processWorkingDirectory(pid) {

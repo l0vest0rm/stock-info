@@ -2,7 +2,7 @@ import {
   RESEARCH_FORECAST_SYNTHESIS_SYSTEM_PROMPT,
   RESEARCH_FORECAST_SYNTHESIS_USER_PROMPT,
 } from "../../../generated/prompt-text";
-import { requestLlmText } from "../../../shared/llm-client";
+import { requestLocalDirectLlmText } from "../../../shared/local-direct-llm";
 import type { Bindings } from "../../../types";
 import { canWriteResearchLocally } from "../domain/research-capabilities";
 import { hasUnsafeMarketConsensusClaim } from "../domain/forecast-synthesis-policy";
@@ -38,25 +38,16 @@ export async function createForecastSynthesisDraft(
     shareBasis: item.shareBasis,
     sourceStatement: item.sourceStatement,
   }));
-  const response = await requestLlmText(env, {
+  const response = await requestLocalDirectLlmText(env, {
     model: MODEL,
-    reasoningEffort: "low",
     maxTokens: 2400,
-    cacheEnabled: false,
-    targetType: "forecast_workspace",
-    targetId: code,
-    idempotencyKey: `forecast-synthesis:${code}:${workspace.consolidation.consolidationId}:${FORECAST_SYNTHESIS_PROMPT_VERSION}`,
-    promptVersion: FORECAST_SYNTHESIS_PROMPT_VERSION,
-    priority: 500,
-    messages: [
-      { role: "system", content: RESEARCH_FORECAST_SYNTHESIS_SYSTEM_PROMPT },
-      { role: "user", content: render(RESEARCH_FORECAST_SYNTHESIS_USER_PROMPT, {
+    instructions: RESEARCH_FORECAST_SYNTHESIS_SYSTEM_PROMPT,
+    input: [{ role: "user", content: [{ type: "input_text", text: render(RESEARCH_FORECAST_SYNTHESIS_USER_PROMPT, {
         SECURITY_CODE: code,
         SUBJECT_STATUS: String(workspace.subject.analysisScopeStatus),
         SOURCE_FORECASTS: JSON.stringify(sourcePayload, null, 2),
         CONSOLIDATION: JSON.stringify(workspace.consolidation, null, 2),
-      }) },
-    ],
+      }) }] }],
   });
   const content = response.text.trim();
   if (!content || hasUnsafeMarketConsensusClaim(content)) {

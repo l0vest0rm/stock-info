@@ -1,11 +1,13 @@
 import type { AppEnv, KlineBar } from "../../../types";
-import { getKvCache, putKvCache } from "../../../db/queries.ts";
+import { getKvCache, putKvCache } from "../../../db/queries";
 import { RESEARCH_OPERATING_ANALYSIS_PROMPT } from "../../../generated/prompt-text";
 import { taskdWebQaInput } from "../../../shared/llm-client";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
 import { loadKline } from "../../market/application/load-kline";
+import { getSecurity } from "../../security/application/search-securities";
+import { normalizeSecurityCode } from "../../../shared/codes";
 import industryProfiles from "../../../../config/research-eastmoney-em2016-industry-profiles.json";
 import companyProfiles from "../../../../config/eastmoney-company-em2016-profiles.json";
 
@@ -149,8 +151,8 @@ export async function loadResearchInvestmentAnalysis(env: AppEnv["Bindings"], se
 }
 
 async function prepareResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string) {
-  const code = securityCode.trim().toUpperCase();
-  const security = await env.DB.prepare("select code, name, market, type, currency from securities where code=?").bind(code).first<{ code: string; name: string; market: string; type: string; currency: string | null }>();
+  const code = normalizeSecurityCode(securityCode);
+  const security = await getSecurity(env.DB, code);
   if (!security) throw new Error("security was not found");
   const [marketSnapshot, localProfile] = await Promise.all([
     loadInvestmentAnalysisMarketSnapshot(env, code),
@@ -160,7 +162,7 @@ async function prepareResearchInvestmentAnalysis(env: AppEnv["Bindings"], securi
     schemaVersion: "investment-analysis-input.v2",
     promptVersion: PROMPT_VERSION,
     preparedAt: new Date().toISOString(),
-    security: { code: security.code, name: security.name, market: security.market, type: security.type, currency: security.currency },
+    security: { code: security.code, name: security.name, market: security.market, type: security.type, currency: security.currency ?? null },
     marketSnapshot,
     // This local routing state does not inject unlinked business facts for
     // the model to repeat as public disclosure; Web Search must verify them.
@@ -319,7 +321,7 @@ function normalizeReasoningEffort(value: string | null | undefined): "low" | "me
   return normalized as "low" | "medium" | "high" | "xhigh";
 }
 
-function taskView(task: TaskdTask) { return { name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
+function taskView(task: Pick<TaskdTask, "name" | "status" | "errorMessage" | "createdAt" | "updatedAt" | "completedAt">) { return { name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
 function responseFromStoredResult(result: ResultRow) {
   const task = result.task;
   return {

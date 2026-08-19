@@ -39,6 +39,11 @@ const pageEntries = [
     fileName: 'js/company-option-page.js',
   },
   {
+    entry: 'src/modules/options/pages/option-strategy-page.ts',
+    globalName: 'LicaiOptionStrategyPage',
+    fileName: 'js/option-strategy-page.js',
+  },
+  {
     entry: 'src/modules/home/pages/home-page.ts',
     globalName: 'LicaiHomePage',
     fileName: 'js/home-page.js',

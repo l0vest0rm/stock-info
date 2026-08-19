@@ -8,6 +8,8 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")" && pwd)
 LOCAL_START_LOG_FILE="${LOCAL_START_LOG_FILE:-$PROJECT_ROOT/data/logs/stock-info-local-start.log}"
+LOCAL_START_LOG_MAX_BYTES="${LOCAL_START_LOG_MAX_BYTES:-20971520}"
+LOCAL_START_LOG_BACKUPS="${LOCAL_START_LOG_BACKUPS:-3}"
 PORT="${PORT:-8000}"
 CONTENT_PORT="${KNOWLEDGE_CONTENT_LOCAL_PORT:-8788}"
 CONTENT_DIR="${KNOWLEDGE_CONTENT_LOCAL_DIR:-/Users/terry/git/data/stock-info/knowledge/content-cache}"
@@ -48,6 +50,15 @@ fi
 
 cd "$PROJECT_ROOT"
 
+if [[ "$LOCAL_START_LOG_MAX_BYTES" != <-> || "$LOCAL_START_LOG_MAX_BYTES" -lt 1048576 ]]; then
+  print -u2 "LOCAL_START_LOG_MAX_BYTES must be an integer of at least 1048576."
+  exit 1
+fi
+if [[ "$LOCAL_START_LOG_BACKUPS" != <-> || "$LOCAL_START_LOG_BACKUPS" -lt 1 || "$LOCAL_START_LOG_BACKUPS" -gt 20 ]]; then
+  print -u2 "LOCAL_START_LOG_BACKUPS must be an integer from 1 to 20."
+  exit 1
+fi
+
 print "Stopping any previous local supervisor owned by this repository..."
 node scripts/local-supervisor.mjs --stop-previous
 
@@ -69,4 +80,8 @@ fi
 
 print "Starting local supervisor; runtime output will be written to ${LOCAL_START_LOG_FILE}..."
 mkdir -p "${LOCAL_START_LOG_FILE:h}"
-exec node scripts/local-supervisor.mjs >>"$LOCAL_START_LOG_FILE" 2>&1
+exec node scripts/run-with-bounded-log.mjs \
+  --file "$LOCAL_START_LOG_FILE" \
+  --max-bytes "$LOCAL_START_LOG_MAX_BYTES" \
+  --backups "$LOCAL_START_LOG_BACKUPS" \
+  -- node scripts/local-supervisor.mjs

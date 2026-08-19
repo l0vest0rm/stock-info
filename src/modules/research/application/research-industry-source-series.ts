@@ -1,5 +1,5 @@
 import extractionConfig from "../../../../config/research-industry-source-extraction.json";
-import { requestLlmText } from "../../../shared/llm-client";
+import { requestLocalDirectLlmText } from "../../../shared/local-direct-llm";
 import type { Bindings } from "../../../types";
 
 type Row = Record<string, unknown>;
@@ -26,13 +26,12 @@ export async function syncResearchIndustrySourceSeries(env: Bindings, securityCo
     if (Number(cached?.count) > 0) { outcomes.push({ docId: document.docId, status: "cached", items: Number(cached?.count) }); continue; }
     const content = await documentContent(env.DB, document.contentKey);
     if (!content) { outcomes.push({ docId: document.docId, status: "skipped", items: 0, reason: "imported_content_missing" }); continue; }
-    const response = await requestLlmText(env, { model: config.model, maxTokens: config.maxOutputTokens, reasoningEffort: "low", cacheEnabled: false,
-      targetType: "industry_source_document", targetId: document.docId,
-      idempotencyKey: `industry-source-series:${code}:${document.docId}:${config.version}`,
-      promptVersion: config.version, priority: 500, messages: [
-      { role: "system", content: config.systemPrompt },
-      { role: "user", content: render(config.userTemplate, { SECURITY_CODE: code, TITLE: document.title, CONTENT: content }) },
-    ] });
+    const response = await requestLocalDirectLlmText(env, {
+      model: config.model,
+      maxTokens: config.maxOutputTokens,
+      instructions: config.systemPrompt,
+      input: [{ role: "user", content: [{ type: "input_text", text: render(config.userTemplate, { SECURITY_CODE: code, TITLE: document.title, CONTENT: content }) }] }],
+    });
     const items = parse(response.text);
     if (!items.length) { outcomes.push({ docId: document.docId, status: "processed", items: 0 }); continue; }
     await env.DB.batch(items.map((item) => env.DB.prepare(`insert into research_industry_source_series_observations (
