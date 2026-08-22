@@ -21,11 +21,6 @@ async function request(path, init = {}) {
   return body.data;
 }
 
-async function existingIdentity(code) {
-  const company = await request(`/api/research/company/${encodeURIComponent(code)}`);
-  return company.identity;
-}
-
 function alreadyMatchesIdentity(identity, sample) {
   const primary = identity.relationships?.some((item) => item.companyId === sample.companyId && item.relationshipStatus === "confirmed");
   return identity.listedSecurity?.mappingStatus === "confirmed"
@@ -34,20 +29,11 @@ function alreadyMatchesIdentity(identity, sample) {
 }
 
 for (const sample of samples.identities) {
-  const identity = await existingIdentity(sample.code);
-  if (identity.listedSecurity?.persisted) {
-    if (!alreadyMatchesIdentity(identity, sample)) {
-      throw new Error(`${sample.code} already has a persisted identity that does not match this official sample; inspect it manually rather than overwriting it`);
-    }
-    console.log(`identity unchanged: ${sample.code}`);
-    continue;
-  }
-  await request(`/api/research/company/${encodeURIComponent(sample.code)}/identity`, {
+  const identity = await request(`/api/research/company/${encodeURIComponent(sample.code)}/identity`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(sample.request),
   });
-  const after = await existingIdentity(sample.code);
-  if (!alreadyMatchesIdentity(after, sample)) throw new Error(`${sample.code} identity did not persist as confirmed`);
-  console.log(`identity imported: ${sample.code}`);
+  if (!alreadyMatchesIdentity(identity, sample)) throw new Error(`${sample.code} identity did not persist as confirmed`);
+  console.log(`identity imported/reused: ${sample.code}`);
 }
 
 for (const fact of samples.facts) {

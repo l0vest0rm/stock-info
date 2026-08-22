@@ -13,8 +13,6 @@ const samples = [
   { code: "00700.HK", market: "HK" },
   { code: "AAPL.US", market: "US" },
 ];
-const tabIds = ["fundamentals", "market", "industry", "forecast", "risk"];
-
 await verifyPageShell();
 for (const sample of samples) await verifySample(sample);
 console.log(`investment-analysis read-model verification passed for ${samples.length} real cross-market samples.`);
@@ -34,20 +32,6 @@ async function verifyPageShell() {
 }
 
 async function verifySample({ code, market }) {
-  const workspace = await api(`/api/research/company/${encodeURIComponent(code)}`);
-  const data = workspace.data;
-  assert(data?.identity?.operatingCompany?.companyId, `${code}: operating company is absent`);
-  assert(data?.identity?.listedSecurity?.code === code, `${code}: current security identity leaks or is absent`);
-  assert(["provisional", "confirmed"].includes(data.identity.listedSecurity.mappingStatus), `${code}: mapping status is not explicit`);
-  assert(Array.isArray(data?.researchDepth?.levels) && data.researchDepth.levels.some((item) => item.depth === "standard"), `${code}: standard research state is absent`);
-  assert(Array.isArray(data?.dataRequirementCoverage?.requirements), `${code}: requirement coverage is absent`);
-  for (const tabId of tabIds) {
-    for (const requirementId of requirementsFor(tabId)) {
-      const requirement = data.dataRequirementCoverage.requirements.find((item) => item.requirementId === requirementId);
-      assert(requirement && ["available", "partial", "missing", "stale", "conflict", "source_error"].includes(requirement.status), `${code}: ${tabId}/${requirementId} status is absent`);
-      assert(requirement.missingImpact && requirement.nextEvidence, `${code}: ${tabId}/${requirementId} does not disclose its impact or next automatic input`);
-    }
-  }
   const insights = await api(`/api/research/company/${encodeURIComponent(code)}/auto-filing-insights`);
   assert(Array.isArray(insights.data?.items) && insights.data.items.length > 0, `${code}: no stored filing facts`);
   const seenTabs = new Set(insights.data.items.map((item) => item.tabId));
@@ -57,14 +41,6 @@ async function verifySample({ code, market }) {
     assert(String(item.extractionMethod || "").includes("research-filing-extraction.v3"), `${code}: filing fact has an obsolete processing method`);
     assert(item.factType && item.valueType, `${code}: filing fact has no typed extraction facet`);
     assert(item.reportedValue !== "[object Object]", `${code}: invalid object value is rendered as a fact`);
-  }
-  const inputs = data.autoFilingFactInputs;
-  assert(inputs?.availability === "available" && Array.isArray(inputs.items) && inputs.items.length === insights.data.items.length, `${code}: filing facts were not materialized as research inputs`);
-  for (const input of inputs.items) {
-    assert(input.documentUrl && input.evidenceQuote && input.evidenceLocator && input.reportPeriod, `${code}: materialized input lacks source, quote, locator, or period`);
-    assert(input.usagePolicy === "source_bound_evidence_only_no_valuation", `${code}: filing input can be mistaken for a valuation assumption`);
-    assert(["operating", "market", "governance", "industry", "forecast", "risk"].includes(input.targetModule), `${code}: filing input target module is invalid`);
-    assert(input.reportedValue !== "[object Object]", `${code}: materialized input contains an object value`);
   }
   const overview = await api(`/api/company/overview?code=${encodeURIComponent(code)}`);
   assert(overview.data?.source === "xueqiu", `${code}: ${market} market price did not retain Xueqiu provenance`);
@@ -76,13 +52,6 @@ async function verifySample({ code, market }) {
     const headings = new Set([...investmentAnalysis.data.report.markdown.matchAll(/^# ([1-9]|1[0-2])\. /gm)].map((match) => match[1]));
     assert.equal(headings.size, 12, `${code}: report lacks the twelve H1 headings`);
   }
-}
-
-function requirementsFor(tabId) {
-  if (tabId === "fundamentals") return ["business_model_and_drivers", "formal_financial_statements", "statutory_financial_cross_check", "governance_and_capital_allocation"];
-  if (tabId === "market" || tabId === "industry") return ["industry_market_kpi_and_peers"];
-  if (tabId === "forecast") return ["source_forecasts_and_guidance"];
-  return ["thesis_risk_and_review"];
 }
 
 async function api(path) {

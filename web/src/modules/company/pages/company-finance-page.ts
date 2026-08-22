@@ -140,6 +140,10 @@ function formatFinancialAnalysisTimestamp(value: number | null | undefined): str
   return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
 }
 
+function formatFinancialRiskFlagValue(flag: { value: number; unit: string }): string {
+  return flag.unit === 'percent' ? `${flag.value.toFixed(2)}%` : `${flag.value}${flag.unit}`
+}
+
 function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: { generating: boolean; error: string | null; generate: () => Promise<void>; resume: () => Promise<void> }) {
   const code = codeFromUrl()
   if (!code) return h('section', { class: 'card border-info mb-3' }, [h('div', { class: 'card-body text-muted' }, '请选择单只股票后生成深入财务分析；多股票对比仍使用下方图表和三表。')])
@@ -174,7 +178,7 @@ function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: 
       quality ? h('p', { class: 'small text-muted mb-2' }, `数据：${quality.status || 'unknown'}；${quality.sourcePolicy || '来源待载入'}；法定核验：${quality.statutoryVerification?.status || 'unknown'}。${quality.statutoryVerification?.reason || ''}`) : h('p', { class: 'small text-muted' }, '尚无冻结的财务分析输入。'),
       snapshot?.periodCoverage ? h('p', { class: 'small text-muted' }, `覆盖：年度 ${snapshot.periodCoverage.annual?.join('、') || '—'}；季度 ${snapshot.periodCoverage.quarterly?.join('、') || '—'}；TTM 截至 ${snapshot.periodCoverage.ttmEndDate || '—'}。`) : null,
       options.error ? h('p', { class: 'alert alert-danger py-2 small' }, options.error) : null,
-      flags.length ? h('div', { class: 'mb-3' }, [h('strong', { class: 'small' }, '工程触发的财务风险信号'), h('ul', { class: 'small mb-0 mt-1' }, flags.map((flag) => h('li', { key: flag.ruleId }, `[${flag.severity}] ${flag.title}（${flag.period}，${flag.value}${flag.unit}）`)))]) : null,
+      flags.length ? h('div', { class: 'mb-3' }, [h('strong', { class: 'small' }, '工程触发的财务风险信号'), h('ul', { class: 'small mb-0 mt-1' }, flags.map((flag) => h('li', { key: flag.ruleId }, `[${flag.severity}] ${flag.title}（${flag.period}，${formatFinancialRiskFlagValue(flag)}）`)))]) : null,
       state?.report?.markdown ? h('article', { class: 'company-finance-analysis-markdown' }, renderFinancialAnalysisMarkdown(state.report.markdown)) : h('p', { class: 'text-muted mb-0' }, '报告生成后会在此展示；模型只解释工程冻结的三表指标、缺口和风险信号。'),
       state?.report?.citations?.length ? h('div', { class: 'mt-3 small' }, [h('strong', '引用：'), ...state.report.citations.map((citation, index) => citation.url ? h('a', { class: 'ms-2', key: `${citation.url}-${index}`, href: citation.url, target: '_blank', rel: 'noreferrer' }, citation.title || citation.url) : null)]) : null,
     ]),

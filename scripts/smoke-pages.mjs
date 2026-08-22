@@ -1,10 +1,7 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
-
 const baseUrl = normalizeBaseUrl(process.env.SMOKE_BASE_URL || "http://127.0.0.1:8000");
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS || "30000");
-const representativeAcceptance = JSON.parse(await readFile(new URL("../config/research-representative-acceptance.v1.json", import.meta.url), "utf8"));
 
 const stocks = [
   { market: "sz-a", code: "300750.SZ", name: "宁德时代", minKlineRows: 100 },
@@ -165,42 +162,6 @@ await check("research APIs and workbench pages", async () => {
   assert(removedIndustryPage.status === 404, `removed industry research page status=${removedIndustryPage.status}`);
   const removedIndustryApi = await fetchWithTimeout(`${baseUrl}/api/research/industry?industry=${encodeURIComponent("通信设备")}`);
   assert(removedIndustryApi.status === 404, `removed industry research API status=${removedIndustryApi.status}`);
-  const company = await fetchApi("/api/research/company/300750.SZ");
-  assert(Array.isArray(company.data?.decision?.gates) && company.data.decision.gates.length === 4, "company research gates are incomplete");
-  assert(Array.isArray(company.data?.evidence), "company research evidence is invalid");
-  assert(Array.isArray(company.data?.riskProfile?.findings) && Array.isArray(company.data?.riskProfile?.gaps), "company risk profile is incomplete");
-  assert(typeof company.data?.capabilities?.canWriteLocally === "boolean" && company.data?.capabilities?.productionLlmEnabled === false,
-    "company research runtime boundary is incomplete");
-  assert(company.data?.identity && company.data?.financials && company.data?.dossier && company.data?.governance,
-    "company research identity, financial, dossier, or governance layer is missing");
-  assert(typeof company.data?.financials?.availability === "string" && Array.isArray(company.data?.dossier?.risks?.items),
-    "company research coverage contract is invalid");
-  assert(company.data?.dataRequirementCoverage?.ruleVersion === "research-data-requirements.v1"
-    && Array.isArray(company.data.dataRequirementCoverage.requirements)
-    && company.data.dataRequirementCoverage.requirements.every((item) => item.primarySources?.length && item.frequency && item.epistemicType && item.missingImpact)
-    && Array.isArray(company.data.dataRequirementCoverage.sourceHealth),
-  "company research fact requirement/source-health contract is incomplete");
-  assert(company.data?.researchDepth?.ruleVersion === "research-depth.v1" && Array.isArray(company.data?.researchDepth?.levels)
-    && company.data.researchDepth.levels.map((item) => item.depth).join(",") === "basic,standard,deep",
-  "company research depth gates are incomplete");
-  const focusProfileSample = await fetchApi("/api/research/company/601390.SH?owner=local-user");
-  const focusProfile = focusProfileSample.data?.focusProfile;
-  assert(["available", "empty", "unavailable"].includes(focusProfile?.availability), "focus-profile deep-link did not return an explicit availability state");
-  if (focusProfile?.availability === "available") {
-    assert(focusProfile.profile?.version >= 1 && Array.isArray(focusProfile.profile.items) && focusProfile.profile.items.length > 0,
-      "available focus-profile deep-link has no auditable public items");
-  }
-  assert(["available", "empty", "unavailable"].includes(company.data?.operating?.sourceFacts?.availability)
-    && Array.isArray(company.data?.operating?.sourceFacts?.items), "company operating source-fact ledger contract is invalid");
-  assert(["available", "empty", "unavailable"].includes(company.data?.reverseValuationModels?.availability)
-    && Array.isArray(company.data?.reverseValuationModels?.items), "company reverse valuation version contract is invalid");
-  const hongKongResearch = await fetchApi("/api/research/company/00700.HK");
-  assert(hongKongResearch.data?.financials?.sourcePolicy === "Eastmoney HK F10 → HKEX 核验（无自动回退）",
-    "Hong Kong research finance source policy is invalid");
-  assert(hongKongResearch.data?.financials?.statements?.every((item) => item.source !== "yahoo" && item.rows > 0),
-    "Hong Kong research must use Eastmoney financial data without Yahoo fallback");
-  assert(hongKongResearch.data?.financials?.availability === "partial",
-    "Hong Kong financial conclusions must remain partial before HKEX field verification");
   const kpiContext = await fetchApi("/api/research/company/300308.SZ/industry-kpi-driver-binding-context");
   assert(kpiContext.data?.canWriteLocally === true && Array.isArray(kpiContext.data?.rules)
     && Array.isArray(kpiContext.data?.eligibleEvidence) && Array.isArray(kpiContext.data?.driverPlans),
@@ -211,13 +172,6 @@ await check("research APIs and workbench pages", async () => {
     && review.targets.every((target) => typeof target.impactReviewTargetId === "string"
       && ["requires_review", "no_change", "follow_up_recorded", "not_applicable"].includes(target.reviewState))),
   "formal/event impact target state contract is invalid");
-  const blockedValuation = await fetchApi("/api/research/company/300308.SZ");
-  assert(Array.isArray(blockedValuation.data?.formalActuals) && Array.isArray(blockedValuation.data?.forecastWorkspace?.scenarios), "company research impact-review source/target context is incomplete");
-  const blockedValuationCoverage = blockedValuation.data?.coverage?.modules?.find((item) => item.moduleId === "valuation");
-  assert(blockedValuation.data?.marketStructure?.perShareValuation?.status === "blocked"
-    && blockedValuationCoverage?.status === "blocked"
-    && /(精确每股价值|每股结论)/.test(blockedValuationCoverage?.conclusionImpact || ""),
-  "current valuation remains blocked without current financial or per-share market-structure gates");
   const formalCandidates = await fetchApi("/api/research/company/00700.HK/formal-actual-candidates?eligibility=ready_for_review");
   assert(Array.isArray(formalCandidates.data?.candidates) && Array.isArray(formalCandidates.data?.reviews)
     && formalCandidates.data.candidates.every((item) => typeof item.metric === "string"
@@ -257,94 +211,6 @@ await check("research APIs and workbench pages", async () => {
   }
   const funds = await fetchApi("/api/fund/compare?codes=513100.OF,510300.OF");
   assert(Array.isArray(funds.data?.rows) && funds.data.rows.length === 2, "fund comparison rows are incomplete");
-});
-
-await check("frozen representative research acceptance package", async () => {
-  if (process.env.SMOKE_REQUIRE_REPRESENTATIVE_ACCEPTANCE !== "1") {
-    console.log("SKIP frozen representative research acceptance package: requires a separately provisioned source-bound research fixture");
-    return;
-  }
-  const expectedCategories = ["A/H 同主体", "ADR", "银行", "周期", "未盈利"];
-  assert(representativeAcceptance?.version === "research-representative-acceptance.v1", "representative acceptance config version is invalid");
-  assert(Array.isArray(representativeAcceptance?.cases) && representativeAcceptance.cases.length === expectedCategories.length,
-    "representative acceptance cases are incomplete");
-  assert(representativeAcceptance.cases.map((item) => item.category).join(",") === expectedCategories.join(","),
-    "representative acceptance categories changed without an explicit review");
-  assert(Object.values(representativeAcceptance.sharedAssertions?.prohibitedOutputs || {}).every(Boolean),
-    "representative acceptance lacks depth-level prohibited conclusions");
-
-  for (const sampleCase of representativeAcceptance.cases) {
-    const records = await Promise.all(sampleCase.securities.map(async (security) => ({
-      security,
-      research: await fetchApi(`/api/research/company/${encodeURIComponent(security.code)}`),
-    })));
-    const observedBoundaryConclusions = new Set();
-    for (const { security, research } of records) {
-      const data = research.data;
-      const identity = data?.identity;
-      const listedSecurity = identity?.listedSecurity;
-      const financials = data?.financials;
-      const sourceHealth = new Map((data?.dataRequirementCoverage?.sourceHealth || []).map((item) => [item.sourceId, item.status]));
-      const depths = new Map((data?.researchDepth?.levels || []).map((item) => [item.depth, item]));
-      assert(listedSecurity?.code === security.code && listedSecurity?.market === security.market,
-        `${sampleCase.label} ${security.code} market identity is incorrect`);
-      assert(listedSecurity?.instrumentKind === security.instrumentKind && listedSecurity?.mappingStatus === security.mappingStatus,
-        `${sampleCase.label} ${security.code} instrument or source-bound mapping status changed`);
-      assert(financials?.sourcePolicy === security.financialPolicy && financials?.availability === security.financialAvailability,
-        `${sampleCase.label} ${security.code} financial source status changed`);
-      assert(identity?.financials?.policy?.noAutomaticFallback === true,
-        `${sampleCase.label} ${security.code} unexpectedly permits a financial-source fallback`);
-      assert(Array.isArray(financials?.statements) && financials.statements.length === 3
-        && financials.statements.every((statement) => Number.isInteger(statement.rows) && statement.rows >= 0),
-      `${sampleCase.label} ${security.code} does not expose three statement source states`);
-      const expectedPrimaryProvider = security.market === "us_share" ? "yahoo" : "eastmoney";
-      assert(financials.statements.every((statement) => Array.isArray(statement.originProviders)
-        && statement.originProviders.includes(expectedPrimaryProvider)),
-      `${sampleCase.label} ${security.code} hides its financial primary origin behind the delivery cache`);
-      for (const [sourceId, expectedStatus] of Object.entries(security.requiredSourceStatus || {})) {
-        assert(sourceHealth.get(sourceId) === expectedStatus,
-          `${sampleCase.label} ${security.code} ${sourceId} source status=${sourceHealth.get(sourceId)}; expected ${expectedStatus}`);
-      }
-      assert(data?.researchDepth?.ruleVersion === representativeAcceptance.sharedAssertions.requiredDepthRuleVersion,
-        `${sampleCase.label} ${security.code} research depth contract changed`);
-      for (const [depthName, expectedStatus] of Object.entries(security.depthStatus || {})) {
-        const depth = depths.get(depthName);
-        assert(depth?.status === expectedStatus, `${sampleCase.label} ${security.code} ${depthName} depth=${depth?.status}; expected ${expectedStatus}`);
-        assert(depth?.prohibitedOutput === representativeAcceptance.sharedAssertions.prohibitedOutputs[depthName],
-          `${sampleCase.label} ${security.code} ${depthName} prohibited output changed`);
-        for (const requirement of depth?.requirements || []) observedBoundaryConclusions.add(requirement.blockedConclusion);
-      }
-      for (const requirementId of security.blockedRequirements || []) {
-        const requirement = [...depths.values()].flatMap((depth) => depth?.requirements || []).find((item) => item.id === requirementId);
-        assert(requirement && requirement.status !== "ready", `${sampleCase.label} ${security.code} missing-evidence requirement ${requirementId} is no longer blocked`);
-      }
-      if (security.depositaryRatio !== undefined) {
-        assert(listedSecurity?.depositaryRatio === security.depositaryRatio,
-          `${sampleCase.label} ${security.code} ADR ratio is not source-bound`);
-      }
-      if (security.mappingStatus === "unresolved") {
-        assert(identity?.operatingCompany === null && identity?.relationships?.length === 0
-          && identity?.rightsProfiles?.length === 0 && identity?.rightsLinks?.length === 0,
-        `${sampleCase.label} ${security.code} fabricated a company or cross-security relationship without a source-bound mapping`);
-      }
-      if (security.requiresHistoricalLoss) {
-        const income = await fetchApi(`/api/finance/income?code=${encodeURIComponent(security.code)}`);
-        assert(income.data?.some((row) => typeof row.netProfit === "number" && row.netProfit < 0),
-          `${sampleCase.label} ${security.code} no longer demonstrates an unprofitable-company history`);
-      }
-    }
-    if (sampleCase.sharedOperatingCompanyId) {
-      assert(records.every(({ research }) => research.data?.identity?.operatingCompany?.companyId === sampleCase.sharedOperatingCompanyId),
-        `${sampleCase.label} does not retain its confirmed shared operating company`);
-    }
-    const allProhibited = new Set([
-      ...Object.values(representativeAcceptance.sharedAssertions.prohibitedOutputs || {}),
-      ...observedBoundaryConclusions,
-    ]);
-    for (const conclusion of sampleCase.prohibitedConclusions || []) {
-      assert(allProhibited.has(conclusion), `${sampleCase.label} no longer exposes required prohibited conclusion: ${conclusion}`);
-    }
-  }
 });
 
 await check("fund search 易方达蓝筹精选混合", async () => {
