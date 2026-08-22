@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { buildContentOptions } from "./knowledge-content-r2.mjs";
@@ -21,7 +20,6 @@ const options = buildContentOptions({
   uploadContentRemote: args.remote,
 });
 const run = {
-  runId: `knowledge-content-cleanup:${randomUUID()}`,
   startedAt: Date.now(),
   source: "knowledge_content_cleanup",
 };
@@ -78,10 +76,9 @@ try {
   };
 
   if (args.writeRun) {
-    recordRun({
+    writeMaintenanceState({
       database: args.database,
       remote: args.remote,
-      runId: run.runId,
       source: run.source,
       startedAt: run.startedAt,
       finishedAt: Date.now(),
@@ -94,10 +91,9 @@ try {
   const message = error instanceof Error ? error.message : String(error);
   if (args.writeRun) {
     try {
-      recordRun({
+      writeMaintenanceState({
         database: args.database,
         remote: args.remote,
-        runId: run.runId,
         source: run.source,
         startedAt: run.startedAt,
         finishedAt: Date.now(),
@@ -321,21 +317,18 @@ function assertS3Config({ bucket, endpoint, accessKeyId, secretAccessKey }) {
   }
 }
 
-function recordRun({ database, remote, runId, source, startedAt, finishedAt, status, stats, error = "" }) {
+function writeMaintenanceState({ database, remote, source, startedAt, finishedAt, status, stats, error = "" }) {
+  const value = JSON.stringify({ status, source, startedAt, finishedAt, stats, error });
   const sql = `
-    insert into knowledge_ingest_runs (run_id, status, source, started_at, finished_at, stats_json, error)
-    values (
-      ${sqlString(runId)},
-      ${sqlString(status)},
-      ${sqlString(source)},
-      ${startedAt},
-      ${finishedAt},
-      ${sqlString(JSON.stringify(stats || {}))},
-      ${sqlString(error)}
-    );
+    insert into kv_cache (namespace, key, value_json, expires_at, updated_at)
+    values ('knowledge_maintenance', ${sqlString(source)}, ${sqlString(value)}, null, ${finishedAt})
+    on conflict(namespace, key) do update set
+      value_json=excluded.value_json,
+      expires_at=excluded.expires_at,
+      updated_at=excluded.updated_at;
   `;
   if (!remote) {
-    executeLocalD1Sql(sql, { requiredTable: "knowledge_ingest_runs" });
+    executeLocalD1Sql(sql, { requiredTable: "kv_cache" });
     return;
   }
   execFileSync(

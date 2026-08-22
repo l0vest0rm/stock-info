@@ -29,7 +29,7 @@ claim。所有读取、取消和删除均按 `namespace + client_task_name` 进�
 | M01 | 增加 stock-info 的 taskd 调用客户端 | 仅在 `LLM_RUNTIME=local` 可提交、读取、取消和删除任务；调用方只传/使用业务 `name`，不保存 taskd ID。 | Complete |
 | M02 | 建立业务结果投影协议 | taskd 成功结果可被同一业务 name 幂等投影；服务在投影前崩溃后可再次读取 taskd 结果恢复。公司报告发现与财务分析已接入；其余 taskd 业务待接入。 | In progress |
 | M03 | 迁移公司报告发现 | 公司报告发现业务 name 直接用于 taskd；不再创建或读取泛化 LLM task/run/artifact。单篇研报预测与新闻研报提取继续直接使用 `llm-client`。 | In progress（待真实业务验证） |
-| M04 | 迁移知识处理至直接 LLM 调用 | 删除知识处理对本地通用 claim/lease/run/artifact 的依赖，继续通过直接 LLM 调用写入 `knowledge_processing_runs` 与知识文档表；不提交 taskd。 | Complete |
+| M04 | 迁移知识处理至直接 LLM 调用 | 删除知识处理对本地通用 claim/lease/run/artifact 的依赖；直接 LLM 调用只写当前知识结果与文档表，不提交 taskd 或保留运行账本。 | Complete |
 | M05 | 删除 Web Search 证据包 | 删除本地 LLM 队列、接口、prompt、runner 和专属投影表；工程数据按各业务自身的 API/采集路径取得，不再维护通用 source package/evidence 表。 | Complete |
 | M06 | 迁移财务与完整投资研究 | 财务分析与完整投资研究是 ChatGPT taskd 任务；stock-info 冻结工程输入并投影已校验的最终结果。旧普通经营分析删除。 | In progress |
 | M07 | 删除本地通用执行运行时 | 删除 `/api/llm-tasks`、`local-job-protocol` 通用 claim/lease/run/artifact API、generic dispatcher/raw runner 和其调用入口。 | Complete |
@@ -45,7 +45,7 @@ claim。所有读取、取消和删除均按 `namespace + client_task_name` 进�
 | 公司报告发现 | 是 | `company:report-discovery:{securityCode}`；公司报告 source pool |
 | 单篇研报预测提取 | 否，直接 `llm-client` | 无 task name；报告预测缓存 |
 | 新闻研报提取 | 否，直接 `llm-client` | 无 task name；新闻研报缓存 |
-| 知识处理 | 否，直接 `llm-client` | 无 task name；`knowledge_processing_runs` 与知识文档表 |
+| 知识处理 | 否，直接 `llm-client` | 无 task name；当前知识结果与文档表 |
 | Web Search 证据包 | 否，已删除 | 无 task name；不保留专属表 |
 | 普通经营分析 | 否，已删除 | 无 task name |
 | 完整投资研究（原低依赖经营分析） | 是 | `research:investment-analysis:{securityCode}`；投资研究业务成果表 |

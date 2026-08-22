@@ -47,7 +47,7 @@ type FinanceTabKey = 'analysis' | 'core' | 'income' | 'balance' | 'cashflow'
 
 type FinancialAnalysisState = {
   availability: 'empty' | 'pending' | 'available' | 'failed'
-  task: { status?: string; requestedReasoningEffort?: string | null; lastErrorMessage?: string | null; completedAt?: number | null; updatedAt?: number | null } | null
+  task: { taskId?: number; name?: string; status?: string; requestedReasoningEffort?: string | null; lastErrorMessage?: string | null; completedAt?: number | null; updatedAt?: number | null } | null
   snapshot: {
     asOf?: string | null
     dataQuality?: { status?: string; sourcePolicy?: string; statutoryVerification?: { status?: string; reason?: string } }
@@ -149,10 +149,11 @@ function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: 
   const status = state?.availability === 'available' ? '已完成' : state?.availability === 'failed' ? '失败' : state?.availability === 'pending' ? '生成中' : '尚未生成'
   const reportGeneratedAt = formatFinancialAnalysisTimestamp(state?.task?.completedAt)
   const lastUpdatedAt = formatFinancialAnalysisTimestamp(state?.task?.updatedAt)
+  const taskName = typeof state?.task?.name === 'string' && state.task.name.trim() ? state.task.name.trim() : ''
   const dataAsOf = typeof snapshot?.asOf === 'string' && snapshot.asOf.trim() ? snapshot.asOf.trim() : snapshot?.periodCoverage?.ttmEndDate || ''
   const statusSummary = [
     `单证券 · ${code} · ${status}`,
-    reportGeneratedAt ? `生成于 ${reportGeneratedAt}` : '',
+    reportGeneratedAt ? `${state?.availability === 'available' ? '报告生成' : '任务结束'}于 ${reportGeneratedAt}` : '',
   ].filter(Boolean).join(' · ')
   const timingSummary = [
     reportGeneratedAt ? `报告生成：${reportGeneratedAt}` : '',
@@ -169,6 +170,7 @@ function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: 
     ]),
     h('div', { class: 'card-body' }, [
       timingSummary ? h('p', { class: 'small text-muted mb-2' }, timingSummary) : null,
+      taskName ? h('p', { class: 'small text-muted mb-2' }, ['taskd 任务名：', h('code', { class: 'font-monospace text-break' }, taskName)]) : null,
       quality ? h('p', { class: 'small text-muted mb-2' }, `数据：${quality.status || 'unknown'}；${quality.sourcePolicy || '来源待载入'}；法定核验：${quality.statutoryVerification?.status || 'unknown'}。${quality.statutoryVerification?.reason || ''}`) : h('p', { class: 'small text-muted' }, '尚无冻结的财务分析输入。'),
       snapshot?.periodCoverage ? h('p', { class: 'small text-muted' }, `覆盖：年度 ${snapshot.periodCoverage.annual?.join('、') || '—'}；季度 ${snapshot.periodCoverage.quarterly?.join('、') || '—'}；TTM 截至 ${snapshot.periodCoverage.ttmEndDate || '—'}。`) : null,
       options.error ? h('p', { class: 'alert alert-danger py-2 small' }, options.error) : null,

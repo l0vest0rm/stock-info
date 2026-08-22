@@ -9,9 +9,7 @@ import type { Bindings } from "../../../types";
 
 const MODEL = "gpt-5.6-luna" as const;
 const MAX_OUTPUT_TOKENS = 2500;
-const SCHEMA_VERSION = "information-records-v2";
 export const INFORMATION_PROCESSING_PROMPT_VERSION = "information-processing-v19";
-const ONTOLOGY_VERSION = ontologyConfig.version;
 
 type InformationType = "fact" | "guidance" | "forecast" | "opinion" | "event" | "relationship";
 type PeriodPolicy = "required" | "optional" | "forbidden";
@@ -106,23 +104,15 @@ export async function prepareInformationDocument(env: Bindings, docId: string): 
   }
 
   const completed = await env.DB.prepare(
-    `select r.run_id, d.outcome from knowledge_processing_runs r
-       join knowledge_document_results d on d.run_id = r.run_id
-      where r.version_id = ? and r.stage = 'document_analysis' and r.prompt_version = ? and r.status = 'succeeded'
-      order by r.completed_at desc limit 1`,
-  ).bind(version.versionId, INFORMATION_PROCESSING_PROMPT_VERSION).first<{ run_id: string; outcome: "extracted" | "no_information" }>();
+    "select outcome from knowledge_document_results where version_id = ? limit 1",
+  ).bind(version.versionId).first<{ outcome: "extracted" | "no_information" | "needs_review" }>();
   if (completed) {
-    return { kind: "complete", result: { versionId: version.versionId, runId: completed.run_id, action: "reused", outcome: completed.outcome, recordCount: 0, needsReview: false } };
+    return { kind: "complete", result: { versionId: version.versionId, runId: null, action: "reused", outcome: completed.outcome, recordCount: 0, needsReview: completed.outcome === "needs_review" } };
   }
 
+  // The ID only ties the in-flight model call to its raw R2 artifact and HTTP
+  // response. It is deliberately not a persisted processing-run record.
   const runId = `knowledge-run:${crypto.randomUUID()}`;
-  const inputHash = await digestHex(JSON.stringify({ contentHash, prompt: INFORMATION_PROCESSING_PROMPT_VERSION, schema: SCHEMA_VERSION, ontology: ONTOLOGY_VERSION }));
-  const startedAt = Date.now();
-  await env.DB.prepare(
-    `insert into knowledge_processing_runs (run_id, version_id, stage, model, prompt_version, schema_version, ontology_version, input_hash, status, started_at)
-     values (?, ?, 'document_analysis', ?, ?, ?, ?, ?, 'running', ?)`,
-  ).bind(runId, version.versionId, MODEL, INFORMATION_PROCESSING_PROMPT_VERSION, SCHEMA_VERSION, ONTOLOGY_VERSION, inputHash, startedAt).run();
-
   return {
     kind: "model",
     request: {
@@ -151,23 +141,19 @@ export async function completeInformationProcessing(
   cached = false,
 ): Promise<InformationProcessResult> {
   try {
-    const returnedModel = assertExpectedReturnedModel(raw);
-    const rawOutputKey = await saveRawOutput(env, request.runId, raw);
+    assertExpectedReturnedModel(raw);
     const analysis = parseStructuredAnalysis(text);
-    const status = analysis.outcome === "needs_review" ? "needs_review" : "succeeded";
-    const recordCount = await persistStructuredResult(env.DB, request.runId, request.versionId, analysis);
-    await env.DB.prepare(
-      `update knowledge_processing_runs set returned_model = ?, raw_output_key = ?, status = ?, usage_json = ?, validation_json = ?, completed_at = ? where run_id = ?`,
-    ).bind(returnedModel, rawOutputKey, status, JSON.stringify({ cached }), JSON.stringify({ valid: true, mode: "text_first" }), Date.now(), request.runId).run();
-    return { versionId: request.versionId, runId: request.runId, action: "pass", outcome: analysis.outcome, recordCount, needsReview: status === "needs_review" };
+    const recordCount = await persistStructuredResult(env.DB, request.versionId, analysis);
+    return { versionId: request.versionId, runId: request.runId, action: "pass", outcome: analysis.outcome, recordCount, needsReview: analysis.outcome === "needs_review" };
   } catch (error) {
     await failInformationProcessing(env, request, error);
     throw error;
   }
 }
 
-export async function failInformationProcessing(env: Bindings, request: Pick<InformationProcessingModelRequest, "runId" | "versionId">, _error: unknown): Promise<void> {
-  await discardFailedInformationAttempt(env.DB, request.runId, request.versionId);
+export async function failInformationProcessing(_env: Bindings, _request: Pick<InformationProcessingModelRequest, "runId" | "versionId">, _error: unknown): Promise<void> {
+  // There is no durable "running" row to clean up. A failed call produces no
+  // result and can be retried from the document endpoint.
 }
 
 type InformationRecord = {
@@ -286,15 +272,15 @@ function parseJsonResponse(value: string): unknown {
   }
 }
 
-export async function persistStructuredResult(db: D1Database, runId: string, versionId: string, analysis: StructuredAnalysis): Promise<number> {
+export async function persistStructuredResult(db: D1Database, versionId: string, analysis: StructuredAnalysis): Promise<number> {
   const now = Date.now();
   const resultId = `knowledge-information-result:${crypto.randomUUID()}`;
   await db.prepare(
       `insert into knowledge_document_results (
-       result_id, run_id, version_id, outcome, created_at
-     ) values (?, ?, ?, ?, ?)`,
+       result_id, version_id, outcome, created_at
+     ) values (?, ?, ?, ?)`,
   ).bind(
-    resultId, runId, versionId, analysis.outcome, now,
+    resultId, versionId, analysis.outcome, now,
   ).run();
   const recordStatements = analysis.records.map((record, sortOrder) => db.prepare(
     `insert into knowledge_information_records (
@@ -319,29 +305,17 @@ async function ensureVersion(db: D1Database, document: SourceDocument, contentHa
   const known = await db.prepare("select version_id from knowledge_document_versions where doc_id = ? and content_hash = ?")
     .bind(document.doc_id, contentHash).first<{ version_id: string }>();
   if (known) return { versionId: known.version_id };
-  const versionId = `knowledge-version:${crypto.randomUUID()}`;
-  await db.prepare(
-    `insert into knowledge_document_versions (version_id, doc_id, source_url, source_hash, content_hash, raw_content_key, normalized_content_key, published_at, fetched_at, created_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(versionId, document.doc_id, document.url, document.content_sha256, contentHash, document.content_key, document.content_key, document.published_at, document.fetched_at, Date.now()).run();
-  return { versionId };
-}
-
-export async function discardFailedInformationAttempt(db: D1Database, runId: string, versionId: string): Promise<void> {
+  // Current-state policy: a changed body invalidates every prior processing
+  // artifact for this document.  There is no historical document-version row.
   await db.batch([
     db.prepare(`delete from knowledge_information_records where result_id in (
-      select result_id from knowledge_document_results where run_id = ?
-    )`).bind(runId),
-    db.prepare("delete from knowledge_document_results where run_id = ?").bind(runId),
-    db.prepare("delete from knowledge_processing_runs where run_id = ?").bind(runId),
+      select result_id from knowledge_document_results where version_id = ?
+    )`).bind(document.doc_id),
+    db.prepare("delete from knowledge_document_results where version_id = ?").bind(document.doc_id),
+    db.prepare("update knowledge_docs set processing_content_hash=?, processing_updated_at=? where doc_id=?")
+      .bind(contentHash, Date.now(), document.doc_id),
   ]);
-  const remainingRun = await db.prepare("select 1 from knowledge_processing_runs where version_id = ? limit 1")
-    .bind(versionId).first();
-  if (remainingRun) return;
-  await db.batch([
-    db.prepare("delete from knowledge_preprocessing_decisions where version_id = ?").bind(versionId),
-    db.prepare("delete from knowledge_document_versions where version_id = ?").bind(versionId),
-  ]);
+  return { versionId: document.doc_id };
 }
 
 async function preprocess(
@@ -353,17 +327,14 @@ async function preprocess(
 ): Promise<{ action: PreprocessingAction }> {
   const clean = content.trim();
   let action: PreprocessingAction = "pass";
-  let reasonCode = "eligible_content";
-  let templateId: string | null = null;
-  let duplicateOfVersionId: string | null = null;
   if (clean.length < preprocessingConfig.minimumContentRequirements.minimumNonWhitespaceChars) {
-    action = "empty_content"; reasonCode = "minimum_content_not_met";
+    action = "empty_content";
   } else if (preprocessingConfig.sourceTypeExclusions.includes(document.source_type)) {
-    action = "pure_market_snapshot"; reasonCode = "excluded_source_type";
+    action = "pure_market_snapshot";
   } else if (!preprocessingConfig.reportAndAnnouncementBypasses.includes(document.source_type)) {
     const lowValueTitleRule = preprocessingConfig.lowValueTitleRules.find((candidate) => new RegExp(candidate.titlePattern, "i").test(document.title));
     if (lowValueTitleRule) {
-      action = "pure_market_snapshot"; reasonCode = "low_value_title"; templateId = lowValueTitleRule.id;
+      action = "pure_market_snapshot";
     }
     const rule = !lowValueTitleRule && preprocessingConfig.exactTemplateRules.find((candidate) => {
       const titleMatches = new RegExp(candidate.titlePattern, "i").test(document.title);
@@ -371,14 +342,14 @@ async function preprocess(
       const operational = /(?:公告|订单|产能|产品|收入|利润|客户|行业|经营|业绩|发布)/.test(clean);
       return titleMatches && bodyMatches && (!candidate.requiresNoOperatingNarrative || !operational);
     });
-    if (rule) { action = "pure_market_snapshot"; reasonCode = "exact_market_template"; templateId = rule.id; }
+    if (rule) action = "pure_market_snapshot";
   }
   if (action === "pass" && preprocessingConfig.duplicatePolicies.sameContentHash === "exact_duplicate") {
     const duplicate = await db.prepare(
       "select version_id from knowledge_document_versions where content_hash = ? and version_id != ? order by created_at asc limit 1",
     ).bind(contentHash, versionId).first<{ version_id: string }>();
     if (duplicate) {
-      action = "exact_duplicate"; reasonCode = "same_content_hash"; duplicateOfVersionId = duplicate.version_id;
+      action = "exact_duplicate";
     }
   }
   if (action === "pass" && document.url?.trim() && preprocessingConfig.duplicatePolicies.sameSourceAndNormalizedUrl === "exact_duplicate") {
@@ -386,13 +357,9 @@ async function preprocess(
       "select version_id from knowledge_document_versions where source_url = ? and version_id != ? order by created_at asc limit 1",
     ).bind(document.url.trim(), versionId).first<{ version_id: string }>();
     if (duplicate) {
-      action = "exact_duplicate"; reasonCode = "same_source_url"; duplicateOfVersionId = duplicate.version_id;
+      action = "exact_duplicate";
     }
   }
-  await db.prepare(
-    `insert into knowledge_preprocessing_decisions (decision_id, version_id, action, reason_code, rule_version, matched_source_type, matched_template_id, duplicate_of_version_id, details_json, decided_at)
-     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(`knowledge-gate:${crypto.randomUUID()}`, versionId, action, reasonCode, preprocessingConfig.ruleVersion, document.source_type, templateId, duplicateOfVersionId, JSON.stringify({ contentHash }), Date.now()).run();
   return { action };
 }
 
@@ -416,11 +383,4 @@ function assertExpectedReturnedModel(raw: unknown): string {
   const returnedModel = typeof candidate === "string" && candidate.trim() ? candidate.trim() : MODEL;
   if (returnedModel !== MODEL) throw new Error(`information processing model mismatch: expected=${MODEL} returned=${returnedModel}`);
   return returnedModel;
-}
-
-async function saveRawOutput(env: Bindings, runId: string, raw: unknown): Promise<string | null> {
-  if (!env.RAW_BUCKET || raw === undefined) return null;
-  const key = `knowledge-processing-runs/${runId}.json`;
-  await env.RAW_BUCKET.put(key, JSON.stringify(raw), { httpMetadata: { contentType: "application/json" } });
-  return key;
 }

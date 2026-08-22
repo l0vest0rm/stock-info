@@ -214,7 +214,7 @@ export CLOUDFLARE_R2_SECRET_ACCESS_KEY=...
 - 列出 `knowledge-content/*` 对象
 - 报告缺失引用和未引用对象
 - `--apply` 时删除超出保留期的 orphan 对象
-- 记录一条 `knowledge_ingest_runs` 运行记录
+- 覆盖更新 `kv_cache` 中 `knowledge_maintenance` namespace 的该类清理 JSON 状态
 
 ## 可观测性
 

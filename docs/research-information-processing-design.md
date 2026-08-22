@@ -650,47 +650,17 @@ knowledge_document_versions
 
 ### 10.2 预处理决定
 
-```text
-knowledge_preprocessing_decisions
-  version_id
-  action
-  reason_code
-  rule_version
-  matched_source_type
-  matched_template_id
-  duplicate_of_version_id
-  details_json
-  decided_at
-```
+准入判断（空内容、低价值模板、内容或 URL 重复）只在单次处理内计算；不保存预处理决定或跳过记录。
 
-`action` 至少包括 `pass`、`exact_duplicate`、`template_duplicate`、`pure_market_snapshot`、`empty_content` 和 `fetch_error`。任何过滤项都应能够通过规则版本重新评估。
+处理响应中的 `action` 至少包括 `pass`、`exact_duplicate`、`template_duplicate`、`pure_market_snapshot`、`empty_content` 和 `fetch_error`。规则调整后，在下一次处理时重新评估。
 
 ### 10.3 模型运行
 
-```text
-knowledge_processing_runs
-  run_id
-  version_id
-  stage
-  model
-  returned_model
-  prompt_version
-  schema_version
-  ontology_version
-  input_hash
-  raw_output_key
-  status
-  usage_json
-  validation_json
-  error
-  started_at
-  completed_at
-```
+模型调用仅是请求内过程：失败不会写入运行状态，成功只写当前结构化结果。批量扫描游标使用 `kv_cache` 的固定类型 key；不保存 run、原始模型输出或历史状态。
 
 ```text
 knowledge_document_results
   result_id
-  run_id
   version_id
   retention_action
   value_level

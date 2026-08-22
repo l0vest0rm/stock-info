@@ -18,13 +18,11 @@ const maxAgeDays = positiveInteger(args.maxAgeDays, 30, "--max-age-days");
 const concurrency = 1;
 const progressPath = resolve(root, String(args.progressFile || `data/stock-info/knowledge/state/institutional-top300-information-processing-${runStamp()}.jsonl`));
 const input = parseInput(JSON.parse(await readFile(inputPath, "utf8")));
-const promptVersion = String(args.promptVersion || "information-processing-v19").trim();
-if (!promptVersion) throw new Error("--prompt-version must not be empty");
 const databaseFile = resolveLocalD1Database({ root, requiredTable: "knowledge_docs" });
-const documents = loadDocuments(databaseFile, promptVersion, maxAgeDays);
+const documents = loadDocuments(databaseFile, maxAgeDays);
 const selection = selectDocuments(input, documents, maxDocuments);
 
-console.log(`关键词：${input.keywords.length} 个；最近 ${maxAgeDays} 天标题匹配：${selection.matched} 篇；已处理：${selection.alreadyProcessed} 篇；预筛跳过：${selection.preprocessedSkip} 篇；本次待处理：${selection.selected.length} 篇${all ? "（全部）" : `（上限 ${maxDocuments}）`}；并发：${concurrency}`);
+console.log(`关键词：${input.keywords.length} 个；最近 ${maxAgeDays} 天标题匹配：${selection.matched} 篇；已处理：${selection.alreadyProcessed} 篇；本次待处理：${selection.selected.length} 篇${all ? "（全部）" : `（上限 ${maxDocuments}）`}；并发：${concurrency}`);
 console.log(`范围：每个关键词只处理最近 ${maxAgeDays} 天；排序：机构持仓优先级升序；同一关键词内按时间从近到远；逐篇完成持久化后再处理下一篇。输入：${inputPath}`);
 if (selection.selected.length === 0) {
   console.log("没有符合条件的未处理文档。");
@@ -84,31 +82,19 @@ function formatProgressLine(label, title, status, detail, durationSeconds) {
   return `${label} · ${status}，${detail} · ${title}；完成时间：${formatLocalTime(finishedAt)}；本篇耗时 ${durationSeconds}s；进度 ${processed}/${selection.selected.length}，累计完成 ${completed}，失败 ${failed}；总耗时 ${secondsSince(startedAt)}s，平均单篇耗时 ${averageItemSeconds(totalItemDurationMs, processed)}s。`;
 }
 
-function loadDocuments(database, promptVersion, maxAgeDays) {
+function loadDocuments(database, maxAgeDays) {
   const documentCutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
   const sql = `
     select d.doc_id, d.title, d.sort_time,
       exists (
         select 1 from knowledge_document_versions v
-        join knowledge_processing_runs r on r.version_id = v.version_id
+        join knowledge_document_results result on result.version_id = v.version_id
         where v.doc_id = d.doc_id
           and v.version_id = (
             select v2.version_id from knowledge_document_versions v2
             where v2.doc_id = d.doc_id order by v2.created_at desc limit 1
           )
-          and r.stage = 'document_analysis'
-          and r.prompt_version = ${sqlString(promptVersion)}
-          and r.status in ('succeeded', 'needs_review')
       ) as is_processed,
-      coalesce((
-        select p.action
-        from knowledge_preprocessing_decisions p
-        where p.version_id = (
-          select v3.version_id from knowledge_document_versions v3
-          where v3.doc_id = d.doc_id order by v3.created_at desc limit 1
-        )
-        order by p.decided_at desc limit 1
-      ), '') as preprocessing_action
     from knowledge_docs d
     where d.sort_time >= ${sqlString(documentCutoff)}
       and trim(coalesce(d.title, '')) != ''
@@ -116,7 +102,6 @@ function loadDocuments(database, promptVersion, maxAgeDays) {
   return queryLocalD1Sql(sql, { path: database, requiredTable: "knowledge_docs", maxBuffer: 50 * 1024 * 1024 }).map((row) => ({
     docId: String(row.doc_id || ""), title: String(row.title || ""), sortTime: String(row.sort_time || ""),
     processed: Number(row.is_processed) === 1,
-    preprocessedSkip: isTerminalPreprocessingAction(row.preprocessing_action),
   }));
 }
 
@@ -125,7 +110,6 @@ function selectDocuments(input, documents, maxDocuments) {
   const candidates = [];
   let matched = 0;
   let alreadyProcessed = 0;
-  let preprocessedSkip = 0;
   for (const keyword of input.keywords) {
     const matches = documents.filter((document) => keyword.titleKeywords.some((needle) => document.title.includes(needle)));
     for (const document of matches) {
@@ -133,14 +117,13 @@ function selectDocuments(input, documents, maxDocuments) {
       seen.add(document.docId);
       matched += 1;
       if (document.processed) { alreadyProcessed += 1; continue; }
-      if (document.preprocessedSkip) { preprocessedSkip += 1; continue; }
       candidates.push({ ...document, priority: keyword.priority, name: keyword.name });
     }
   }
   candidates.sort((left, right) => left.priority - right.priority
     || newestFirst(left.sortTime, right.sortTime)
     || left.docId.localeCompare(right.docId));
-  return { matched, alreadyProcessed, preprocessedSkip, selected: candidates.slice(0, maxDocuments) };
+  return { matched, alreadyProcessed, selected: candidates.slice(0, maxDocuments) };
 }
 
 async function processDocument(server, documentId) {
@@ -220,9 +203,6 @@ function newestFirst(left, right) {
 function displayDocumentDate(value) {
   const match = String(value || "").match(/^\d{4}-\d{2}-\d{2}/);
   return match ? match[0] : "未知日期";
-}
-function isTerminalPreprocessingAction(value) {
-  return new Set(["exact_duplicate", "template_duplicate", "pure_market_snapshot", "empty_content"]).has(String(value || ""));
 }
 function sqlString(value) { return `'${String(value).replaceAll("'", "''")}'`; }
 function runStamp() { return new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z"); }

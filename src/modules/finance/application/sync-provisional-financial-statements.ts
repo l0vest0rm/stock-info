@@ -3,7 +3,7 @@ import {
   fetchEastmoneyPerformanceReportPage,
   type EastmoneyDataPage,
 } from "../../../adapters/eastmoney";
-import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../../../db/queries";
+import { getKvCache, putKvCache } from "../../../db/queries";
 import { latestCompletedQuarterEndDate } from "../../../shared/cache-policy";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import {
@@ -21,6 +21,8 @@ const PAGE_SIZE = 50;
 const COMPANY_WRITE_CONCURRENCY = 8;
 const DISCLOSURE_DATE_OVERLAP_DAYS = 2;
 const DEFAULT_BOOTSTRAP_PAGE_BATCH_SIZE = 25;
+const SYNC_STATE_NAMESPACE = "sync_state";
+const FINANCIAL_PROVISIONAL_SYNC_STATE_KEY = "financial-provisional";
 
 export type ProvisionalSource = "performance_report" | "performance_forecast";
 
@@ -61,6 +63,17 @@ type SyncCheckpoint = {
   bootstrapComplete: boolean;
   bootstrapMaxDisclosureDate: string | null;
   watermarkDate: string | null;
+};
+
+type SyncRunStatus = "idle" | "running" | "succeeded" | "failed";
+
+type FinancialSyncState = {
+  status: SyncRunStatus;
+  startedAt: number | null;
+  finishedAt: number | null;
+  error: string | null;
+  stats: SyncStats | null;
+  checkpoints: Record<string, SyncCheckpoint>;
 };
 
 type SourceStats = {
@@ -116,20 +129,18 @@ export async function syncProvisionalFinancialStatements(
   options: ProvisionalSyncOptions = {}
 ): Promise<SyncStats> {
   const reportDate = latestCompletedQuarterEndDate(scheduledTime);
-  const jobId = crypto.randomUUID();
   const startedAt = Date.now();
-  await startSyncJob(env.DB, jobId, startedAt, reportDate);
-  await migrateLegacyCheckpoints(env.DB, reportDate);
   const stats = emptyStats(reportDate);
+  await writeSyncState(env.DB, "running", startedAt, null, stats, null);
   try {
     await syncSource(env, SOURCE_CONFIGS.performance_report, reportDate, stats, options);
     await syncSource(env, SOURCE_CONFIGS.performance_forecast, reportDate, stats, options);
-    await finishSyncJob(env.DB, jobId, "succeeded", stats, null);
+    await writeSyncState(env.DB, "succeeded", startedAt, Date.now(), stats, null);
     console.log("provisional financial statement sync completed", stats);
     return stats;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await finishSyncJob(env.DB, jobId, "failed", stats, message);
+    await writeSyncState(env.DB, "failed", startedAt, Date.now(), stats, message);
     throw err;
   }
 }
@@ -500,23 +511,8 @@ async function readSyncCheckpoint(
   source: ProvisionalSource,
   reportDate: string
 ): Promise<SyncCheckpoint> {
-  const record = await getKvCacheByLegacyKey(db, cursorKey(source, reportDate));
-  if (!record) return emptyCheckpoint(reportDate);
-  try {
-    const value = JSON.parse(record.valueJson) as Record<string, unknown>;
-    if (value.reportDate !== reportDate) return emptyCheckpoint(reportDate);
-    const nextPage = Number(value.bootstrapNextPage ?? value.backfillNextPage ?? value.nextPage);
-    return {
-      schemaVersion: 2,
-      reportDate,
-      bootstrapNextPage: Number.isInteger(nextPage) && nextPage >= 1 ? nextPage : 1,
-      bootstrapComplete: value.bootstrapComplete === true || value.backfillComplete === true,
-      bootstrapMaxDisclosureDate: trimDate(value.bootstrapMaxDisclosureDate) || null,
-      watermarkDate: trimDate(value.watermarkDate) || null,
-    };
-  } catch {
-    return emptyCheckpoint(reportDate);
-  }
+  const state = await readFinancialSyncState(db);
+  return normalizeCheckpoint(state.checkpoints[checkpointKey(source, reportDate)], reportDate);
 }
 
 async function writeSyncCheckpoint(
@@ -525,12 +521,9 @@ async function writeSyncCheckpoint(
   reportDate: string,
   checkpoint: SyncCheckpoint
 ): Promise<void> {
-  await putKvCacheByLegacyKey(db, {
-    key: cursorKey(source, reportDate),
-    valueJson: JSON.stringify(checkpoint),
-    expiresAt: null,
-    updatedAt: Date.now(),
-  });
+  const state = await readFinancialSyncState(db);
+  state.checkpoints[checkpointKey(source, reportDate)] = checkpoint;
+  await putFinancialSyncState(db, state, Date.now());
 }
 
 function emptyCheckpoint(reportDate: string): SyncCheckpoint {
@@ -544,67 +537,85 @@ function emptyCheckpoint(reportDate: string): SyncCheckpoint {
   };
 }
 
-export function provisionalSyncStateKey(source: ProvisionalSource, reportDate: string): string {
-  return `financial-provisional-sync:${source}:${reportDate}`;
+function checkpointKey(source: ProvisionalSource, reportDate: string): string {
+  return `${reportDate}:${source}`;
 }
 
-function cursorKey(source: ProvisionalSource, reportDate: string): string {
-  return provisionalSyncStateKey(source, reportDate);
+function normalizeCheckpoint(value: unknown, reportDate: string): SyncCheckpoint {
+  if (!value || typeof value !== "object") return emptyCheckpoint(reportDate);
+  const checkpoint = value as Record<string, unknown>;
+  if (checkpoint.reportDate !== reportDate) return emptyCheckpoint(reportDate);
+  const nextPage = Number(checkpoint.bootstrapNextPage ?? checkpoint.backfillNextPage ?? checkpoint.nextPage);
+  return {
+    schemaVersion: 2,
+    reportDate,
+    bootstrapNextPage: Number.isInteger(nextPage) && nextPage >= 1 ? nextPage : 1,
+    bootstrapComplete: checkpoint.bootstrapComplete === true || checkpoint.backfillComplete === true,
+    bootstrapMaxDisclosureDate: trimDate(checkpoint.bootstrapMaxDisclosureDate) || null,
+    watermarkDate: trimDate(checkpoint.watermarkDate) || null,
+  };
 }
 
-async function migrateLegacyCheckpoints(db: D1Database, reportDate: string): Promise<void> {
-  for (const source of ["performance_report", "performance_forecast"] as const) {
-    const newKey = cursorKey(source, reportDate);
-    if (await getKvCacheByLegacyKey(db, newKey)) continue;
-    const legacyKey = `financial-provisional-sync:${source}`;
-    const legacy = await getKvCacheByLegacyKey(db, legacyKey);
-    if (!legacy) continue;
-    try {
-      const value = JSON.parse(legacy.valueJson) as Record<string, unknown>;
-      if (value.reportDate !== reportDate) continue;
-      await putKvCacheByLegacyKey(db, {
-        key: newKey,
-        valueJson: JSON.stringify({
-          schemaVersion: 2,
-          reportDate,
-          bootstrapNextPage: Number(value.backfillNextPage ?? value.nextPage) || 1,
-          bootstrapComplete: value.backfillComplete === true,
-          bootstrapMaxDisclosureDate: null,
-          watermarkDate: null,
-        } satisfies SyncCheckpoint),
-        expiresAt: null,
-        updatedAt: Date.now(),
-      });
-    } catch (err) {
-      console.warn(`invalid legacy financial sync checkpoint: ${legacyKey}`, err);
-    }
+async function readFinancialSyncState(db: D1Database): Promise<FinancialSyncState> {
+  const record = await getKvCache(db, SYNC_STATE_NAMESPACE, FINANCIAL_PROVISIONAL_SYNC_STATE_KEY);
+  if (!record) return emptyFinancialSyncState();
+  try {
+    const value = JSON.parse(record.valueJson) as Record<string, unknown>;
+    const checkpoints = value.checkpoints;
+    return {
+      status: isSyncRunStatus(value.status) ? value.status : "idle",
+      startedAt: finiteNumberOrNull(value.startedAt),
+      finishedAt: finiteNumberOrNull(value.finishedAt),
+      error: typeof value.error === "string" ? value.error : null,
+      stats: value.stats && typeof value.stats === "object" ? value.stats as SyncStats : null,
+      checkpoints: checkpoints && typeof checkpoints === "object" && !Array.isArray(checkpoints)
+        ? checkpoints as Record<string, SyncCheckpoint>
+        : {},
+    };
+  } catch {
+    return emptyFinancialSyncState();
   }
 }
 
-async function startSyncJob(
-  db: D1Database,
-  jobId: string,
-  startedAt: number,
-  reportDate: string
-): Promise<void> {
-  await db.prepare(
-    `insert into sync_jobs (job_id, job_type, status, started_at, stats_json)
-     values (?, 'financial-provisional', 'running', ?, ?)`
-  ).bind(jobId, startedAt, JSON.stringify({ reportDate })).run();
+function emptyFinancialSyncState(): FinancialSyncState {
+  return { status: "idle", startedAt: null, finishedAt: null, error: null, stats: null, checkpoints: {} };
 }
 
-async function finishSyncJob(
+function isSyncRunStatus(value: unknown): value is SyncRunStatus {
+  return value === "idle" || value === "running" || value === "succeeded" || value === "failed";
+}
+
+function finiteNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+async function putFinancialSyncState(db: D1Database, state: FinancialSyncState, updatedAt: number): Promise<void> {
+  await putKvCache(db, {
+    namespace: SYNC_STATE_NAMESPACE,
+    key: FINANCIAL_PROVISIONAL_SYNC_STATE_KEY,
+    valueJson: JSON.stringify(state),
+    expiresAt: null,
+    updatedAt,
+  });
+}
+
+async function writeSyncState(
   db: D1Database,
-  jobId: string,
-  status: "succeeded" | "failed",
+  status: "running" | "succeeded" | "failed",
+  startedAt: number,
+  finishedAt: number | null,
   stats: SyncStats,
   error: string | null
 ): Promise<void> {
-  await db.prepare(
-    `update sync_jobs
-     set status = ?, finished_at = ?, error = ?, stats_json = ?
-     where job_id = ?`
-  ).bind(status, Date.now(), error, JSON.stringify(stats), jobId).run();
+  const state = await readFinancialSyncState(db);
+  await putFinancialSyncState(db, {
+    ...state,
+    status,
+    startedAt,
+    finishedAt,
+    error,
+    stats,
+  }, finishedAt ?? startedAt);
 }
 
 function trimDate(value: unknown): string {

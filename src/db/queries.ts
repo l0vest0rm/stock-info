@@ -26,7 +26,6 @@ const LEGACY_KV_CACHE_NAMESPACE_RULES: Array<{ prefix: string; namespace: string
   { prefix: "sina-report-list:", namespace: "sina_report_list" },
   { prefix: "sina-report-detail:", namespace: "sina_report_detail" },
   { prefix: "eastmoney-report-pdf-text:", namespace: "eastmoney_report_pdf_text" },
-  { prefix: "financial-provisional-sync:", namespace: "financial_provisional_sync" },
   { prefix: "llm-daily-quota:", namespace: "daily_llm_quota" },
   { prefix: "companies-follow-config", namespace: "companies_follow_config" },
   { prefix: "us.options.chain.v2.", namespace: "us_option_chain" },

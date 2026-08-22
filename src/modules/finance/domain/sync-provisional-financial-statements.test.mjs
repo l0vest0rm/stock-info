@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  provisionalSyncStateKey,
-  syncProvisionalFinancialStatements,
-} from "../application/sync-provisional-financial-statements.ts";
+import { syncProvisionalFinancialStatements } from "../application/sync-provisional-financial-statements.ts";
 
 const SCHEDULED_TIME = Date.UTC(2026, 7, 10);
 const REPORT_DATE = "2026-06-30";
@@ -58,6 +55,11 @@ test("bootstrap consumes multiple pages, resumes by source/report-period, then i
   }
   assertCheckpoint(db, "performance_report", { watermarkDate: "2026-07-15" });
   assertCheckpoint(db, "performance_forecast", { watermarkDate: "2026-07-15" });
+  assert.deepEqual(syncState(db), {
+    status: "succeeded",
+    error: null,
+    stats: incrementalStats,
+  });
 });
 
 test("incremental fetch failure leaves the per-source watermark unchanged", async () => {
@@ -163,19 +165,29 @@ function pageCalls(calls, run, source) {
 }
 
 function checkpoint(db, source) {
-  const value = db.kvCache.get(`financial_provisional_sync|${provisionalSyncStateKey(source, REPORT_DATE)}`);
-  assert.ok(value, `${source} checkpoint exists`);
-  return JSON.parse(value.valueJson);
+  const state = fullSyncState(db);
+  return state.checkpoints[`${REPORT_DATE}:${source}`];
 }
 
 function assertCheckpoint(db, source, expected) {
   for (const [key, value] of Object.entries(expected)) assert.equal(checkpoint(db, source)[key], value, `${source}.${key}`);
 }
 
+function syncState(db) {
+  const state = fullSyncState(db);
+  return { status: state.status, error: state.error, stats: state.stats };
+}
+
+function fullSyncState(db) {
+  const value = db.kvCache.get("sync_state|financial-provisional");
+  assert.ok(value, "financial sync state exists");
+  assert.equal([...db.kvCache.keys()].filter((key) => key.startsWith("sync_state|")).length, 1, "financial state and cursors share one kv key");
+  return JSON.parse(value.valueJson);
+}
+
 class FakeD1 {
   constructor() {
     this.kvCache = new Map();
-    this.syncJobs = new Map();
   }
 
   prepare(sql) {
@@ -195,10 +207,6 @@ class FakeD1 {
               expiresAt: args[3],
               updatedAt: args[4],
             });
-          } else if (normalized.includes("insert into sync_jobs")) {
-            this.syncJobs.set(args[0], { status: "running", statsJson: args[2] });
-          } else if (normalized.includes("update sync_jobs")) {
-            this.syncJobs.set(args[4], { status: args[0], error: args[2], statsJson: args[3] });
           }
           return { success: true };
         },

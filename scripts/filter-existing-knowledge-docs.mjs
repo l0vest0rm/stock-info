@@ -93,17 +93,13 @@ function deleteDocuments(databaseFile, docIds) {
       .join("\n");
     const selectedDocs = "select doc_id from historical_blacklist_doc_ids";
     const selectedVersions = `select version_id from knowledge_document_versions where doc_id in (${selectedDocs})`;
-    const selectedRuns = `select run_id from knowledge_processing_runs where version_id in (${selectedVersions})`;
     writeFileSync(sqlFile, `
       create temp table historical_blacklist_doc_ids (doc_id text primary key);
       ${values}
       delete from knowledge_information_records where result_id in (
-        select result_id from knowledge_document_results where run_id in (${selectedRuns})
+        select result_id from knowledge_document_results where version_id in (${selectedVersions})
       );
-      delete from knowledge_document_results where run_id in (${selectedRuns});
-      delete from knowledge_processing_runs where run_id in (${selectedRuns});
-      delete from knowledge_preprocessing_decisions where version_id in (${selectedVersions});
-      delete from knowledge_document_versions where version_id in (${selectedVersions});
+      delete from knowledge_document_results where version_id in (${selectedVersions});
       delete from knowledge_docs where doc_id in (${selectedDocs});
     `);
     executeLocalD1SqlFile(sqlFile, { root, requiredTable: "knowledge_docs" });

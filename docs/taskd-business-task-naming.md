@@ -83,7 +83,7 @@ research:investment-analysis:300308.SZ
 | --- | --- |
 | 单篇研报预测提取 | 报告预测缓存 |
 | 新闻研报提取 | 新闻研报缓存 |
-| 知识文档处理 | `knowledge_processing_runs` 与知识文档表 |
+| 知识文档处理 | 当前知识结果与知识文档表；不保留处理 run |
 | `forecast-synthesis.ts` | 既有直接 LLM 结果 |
 | `research-auto-filing-insights.ts` | 既有直接 LLM 结果 |
 | `research-industry-source-series.ts` | 既有直接 LLM 结果 |

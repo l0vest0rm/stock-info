@@ -165,8 +165,8 @@ type KnowledgeSourceBinding = { metadata: Record<string, unknown>; pages: Statut
 
 /**
  * If the filing already passed the information-preprocessing pipeline, prefer
- * that source-bound text.  The verification record retains its document/run
- * identities either way, so an auditor can distinguish converted ledger text
+ * that source-bound text. The verification record retains its document/result
+ * identity either way, so an auditor can distinguish converted ledger text
  * from a direct immutable-PDF extraction.
  */
 async function loadKnowledgeSourceBinding(
@@ -180,9 +180,8 @@ async function loadKnowledgeSourceBinding(
     from knowledge_docs d
     left join knowledge_doc_content_refs c on c.doc_id=d.doc_id
     left join knowledge_document_versions v on v.doc_id=d.doc_id
-    left join knowledge_processing_runs run on run.version_id=v.version_id and run.status='succeeded'
-    left join knowledge_document_results r on r.run_id=run.run_id
-    where d.url=? order by run.completed_at desc, v.created_at desc limit 1`)
+    left join knowledge_document_results r on r.version_id=v.version_id
+    where d.url=? order by r.created_at desc, v.created_at desc limit 1`)
     .bind(document.documentUrl).first<{ docId: string; contentPreview: string | null; contentKey: string | null; resultId: string | null; resultOutcome: string | null }>();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

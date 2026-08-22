@@ -209,23 +209,16 @@ knowledgeRoutes.get("/knowledge/documents/:id/structured", async (c) => {
       where d.doc_id = ?`,
   ).bind(c.req.param("id")).first<Record<string, unknown>>();
   const versions = await c.env.DB.prepare(
-    `select v.*, p.action as preprocessing_action, p.reason_code, p.rule_version, p.details_json
-       from knowledge_document_versions v
-       left join knowledge_preprocessing_decisions p on p.decision_id = (
-         select p2.decision_id from knowledge_preprocessing_decisions p2 where p2.version_id = v.version_id order by p2.decided_at desc limit 1
-       ) where v.doc_id = ? order by v.created_at desc`,
+    "select v.* from knowledge_document_versions v where v.doc_id = ? order by v.created_at desc",
   ).bind(c.req.param("id")).all<Record<string, unknown>>();
   if (versions.results.length === 0) return fail(c, 404, "structured knowledge document not found");
   const result = await c.env.DB.prepare(
-    `select d.* from knowledge_document_results d join knowledge_processing_runs r on r.run_id = d.run_id
-      where d.version_id = ? order by d.created_at desc limit 1`,
+    "select * from knowledge_document_results where version_id = ? limit 1",
   ).bind(String(versions.results[0].version_id)).first<Record<string, unknown>>();
   const records = result ? await c.env.DB.prepare(
     `select information_id, entity, information_type, category, period, statement, sort_order, created_at
        from knowledge_information_records where result_id = ? order by sort_order, information_id`,
   ).bind(String(result.result_id)).all<Record<string, unknown>>() : { results: [] as Record<string, unknown>[] };
-  const runs = await c.env.DB.prepare("select * from knowledge_processing_runs where version_id = ? order by started_at desc")
-    .bind(String(versions.results[0].version_id)).all<Record<string, unknown>>();
   return ok(c, {
     document: document ? {
       doc_id: document.doc_id,
@@ -246,7 +239,6 @@ knowledgeRoutes.get("/knowledge/documents/:id/structured", async (c) => {
     } : null,
     versions: versions.results.map(mapInformationRow), result: result ? mapInformationRow(result) : null,
     records: records.results.map(mapInformationRow),
-    runs: runs.results.map(mapInformationRow),
   });
 });
 
@@ -354,9 +346,7 @@ knowledgeRoutes.get("/knowledge/information-records", async (c) => {
 });
 
 knowledgeRoutes.get("/knowledge/processing-runs/:id", async (c) => {
-  const run = await c.env.DB.prepare("select * from knowledge_processing_runs where run_id = ?").bind(c.req.param("id")).first<Record<string, unknown>>();
-  if (!run) return fail(c, 404, "knowledge processing run not found");
-  return ok(c, mapInformationRow(run));
+  return fail(c, 410, "knowledge processing runs are not retained");
 });
 
 knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
@@ -428,15 +418,7 @@ knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
 });
 
 knowledgeRoutes.post("/knowledge/processing-jobs/:id/retry", async (c) => {
-  if (!isLocalInformationProcessingRuntime(c.env)) return fail(c, 404, "information processing jobs are only available in local LLM runtime");
-  const row = await c.env.DB.prepare("select v.doc_id from knowledge_processing_runs r join knowledge_document_versions v on v.version_id = r.version_id where r.run_id = ?")
-    .bind(c.req.param("id")).first<{ doc_id: string }>();
-  if (!row) return fail(c, 404, "knowledge processing run not found");
-  try {
-    return ok(c, mapInformationProcessingResult(row.doc_id, await processInformationDocument(c.env, row.doc_id)));
-  } catch (error) {
-    return fail(c, 500, error instanceof Error ? error.message : String(error));
-  }
+  return fail(c, 410, "knowledge processing runs are not retained; retry by document id");
 });
 
 knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
@@ -2330,23 +2312,12 @@ async function selectUnprocessedInformationDocuments(
       where d.sort_time >= ?
         ${titleClause}
         ${cursorClause}
-        and coalesce((
-          select p.action
-            from knowledge_preprocessing_decisions p
-           where p.version_id = (
-             select v3.version_id from knowledge_document_versions v3
-              where v3.doc_id = d.doc_id order by v3.created_at desc limit 1
-           )
-           order by p.decided_at desc limit 1
-        ), '') not in ('exact_duplicate', 'template_duplicate', 'pure_market_snapshot', 'empty_content')
         and not exists (
           select 1 from knowledge_document_versions v
-          join knowledge_processing_runs r on r.version_id = v.version_id
-          join knowledge_document_results result on result.run_id = r.run_id
+          join knowledge_document_results result on result.version_id = v.version_id
           where v.version_id = (
             select v2.version_id from knowledge_document_versions v2 where v2.doc_id = d.doc_id order by v2.created_at desc limit 1
           )
-            and r.stage = 'document_analysis' and r.prompt_version = ? and r.status in ('succeeded', 'needs_review')
         )
       order by d.sort_time desc, d.doc_id desc
       limit ?`,
@@ -2357,7 +2328,6 @@ async function selectUnprocessedInformationDocuments(
     input.cursor?.sortTime ?? null,
     input.cursor?.sortTime ?? null,
     input.cursor?.docId ?? null,
-    INFORMATION_PROCESSING_PROMPT_VERSION,
     input.limit,
   ).all<{ doc_id: string }>();
   return candidates.results.map((row) => row.doc_id);

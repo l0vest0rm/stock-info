@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { loadKnowledgeDefaults } from "./knowledge-defaults.mjs";
 import { executeLocalD1Sql, queryLocalD1Sql, resolveLocalD1Database } from "./lib/local-d1-sqlite.mjs";
 
@@ -13,7 +12,6 @@ if (args.help) {
 }
 if (!args.remote) args.databasePath = resolveLocalD1Database({ requiredTable: "knowledge_docs" });
 const run = {
-  runId: `knowledge-docs-cleanup:${randomUUID()}`,
   startedAt: Date.now(),
   source: "knowledge_docs_cleanup",
 };
@@ -21,10 +19,9 @@ const run = {
 try {
   const summary = cleanupKnowledgeDocs(args);
   if (args.writeRun) {
-    recordRun({
+    writeMaintenanceState({
       database: args.database,
       remote: args.remote,
-      runId: run.runId,
       source: run.source,
       startedAt: run.startedAt,
       finishedAt: Date.now(),
@@ -37,10 +34,9 @@ try {
   const message = error instanceof Error ? error.message : String(error);
   if (args.writeRun) {
     try {
-      recordRun({
+      writeMaintenanceState({
         database: args.database,
         remote: args.remote,
-        runId: run.runId,
         source: run.source,
         startedAt: run.startedAt,
         finishedAt: Date.now(),
@@ -159,18 +155,15 @@ function executeSql(sql, options) {
   );
 }
 
-function recordRun({ database, remote, runId, source, startedAt, finishedAt, status, stats, error = "" }) {
+function writeMaintenanceState({ database, remote, source, startedAt, finishedAt, status, stats, error = "" }) {
+  const value = JSON.stringify({ status, source, startedAt, finishedAt, stats, error });
   const sql = `
-    insert into knowledge_ingest_runs (run_id, status, source, started_at, finished_at, stats_json, error)
-    values (
-      ${sqlString(runId)},
-      ${sqlString(status)},
-      ${sqlString(source)},
-      ${startedAt},
-      ${finishedAt},
-      ${sqlString(JSON.stringify(stats))},
-      ${sqlString(error)}
-    );
+    insert into kv_cache (namespace, key, value_json, expires_at, updated_at)
+    values ('knowledge_maintenance', ${sqlString(source)}, ${sqlString(value)}, null, ${finishedAt})
+    on conflict(namespace, key) do update set
+      value_json=excluded.value_json,
+      expires_at=excluded.expires_at,
+      updated_at=excluded.updated_at;
   `;
   executeSql(sql, { database, remote });
 }

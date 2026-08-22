@@ -13,6 +13,7 @@ import {
   type MacroSourceHealth as AdapterSourceHealth,
 } from "../adapters";
 import type { MacroFrequency, MacroObservationVintage, MacroSeries, MacroSourceHealth } from "../domain/model";
+import { putKvCache } from "../../../db/queries";
 import { D1MacroRepository } from "./macro-repository";
 import type { Bindings } from "../../../types";
 
@@ -35,14 +36,15 @@ type ConfiguredSeries = {
 type SyncStats = { sourcesAttempted: number; sourcesSucceeded: number; observationsWritten: number; seriesConfigured: number };
 
 const configuredSeries = seriesConfig as ConfiguredSeries[];
+const SYNC_STATE_NAMESPACE = "sync_state";
+const MACRO_SYNC_STATE_KEY = "macro-data";
 
 export async function syncMacroData(env: Bindings, scheduledTime = Date.now()): Promise<SyncStats> {
   const repository = new D1MacroRepository(env.DB);
   const upstreamFetch = macroFetch(env);
   const startedAt = Date.now();
-  const jobId = `macro-sync:${scheduledTime}`;
   const stats: SyncStats = { sourcesAttempted: 0, sourcesSucceeded: 0, observationsWritten: 0, seriesConfigured: configuredSeries.length };
-  await startJob(env.DB, jobId, startedAt);
+  await writeSyncState(env.DB, "running", startedAt, null, stats, null);
   try {
     for (const definition of configuredSeries) await repository.upsertSeries(toDomainSeries(definition, scheduledTime));
     const previousHealth = new Map((await repository.listSourceHealth()).map((item) => [item.sourceId, item]));
@@ -187,10 +189,10 @@ export async function syncMacroData(env: Bindings, scheduledTime = Date.now()): 
       ["motie", "Korea MOTIE", "A stable official structured export contract has not been verified"],
     ] as const) await repository.putSourceHealth(disabledHealth(sourceId, name, message, scheduledTime));
 
-    await finishJob(env.DB, jobId, "succeeded", stats, null);
+    await writeSyncState(env.DB, "succeeded", startedAt, Date.now(), stats, null);
     return stats;
   } catch (err) {
-    await finishJob(env.DB, jobId, "failed", stats, err instanceof Error ? err.message : String(err));
+    await writeSyncState(env.DB, "failed", startedAt, Date.now(), stats, err instanceof Error ? err.message : String(err));
     throw err;
   }
 }
@@ -299,10 +301,19 @@ function releaseImportance(name: string): "medium" | "high" | "unclassified" {
   return /(Consumer Price|Employment Situation|Gross Domestic Product|FOMC|Personal Income)/i.test(name) ? "high" : /(Producer Price|Industrial Production|Retail Sales|Job Openings)/i.test(name) ? "medium" : "unclassified";
 }
 
-async function startJob(db: D1Database, jobId: string, startedAt: number): Promise<void> {
-  await db.prepare(`insert into sync_jobs (job_id, job_type, status, started_at, stats_json) values (?, 'macro-data', 'running', ?, '{}') on conflict(job_id) do nothing`).bind(jobId, startedAt).run();
-}
-
-async function finishJob(db: D1Database, jobId: string, status: "succeeded" | "failed", stats: SyncStats, error: string | null): Promise<void> {
-  await db.prepare(`update sync_jobs set status = ?, finished_at = ?, error = ?, stats_json = ? where job_id = ?`).bind(status, Date.now(), error, JSON.stringify(stats), jobId).run();
+async function writeSyncState(
+  db: D1Database,
+  status: "running" | "succeeded" | "failed",
+  startedAt: number,
+  finishedAt: number | null,
+  stats: SyncStats,
+  error: string | null
+): Promise<void> {
+  await putKvCache(db, {
+    namespace: SYNC_STATE_NAMESPACE,
+    key: MACRO_SYNC_STATE_KEY,
+    valueJson: JSON.stringify({ status, startedAt, finishedAt, error, stats }),
+    expiresAt: null,
+    updatedAt: finishedAt ?? startedAt,
+  });
 }

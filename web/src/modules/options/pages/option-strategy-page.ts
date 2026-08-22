@@ -11,6 +11,7 @@ import {
   type StrategyLeg,
 } from '../domain/strategy-calculator'
 import { latestKlinePrice } from '../domain/latest-kline-price'
+import { optionContractKey } from '../domain/option-contract-key'
 import { rememberRecentExpiration } from '../domain/recent-expirations'
 
 declare const echarts: {
@@ -19,13 +20,25 @@ declare const echarts: {
 }
 
 type Underlying = { code: string; name: string; spot: string; spotAsOf?: string; multiplier: string }
-type Strategy = { id: string; name: string; savedAt: number; underlying: Underlying; legs: StrategyLeg[] }
+type Strategy = { id: string; name: string; savedAt: number; underlying: Underlying; legs: StrategyLeg[]; sequence?: number; isAutoName?: boolean }
 type DraftLeg = Omit<StrategyLeg, 'id'>
 type PayoffChartStrategy = { id: string; name: string; legs: StrategyLeg[] }
+type HistoryRow = Strategy & { isCurrent: boolean }
+type PremiumUpdateTarget = {
+  key: string
+  code: string
+  type: OptionType
+  strike: number
+  expiration: string
+  multiplier: number
+  strategyCount: number
+  premiumValues: number[]
+}
 
 const HISTORY_KEY = 'option-strategy-history-v1'
 const DRAFT_KEY = 'option-strategy-draft-v1'
 const RECENT_EXPIRATIONS_KEY = 'option-strategy-recent-expirations-v2'
+const STRATEGY_SEQUENCE_KEY = 'option-strategy-sequence-v1'
 
 function initialDraftLeg(): DraftLeg {
   return { side: 'buy', type: 'call', strike: '', expiration: '', premium: '', quantity: 1, multiplier: 100 } as unknown as DraftLeg
@@ -93,12 +106,20 @@ function automaticStrategyName(code: string, legs: StrategyLeg[]): string {
   const legNames = legs.map((leg) => [
     leg.side === 'buy' ? '买' : '卖',
     leg.type === 'call' ? 'Call' : 'Put',
-    formatNumber(leg.strike),
+    formatNumber(leg.strike, 3),
     `权利金${formatNumber(leg.premium, 4)}`,
     leg.expiration,
     `${leg.quantity}张×${leg.multiplier}`,
   ].join(' '))
   return `${underlyingCode} · ${legNames.join(' + ')}`
+}
+
+function strategyNumberLabel(sequence: number | null | undefined): string {
+  return sequence && sequence > 0 ? `组合 #${String(sequence).padStart(3, '0')}` : '待创建组合'
+}
+
+function strategyDisplayName(strategy: Pick<Strategy, 'name' | 'sequence'>): string {
+  return strategy.sequence ? strategyNumberLabel(strategy.sequence) : strategy.name
 }
 
 function payoffChartStrategies(current: PayoffChartStrategy, history: Strategy[], code: string): PayoffChartStrategy[] {
@@ -107,9 +128,9 @@ function payoffChartStrategies(current: PayoffChartStrategy, history: Strategy[]
   return [
     ...(current.legs.length ? [current] : []),
     ...history
-      .filter((item) => item.underlying.code.trim().toUpperCase() === normalizedCode && item.legs.length > 0)
+      .filter((item) => item.id !== current.id && item.underlying.code.trim().toUpperCase() === normalizedCode && item.legs.length > 0)
       .slice(0, 10)
-      .map((item) => ({ id: item.id, name: item.name, legs: item.legs })),
+      .map((item) => ({ id: item.id, name: strategyDisplayName(item), legs: item.legs })),
   ]
 }
 
@@ -128,6 +149,10 @@ const OptionStrategyPage = defineComponent({
     const legs = ref<StrategyLeg[]>([])
     const strategyName = ref('')
     const history = ref<Strategy[]>([])
+    const currentStrategyId = ref('')
+    const currentStrategySequence = ref<number | null>(null)
+    const nextStrategySequence = ref(1)
+    const contractPremiumDrafts = ref<Record<string, string>>({})
     const suggestions = ref<Array<{ code: string; name: string }>>([])
     const recentExpirations = ref<string[]>([])
     const searchStatus = ref('')
@@ -138,13 +163,113 @@ const OptionStrategyPage = defineComponent({
 
     const spot = computed(() => number(underlying.value.spot))
     const metrics = computed(() => calculateStrategyMetrics(legs.value, spot.value))
-    const strategyTitle = computed(() => strategyName.value.trim() || automaticStrategyName(underlying.value.code, legs.value))
-    const chartStrategies = computed(() => payoffChartStrategies({ id: 'current', name: `${strategyTitle.value}（当前）`, legs: legs.value }, history.value, underlying.value.code))
+    const strategyDescription = computed(() => strategyName.value.trim() || automaticStrategyName(underlying.value.code, legs.value))
+    const strategyNumber = computed(() => strategyNumberLabel(currentStrategySequence.value))
+    const strategyTitle = computed(() => `${strategyNumber.value} · ${strategyDescription.value}`)
+    const chartStrategies = computed(() => payoffChartStrategies({ id: currentStrategyId.value || 'current', name: `${strategyNumber.value}（当前）`, legs: legs.value }, history.value, underlying.value.code))
     const chartableStrategies = computed(() => chartStrategies.value.filter((strategy) => strategyEntryCapital(strategy.legs) > 0))
     const excludedChartStrategies = computed(() => chartStrategies.value.length - chartableStrategies.value.length)
+    const currentHistoryRow = computed<HistoryRow | null>(() => {
+      if (!underlying.value.code.trim() || legs.value.length === 0) return null
+      return {
+        id: currentStrategyId.value || 'current',
+        sequence: currentStrategySequence.value ?? undefined,
+        name: strategyDescription.value,
+        savedAt: 0,
+        underlying: normalizeUnderlying(underlying.value),
+        legs: legs.value,
+        isCurrent: true,
+      }
+    })
+    const historyRows = computed<HistoryRow[]>(() => [
+      ...(currentHistoryRow.value ? [currentHistoryRow.value] : []),
+      ...history.value.filter((item) => item.id !== currentStrategyId.value).map((item) => ({ ...item, isCurrent: false })),
+    ])
+    const premiumUpdateTargets = computed<PremiumUpdateTarget[]>(() => {
+      const targets = new Map<string, PremiumUpdateTarget & { strategyIds: Set<string>; premiums: Set<number> }>()
+      for (const strategy of historyRows.value) {
+        for (const leg of strategy.legs) {
+          const key = optionContractKey(strategy.underlying.code, leg)
+          const target = targets.get(key) || {
+            key,
+            code: strategy.underlying.code,
+            type: leg.type,
+            strike: leg.strike,
+            expiration: leg.expiration,
+            multiplier: leg.multiplier,
+            strategyCount: 0,
+            premiumValues: [],
+            strategyIds: new Set<string>(),
+            premiums: new Set<number>(),
+          }
+          target.strategyIds.add(strategy.id)
+          target.premiums.add(leg.premium)
+          targets.set(key, target)
+        }
+      }
+      return [...targets.values()]
+        .map(({ strategyIds, premiums, ...target }) => ({ ...target, strategyCount: strategyIds.size, premiumValues: [...premiums].sort((a, b) => a - b) }))
+        .sort((left, right) => left.code.localeCompare(right.code) || left.expiration.localeCompare(right.expiration) || left.strike - right.strike || left.type.localeCompare(right.type))
+    })
 
     function saveDraft() {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ underlying: underlying.value, legs: legs.value, strategyName: strategyName.value }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        underlying: underlying.value,
+        legs: legs.value,
+        strategyName: strategyName.value,
+        currentStrategyId: currentStrategyId.value,
+        currentStrategySequence: currentStrategySequence.value,
+      }))
+    }
+
+    function ensureCurrentStrategyIdentity() {
+      if (!currentStrategyId.value) currentStrategyId.value = crypto.randomUUID()
+      if (!currentStrategySequence.value) {
+        currentStrategySequence.value = nextStrategySequence.value
+        nextStrategySequence.value += 1
+        localStorage.setItem(STRATEGY_SEQUENCE_KEY, String(nextStrategySequence.value))
+      }
+    }
+
+    function parsePremium(value: string): number | null {
+      const normalized = value.trim()
+      if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return null
+      const parsed = Number(normalized)
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+    }
+
+    function synchronizeContractPremium(contractKey: string, premium: number): number {
+      const affectedStrategyIds = new Set<string>()
+      const currentCode = underlying.value.code
+      const updateLegs = (code: string, sourceLegs: StrategyLeg[], strategyId: string) => sourceLegs.map((leg) => {
+        if (optionContractKey(code, leg) !== contractKey) return leg
+        affectedStrategyIds.add(strategyId)
+        return { ...leg, premium }
+      })
+      legs.value = updateLegs(currentCode, legs.value, currentStrategyId.value || 'current')
+      history.value = history.value.map((strategy) => ({
+        ...strategy,
+        legs: updateLegs(strategy.underlying.code, strategy.legs, strategy.id),
+      })).map((strategy) => strategy.isAutoName
+        ? { ...strategy, name: automaticStrategyName(strategy.underlying.code, strategy.legs) }
+        : strategy)
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value))
+      saveDraft()
+      return affectedStrategyIds.size
+    }
+
+    function updateMatchingContractPremium(target: PremiumUpdateTarget) {
+      const rawValue = contractPremiumDrafts.value[target.key]
+      const premium = parsePremium(rawValue ?? '')
+      if (premium === null) {
+        searchStatus.value = '请输入有效的非负权利金。'
+        return
+      }
+      const affectedStrategyCount = synchronizeContractPremium(target.key, premium)
+      const nextDrafts = { ...contractPremiumDrafts.value }
+      delete nextDrafts[target.key]
+      contractPremiumDrafts.value = nextDrafts
+      searchStatus.value = `已将当前和历史中 ${affectedStrategyCount} 套组合的匹配期权腿更新为权利金 ${formatNumber(premium, 4)}。`
     }
 
     function updateUnderlying(key: keyof Underlying, value: string) {
@@ -226,11 +351,14 @@ const OptionStrategyPage = defineComponent({
         searchStatus.value = '请填写有效的行权价、到期日和权利金。'
         return
       }
+      ensureCurrentStrategyIdentity()
       legs.value = [...legs.value, candidate]
       rememberExpiration(candidate.expiration)
+      const affectedStrategyCount = synchronizeContractPremium(optionContractKey(code, candidate), candidate.premium)
       legDraft.value = { ...initialDraftLeg(), multiplier: underlying.value.multiplier }
-      searchStatus.value = ''
-      saveDraft()
+      searchStatus.value = affectedStrategyCount > 1
+        ? `已加入期权腿，并将相同合约的权利金同步更新到 ${affectedStrategyCount} 套当前/历史组合。`
+        : '已加入期权腿。'
     }
 
     function removeLeg(id: string) {
@@ -255,14 +383,17 @@ const OptionStrategyPage = defineComponent({
         searchStatus.value = '至少添加一条期权腿后才能保存组合。'
         return
       }
+      ensureCurrentStrategyIdentity()
       const item: Strategy = {
-        id: crypto.randomUUID(),
-        name: strategyTitle.value,
+        id: currentStrategyId.value,
+        sequence: currentStrategySequence.value ?? undefined,
+        name: strategyDescription.value,
+        isAutoName: !strategyName.value.trim(),
         savedAt: Date.now(),
         underlying: normalizeUnderlying(underlying.value),
         legs: legs.value,
       }
-      history.value = [item, ...history.value].slice(0, 30)
+      history.value = [item, ...history.value.filter((existing) => existing.id !== item.id)].slice(0, 30)
       localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value))
       searchStatus.value = '已保存到本机历史组合。'
     }
@@ -270,7 +401,10 @@ const OptionStrategyPage = defineComponent({
     function loadStrategy(item: Strategy) {
       underlying.value = normalizeUnderlying(item.underlying)
       legs.value = item.legs
-      strategyName.value = item.name
+      strategyName.value = item.isAutoName ? '' : item.name
+      currentStrategyId.value = item.id
+      currentStrategySequence.value = item.sequence ?? null
+      ensureCurrentStrategyIdentity()
       legDraft.value = { ...initialDraftLeg(), multiplier: underlying.value.multiplier }
       saveDraft()
       searchStatus.value = `已载入「${item.name}」。`
@@ -284,6 +418,8 @@ const OptionStrategyPage = defineComponent({
     function clearCurrent() {
       legs.value = []
       strategyName.value = ''
+      currentStrategyId.value = ''
+      currentStrategySequence.value = null
       legDraft.value = { ...initialDraftLeg(), multiplier: underlying.value.multiplier }
       saveDraft()
     }
@@ -334,17 +470,35 @@ const OptionStrategyPage = defineComponent({
 
     onMounted(() => {
       const saved = restore<Strategy[]>(HISTORY_KEY, [])
-      history.value = Array.isArray(saved) ? saved.filter((item) => item?.underlying && Array.isArray(item.legs)) : []
+      const restoredHistory = Array.isArray(saved) ? saved.filter((item) => item?.underlying && Array.isArray(item.legs)) : []
+      let highestSequence = Math.max(0, ...restoredHistory.map((item) => number(item.sequence)))
+      const normalizedHistory = restoredHistory.map((item) => {
+        const hasSequence = number(item.sequence) > 0
+        const normalized = {
+          ...item,
+          id: item.id || crypto.randomUUID(),
+          sequence: hasSequence ? number(item.sequence) : ++highestSequence,
+        }
+        return normalized
+      })
+      history.value = normalizedHistory
+      if (normalizedHistory.some((item, index) => item.id !== restoredHistory[index].id || item.sequence !== restoredHistory[index].sequence)) {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(normalizedHistory))
+      }
+      nextStrategySequence.value = Math.max(highestSequence + 1, number(restore<unknown>(STRATEGY_SEQUENCE_KEY, 1)), 1)
       const savedExpirations = restore<unknown>(RECENT_EXPIRATIONS_KEY, [])
       recentExpirations.value = Array.isArray(savedExpirations)
         ? [...savedExpirations].slice(0, 10).reverse().reduce<string[]>((items, value) => rememberRecentExpiration(items, typeof value === 'string' ? value : ''), [])
         : []
-      const draft = restore<{ underlying?: Underlying; legs?: StrategyLeg[]; strategyName?: string }>(DRAFT_KEY, {})
+      const draft = restore<{ underlying?: Underlying; legs?: StrategyLeg[]; strategyName?: string; currentStrategyId?: string; currentStrategySequence?: number }>(DRAFT_KEY, {})
       const codeFromUrl = new URLSearchParams(window.location.search).get('code') || ''
       if (draft.underlying) underlying.value = normalizeUnderlying(draft.underlying)
       if (Array.isArray(draft.legs)) legs.value = draft.legs
       if (typeof draft.strategyName === 'string') strategyName.value = draft.strategyName
+      if (typeof draft.currentStrategyId === 'string') currentStrategyId.value = draft.currentStrategyId
+      if (number(draft.currentStrategySequence) > 0) currentStrategySequence.value = number(draft.currentStrategySequence)
       if (codeFromUrl) underlying.value = normalizeUnderlying({ ...underlying.value, code: codeFromUrl, multiplier: inferMultiplier(codeFromUrl) })
+      if (legs.value.length > 0) ensureCurrentStrategyIdentity()
       legDraft.value = { ...initialDraftLeg(), multiplier: underlying.value.multiplier }
       if (underlying.value.code) void refreshSpot(underlying.value.code)
       void nextTick(renderPayoffChart)
@@ -367,7 +521,7 @@ const OptionStrategyPage = defineComponent({
             h('div', [h('h2', { class: 'h4 mb-1' }, '期权策略'), h('p', { class: 'text-muted small mb-0' }, '手工录入单腿，组合计算在浏览器本机完成；支持 A 股、港股和美股标的。')]),
             h('div', { class: 'd-flex gap-2' }, [
               h('button', { type: 'button', class: 'btn btn-outline-secondary btn-sm', onClick: clearCurrent }, '清空当前组合'),
-              h('button', { type: 'button', class: 'btn btn-primary btn-sm', onClick: saveStrategy }, '保存到历史'),
+              h('button', { type: 'button', class: 'btn btn-primary btn-sm', onClick: saveStrategy }, '保存 / 更新历史'),
             ]),
           ]),
           h('div', { class: 'border rounded p-3 bg-white' }, [
@@ -418,13 +572,13 @@ const OptionStrategyPage = defineComponent({
           h('div', { class: 'd-flex justify-content-between align-items-center mb-2' }, [h('h3', { class: 'h6 mb-0' }, `当前组合 · ${strategyTitle.value}`), h('span', { class: 'small text-muted' }, `${legs.value.length} 条期权腿`)]),
           h('div', { class: 'table-responsive border rounded bg-white' }, [
             h('table', { class: 'table table-sm align-middle mb-0' }, [
-              h('thead', { class: 'table-light' }, [h('tr', ['买卖', '类型', '行权价', '权利金', '到期日', '行权距离', '时间价值/股', '剩余天数', '张数', '乘数', ''].map((label) => h('th', { class: label === '行权价' || label === '权利金' || label === '行权距离' || label === '时间价值/股' ? 'text-end' : '' }, label)))]),
+              h('thead', { class: 'table-light' }, [h('tr', ['买卖', '类型', '行权价', '权利金 / 股', '到期日', '行权距离', '时间价值/股', '剩余天数', '张数', '乘数', ''].map((label) => h('th', { class: label === '行权价' || label === '权利金 / 股' || label === '行权距离' || label === '时间价值/股' ? 'text-end' : '' }, label)))]),
               h('tbody', legs.value.length ? legs.value.map((leg) => {
                 const distance = legMoneynessDistancePct(leg, spot.value)
                 const timeValue = Math.max(0, leg.premium - intrinsicValue(leg.type, spot.value, leg.strike))
                 return h('tr', { key: leg.id }, [
                   h('td', { class: leg.side === 'buy' ? 'text-danger' : 'text-success' }, leg.side === 'buy' ? '买入' : '卖出'),
-                  h('td', leg.type.toUpperCase()), h('td', { class: 'text-end' }, formatNumber(leg.strike)), h('td', { class: 'text-end' }, formatNumber(leg.premium, 4)), h('td', leg.expiration),
+                  h('td', leg.type.toUpperCase()), h('td', { class: 'text-end' }, formatNumber(leg.strike, 3)), h('td', { class: 'text-end' }, formatNumber(leg.premium, 4)), h('td', leg.expiration),
                   h('td', { class: 'text-end' }, distance === null ? '请填现价' : `${distance >= 0 ? '+' : ''}${formatNumber(distance)}%`), h('td', { class: 'text-end' }, spot.value > 0 ? formatNumber(timeValue, 4) : '请填现价'), h('td', String(daysToExpiry(leg.expiration) ?? '—')), h('td', String(leg.quantity)), h('td', String(leg.multiplier)),
                   h('td', [h('button', { type: 'button', class: 'btn btn-sm btn-outline-danger', onClick: () => removeLeg(leg.id) }, '移除')]),
                 ])
@@ -438,7 +592,7 @@ const OptionStrategyPage = defineComponent({
             metricCard('净权利金支出', formatNumber(currentMetrics.netPremiumCash), currentMetrics.netPremiumCash >= 0 ? '正数为净支出' : '负数为净收入'),
             metricCard('净时间成本', formatNumber(currentMetrics.timeCostCash), currentMetrics.timeCostCash >= 0 ? '正数为时间价值支出' : '负数为时间价值收入'),
             metricCard('时间成本年化', currentMetrics.timeCostAnnualized === null ? '—' : `${formatNumber(currentMetrics.timeCostAnnualized * 100)}%`, '按总权利金与最晚到期日估算'),
-            metricCard('盈亏线', currentMetrics.breakevens.length ? currentMetrics.breakevens.map((item) => formatNumber(item)).join(' / ') : '—', '到期收益为零的标的价格'),
+            metricCard('盈亏线', currentMetrics.breakevens.length ? currentMetrics.breakevens.map((item) => formatNumber(item, 3)).join(' / ') : '—', '到期收益为零的标的价格'),
             metricCard('最近盈亏距离', currentMetrics.nearestBreakevenDistancePct === null ? '—' : `${formatNumber(currentMetrics.nearestBreakevenDistancePct)}%`, '相对当前价格的绝对距离'),
             metricCard('到期剩余天数', currentMetrics.minimumDaysToExpiry === null ? '—' : currentMetrics.minimumDaysToExpiry === currentMetrics.maximumDaysToExpiry ? `${currentMetrics.minimumDaysToExpiry} 天` : `${currentMetrics.minimumDaysToExpiry}–${currentMetrics.maximumDaysToExpiry} 天`, '最近–最远到期日'),
             metricCard('到期剩余周数', currentMetrics.minimumWeeksToExpiry === null ? '—' : currentMetrics.minimumWeeksToExpiry === currentMetrics.maximumWeeksToExpiry ? `${formatNumber(currentMetrics.minimumWeeksToExpiry, 1)} 周` : `${formatNumber(currentMetrics.minimumWeeksToExpiry, 1)}–${formatNumber(currentMetrics.maximumWeeksToExpiry, 1)} 周`, '最近–最远到期日'),
@@ -457,11 +611,57 @@ const OptionStrategyPage = defineComponent({
           chartStrategies.value.length === 0 ? h('p', { class: 'small text-muted mt-2 mb-0' }, '加入至少一条期权腿后显示到期收益率曲线。') : null,
           excludedChartStrategies.value > 0 ? h('p', { class: 'small text-warning mt-2 mb-0' }, `${excludedChartStrategies.value} 个净收权利金或零成本组合未纳入图表；该类策略需要保证金口径，不能按“投入 1.00 亿”直接计算收益率。`) : null,
         ]),
+        h('section', { class: 'mb-3 border rounded p-3 bg-white' }, [
+          h('div', { class: 'd-flex flex-wrap justify-content-between gap-2 align-items-baseline mb-2' }, [
+            h('h3', { class: 'h6 mb-0' }, '期权权利金统一更新'),
+            h('span', { class: 'small text-muted' }, `当前 + 历史去重后 ${premiumUpdateTargets.value.length} 个合约`),
+          ]),
+          h('p', { class: 'small text-muted mb-2' }, '这是唯一的权利金修改入口。按标的、Call/Put、行权价、到期日和乘数去重；买卖方向和张数不影响匹配。更新一次会同步当前组合及所有历史组合，并立即重算图表和参考数据。'),
+          premiumUpdateTargets.value.length ? h('div', { class: 'table-responsive border rounded' }, [h('table', { class: 'table table-sm align-middle mb-0' }, [
+            h('thead', { class: 'table-light' }, [h('tr', ['标的', '类型', '行权价', '到期日', '乘数', '现有权利金', '涉及组合', '新权利金 / 股', ''].map((label) => h('th', { class: ['行权价', '乘数', '现有权利金', '涉及组合', '新权利金 / 股'].includes(label) ? 'text-end' : '' }, label)))]),
+            h('tbody', premiumUpdateTargets.value.map((target) => h('tr', { key: target.key }, [
+              h('td', target.code),
+              h('td', target.type.toUpperCase()),
+              h('td', { class: 'text-end' }, formatNumber(target.strike, 3)),
+              h('td', target.expiration),
+              h('td', { class: 'text-end' }, String(target.multiplier)),
+              h('td', { class: 'text-end' }, target.premiumValues.map((value) => formatNumber(value, 4)).join(' / ')),
+              h('td', { class: 'text-end' }, `${target.strategyCount} 套`),
+              h('td', { style: 'min-width: 170px;' }, [h('input', {
+                class: 'form-control form-control-sm text-end',
+                type: 'text',
+                inputmode: 'decimal',
+                pattern: '[0-9]*\\.?[0-9]*',
+                placeholder: '输入新权利金',
+                value: contractPremiumDrafts.value[target.key] ?? '',
+                onInput: (event: Event) => contractPremiumDrafts.value = { ...contractPremiumDrafts.value, [target.key]: (event.target as HTMLInputElement).value },
+                onKeyup: (event: KeyboardEvent) => { if (event.key === 'Enter') updateMatchingContractPremium(target) },
+              })]),
+              h('td', [h('button', { type: 'button', class: 'btn btn-sm btn-primary text-nowrap', onClick: () => updateMatchingContractPremium(target) }, `更新 ${target.strategyCount} 套`)]),
+            ]))),
+          ])]) : h('p', { class: 'small text-muted mb-0' }, '添加期权腿后，涉及的合约会在此去重汇总并统一更新。'),
+        ]),
         h('section', { class: 'mt-4' }, [
-          h('h3', { class: 'h6 mb-2' }, `历史组合（${history.value.length}）`),
+          h('h3', { class: 'h6 mb-2' }, `历史组合（含当前 · ${historyRows.value.length}）`),
           h('div', { class: 'table-responsive border rounded bg-white' }, [h('table', { class: 'table table-sm align-middle mb-0' }, [
-            h('thead', { class: 'table-light' }, [h('tr', ['名称', '标的', '现价', '期权腿', '保存时间', ''].map((label) => h('th', label)))]),
-            h('tbody', history.value.length ? history.value.map((item) => h('tr', { key: item.id }, [h('td', item.name), h('td', `${item.underlying.name ? `${item.underlying.name} · ` : ''}${item.underlying.code}`), h('td', formatUnderlyingPrice(number(item.underlying.spot))), h('td', String(item.legs.length)), h('td', new Date(item.savedAt).toLocaleString('zh-CN')), h('td', { class: 'text-nowrap' }, [h('button', { type: 'button', class: 'btn btn-sm btn-outline-primary me-2', onClick: () => loadStrategy(item) }, '载入'), h('button', { type: 'button', class: 'btn btn-sm btn-outline-danger', onClick: () => deleteStrategy(item.id) }, '删除')])])) : [h('tr', [h('td', { class: 'text-center text-muted py-4', colspan: 6 }, '暂无历史组合。保存后的记录只保存在当前浏览器的 localStorage 中。')])]),
+            h('thead', { class: 'table-light' }, [h('tr', ['编号', '名称 / 结构', '标的', '现价', '期权腿', '权利金支出', '盈亏线', '最近盈亏距离', '保存时间', ''].map((label) => h('th', { class: ['现价', '权利金支出', '盈亏线', '最近盈亏距离'].includes(label) ? 'text-end' : '' }, label)))]),
+            h('tbody', historyRows.value.length ? historyRows.value.map((item) => {
+              const itemMetrics = calculateStrategyMetrics(item.legs, number(item.underlying.spot))
+              return h('tr', { key: `${item.isCurrent ? 'current-' : ''}${item.id}`, class: item.isCurrent ? 'table-primary' : '' }, [
+                h('td', { class: 'text-nowrap fw-semibold' }, [strategyNumberLabel(item.sequence), item.isCurrent ? h('span', { class: 'badge text-bg-primary ms-1' }, '当前') : null]),
+                h('td', { class: 'small', style: 'min-width: 260px;' }, item.name),
+                h('td', `${item.underlying.name ? `${item.underlying.name} · ` : ''}${item.underlying.code}`),
+                h('td', { class: 'text-end' }, formatUnderlyingPrice(number(item.underlying.spot))),
+                h('td', { class: 'text-end' }, String(item.legs.length)),
+                h('td', { class: `text-end ${itemMetrics.netPremiumCash >= 0 ? '' : 'text-success'}` }, formatNumber(itemMetrics.netPremiumCash)),
+                h('td', { class: 'text-end text-nowrap' }, itemMetrics.breakevens.length ? itemMetrics.breakevens.map((point) => formatNumber(point, 3)).join(' / ') : '—'),
+                h('td', { class: 'text-end' }, itemMetrics.nearestBreakevenDistancePct === null ? '—' : `${formatNumber(itemMetrics.nearestBreakevenDistancePct)}%`),
+                h('td', { class: 'text-nowrap small' }, item.isCurrent ? '当前编辑中' : new Date(item.savedAt).toLocaleString('zh-CN')),
+                h('td', { class: 'text-nowrap' }, item.isCurrent
+                  ? h('button', { type: 'button', class: 'btn btn-sm btn-primary', onClick: saveStrategy }, '保存')
+                  : [h('button', { type: 'button', class: 'btn btn-sm btn-outline-primary me-2', onClick: () => loadStrategy(item) }, '载入'), h('button', { type: 'button', class: 'btn btn-sm btn-outline-danger', onClick: () => deleteStrategy(item.id) }, '删除')]),
+              ])
+            }) : [h('tr', [h('td', { class: 'text-center text-muted py-4', colspan: 10 }, '暂无组合。添加一条期权腿后，当前组合会自动显示在这里。')])]),
           ])]),
         ]),
       ])

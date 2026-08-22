@@ -1,17 +1,17 @@
 # 数据表梳理与收缩评审清单
 
-> 最近核验：2026-08-19（本地 SQLite 只读快照；`PRAGMA user_version=129`）
+> 最近核验：2026-08-19（本地 SQLite 快照；`PRAGMA user_version=136`）
 >
 > 目标：按用户可见页面与后台功能说明每张**当前存在**的数据表的职责，并给出可共同评审的保留、删除或优化方向。本文同时记录已实施迁移与已批准但尚未实施的删除，状态以本地 schema、迁移和当前源码为准。
 >
-> 证据：`data/local/stock-info.sqlite` 的 `sqlite_master`、`dbstat`、行数；`src/**`、`scripts/**`、`web/src/**` 的当前引用；迁移 `0119_drop_retired_local_llm_workflow_tables.sql`、`0120_drop_security_discovery_cache.sql`、`0121_drop_local_knowledge_content_cache.sql`。`web/dist` 不作为运行时证据。
+> 证据：`data/local/stock-info.sqlite` 的 `sqlite_master`、`dbstat`、行数；`src/**`、`scripts/**`、`web/src/**` 的当前引用；迁移 `0119_drop_retired_local_llm_workflow_tables.sql` 至 `0128_drop_knowledge_run_ledgers.sql`。`web/dist` 不作为运行时证据。
 
 ## 先看结论
 
-- 当前本地库有 **37 张业务表**；表页合计约 **416.2 MiB**，索引约 **4.8 MiB**，SQLite 文件本身约 **465 MiB**（其中还会包含空闲页及 WAL 状态）。四张历史重复/发现缓存表已由 `0120`、`0121` 删除。问题首先是缓存体积和生命周期，不是“研究表数量”本身。
+- 当前本地库有 **23 张业务表**；表页合计约 **414.7 MiB**，索引约 **4.8 MiB**，SQLite 文件本身约 **465 MiB**（其中还会包含空闲页及 WAL 状态）。`0120` 至 `0128` 已删除 18 张历史缓存、运行日志、研究身份、版本和预处理留痕表。问题首先是缓存体积和生命周期，不是“研究表数量”本身。
 - `http_cache` 单表约 **356.4 MiB（约 86% 的表页）**。它是可再生 HTTP 缓存，应该优先建立按来源/用途的 TTL、大小预算和淘汰任务；不能删掉表或全量清空来代替缓存策略。
 - `kv_cache` 约 **19.4 MiB**，已承担多个业务结果投影（公司研报、财务/投资分析、信息处理检查点）。保留该表，但要把 namespace、TTL、单键大小和清理责任写成明确契约，防止再次成为无边界通用存储。
-- `sync_jobs` 仍有宏观同步和财务预告同步两个写入方，当前没有读取方或恢复逻辑；已批准收敛到 `kv_cache`，但尚未迁移或删表。
+- `sync_jobs` 已由 `0122` 删除。每种同步只使用一个固定 `kv_cache` key：宏观为 `sync_state/macro-data`，财务预告为 `sync_state/financial-provisional`；财务的分来源/报告期续跑游标是后者 JSON 的 `checkpoints` 成员，不再占用独立 key。
 - 本地知识正文已只保存在 `KNOWLEDGE_CONTENT_BUCKET`（本地文件系统 / 生产 R2）。重复的 `knowledge_local_content_cache` / `_chunks` 已由 `0121` 删除。
 - 态势模块存在一条需要深入评审的重复投影：`knowledge_docs`、`situation_knowledge_imports`、`situation_evidence` 当前均为 3,835 行；每个导入均指向一个证据，证据 URL 与知识文档 URL 3,835/3,835 相同。它可能是合理的“独立证据领域模型”，也可能是双写冗余；在确认未来是否需要非知识库来源证据前，**不能直接删除** `situation_evidence`。
 - 现有 `0119` 已明确删除已退役的本地 LLM/队列账本；当前本地库已经没有这些表。新库/远端是否已应用该迁移必须作为部署核验项，不能从本地快照推断。
@@ -35,21 +35,24 @@
 | --- | --- | --- | --- |
 | 已实施删除 | `securities`、`security_search_prefixes` | 不存在 | `0120_drop_security_discovery_cache.sql`；`sqlite_master` 无匹配表。 |
 | 已实施删除 | `knowledge_local_content_cache`、`knowledge_local_content_cache_chunks` | 不存在 | `0121_drop_local_knowledge_content_cache.sql`；`sqlite_master` 无匹配表。 |
-| 已批准、待实施 | `sync_jobs` | 存在，716 行 / 692 KiB | 宏观与财务预告同步仍写入；尚无后续 drop migration。 |
-| 已批准、待实施 | 9 张 `research_*` 身份、权利与法定披露表 | 全部存在 | 当前源码仍有读写；尚无后续 drop migration。具体范围见第五节。 |
-| 仍是评审候选 | `knowledge_stock_aliases`、`knowledge_ingest_runs`、`situation_evidence` | 存在 | 尚未获删除决定，需先验证替代契约和恢复需求。 |
-| 保留 / 优化 | 其余 24 张当前业务表 | 存在 | 仍有明确页面/API/后台职责；按各节的容量与生命周期建议治理。 |
+| 已实施删除 | `sync_jobs` | 不存在 | `0122` 已应用；同步状态和游标已分别收敛到各类型唯一的 `kv_cache` JSON。 |
+| 已实施删除 | 9 张 `research_*` 身份、权利与法定披露表 | 不存在 | `0125_drop_research_identity_rights_and_statutory_disclosure.sql` 已应用。 |
+| 已实施删除 | `knowledge_document_versions` | 表不存在；有同名当前状态视图 | `0126` 清理全部历史处理数据；视图每篇已处理文档最多一行，不存版本历史。 |
+| 已实施删除 | `knowledge_preprocessing_decisions` | 不存在 | `0127` 已删除；准入判断不再保存为状态或跳过账本。 |
+| 已实施删除 | `knowledge_processing_runs`、`knowledge_ingest_runs` | 不存在 | `0128` 已删除；批量游标及清理状态改为各类型固定 `kv_cache` JSON。 |
+| 仍是评审候选 | `knowledge_stock_aliases`、`situation_evidence` | 存在 | 尚未获删除决定，需先验证替代契约和恢复需求。 |
+| 保留 / 优化 | 其余 23 张当前业务表 | 存在 | 仍有明确页面/API/后台职责；按各节的容量与生命周期建议治理。 |
 
 ## 页面 / 功能到表的总览
 
 | 页面或功能 | 主要表组 |
 | --- | --- |
 | 首页、全局搜索、公司入口 | 上游证券建议接口，以及通用 `http_cache` / `kv_cache`；本地 `securities` 与 `security_search_prefixes` 已删除 |
-| 公司详情、公司研报、投资分析、财务与行业研究 | `research_*` 身份/证券权利/法定披露表；`knowledge_*` 文档和结构化结果；`kv_cache` 业务结果投影 |
+| 公司详情、公司研报、投资分析、财务与行业研究 | `knowledge_*` 文档和结构化结果、`kv_cache` 业务结果投影；原 `research_*` 身份/证券权利/法定披露能力已删表，残留接口须下线或改造 |
 | 信息整理、知识文档弹窗、公司新闻/研报文档 | 全部 `knowledge_*` 表 |
 | 宏观页 | 全部 `macro_*` 表 |
 | 态势感知、持仓、机会、证据、事件详情 | 全部 `situation_*` 表，输入来自 `knowledge_docs` |
-| 抓取、同步、外部 HTTP、运行审计 | `http_cache`、`sync_jobs`、`knowledge_ingest_runs`；不对应独立前台页面 |
+| 抓取、同步、外部 HTTP、运行状态 | `http_cache`、`kv_cache`；不对应独立前台页面 |
 
 ## 一、通用平台与缓存
 
@@ -57,7 +60,7 @@
 | --- | ---: | --- | --- | --- |
 | `http_cache` | 2,533 行 / 356.4 MiB | 所有外部抓取与同步 | 以 `cache_key` 保存 URL、请求方法、响应状态/头/正文和过期时间，减少重复外部请求。 | **优化，P0**：保留。按调用方/来源定义 TTL 与最大体积，定期删除已过期正文并记录命中率；先统计最大 `url`/调用方，再决定是否把超大正文迁往对象存储。 |
 | `kv_cache` | 987 行 / 19.4 MiB | 公司研报、财务/投资分析、信息处理后台 | `namespace + key` 的通用业务结果投影；保存 JSON、过期时间和更新时间。 | **优化，P1**：保留。为每个 namespace 注册 owner、JSON schema、TTL、单值上限与清理任务；可承载受 TTL 约束的业务运行审计，但禁止重建 taskd 内部任务账本或写入无期限原始大文本。 |
-| `sync_jobs` | 716 行 / 692 KiB | 财务预告、宏观数据等后台同步 | 记录同步任务的状态、起止时间、错误和统计。当前只有宏观同步、财务预告同步两个写入方；未发现现行读取方、状态查询 API 或恢复逻辑。 | **已批准、待实施**：计划以 `namespace=sync_state`、`key=job_type` 保存最新 `{status,startedAt,finishedAt,error,stats}`，固定 key 覆盖更新；当前迁移和代码改造尚未提交，故表仍存在且运行时继续写入。 |
+| `sync_jobs` | 已删除 | 财务预告、宏观数据等后台同步 | 曾记录每次同步任务的状态、起止时间、错误和统计，但没有读取方、状态查询 API 或恢复逻辑。 | **已实施删除**：`0122` 删除该表。每个同步类型只覆盖写一个 `kv_cache` JSON；财务状态、统计和全部来源/报告期游标都在 `sync_state/financial-provisional` 的同一值中。 |
 
 ## 二、证券身份与搜索
 
@@ -82,12 +85,12 @@
 
 | 表 | 当前数据 | 页面 / 功能 | 作用 | 评审结论 |
 | --- | ---: | --- | --- | --- |
-| `knowledge_document_versions` | 598 行 / 320 KiB | 信息整理、研究取证 | 文档抓取/规范化版本，保存源哈希、内容哈希、内容键、结构化 JSON 和访问策略。 | **保留**：是可追溯处理输入；可按版本数/年龄制定保留规则。 |
-| `knowledge_preprocessing_decisions` | 613 行 / 176 KiB | 信息整理后台 | 对版本的去重、过滤和模板命中决定，保留规则版本与理由。 | **保留**：解释“为何处理/未处理”的审计层；与版本清理联动。 |
-| `knowledge_processing_runs` | 318 行 / 176 KiB | 信息整理、研究取证 | 每阶段模型处理运行的输入哈希、模型/提示词/schema 版本、状态、校验和错误。 | **保留，优化**：运行审计应有完成后保留期限，原始输出只保留内容键而非无界正文。 |
-| `knowledge_document_results` | 302 行 / 68 KiB | 信息整理、研究取证 | 一次处理运行与产出版本的结果壳，记录 outcome。 | **保留**：连接运行与可消费版本；不能同 `knowledge_processing_runs` 生硬合并，否则丢失多阶段/重跑关系。 |
-| `knowledge_information_records` | 295 行 / 92 KiB | `information-processing.html`、研究事实提取 | 从处理结果提取的实体、指标、期间、报表和预测测量。 | **保留**：这是信息整理页面的业务产物，不是日志。 |
-| `knowledge_ingest_runs` | 6 行 / 16 KiB | 导入、清理与存储审计脚本 | 批次导入状态、统计和错误；当前不由页面/API 使用。 | **评审候选，P2**：若只为 CLI 诊断，可转为有保留期的运行日志；先确认故障恢复是否依赖它。 |
+| `knowledge_document_versions` | 已删除（视图） | 信息整理 API 兼容读取 | 曾保存历史正文版本。现为 `knowledge_docs` 当前处理哈希的只读视图，每篇文档最多一行。 | **已实施删除**：`0126` 清理 598 条历史版本及其处理数据，不再保存旧正文版本。 |
+| `knowledge_preprocessing_decisions` | 已删除 | 信息整理预处理 | 曾记录去重、过滤和模板命中决定。 | **已实施删除**：`0127` 删除表；同样的准入判断在单次处理内计算，不再留存。 |
+| `knowledge_processing_runs` | 已删除 | 信息整理 | 曾记录每次模型调用的模型、提示词、状态和原始输出定位。 | **已实施删除**：`0128` 后调用 ID 只在请求中存在，不保存 run 或原始输出。 |
+| `knowledge_document_results` | 0 行 | 信息整理 | 当前运行的总体结果壳，记录 outcome。 | **保留，当前状态**：不再关联历史版本。 |
+| `knowledge_information_records` | 0 行 | `information-processing.html`、研究事实提取 | 当前处理结果提取的实体、指标、期间、报表和预测测量。 | **保留**：历史已按决定清理；重新处理后生成当前记录。 |
+| `knowledge_ingest_runs` | 已删除 | 导入、清理与存储审计脚本 | 曾按每次执行追加状态、统计和错误。 | **已实施删除**：`0128` 后每种维护任务以其类型为 key 覆盖写入 `kv_cache/knowledge_maintenance` JSON。 |
 
 ### 本地内容缓存
 
@@ -109,19 +112,19 @@
 
 ## 五、公司研究身份、权利与法定披露
 
-这些表共同服务 `company-research.html`、`company-finance.html`、`investment-analysis.html` 和研究 API。虽然当前行数小，但它们描述的是不同层次的事实，不能以“现在数据少”作为删除依据。
+这九表已由 `0125` 从本地 schema 删除。原来服务 `company-research.html`、`company-finance.html`、`investment-analysis.html` 和研究 API 的源码仍有直接 SQL 引用；这些入口尚未清理，触发时会因缺表失败，必须下线或改造成现有数据源后才能恢复使用。
 
 | 表 | 当前数据 | 页面 / 功能 | 作用 | 评审结论 |
 | --- | ---: | --- | --- | --- |
-| `research_operating_companies` | 5 行 / 4 KiB | 公司研究身份 | 公司规范身份、报告币种、财年结束日与身份状态。 | **保留**：公司实体，不等同于交易证券。 |
-| `research_listed_securities` | 7 行 / 4 KiB | 公司/行业研究 | 公司实体到上市证券、交易所、币种、股类/ADR 比率的映射。 | **保留**：承担公司—证券多对多/跨市场语义。 |
-| `research_company_security_relationships` | 8 行 / 4 KiB | 公司研究 | 带有效期和来源的公司—证券关系事实。 | **保留**：与上一表的“当前映射”职责不同，前者是事实历史。 |
-| `research_provider_identifiers` | 1 行 / 4 KiB | 研究抓取适配 | 公司/证券在各 provider 的外部标识及来源。 | **保留**：避免把 provider ID 塞入主实体或代码分支。 |
-| `research_financial_availability_observations` | 3 行 / 4 KiB | 财务分析/自动归档 | 某证券财务报表在 provider 侧可用性的观测与阻塞原因。 | **保留，优化**：是观测记录；定义旧观测 TTL，保留最新状态和必要审计。 |
-| `research_security_rights_profiles` | 2 行 / 4 KiB | 公司研究的股权/权利结构 | 证券的投票权、经济权、可转让性、存托机构与结构风险。 | **保留**：证券权利档案。 |
-| `research_security_rights_links` | 3 行 / 4 KiB | 公司研究的股权/权利结构 | 证券之间的 ADR、转换或相关权利关系及证据。 | **保留**：关系边，不应塞进 profile JSON。 |
-| `research_market_structure_facts` | 24 行 / 20 KiB | 公司研究、行业研究 | 可溯源的市场结构事实：指标、量纲、测量口径、权威性和有效期。 | **保留**：研究事实账本；应按 `(security_code, fact_key, as_of)` 审核去重约束。 |
-| `research_statutory_disclosure_documents` | 30 行 / 12 KiB | 法定披露导入、公司研究 | 法定披露索引：registry、证券、文档 ID、发布时间、URL 与类型。 | **保留**：是知识库导入的上游索引，不承载正文。 |
+| `research_operating_companies` | 已删除 | 公司研究身份 | 曾保存公司规范身份、报告币种、财年结束日与身份状态。 | **已实施删除**：源码清理待完成。 |
+| `research_listed_securities` | 已删除 | 公司/行业研究 | 曾保存公司实体到上市证券的映射。 | **已实施删除**：源码清理待完成。 |
+| `research_company_security_relationships` | 已删除 | 公司研究 | 曾保存有有效期的公司—证券关系事实。 | **已实施删除**：源码清理待完成。 |
+| `research_provider_identifiers` | 已删除 | 研究抓取适配 | 曾保存 provider 外部标识。 | **已实施删除**：源码清理待完成。 |
+| `research_financial_availability_observations` | 已删除 | 财务分析/自动归档 | 曾保存财务报表可用性观测。 | **已实施删除**：源码清理待完成。 |
+| `research_security_rights_profiles` | 已删除 | 公司研究的股权/权利结构 | 曾保存证券权利档案。 | **已实施删除**：源码清理待完成。 |
+| `research_security_rights_links` | 已删除 | 公司研究的股权/权利结构 | 曾保存证券之间的 ADR、转换或权利关系。 | **已实施删除**：源码清理待完成。 |
+| `research_market_structure_facts` | 已删除 | 公司研究、行业研究 | 曾保存可溯源的市场结构事实。 | **已实施删除**：源码清理待完成。 |
+| `research_statutory_disclosure_documents` | 已删除 | 法定披露导入、公司研究 | 曾保存法定披露索引。 | **已实施删除**：源码清理待完成。 |
 
 ## 六、态势感知
 
@@ -138,23 +141,23 @@
 
 ## 已退役的本地 LLM / 队列表
 
-这不是“当前 41 张表”中的一部分。`migrations/0119_drop_retired_local_llm_workflow_tables.sql` 已将以下表定义为已退役：
+这不是“当前 36 张表”中的一部分。`migrations/0119_drop_retired_local_llm_workflow_tables.sql` 已将以下表定义为已退役：
 
 - `llm_workflow_artifact_links`、`llm_task_dependencies`、`llm_run_artifact_links`、`llm_run_artifacts`、`llm_runs`、`workflow_tasks`、`llm_scheduler_sequence`、`local_job_provider_slots`
 - `information_processing_jobs`、`research_operating_analysis_jobs`
 
 迁移注释与当前路由一致：本地通用 LLM scheduler 已返回 410；请求内业务直接处理，异步任务由 taskd 管理，业务结果投影到 `kv_cache`。本地当前 schema 已不含这十张表。
 
-**评审结论：已计划删除。** 部署前要逐环境核验迁移是否已应用、taskd 投影是否存在、以及无遗留 SQL 读写；不能仅凭“表为空”或本地库未出现就宣布远端清理完成。
+**本地状态：已实施删除。** `0119` 已在当前本地 schema 生效；部署前仍要逐环境核验远端迁移是否已应用、taskd 投影是否存在、以及无遗留 SQL 读写，不能从本地状态推断远端已完成。
 
 ## 推荐的 review 顺序
 
-1. **先批准缓存治理与 `sync_jobs` 收敛：** 为 `http_cache`、`kv_cache`、`situation_signals`、`situation_snapshots`、`macro_series_history` 制定 owner、TTL、容量上限、清理任务和观测指标；同时将 `sync_jobs` 收敛为固定 key 的 `kv_cache.sync_state` 最新状态。此项可直接解决绝大部分数据库体积和一张重复表。
+1. **`sync_jobs` 收敛：已完成。** `0122` 删除该表，`0123`、`0124` 将旧财务游标合并并清理。`sync_state/macro-data` 与 `sync_state/financial-provisional` 分别是宏观和财务的唯一状态 key，后者 JSON 包含全部游标。后续只需为 `http_cache`、`kv_cache`、`situation_signals`、`situation_snapshots`、`macro_series_history` 补 owner、TTL、容量上限、清理任务和观测指标。
 2. **决定态势证据模型：** 明确是否永远需要独立于知识库的外部证据来源。若答案是否定的，设计一次迁移，把 `situation_evidence` 收敛为 `knowledge_docs` 的投影/视图契约，同时迁移 `situation_event_evidence` 的引用；若答案是肯定的，则保留两表并消除当前重复字段的双写。
-3. **实施已选删除候选：** `securities` 与 `security_search_prefixes` 是一组，先替换本地发现缓存的搜索/直取/K 线写入路径，再用同一迁移删除两表；不能以本轮标记代替代码迁移和页面/API 验证。
+3. **证券发现缓存删除：已完成。** `securities` 与 `security_search_prefixes` 已由 `0120` 删除，运行时已改用上游建议接口；仍需在部署时核验远端 D1 迁移。
 4. **收敛本地知识正文：已完成。** 本地 `KNOWLEDGE_CONTENT_BUCKET`/文件系统已成为唯一正文源；`knowledge_local_content_cache` 与 `_chunks` 的读写、启动物化和双写已移除，并由 `0121` 删除两表。
-5. **审计脚本专用表：** 对 `knowledge_stock_aliases`、`knowledge_ingest_runs` 的真实调用和恢复需求做一次运行级验证，再决定合并或保留期；不要用“没有页面”作为删除理由。
-6. **最后处理研究域：** 当前 9 张 `research_*` 表是身份、证券权利、法定披露和可溯源研究事实的分层，并无已证实的重复。先补当前功能的真实数据与页面验收，再基于查询和写入路径讨论收敛。
+5. **审计脚本专用表：** `knowledge_ingest_runs` 已收敛为 `kv_cache` 当前状态；继续对 `knowledge_stock_aliases` 的真实调用和恢复需求做一次运行级验证，再决定是否删除。
+6. **完成研究域代码清理：** 九张 `research_*` 身份、证券权利和法定披露表已由 `0125` 删除，但当前源码仍有直接 SQL。将对应接口明确下线或改造成现有数据源，并做目标页面/API 验证；在此之前不可把这些能力视为可用。
 
 ## 防回归规则
 

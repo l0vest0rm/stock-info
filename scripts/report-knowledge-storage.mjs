@@ -203,17 +203,6 @@ function knowledgeTableStatsSqls() {
     0 as searchBytes
   from knowledge_stock_aliases`);
   }
-  if (existingTables.has("knowledge_ingest_runs")) {
-    parts.push(`
-  select
-    'knowledge_ingest_runs' as scope,
-    count(*) as rowCount,
-    sum(${s("run_id")} + ${s("status")} + ${s("source")} + ${s("stats_json")} + ${s("error")} + 16) as approxBytes,
-    0 as markdownBytes,
-    sum(${s("stats_json")}) as metadataBytes,
-    0 as searchBytes
-  from knowledge_ingest_runs`);
-  }
   if (parts.length === 0) {
     return [`
 select
