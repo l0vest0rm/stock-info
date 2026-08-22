@@ -120,7 +120,7 @@ import { produceResearchStatutoryOperatingEvidenceCandidates } from "../applicat
 import { importIndexedStatutoryDisclosureToKnowledge } from "../application/import-statutory-disclosure-to-knowledge";
 import { extractResearchAutoFilingInsights, loadResearchAutoBusinessDriverTree, loadResearchAutoFilingDocumentVersions, loadResearchAutoFilingFactInputs, loadResearchAutoFilingInsights, loadResearchAutoFilingModuleRebuilds, loadResearchAutoForecastInputGate, loadResearchAutoGovernanceCapitalLedger, loadResearchAutoIndustryCompetitionInputs, loadResearchAutoMarketSpaceInputs, loadResearchAutoRiskLedger, loadResearchAutoRiskQuantitativeInputGate, loadResearchAutoRiskSnapshotHistory, loadResearchAutoSecurityStructureCandidates, rebuildResearchAutoFilingReadModels } from "../application/research-auto-filing-insights";
 import { loadResearchIndustrySourceSeries, syncResearchIndustrySourceSeries } from "../application/research-industry-source-series";
-import { enqueueResearchInvestmentAnalysis, loadResearchInvestmentAnalysis } from "../application/research-investment-analysis";
+import { enqueueResearchInvestmentAnalysis, loadResearchInvestmentAnalysis, resumeResearchInvestmentAnalysis } from "../application/research-investment-analysis";
 import { enqueueResearchFinancialAnalysis, loadResearchFinancialAnalysis, resumeResearchFinancialAnalysis } from "../application/research-financial-analysis";
 import { loadResearchOperatingSourceFacts, recordResearchOperatingSourceFact } from "../application/research-operating-source-facts";
 import {
@@ -521,6 +521,14 @@ async function refreshResearchInvestmentAnalysis(c: Context<AppEnv, "/research/c
 }
 
 researchRoutes.post("/research/company/:code/investment-analysis/refresh", refreshResearchInvestmentAnalysis);
+
+researchRoutes.post("/research/company/:code/investment-analysis/resume", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "investment analysis resume is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try { return ok(c, await resumeResearchInvestmentAnalysis(c.env, code)); }
+  catch (error) { return fail(c, 400, error instanceof Error ? error.message : String(error)); }
+});
 
 researchRoutes.get("/research/company/:code/statutory-disclosure-revision-candidates", async (c) => {
   const code = normalizeSecurityCode(c.req.param("code"));

@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   buildResearchInvestmentAnalysisPrompt,
+  loadResearchInvestmentAnalysis,
   readStoredResearchInvestmentAnalysis,
   researchInvestmentAnalysisTaskName,
+  resumeResearchInvestmentAnalysis,
   validateResearchInvestmentAnalysisMarkdown,
   validateResearchInvestmentAnalysisTerminalEvidence,
   writeStoredResearchInvestmentAnalysis,
@@ -94,6 +96,7 @@ test("investment analysis persists and loads reports from kv_cache without the l
     sourcesJson: "[{\"url\":\"https://example.com\"}]",
     terminalEvidenceJson: "{\"schemaVersion\":\"webqa.completion-evidence.v1\",\"outcome\":\"succeeded\"}",
     projectedAt: 1_234_567,
+    recovery: { phase: "none", reason: null },
     task: {
       name: "research:investment-analysis:300476.SZ",
       status: "succeeded",
@@ -112,6 +115,7 @@ test("investment analysis persists and loads reports from kv_cache without the l
     sourcesJson: "[{\"url\":\"https://example.com\"}]",
     terminalEvidenceJson: "{\"schemaVersion\":\"webqa.completion-evidence.v1\",\"outcome\":\"succeeded\"}",
     projectedAt: 1_234_567,
+    recovery: { phase: "none", reason: null },
     task: {
       name: "research:investment-analysis:300476.SZ",
       status: "succeeded",
@@ -132,6 +136,7 @@ test("investment analysis loads a task-only kv_cache record so refresh state can
     sourcesJson: "[]",
     terminalEvidenceJson: null,
     projectedAt: null,
+    recovery: { phase: "none", reason: null },
     task: {
       name: "research:investment-analysis:603986.SH",
       status: "running",
@@ -150,6 +155,7 @@ test("investment analysis loads a task-only kv_cache record so refresh state can
     sourcesJson: "[]",
     terminalEvidenceJson: null,
     projectedAt: null,
+    recovery: { phase: "none", reason: null },
     task: {
       name: "research:investment-analysis:603986.SH",
       status: "running",
@@ -160,3 +166,135 @@ test("investment analysis loads a task-only kv_cache record so refresh state can
     },
   });
 });
+
+function taskdTask(status, checkpoint = null) {
+  return {
+    task_id: 73,
+    namespace: "stock-info",
+    client_task_name: "research:investment-analysis:300308.SZ",
+    task_type: "webqa.chatgpt.v1",
+    input: {},
+    status,
+    checkpoint,
+    result: null,
+    error_message: status === "failed" ? "OutcomeUnknown: CDP transport is disconnected" : null,
+    superseded_by_task_id: null,
+    created_at: 100,
+    updated_at: 200,
+    completed_at: status === "failed" ? 200 : null,
+  };
+}
+
+async function storeFailedInvestmentTask(db) {
+  await writeStoredResearchInvestmentAnalysis(db, "300308.SZ", {
+    inputJson: "{\"security\":{\"code\":\"300308.SZ\"}}",
+    markdown: null,
+    citationsJson: "[]",
+    sourcesJson: "[]",
+    terminalEvidenceJson: null,
+    projectedAt: null,
+    recovery: { phase: "none", reason: null },
+    task: {
+      name: "research:investment-analysis:300308.SZ",
+      status: "failed",
+      errorMessage: "OutcomeUnknown: CDP transport is disconnected",
+      createdAt: 100,
+      updatedAt: 200,
+      completedAt: 200,
+    },
+  });
+}
+
+test("investment-analysis resume only sends same-name recover and marks the KV read model recovering", async () => {
+  const db = new FakeD1();
+  await storeFailedInvestmentTask(db);
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  let getCount = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: String(url), method: init.method || "GET" });
+    const isRecover = init.method === "POST";
+    const remote = isRecover
+      ? taskdTask("queued", { submission: { schema_version: "provider_submission.v1", state: "click_issued", marker: "twq_73_abc" } })
+      : taskdTask(getCount++ === 0 ? "failed" : "queued", { submission: { schema_version: "provider_submission.v1", state: "click_issued", marker: "twq_73_abc" } });
+    return new Response(JSON.stringify(remote), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await resumeResearchInvestmentAnalysis({
+      DB: db, LLM_RUNTIME: "local", TASKD_BASE_URL: "https://taskd.test", TASKD_NAMESPACE: "stock-info", STOCK_INFO_TASKD_CALLER_TOKEN: "test-token",
+    }, "300308.SZ");
+    assert.equal(result.availability, "pending");
+    assert.deepEqual(result.recovery, { phase: "recovering", reason: "正在只读找回已提交的 ChatGPT 结果；不会重发提示词。" });
+    assert.deepEqual(requests.map(({ method }) => method), ["GET", "POST", "GET"]);
+    assert.match(requests[1].url, /\/by-name\/research%3Ainvestment-analysis%3A300308.SZ\/recover$/);
+    assert.equal(requests.some(({ method, url }) => method === "POST" && /\/tasks$/.test(url)), false);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("investment-analysis recovery projects the verified original result after taskd succeeds", async () => {
+  const db = new FakeD1();
+  await storeFailedInvestmentTask(db);
+  const previousFetch = globalThis.fetch;
+  let getCount = 0;
+  globalThis.fetch = async (_url, init = {}) => {
+    const isRecover = init.method === "POST";
+    const remote = isRecover
+      ? taskdTask("queued", { submission: { schema_version: "provider_submission.v1", state: "click_issued", marker: "twq_73_abc" } })
+      : getCount++ === 0
+        ? taskdTask("failed", { submission: { schema_version: "provider_submission.v1", state: "click_issued", marker: "twq_73_abc" } })
+        : completedTask();
+    return new Response(JSON.stringify(remote), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await resumeResearchInvestmentAnalysis({
+      DB: db, LLM_RUNTIME: "local", TASKD_BASE_URL: "https://taskd.test", TASKD_NAMESPACE: "stock-info", STOCK_INFO_TASKD_CALLER_TOKEN: "test-token",
+    }, "300308.SZ");
+    assert.equal(result.availability, "available");
+    assert.equal(result.recovery.phase, "none");
+    assert.match(result.report.markdown, /^# 1\. /);
+    assert.equal((await readStoredResearchInvestmentAnalysis(db, "300308.SZ")).markdown, result.report.markdown);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("investment-analysis resume refuses a missing marker without submitting or recovering", async () => {
+  const db = new FakeD1();
+  await storeFailedInvestmentTask(db);
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: String(url), method: init.method || "GET" });
+    return new Response(JSON.stringify(taskdTask("failed")), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await resumeResearchInvestmentAnalysis({
+      DB: db, LLM_RUNTIME: "local", TASKD_BASE_URL: "https://taskd.test", TASKD_NAMESPACE: "stock-info", STOCK_INFO_TASKD_CALLER_TOKEN: "test-token",
+    }, "300308.SZ");
+    assert.equal(result.recovery.phase, "manual_required");
+    assert.match(result.recovery.reason, /marker/);
+    assert.deepEqual(requests.map(({ method }) => method), ["GET", "GET"]);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
+function completedTask() {
+  const markdown = Array.from({ length: 12 }, (_, index) => `# ${index + 1}. 第 ${index + 1} 章\n\n${"可核验分析内容。".repeat(50)}`).join("\n\n");
+  return {
+    ...taskdTask("succeeded", { submission: { schema_version: "provider_submission.v1", state: "click_issued", marker: "twq_73_abc" } }),
+    completed_at: 300,
+    error_message: null,
+    result: {
+      format: "taskd.webqa.result.v2",
+      content: { format: "web-helper.rich-content.v1", markdown, assets: [] },
+      citations: [],
+      sources: [],
+      raw_snapshot: {},
+      terminal_evidence: { schemaVersion: "webqa.completion-evidence.v1", outcome: "succeeded" },
+      execution: {},
+    },
+  };
+}

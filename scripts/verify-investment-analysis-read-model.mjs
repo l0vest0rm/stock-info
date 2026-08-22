@@ -22,7 +22,7 @@ async function verifyPageShell() {
   assert(html.includes("investment-analysis-vue-root"), "investment-analysis root is missing");
   assert(html.includes("js/investment-analysis-page.js"), "investment-analysis bundle is missing");
   const bundle = await text("/js/investment-analysis-page.js");
-  for (const label of ["完整投资研究", "报告目录", "investment-analysis", "research:investment-analysis", "ia-heading-"]) {
+  for (const label of ["完整投资研究", "报告目录", "investment-analysis", "research:investment-analysis", "ia-heading-", "找回已提交结果", "正在只读找回", "无法确认原会话", "/resume"]) {
     assert(bundle.includes(label), `investment-analysis bundle is missing ${label}`);
   }
   assert(!bundle.includes("investment-review"), "investment-analysis bundle still calls the retired second-stage review API");

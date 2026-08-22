@@ -51,6 +51,7 @@ type ResultRow = {
   terminalEvidenceJson: string | null;
   projectedAt: number | null;
   task: StoredTaskValue | null;
+  recovery: RecoveryState;
 };
 type StoredTaskValue = {
   name: string;
@@ -59,6 +60,10 @@ type StoredTaskValue = {
   createdAt: number;
   updatedAt: number;
   completedAt: number | null;
+};
+type RecoveryState = {
+  phase: "none" | "recovering" | "manual_required";
+  reason: string | null;
 };
 type StoredResultValue = Omit<ResultRow, "securityCode">;
 
@@ -100,6 +105,7 @@ export async function enqueueResearchInvestmentAnalysis(
   await storeResult(env.DB, prepared.securityCode, mergeStoredResult(current, {
     inputJson: JSON.stringify(prepared.input),
     task: taskView(task),
+    recovery: noRecovery(),
   }));
   return { accepted: true, task: taskView(task), input: prepared.input };
 }
@@ -131,11 +137,21 @@ export async function loadResearchInvestmentAnalysis(env: AppEnv["Bindings"], se
       case "interrupted":
       case "superseded":
         task = taskView(state.task);
-        result = await persistTaskSnapshot(env.DB, code, result, taskBusinessInput(state.task) || cachedInput || (await ensurePrepared()).input, state.task);
+        result = await persistTaskSnapshot(
+          env.DB,
+          code,
+          result,
+          taskBusinessInput(state.task) || cachedInput || (await ensurePrepared()).input,
+          state.task,
+          recoveryAfterTask(result?.recovery ?? noRecovery(), state.task),
+        );
         break;
       case "missing":
         task = null;
-        if (result?.task) result = await persistTaskSnapshot(env.DB, code, result, cachedInput, null);
+        if (result?.task) result = await persistTaskSnapshot(env.DB, code, result, cachedInput, null, {
+          phase: "manual_required",
+          reason: "taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。",
+        });
         break;
     }
   }
@@ -144,10 +160,59 @@ export async function loadResearchInvestmentAnalysis(env: AppEnv["Bindings"], se
   return {
     availability: task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
     task: task ? taskView(task) : null,
+    recovery: noRecovery(),
     input: fallbackInput,
     report: null,
     resume: { available: task?.status === "failed", reason: task?.status === "failed" ? "submit_new_task" : "not_failed" },
   };
+}
+
+/**
+ * Requeue the same taskd task only after taskd recorded the private provider
+ * submission marker. This path never submits another browser prompt.
+ */
+export async function resumeResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string) {
+  const code = securityCode.trim().toUpperCase();
+  const stored = await loadResult(env.DB, code);
+  if (!stored?.task) throw new Error("investment analysis has no recorded task to recover");
+  if (env.LLM_RUNTIME !== "local") throw new Error("investment analysis recovery is only available in local LLM runtime");
+
+  const client = taskdCallerClient(env);
+  let remote = await client.get(stored.task.name);
+  let recovery = stored.recovery;
+  if (!remote) {
+    recovery = {
+      phase: "manual_required",
+      reason: "taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。",
+    };
+  } else if (remote.status === "failed") {
+    if (hasProviderSubmissionMarker(remote.checkpoint)) {
+      // `recover` preserves the same task name/id and is the only permitted
+      // follow-up after a potentially side-effecting provider submission.
+      remote = await client.recover(stored.task.name);
+      recovery = remote ? {
+        phase: "recovering",
+        reason: "正在只读找回已提交的 ChatGPT 结果；不会重发提示词。",
+      } : {
+        phase: "manual_required",
+        reason: "taskd 未能重新排队原任务，无法确认已提交的 ChatGPT 会话。",
+      };
+    } else {
+      recovery = {
+        phase: "manual_required",
+        reason: "任务缺少可验证的 provider submission marker，无法安全找回，也不会重发提示词。",
+      };
+    }
+  }
+  await persistTaskSnapshot(
+    env.DB,
+    code,
+    stored,
+    remote ? taskBusinessInput(remote) ?? jsonObject(stored.inputJson) : jsonObject(stored.inputJson),
+    remote,
+    recovery,
+  );
+  return loadResearchInvestmentAnalysis(env, code);
 }
 
 async function prepareResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string) {
@@ -254,6 +319,7 @@ async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input:
     terminalEvidenceJson: JSON.stringify(result.terminalEvidence),
     projectedAt,
     task: taskView(task),
+    recovery: noRecovery(),
   } satisfies StoredResultValue;
   await storeResult(env.DB, securityCode, stored);
   return { securityCode, ...stored };
@@ -284,7 +350,8 @@ export async function readStoredResearchInvestmentAnalysis(
   const inputJson = typeof parsed.inputJson === "string" ? parsed.inputJson : null;
   const markdown = text(parsed.markdown) || null;
   const projectedAt = parsed.projectedAt === null || parsed.projectedAt === undefined ? null : Number(parsed.projectedAt);
-  if (!markdown && !task) return null;
+  const recovery = parseRecovery(parsed.recovery);
+  if (!markdown && !task && recovery.phase === "none") return null;
   return {
     inputJson,
     markdown,
@@ -293,6 +360,7 @@ export async function readStoredResearchInvestmentAnalysis(
     terminalEvidenceJson: nullableJsonString(parsed.terminalEvidenceJson),
     projectedAt: Number.isFinite(projectedAt) ? projectedAt : null,
     task,
+    recovery,
   };
 }
 
@@ -324,9 +392,12 @@ function normalizeReasoningEffort(value: string | null | undefined): "low" | "me
 function taskView(task: Pick<TaskdTask, "name" | "status" | "errorMessage" | "createdAt" | "updatedAt" | "completedAt">) { return { name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
 function responseFromStoredResult(result: ResultRow) {
   const task = result.task;
+  const recovery = result.recovery;
+  const recoveryAvailable = task?.status === "failed" && recovery.phase === "none";
   return {
     availability: result.markdown ? "available" as const : task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
     task,
+    recovery,
     input: parseJson(result.inputJson),
     report: result.markdown ? {
       markdown: result.markdown,
@@ -335,7 +406,10 @@ function responseFromStoredResult(result: ResultRow) {
       terminalMetadata: parseJson(result.terminalEvidenceJson),
       projectedAt: result.projectedAt,
     } : null,
-    resume: { available: task?.status === "failed", reason: task?.status === "failed" ? "submit_new_task" : result.markdown ? "already_projected" : "not_failed" },
+    resume: {
+      available: recoveryAvailable,
+      reason: recoveryAvailable ? "recover_provider_turn" : recovery.phase === "manual_required" ? "manual_required" : result.markdown ? "already_projected" : "not_failed",
+    },
   };
 }
 async function persistTaskSnapshot(
@@ -344,10 +418,12 @@ async function persistTaskSnapshot(
   current: ResultRow | null,
   input: Record<string, unknown> | null,
   task: TaskdTask | null,
+  recovery: RecoveryState = current?.recovery ?? noRecovery(),
 ): Promise<ResultRow> {
   const stored = mergeStoredResult(current, {
     inputJson: input ? JSON.stringify(input) : undefined,
     task: task ? taskView(task) : null,
+    recovery,
   });
   await storeResult(db, securityCode, stored);
   return { securityCode, ...stored };
@@ -369,6 +445,7 @@ function mergeStoredResult(current: ResultRow | StoredResultValue | null, patch:
   terminalEvidenceJson?: string | null;
   projectedAt?: number | null;
   task?: StoredTaskValue | null;
+  recovery?: RecoveryState;
 }): StoredResultValue {
   return {
     inputJson: patch.inputJson !== undefined ? patch.inputJson : current?.inputJson ?? null,
@@ -378,8 +455,44 @@ function mergeStoredResult(current: ResultRow | StoredResultValue | null, patch:
     terminalEvidenceJson: patch.terminalEvidenceJson !== undefined ? patch.terminalEvidenceJson : current?.terminalEvidenceJson ?? null,
     projectedAt: patch.projectedAt !== undefined ? patch.projectedAt : current?.projectedAt ?? null,
     task: patch.task !== undefined ? patch.task : current?.task ?? null,
+    recovery: patch.recovery ?? current?.recovery ?? noRecovery(),
   };
 }
+function noRecovery(): RecoveryState { return { phase: "none", reason: null }; }
+function parseRecovery(value: unknown): RecoveryState {
+  const recovery = object(value);
+  const phase = text(recovery?.phase);
+  if (phase === "none" || phase === "recovering" || phase === "manual_required") {
+    return { phase, reason: text(recovery?.reason) || null };
+  }
+  return noRecovery();
+}
+function hasProviderSubmissionMarker(value: unknown): boolean {
+  const checkpoint = object(value);
+  const submission = object(checkpoint?.submission);
+  const state = text(submission?.state) || text(checkpoint?.submission_state);
+  return text(submission?.schema_version) === "provider_submission.v1"
+    && Boolean(text(submission?.marker))
+    && (state === "click_issued" || state === "url_bound");
+}
+function recoveryAfterTask(current: RecoveryState, task: TaskdTask): RecoveryState {
+  if (current.phase === "recovering" && isTerminalTask(task)) {
+    return {
+      phase: "manual_required",
+      reason: task.errorMessage || "找回后的任务没有产生可验证的完成结果。",
+    };
+  }
+  if (task.status === "failed" && !hasProviderSubmissionMarker(task.checkpoint)) {
+    return {
+      phase: "manual_required",
+      reason: isOutcomeUnknown(task.errorMessage)
+        ? "无法确认原会话，且任务没有可验证的 provider submission marker。"
+        : "任务没有可验证的 provider submission marker，不能执行无重放找回。",
+    };
+  }
+  return current;
+}
+function isOutcomeUnknown(value: string | null | undefined): boolean { return /^OutcomeUnknown:/i.test(text(value)); }
 function parseStoredTask(value: unknown): StoredTaskValue | null {
   const row = object(value);
   const name = text(row?.name);
@@ -399,6 +512,9 @@ function parseStoredTask(value: unknown): StoredTaskValue | null {
 }
 function isPendingTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean {
   return task?.status === "queued" || task?.status === "leased" || task?.status === "running" || task?.status === "interrupt_requested";
+}
+function isTerminalTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean {
+  return task?.status === "succeeded" || task?.status === "failed" || task?.status === "interrupted" || task?.status === "superseded";
 }
 function isTaskStatus(value: string): value is TaskdTask["status"] {
   return new Set<TaskdTask["status"]>(["queued", "leased", "running", "interrupt_requested", "succeeded", "failed", "interrupted", "superseded"]).has(value as TaskdTask["status"]);
