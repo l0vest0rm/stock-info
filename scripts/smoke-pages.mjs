@@ -198,7 +198,6 @@ await check("research APIs and workbench pages", async () => {
       samples: forecasts.data?.sourceForecasts,
       revisions: forecasts.data?.forecastRevisions,
       consolidation: forecasts.data?.consolidation,
-      synthesisDrafts: forecasts.data?.synthesisDrafts,
     });
     assert(!/fixture-|https?:\/\/(?:[^/]+\.)?example\.com(?:\/|$)/.test(visibleForecastLedger),
       `synthetic or reserved-domain forecast evidence is visible for ${code}`);

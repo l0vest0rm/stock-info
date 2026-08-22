@@ -17,7 +17,6 @@ import {
   loadForecastWorkspace,
   syncAutomaticThirdPartyForecastEvidence,
 } from "../application/forecast-ledger";
-import { createForecastSynthesisDraft } from "../application/forecast-synthesis";
 import {
   insertResearchAnalysisSnapshot,
   insertResearchBusinessModel,
@@ -235,18 +234,6 @@ researchRoutes.post("/research/forecast-model-lineages", async (c) => {
 researchRoutes.post("/research/forecast-source-identity-assertions", async (c) => {
   if (!canWriteResearchLocally(c.env)) return fail(c, 404, "manual forecast identity assertions are only available in local research runtime");
   return fail(c, 410, "manual forecast identity assertions are retired; the automatic sync binds exact document versions only");
-});
-
-researchRoutes.post("/research/company/:code/forecast-synthesis-drafts", async (c) => {
-  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "forecast synthesis is only available in local LLM runtime");
-  const code = normalizeSecurityCode(c.req.param("code"));
-  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
-  const security = (await getSecurity(c.env.DB, code)) ?? fallbackResearchSecurity(code);
-  try {
-    return ok(c, await createForecastSynthesisDraft(c.env, code, security));
-  } catch (error) {
-    return fail(c, 400, error instanceof Error ? error.message : String(error));
-  }
 });
 
 researchRoutes.post("/research/company/:code/forecast-scenarios", async (c) => {

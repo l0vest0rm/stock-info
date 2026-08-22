@@ -63,7 +63,6 @@ claim。所有读取、取消和删除均按 `namespace + client_task_name` 进�
 以下调用方应继续或恢复为直接 `llm-client` 调用；它们不进入 taskd。删除本地通用表前，
 需要把其对 `generic_raw_model` 的调度依赖移除，但不需要补 taskd name 或 taskd 投影：
 
-- `forecast-synthesis.ts`
 - `research-auto-filing-insights.ts`
 - `research-industry-source-series.ts`
 - `information-processing.ts`

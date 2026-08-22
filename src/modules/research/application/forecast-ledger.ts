@@ -230,16 +230,13 @@ export const FORECAST_OWNERSHIP_BASES = ["attributable_to_parent", "consolidated
 export const FORECAST_SHARE_BASES = ["basic", "diluted", "unspecified"] as const;
 
 export async function loadForecastWorkspace(db: D1Database, code: string, security: SecurityRecord | null) {
-  const [subject, candidateRows, sourceRows, revisionRows, consolidation, sourceIdentityRegistry, drafts, scenarios, formalActualCalibrations, formalActuals, formalActualCandidates, formalActualCandidateReviews] = await Promise.all([
+  const [subject, candidateRows, sourceRows, revisionRows, consolidation, sourceIdentityRegistry, scenarios, formalActualCalibrations, formalActuals, formalActualCandidates, formalActualCandidateReviews] = await Promise.all([
     resolveResearchSubject(db, code, security),
     listForecastCandidates(db, code),
     listCurrentSourceForecasts(db, code),
     listForecastRevisionHistory(db, code),
     loadLatestConsolidation(db, code),
     loadForecastSourceIdentityRegistry(db),
-    db.prepare(`select draft_id as draftId, consolidation_id as consolidationId, model, prompt_version as promptVersion,
-        content_markdown as contentMarkdown, source_forecast_ids_json as sourceForecastIdsJson, created_at as createdAt
-      from research_forecast_synthesis_drafts where security_code=? order by created_at desc limit 10`).bind(code).all<Record<string, unknown>>(),
     db.prepare(`select scenario_id as scenarioId, scenario_name as scenarioName, version, assumptions_json as assumptionsJson,
         outputs_json as outputsJson, evidence_refs_json as evidenceRefsJson, status, created_at as createdAt, updated_at as updatedAt
       from research_forecast_scenarios where security_code=? order by scenario_name, version desc`).bind(code).all<Record<string, unknown>>(),
@@ -253,14 +250,6 @@ export async function loadForecastWorkspace(db: D1Database, code: string, securi
   const presentableConsolidation = consolidation && !consolidationRequiresIdentityRefreeze
     && consolidation.members.every((member) => presentableForecastIds.has(String(member.forecastId)))
     ? consolidation : null;
-  const eligibleSynthesisForecastIds = new Set((presentableConsolidation?.members ?? [])
-    .filter((member) => member.membershipStatus === "included" && member.reasonCode === "included")
-    .map((member) => String(member.forecastId)));
-  // A prior local draft can only remain visible if every cited sample is still
-  // an eligible v4 member.  This avoids presenting a draft sourced from a
-  // republication or an unre-frozen v3 sample as current research.
-  const presentableSynthesisDrafts = drafts.results.map((row) => ({ ...row, sourceForecastIds: parseJsonArray(row.sourceForecastIdsJson) }))
-    .filter((draft) => draft.sourceForecastIds.length > 0 && draft.sourceForecastIds.every((id) => eligibleSynthesisForecastIds.has(String(id))));
   const formalActualHealth = buildFormalActualHealth({
     actuals: formalActuals,
     calibrations: formalActualCalibrations,
@@ -288,7 +277,6 @@ export async function loadForecastWorkspace(db: D1Database, code: string, securi
     // actually included samples; it is never a market consensus.
     forecastCoverage,
     sourceIdentityRegistry,
-    synthesisDrafts: presentableSynthesisDrafts,
     scenarios: scenarios.results.map((row) => ({
       ...row,
       assumptions: parseJsonArray(row.assumptionsJson),
@@ -312,7 +300,6 @@ export async function loadForecastWorkspace(db: D1Database, code: string, securi
     layerStatus: {
       sourceCandidates: candidateRows.length ? "available" : "unavailable",
       standardizedSamples: sourceRows.length ? "available" : "unavailable",
-      synthesisDraft: presentableSynthesisDrafts.length ? "available" : "unavailable",
       selfBuiltScenarios: scenarios.results.length ? "available" : "unavailable",
       // An immutable historical calibration is not current evidence after its
       // linked formal actual was superseded or restated. The visible layer

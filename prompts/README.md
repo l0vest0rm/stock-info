@@ -19,9 +19,8 @@
 | `knowledge/topic-batch-system.md` + `knowledge/topic-batch-user.md` | 知识库导入：标题级 AI 产业链主题筛选，只有不确定批次才调用 | `scripts/process-knowledge-once.mjs` 的 `reviewTopicBatchWithLlm()` | 直接 LLM |
 | `information-processing/document-analysis-system.md` + `information-processing/document-analysis-user.md` | 知识库单篇原文结构化抽取，生成可审计的信息记录和第三方预测字段 | `src/modules/knowledge/application/information-processing.ts` 的 `processInformationDocument()`；由本地信息处理任务触发 | 直接 LLM |
 | `fund-quarterly-research-system.md` + `fund-quarterly-research-user.md` | 基金季度研究 CLI：把单只基金结构化证据写成 Markdown 报告 | `scripts/fund-quarterly-research.mjs` | 直接 LLM |
-| `research/forecast-synthesis-system.md` + `research/forecast-synthesis-user.md` | 公司研究页“未来业绩预测”：把已审核纳入的来源预测整理成草稿，不创建新预测数字 | `src/modules/research/application/forecast-synthesis.ts`；页面组件为 `web/src/modules/research/components/forecast-workbench.ts` | 直接 LLM |
 | `research/financial-analysis.md` | 公司财务页“深入财务分析” | `src/modules/research/application/research-financial-analysis.ts`；页面组件为 `web/src/modules/company/pages/company-finance-page.ts` | taskd ChatGPT |
-| `research/operating-analysis-system.md` + `research/operating-analysis.md` | 公司研究页“完整投资研究” | `src/modules/research/application/research-investment-analysis.ts`；页面为 `web/src/modules/research/pages/investment-analysis-page.ts` | taskd ChatGPT |
+| `research/operating-analysis.md` | 公司研究页“完整投资研究” | `src/modules/research/application/research-investment-analysis.ts`；页面为 `web/src/modules/research/pages/investment-analysis-page.ts` | taskd ChatGPT |
 | `earnings-recommendation.md` | 业绩候选研究 CLI 的最终提示词模板；当前只写入输出目录的 `prompt.md` | `scripts/earnings-research.mjs` | 无自动调用 |
 
 ## 已清理

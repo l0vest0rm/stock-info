@@ -303,10 +303,9 @@ test("risk stress API reads a stored scenario deterministically and writes stay 
   assert.equal(blocked.status, 404);
 });
 
-test("every research write and local synthesis endpoint is unavailable outside the local LLM runtime", async () => {
+test("every research write endpoint is unavailable outside the local LLM runtime", async () => {
   const companyWritePaths = [
     "forecast-reviews",
-    "forecast-synthesis-drafts",
     "forecast-scenarios",
     "forecast-calibrations",
     "management-guidance-forecasts",

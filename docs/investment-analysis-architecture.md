@@ -98,18 +98,6 @@ information_id
 
 来源身份是本地人工审核的不可变断言，带 HTTPS 审计证据、承载关系和独立来源组；它不从机构名称、URL 域名或模型推测。身份不明、未确认、转载/摘要/联合承载关系或旧快照均不能自动进入统计。历史 `forecast-consolidation.v2` 和未冻结身份断言的早期汇总必须重新审核并冻结 v4 快照，不能在页面上继续解释为独立来源样本。
 
-### 模型整理草稿
-
-本地端点 `/api/research/company/:code/forecast-synthesis-drafts` 只读取已审核来源预测和已冻结汇总，输出可比样本、分歧、来源观点和待核验项。草稿：
-
-- 不创建新数字；
-- 不生成自建情景；
-- 不称市场一致预期；
-- 每项引用 `forecastId`；
-- 独立保存 model、prompt version、成员 ID 和 Markdown。
-
-生产环境该端点返回 404，底层 LLM 客户端还有第二道硬拒绝。
-
 ### 自建情景与实际校准
 
 `research_forecast_scenarios`、管理层指引、`research_formal_actuals` 和校准记录分别保存。本地页面可登记带 filing 证据的正式实际、重述和同口径校准，但不把业绩预告或快报当作正式实际，也不从来源汇总自动生成情景。
