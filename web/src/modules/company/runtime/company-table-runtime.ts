@@ -47,11 +47,6 @@ export function createCompanyTableRuntime(context: CompanyTableRuntimeContext) {
     return true
   }
 
-  function emitStockTableState(patch: any): boolean {
-    window.dispatchEvent(new CustomEvent('licai:stock-table-state', { detail: patch || {} }))
-    return true
-  }
-
   function generateMarketDataMap(codes: string[], rangeDays: number[]) {
     const dataMap: any = {}
     for (const code of codes) {
@@ -279,7 +274,6 @@ export function createCompanyTableRuntime(context: CompanyTableRuntimeContext) {
   }
 
   function genratePerformanceTable(codes: string[]) {
-    emitStockTableState({ performanceTable: buildCompanyPerformanceTableState(codes) })
     emitCompanyPageState({ performanceTable: buildCompanyPerformanceTableState(codes) })
   }
 
@@ -293,7 +287,6 @@ export function createCompanyTableRuntime(context: CompanyTableRuntimeContext) {
 
   return {
     emitCompanyPageState,
-    emitStockTableState,
     genratePerformanceTable,
     genrateRegressTable,
     generateMarketDataMap,

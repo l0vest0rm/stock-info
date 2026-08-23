@@ -1,7 +1,5 @@
 export const pagesWithoutLegacyRuntime = new Set([
   'home',
-  'invest',
-  'login',
   'macro',
   'situation',
   'situation-holdings',

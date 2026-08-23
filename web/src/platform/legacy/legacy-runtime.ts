@@ -211,13 +211,13 @@ function handleServerResponse(resp: unknown, callback: (data: unknown) => void, 
       callback(parseResponseData(serverResp.data, ''))
       return
     case 401:
-      window.location.href = `login.html?url=${encodeURIComponent(window.location.href)}`
+      alert(serverResp.msg || '登录功能不可用')
       return
     case 403:
-      alert('<a href="account.html" target="_blank">权限不够，点击去购买</a>')
+      alert(serverResp.msg || '权限不足')
       return
     case 402:
-      alert('<a href="recharge.html" target="_blank">账户余额不足，点击去充值</a>')
+      alert(serverResp.msg || '账户余额不足')
       return
     default:
       if (silent) {
@@ -3153,21 +3153,6 @@ function gsSelectInit(id: string, placeholder: string) {
   })
 }
 
-async function loadEtfCodes() {
-  try {
-    const response = await fetch(`${server}/api/stock/etf-codes`)
-    const result = await response.json()
-    if (result.code === 200) {
-      replaceArrayItems(runtimeState.etfCodes, result.data || [])
-      for (const etf of runtimeState.etfCodes) {
-        codeNameMap[etf.code] = etf.name
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load ETF codes:', error)
-  }
-}
-
 const legacyPageContext = {
   server,
   fetchRequest,
@@ -3242,15 +3227,11 @@ const legacyPageContext = {
   findTsIndex,
   positionCheckOnChange,
   emitFundState,
-  loadEtfCodes,
-  getEtfCodes: () => runtimeState.etfCodes,
   setKlineCodes: (codes: string[]) => {
     replaceArrayItems(klineCodes, codes)
   },
-  genratePerformanceTable,
   genFinanceChart,
   genSimpleBarLineChart,
-  runtimeState,
 }
 
 export async function runPageInit(page: string = currentPage()): Promise<void> {

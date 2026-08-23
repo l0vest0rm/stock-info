@@ -59,21 +59,6 @@ const pageEntries = [
     fileName: 'js/index-position-page.js',
   },
   {
-    entry: 'src/modules/home/pages/invest-page.ts',
-    globalName: 'LicaiInvestPage',
-    fileName: 'js/invest-page.js',
-  },
-  {
-    entry: 'src/modules/home/pages/login-page.ts',
-    globalName: 'LicaiLoginPage',
-    fileName: 'js/login-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-report-predict-page.ts',
-    globalName: 'LicaiCompanyReportPredictPage',
-    fileName: 'js/company-report-predict-page.js',
-  },
-  {
     entry: 'src/modules/company/pages/company-page.ts',
     globalName: 'LicaiCompanyPage',
     fileName: 'js/company-page.js',
@@ -107,11 +92,6 @@ const pageEntries = [
     entry: 'src/modules/knowledge/pages/information-processing-page.ts',
     globalName: 'LicaiInformationProcessingPage',
     fileName: 'js/information-processing-page.js',
-  },
-  {
-    entry: 'src/modules/portfolio/pages/portfolio-page.ts',
-    globalName: 'LicaiPortfolioPage',
-    fileName: 'js/portfolio-page.js',
   },
   {
     entry: 'src/modules/companies/pages/companies-follow-page.ts',
@@ -197,16 +177,6 @@ const pageEntries = [
     entry: 'src/modules/fund/pages/funds-page.ts',
     globalName: 'LicaiFundsPage',
     fileName: 'js/funds-page.js',
-  },
-  {
-    entry: 'src/modules/home/pages/info-page.ts',
-    globalName: 'LicaiInfoPage',
-    fileName: 'js/info-page.js',
-  },
-  {
-    entry: 'src/modules/market/pages/stock-table-page.ts',
-    globalName: 'LicaiStockTablePage',
-    fileName: 'js/stock-table-page.js',
   },
   {
     entry: 'src/modules/thirteenf/pages/thirteenf-page.ts',

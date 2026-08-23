@@ -25,7 +25,6 @@ const stockPages = [
   "company-notice.html",
   "company-report.html",
   "company-news.html",
-  "company-report-predict.html",
   "company-option.html",
 ];
 

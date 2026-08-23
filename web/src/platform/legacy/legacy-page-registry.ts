@@ -91,26 +91,6 @@ function createFundPagesContext(context: LegacyPageRegistryContext) {
   }
 }
 
-async function createPortfolioPageInitializer(context: LegacyPageRegistryContext): Promise<PageInitializer> {
-  const [{ createPortfolioInitializer }, { createPortfolioRuntime }] = await Promise.all([
-    import('../../modules/portfolio/runtime/portfolio-page-runtime'),
-    import('../../modules/portfolio/runtime/portfolio-runtime'),
-  ])
-  const portfolioRuntime = createPortfolioRuntime({
-    runtimeState: context.runtimeState,
-    selectedOptionValues: context.selectedOptionValues,
-    fetchKlines: context.fetchKlines,
-    rerenderMyChart: context.rerenderMyChart,
-    bsTable: context.bsTable,
-  })
-  return createPortfolioInitializer({
-    dateRangeInit: context.dateRangeInit,
-    codeSelectInit: context.codeSelectInit,
-    portfolioRuntime,
-    alert: context.alert,
-  })
-}
-
 async function createKnowledgeNewsPageInitializer(context: LegacyPageRegistryContext): Promise<PageInitializer> {
   const { createKnowledgeNewsInitializer } = await import('../../modules/knowledge/runtime/knowledge-news-runtime')
   return createKnowledgeNewsInitializer({
@@ -274,17 +254,6 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
         echartsColor: context.echartsColor,
       })
     }
-    case 'company-report-predict.html': {
-      const { createCompanyReportPredictInitializer } = await import('../../modules/company/runtime/company-report-predict-runtime')
-      return createCompanyReportPredictInitializer({
-        server: context.server,
-        fetchRequest: context.fetchRequest,
-        fetchReportUrl: context.fetchReportUrl,
-        toDateString: context.toDateString,
-        selectChangeValue: context.selectChangeValue,
-        alert: context.alert,
-      })
-    }
     case 'company-finance.html': {
       const { createCompanyFinanceInitializer } = await import('../../modules/company/runtime/company-pages-runtime')
       return createCompanyFinanceInitializer({
@@ -359,21 +328,7 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
       return createFundInitializer(fundPagesContext)
     }
     case 'home.html':
-    case 'invest.html':
-    case 'login.html':
       return initStaticPage
-    case 'info.html': {
-      const { createInfoInitializer } = await import('../../modules/home/runtime/info-runtime')
-      return createInfoInitializer({
-        getCodeNameMap: context.getCodeNameMap,
-        getReportsMap: context.getReportsMap,
-        readSelectedOptionValues: context.selectedOptionValues,
-        setSelectedCodes: context.setSelectedCodes,
-        fetch2FormatFinanceData: context.fetch2FormatFinanceData,
-        codeSelectInit: context.codeSelectInit,
-        bsRadioButtons: context.bsRadioButtons,
-      })
-    }
     case 'knowledge-config.html': {
       const { createKnowledgeConfigInitializer } = await import('../../modules/knowledge/runtime/knowledge-config-runtime')
       return createKnowledgeConfigInitializer({
@@ -384,19 +339,8 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
         alert: context.alert,
       })
     }
-    case 'portfolio.html':
-      return createPortfolioPageInitializer(context)
     case 'research-news.html':
       return createKnowledgeNewsPageInitializer(context)
-    case 'stock-table.html': {
-      const { createStockTableInitializer } = await import('../../modules/market/runtime/stock-table-runtime')
-      return createStockTableInitializer({
-        loadEtfCodes: context.loadEtfCodes,
-        getEtfCodes: context.getEtfCodes,
-        fetchKlines: context.fetchKlines,
-        genratePerformanceTable: context.genratePerformanceTable,
-      })
-    }
     default:
       return null
   }

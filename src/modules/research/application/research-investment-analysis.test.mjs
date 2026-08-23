@@ -41,6 +41,9 @@ test("investment analysis sends a readable research brief instead of a frozen JS
     analysisFramework: { primaryFormula: "收入 = 出货量 × ASP", operatingMetrics: ["出货量"], valuationMethods: ["DCF"], stressFactors: ["价格竞争"] },
   });
   assert.match(prompt, /工程实时市场快照只用于报告时点的价格与估值倍数/);
+  assert.match(prompt, /普通聊天消息中的原始 Markdown 正文/);
+  assert.match(prompt, /不得创建、打开或使用 Canvas\/可编辑文档\/文稿/);
+  assert.match(prompt, /不得调用任何文档、文件、下载、附件或代码执行工具/);
   assert.match(prompt, /## 研究对象/);
   assert.match(prompt, /公司：胜宏科技/);
   assert.match(prompt, /最新价格：277\.84 CNY/);

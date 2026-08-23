@@ -42,21 +42,6 @@ localDataRoutes.post("/knowledge/ingest-run", (c) => {
   return ok(c, { started: false, reason: "not-migrated" });
 });
 
-localDataRoutes.get("/portfolio/calculate", (c) =>
-  ok(c, {
-    trend: [],
-    trendWithoutIncomeExpense: [],
-    positions: [],
-    stockPositions: [],
-    sectorPositions: [],
-    accountTotals: [],
-    transactions: [],
-  })
-);
-localDataRoutes.get("/portfolio/transaction-candidates", (c) => ok(c, []));
-localDataRoutes.post("/portfolio/transactions/confirm", (c) => ok(c, { saved: false, reason: "not-migrated" }));
-localDataRoutes.get("/stock-info", (c) => ok(c, {}));
-
 localDataRoutes.get("/companies/follow/forecast", async (c) => {
   if (!isLocalDevelopmentRuntime(c.env)) {
     return ok(c, { version: 1, storage: "browser" });
