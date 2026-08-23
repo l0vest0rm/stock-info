@@ -22,15 +22,18 @@ test("financial risk rules trigger only from available deterministic observation
   assert.equal(flags.find((flag) => flag.ruleId === "operating_margin_contraction")?.value, -5);
 });
 
-test("financial prompt makes deterministic risk signals, summaries and data gaps mandatory", () => {
+test("financial prompt explains supplied facts, risk signals, summaries and data gaps in research language", () => {
   const prompt = financialAnalysisPrompt({ schemaVersion: "financial-analysis-input.v1", codeVersion: "financial-analysis-code.v7", securityCode: "300308.SZ", asOf: "2026-03-31", entityType: "non_financial", dataQuality: { status: "partial", sourcePolicy: "Eastmoney", statutoryVerification: { status: "partial", verifiedMetrics: [], reason: "missing" }, statements: [], gaps: [] }, periodCoverage: { annual: [], quarterly: [], ttmEndDate: null }, reportedFacts: [], derivedObservations: [], deterministicFlags: [], lineage: { factIds: [], sourceIds: [], inputFingerprint: "test" } });
   assert.match(prompt, /不得使用模型记忆/);
+  assert.match(prompt, /普通聊天回复中输出原始 Markdown 正文/);
+  assert.match(prompt, /不要创建或使用 Canvas、可编辑文档/);
   assert.match(prompt, /财务风险隐患/);
   assert.match(prompt, /不得输出目标价/);
-  assert.match(prompt, /不得出现“依据：”/);
-  assert.match(prompt, /analysisBrief/);
-  assert.match(prompt, /reportedFactTables、observationTables/);
+  assert.match(prompt, /不得出现“依据：”、原始字段名、资料内部编号/);
+  assert.match(prompt, /财务表、趋势与效率指标及关键摘要/);
+  assert.match(prompt, /风险提示是按已给定数值识别出的异常信号/);
   assert.match(prompt, /不要顺序重抄整张数据表/);
+  assert.doesNotMatch(prompt, /工程规则|工程摘要|<input_data>/);
 });
 
 test("financial prompt keeps audit evidence out of the model-facing report data, compacts numeric displays and includes summaries", () => {
@@ -56,7 +59,7 @@ test("financial prompt keeps audit evidence out of the model-facing report data,
     ],
     deterministicFlags: [], lineage: { factIds: ["fact:revenue:annual:FY2025"], sourceIds: ["eastmoney:income:2025"], inputFingerprint: "test" },
   });
-  const input = JSON.parse(prompt.match(/<input_data>\n(.+)\n<\/input_data>/s)?.[1] ?? "");
+  const input = JSON.parse(prompt.match(/## 已确认的财务资料\n\n(.+)$/s)?.[1] ?? "");
   assert.deepEqual(input.reportedFactTables.annual, {
     periods: ["FY2024", "FY2025"],
     rows: [{ metric: "revenue", unit: "亿元", values: [10, 12.35] }],
@@ -70,7 +73,7 @@ test("financial prompt keeps audit evidence out of the model-facing report data,
   assert.ok(input.analysisBrief.observationBriefs.some((item) => item.kind === "net_margin" && item.latestQuarter?.value === 34.67));
   assert.deepEqual(input.numericDisplay, { amountUnit: "亿元", shareUnit: "亿股", percentageDecimals: 2 });
   assert.doesNotMatch(JSON.stringify(input), /"status":"available"/);
-  assert.doesNotMatch(JSON.stringify(input), /fact:|obs:|sourceId/);
+  assert.doesNotMatch(JSON.stringify(input), /fact:|obs:|sourceId|schemaVersion|codeVersion|sourcePolicy|lineage/);
 });
 
 test("financial risk rules include cash-flow deterioration and liquidity pressure", () => {

@@ -32,16 +32,6 @@ async function verifyPageShell() {
 }
 
 async function verifySample({ code, market }) {
-  const insights = await api(`/api/research/company/${encodeURIComponent(code)}/auto-filing-insights`);
-  assert(Array.isArray(insights.data?.items) && insights.data.items.length > 0, `${code}: no stored filing facts`);
-  const seenTabs = new Set(insights.data.items.map((item) => item.tabId));
-  for (const tabId of ["business", "market", "financial", "industry", "risk"]) assert(seenTabs.has(tabId), `${code}: ${tabId} filing facts are absent`);
-  for (const item of insights.data.items) {
-    assert(item.documentUrl && item.evidenceQuote && item.evidenceLocator && item.reportPeriod, `${code}: a filing fact lacks source, quote, locator, or period`);
-    assert(String(item.extractionMethod || "").includes("research-filing-extraction.v3"), `${code}: filing fact has an obsolete processing method`);
-    assert(item.factType && item.valueType, `${code}: filing fact has no typed extraction facet`);
-    assert(item.reportedValue !== "[object Object]", `${code}: invalid object value is rendered as a fact`);
-  }
   const overview = await api(`/api/company/overview?code=${encodeURIComponent(code)}`);
   assert(overview.data?.source === "xueqiu", `${code}: ${market} market price did not retain Xueqiu provenance`);
   const investmentAnalysis = await api(`/api/research/company/${encodeURIComponent(code)}/investment-analysis`);

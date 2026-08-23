@@ -118,6 +118,11 @@ test("hides the discovery capability endpoint outside the local LLM runtime", as
   assert.equal(response.status, 404);
 });
 
+test("does not expose the retired notice PDF endpoint", async () => {
+  const response = await companyRoutes.request("http://example.test/notice/pdf?artCode=123");
+  assert.equal(response.status, 404);
+});
+
 test("uses a stable caller-owned discovery name without a local task id", () => {
   assert.equal(companyReportDiscoveryTaskName("000001.SZ"), "company:report-discovery:000001.SZ");
 });

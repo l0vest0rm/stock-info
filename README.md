@@ -15,7 +15,6 @@ Cloudflare Workers 股票信息站。当前知识链路已收敛到固定形态�
 - `GET /`：`Vue + Vite` 搜索与详情页
 - `GET /api/health`：Worker 与 D1 健康检查
 - `GET /api/search?q=600519`：证券搜索，先查 D1，未命中再查 Eastmoney
-- `GET /api/securities/:code`：证券主数据
 - `GET /api/kline?code=600519&from=2026-06-01&to=2026-06-24`：股票 K 线
 - `GET /api/kline?code=019785.OF&from=2026-06-01&to=2026-06-24`：基金净值
 - `GET /api/finance/income?code=600519`：A 股利润表

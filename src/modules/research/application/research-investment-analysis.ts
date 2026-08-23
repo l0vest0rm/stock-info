@@ -14,7 +14,7 @@ import companyProfiles from "../../../../config/eastmoney-company-em2016-profile
 const TASK_TYPE = "webqa.chatgpt.v1";
 const MODEL = "gpt-5.6-luna" as const;
 const DEFAULT_REASONING_EFFORT = "xhigh";
-const PROMPT_VERSION = "investment-analysis.taskd.v5";
+const PROMPT_VERSION = "investment-analysis.taskd.v7";
 const INVESTMENT_ANALYSIS_NAMESPACE = "research_investment_analysis";
 
 type Row = Record<string, unknown>;
@@ -281,7 +281,7 @@ function investmentAnalysisBrief(input: InvestmentAnalysisInput): string {
     `- 证券代码：${input.security.code}`,
     `- 报告时点：${input.preparedAt}`,
     "",
-    "## 当前市场快照（工程实时获取）",
+    "## 已确认的市场快照",
     `- 截至：${market.asOf}`,
     `- 数据源：${market.source}`,
     `- 最新价格：${display(market.latestPrice, input.security.currency ?? undefined)}`,
@@ -291,11 +291,11 @@ function investmentAnalysisBrief(input: InvestmentAnalysisInput): string {
     `- PS（TTM）：${display(market.psTtm)}`,
     `- PCF（TTM）：${display(market.pcfTtm)}`,
     "",
-    "## 分析框架（工程配置，不是公司事实）",
-    `- 量价成本主公式：${framework?.primaryFormula ?? "未配置"}`,
-    `- 优先核验指标：${framework?.operatingMetrics.join("、") || "未配置"}`,
-    `- 可用估值方法：${framework?.valuationMethods.join("、") || "未配置"}`,
-    `- 压力因素：${framework?.stressFactors.join("、") || "未配置"}`,
+    "## 研究框架（不是公司事实）",
+    `- 量价成本主公式：${framework?.primaryFormula ?? "未提供"}`,
+    `- 优先核验指标：${framework?.operatingMetrics.join("、") || "未提供"}`,
+    `- 可用估值方法：${framework?.valuationMethods.join("、") || "未提供"}`,
+    `- 压力因素：${framework?.stressFactors.join("、") || "未提供"}`,
   ].join("\n");
 }
 

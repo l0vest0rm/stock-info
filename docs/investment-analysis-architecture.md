@@ -108,21 +108,14 @@ information_id
 
 ## API 与页面
 
-### 当前已实现的可用垂直切片
+### 当前发布的研究接口
 
-`GET /api/research/company/:code/forecasts` 返回：
+研究页面目前只发布两组按证券代码读取的报告接口：
 
-- 经营公司/上市证券映射状态和阻断缺口；
-- 来源预测候选及 document/version/record 证据链；
-- 已审核的不可变来源预测；
-- 最新不可变汇总快照、分组统计和成员原因；
-- 本地模型整理草稿；
-- 独立情景和实际校准状态；
-- 本地写入/LLM 能力标志。
+- `GET /api/research/company/:code/financial-analysis`，以及本地 LLM 运行时的 `POST .../refresh`、`POST .../resume`；
+- `GET /api/research/company/:code/investment-analysis`，以及本地研究运行时的 `POST .../refresh`、`POST .../resume`。
 
-`POST /api/research/company/:code/forecast-reviews` 仅在本地研究运行时开放，保存审核、不可变样本并立即冻结新汇总快照。
-
-公司研究页还包括：字段化行业/同行、经营分部/合同/单位经济/市场空间、情景正向 DCF、反向 DCF、风险压力/关系/命题关联、催化剂复盘和公共快照历史。所有写入仅在 `LLM_RUNTIME=local` 时开放；生产页面只读；没有数据时显示“待补/不可用”，不以零或中性分替代。
+字段化预测、行业、经营、估值和风险工作台尚未有构建页面入口，因此不对外发布 HTTP 接口。后续恢复这些能力时，必须先新增页面入口，再将其 API 作为该页面契约发布。
 
 ### 兼容边界
 

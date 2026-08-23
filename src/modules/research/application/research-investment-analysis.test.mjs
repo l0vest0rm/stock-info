@@ -40,18 +40,21 @@ test("investment analysis sends a readable research brief instead of a frozen JS
     businessBoundary: { status: "confirmed", note: null, products: [], customers: [], regions: [] },
     analysisFramework: { primaryFormula: "收入 = 出货量 × ASP", operatingMetrics: ["出货量"], valuationMethods: ["DCF"], stressFactors: ["价格竞争"] },
   });
-  assert.match(prompt, /工程实时市场快照只用于报告时点的价格与估值倍数/);
+  assert.match(prompt, /下方的研究对象和市场快照是已确认信息/);
+  assert.match(prompt, /市场快照只用于报告时点的价格与估值倍数/);
   assert.match(prompt, /普通聊天消息中的原始 Markdown 正文/);
-  assert.match(prompt, /不得创建、打开或使用 Canvas\/可编辑文档\/文稿/);
-  assert.match(prompt, /不得调用任何文档、文件、下载、附件或代码执行工具/);
+  assert.match(prompt, /不得创建或使用 Canvas、可编辑文档/);
+  assert.match(prompt, /不得将报告作为下载文件或附件交付/);
+  assert.doesNotMatch(prompt, /不得调用任何文档、文件、下载、附件或代码执行工具/);
   assert.match(prompt, /## 研究对象/);
   assert.match(prompt, /公司：胜宏科技/);
   assert.match(prompt, /最新价格：277\.84 CNY/);
   assert.match(prompt, /总市值：2735\.59 亿元/);
   assert.match(prompt, /PS（TTM）：13\.35/);
   assert.doesNotMatch(prompt, /本地业务边界状态|状态：confirmed|未提供/);
-  assert.match(prompt, /## 分析框架（工程配置，不是公司事实）/);
-  assert.doesNotMatch(prompt, /```json|"financials"|工程冻结输入/);
+  assert.match(prompt, /## 已确认的市场快照/);
+  assert.match(prompt, /## 研究框架（不是公司事实）/);
+  assert.doesNotMatch(prompt, /```json|"financials"|工程|程序配置|未配置/);
 });
 
 class FakeD1 {

@@ -5,7 +5,6 @@ import {
   createOwnerHoldingPublicSnapshotReference,
   loadOwnerHoldingPublicSnapshotReferences,
 } from "../application/research-owner-holding-snapshot-reference.ts";
-import { researchRoutes } from "../api/research.routes.ts";
 
 function referenceDb({ holding = true, snapshot = true } = {}) {
   const references = [];
@@ -75,12 +74,4 @@ test("a reference cannot manufacture a holding or bind a legacy/cross-security s
     /frozen public research snapshot for the same listed security/,
   );
   assert.deepEqual(db.references, []);
-});
-
-test("owner holding snapshot reference API is absent from production", async () => {
-  const path = "http://example.test/research/company/00700.HK/owner-holding-snapshot-references?owner=alice";
-  const read = await researchRoutes.request(path, {}, { LLM_RUNTIME: "production" });
-  assert.equal(read.status, 404);
-  const write = await researchRoutes.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ publicSnapshotId: "public:00700:1", ownerKey: "alice" }) }, { LLM_RUNTIME: "production" });
-  assert.equal(write.status, 404);
 });

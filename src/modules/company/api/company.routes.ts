@@ -342,14 +342,6 @@ companyRoutes.get("/report/forecast", async (c) => {
   return ok(c, aggregateForecastsForCode(code, items));
 });
 
-companyRoutes.get("/notice/pdf", async (c) => {
-  const artCode = requireQuery(c, "artCode");
-  if (artCode instanceof Response) {
-    return artCode;
-  }
-  return ok(c, `https://pdf.dfcfw.com/pdf/H3_${encodeURIComponent(artCode)}_1.pdf`);
-});
-
 companyRoutes.get("/report/url", (c) => ok(c, null));
 
 function noticeCode(c: Context<AppEnv>): string {

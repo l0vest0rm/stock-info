@@ -6,7 +6,6 @@ import {
   createResearchCompanyFocusProfile,
   loadResearchCompanyFocusProfile,
 } from "../application/research-company-focus-profile.ts";
-import { researchRoutes } from "../api/research.routes.ts";
 
 const companyId = "company:shared";
 const sourceFact = {
@@ -117,44 +116,6 @@ test("private focus membership is owner-scoped and never appears in a public pro
   assert.equal(JSON.stringify(publicView).includes("alice"), false);
 });
 
-test("focus endpoints are 404 for production writes and production reads ignore owner query data", async () => {
-  for (const path of ["focus-membership", "focus-profiles"]) {
-    const response = await researchRoutes.request(
-      `http://example.test/research/company/00700.HK/${path}`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
-      { LLM_RUNTIME: "production" },
-    );
-    assert.equal(response.status, 404, `${path} must be absent in production`);
-  }
-
-  let membershipQuery = false;
-  const db = {
-    prepare(sql) {
-      return { bind() {
-        if (sql.includes("from http_cache")) return { first: async () => null };
-        if (sql.includes("insert into http_cache")) return { run: async () => ({ success: true }) };
-        if (sql.includes("research_company_focus_memberships")) membershipQuery = true;
-        if (sql.includes("research_listed_securities where security_code")) return { first: async () => ({ companyId, metadataJson: "{}" }), all: async () => ({ results: [] }) };
-        if (sql.includes("from research_operating_companies where company_id")) return { first: async () => ({ companyId, canonicalName: "腾讯", reportingCurrency: "CNY", fiscalYearEnd: "12-31", identityStatus: "confirmed", metadataJson: "{}" }) };
-        return { first: async () => null, all: async () => ({ results: [] }) };
-      } };
-    },
-  };
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify({
-    GubaCodeTable: { Data: [{ OuterCode: "HK00700", ShortName: "腾讯控股" }] },
-  }), { status: 200 });
-  try {
-    const response = await researchRoutes.request("http://example.test/research/company/00700.HK/focus-profile?owner=alice", {}, { DB: db, LLM_RUNTIME: "production" });
-    const payload = await response.json();
-    assert.equal(response.status, 200);
-    assert.equal(membershipQuery, false);
-    assert.equal(Object.hasOwn(payload.data, "membership"), false);
-    assert.equal(JSON.stringify(payload.data).includes("alice"), false);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
 
 test("membership append returns an owner-redacted record", async () => {
   const statements = [];

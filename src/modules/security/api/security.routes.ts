@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { getSecurity, searchSecurities } from "../application/search-securities";
-import { fail, ok, requireQuery } from "../../../shared/http";
+import { ok, requireQuery } from "../../../shared/http";
 import type { AppEnv } from "../../../types";
 
 export const securityRoutes = new Hono<AppEnv>();
@@ -43,12 +43,4 @@ securityRoutes.get("/code/name", async (c) => {
     result[item] = record?.name || item;
   }
   return ok(c, result);
-});
-
-securityRoutes.get("/securities/:code", async (c) => {
-  const record = await getSecurity(c.env.DB, c.req.param("code"));
-  if (!record) {
-    return fail(c, 404, "security not found");
-  }
-  return ok(c, record);
 });

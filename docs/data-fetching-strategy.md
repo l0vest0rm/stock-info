@@ -181,7 +181,7 @@ API request
 
 目标是只读 D1：
 
-- `/api/options/us` 只读 D1 分片缓存。
+- `/api/options/us/summary` 与 `/api/options/us/contracts` 只读 D1 分片缓存。
 - 缺失时返回明确错误，例如 `option chain not synced`。
 - 本地脚本通过真实 Chrome/Yahoo 页面采集并写 D1。
 - 页面不应该因为财报预取失败弹出 429/500。
@@ -283,7 +283,6 @@ API key 读取 `OPENAI_API_KEY`。复核会把边界样本按标题/摘要列表
 | 接口 | 当前问题 | 建议目标 |
 | --- | --- | --- |
 | `/api/finance/income?code=MU.US` | 美股财报指定 Yahoo；本地必须经代理，生产可直连 | 本地经 Yahoo 代理、生产经统一 HTTP client 直连并缓存；以 SEC 抽样对账 |
-| `/api/options/us?code=MU.US` | 已证明 Worker/Node 模拟 Yahoo 不稳定 | 保持本地 Chrome 采集写 D1，接口读 D1 |
 | `/api/kline?code=MU.US` | 必须保持雪球为唯一股票 K 线来源 | 排查雪球请求、Cookie、缓存和区间覆盖；不增加替代源 |
 | 搜索框美股建议 | 不使用 Yahoo 搜索 | D1 本地证券表优先，按既定非 Yahoo 源补齐覆盖 |
 

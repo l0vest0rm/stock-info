@@ -13,7 +13,6 @@ import { loadPublicRiskReviewSnapshotHistory, planPublicRiskSnapshotDifferences,
 import { loadPublicResearchSnapshotHistory } from "../application/research-public-snapshot.ts";
 import { buildPublicResearchSnapshotModules, planPublicResearchSnapshotDifferences } from "./research-public-snapshot.ts";
 import { projectPublicResearchSnapshot } from "../application/project-public-research-snapshot.ts";
-import { researchRoutes } from "../api/research.routes.ts";
 
 const source = [{ sourceKind: "filing", documentId: "filing:2025" }];
 
@@ -285,108 +284,4 @@ test("public snapshot history replays frozen modules instead of substituting cur
   assert.equal(history.availability, "available");
   assert.equal(history.items[0].modules[0].payload.risks[0].title, "当时风险");
   assert.equal(history.items[0].differences[0].moduleId, "risk-register");
-});
-
-test("risk stress API reads a stored scenario deterministically and writes stay local-only", async () => {
-  const scenarioRow = {
-    scenario_id: "pressure:api", company_id: "company:1", security_code: "00700.HK", as_of: 100, scenario_key: "api", version: 1,
-    supersedes_scenario_id: null, status: "reviewed", scope: "operating_company", title: "API", transmission: "传导", model_version: "v1",
-    inputs_json: JSON.stringify([{ key: "revenue", label: "收入", baseline: 100, stressed: 80, unit: "CNYm", epistemicType: "observed_fact", sourceReferences: source }]),
-    results_json: JSON.stringify([{ key: "manual", label: "人工", value: null, unit: null, explanation: "保留" }]), source_refs_json: JSON.stringify(source), created_at: 100, updated_at: 100,
-  };
-  const db = { prepare() { return { bind() { return { async first() { return scenarioRow; } }; } }; } };
-  const read = await researchRoutes.request("http://example.test/research/company/00700.HK/risk-pressure-scenarios/pressure:api/stress?monetaryUnit=CNYm", {}, { DB: db });
-  const payload = await read.json();
-  assert.equal(read.status, 200);
-  assert.equal(payload.data.observations.find((item) => item.key === "revenue").stressedValue, 80);
-  const blocked = await researchRoutes.request("http://example.test/research/company/00700.HK/risk-pressure-scenarios", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }, { LLM_RUNTIME: "production" });
-  assert.equal(blocked.status, 404);
-});
-
-test("every research write endpoint is unavailable outside the local LLM runtime", async () => {
-  const companyWritePaths = [
-    "forecast-reviews",
-    "forecast-scenarios",
-    "forecast-calibrations",
-    "management-guidance-forecasts",
-    "formal-actuals",
-    "formal-actual-candidates/refresh",
-    "formal-actual-candidate-reviews",
-    "formal-actual-calibrations",
-    "model-review-items/model-review:example/resolve",
-    "statutory-disclosures/refresh",
-    "statutory-disclosure-revision-candidates/refresh",
-    "statutory-disclosure-revision-candidates/candidate:example/reviews",
-    "statutory-disclosures/indexed-document-example/import-local",
-    "statutory-operating-candidates/produce",
-    "financial-statutory-verifications/refresh",
-    "us-financial-period-equivalences",
-    "valuation-models/dcf",
-    "valuation-models/operating-scenario",
-    "valuation-models/reverse-dcf",
-    "identity",
-    "focus-membership",
-    "focus-profiles",
-    "financial-profile",
-    "financial-specialty-metrics",
-    "market-structure/facts",
-    "risk-pressure-scenarios",
-    "risk-relationships",
-    "risk-thesis-links",
-    "public-risk-snapshots",
-    "public-research-snapshots",
-    "industry-exposures",
-    "peer-comparison-sets",
-    "operating-models",
-    "operating-source-facts",
-    "operating-source-fact-bindings",
-    "operating-source-fact-bindings/operating-source-fact-binding:example/reviews",
-    "relative-valuations",
-    "governance-capital-fact-candidates/refresh",
-    "governance-capital-fact-candidates/candidate:example/reviews",
-    "operating-driver-plans",
-    "industry-kpi-driver-bindings",
-    "operating-driver-plans/operating-driver-plan:example/industry-kpi-projection",
-    "market-space-assessments",
-    "catalysts/catalyst:example/reviews",
-    "guidance-event-impact-reviews",
-    "guidance-event-impact-review-targets/impact-target:example/resolve",
-  ];
-  const productionEnv = { LLM_RUNTIME: "production" };
-  for (const path of companyWritePaths) {
-    const response = await researchRoutes.request(
-      `http://example.test/research/company/00700.HK/${path}`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
-      productionEnv,
-    );
-    assert.equal(response.status, 404, `${path} must not be writable in production runtime`);
-  }
-  for (const path of ["forecast-source-independence-groups", "forecast-source-identities", "forecast-model-lineages", "forecast-source-identity-assertions"]) {
-    const response = await researchRoutes.request(
-      `http://example.test/research/${path}`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
-      productionEnv,
-    );
-    assert.equal(response.status, 404, `${path} must not be writable in production runtime`);
-  }
-  for (const section of ["business-model", "market-space", "competitive-market", "thesis", "valuation", "risk", "catalyst", "snapshot", "user-note", "governance"]) {
-    const response = await researchRoutes.request(
-      `http://example.test/research/company/00700.HK/dossier/${section}`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
-      productionEnv,
-    );
-    assert.equal(response.status, 404, `dossier/${section} must not be writable in production runtime`);
-  }
-  const industry = await researchRoutes.request(
-    "http://example.test/research/industry/tracks",
-    { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
-    productionEnv,
-  );
-  assert.equal(industry.status, 404);
-  const formalActualBatch = await researchRoutes.request(
-    "http://example.test/research/formal-actual-candidates/materialize",
-    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ securityCodes: ["00700.HK"] }) },
-    productionEnv,
-  );
-  assert.equal(formalActualBatch.status, 404, "formal actual batch materialization must not be writable in production runtime");
 });

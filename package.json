@@ -44,8 +44,6 @@
     "fetch:cls-news": "node scripts/fetch-cls-news.mjs",
     "research:earnings": "node scripts/earnings-research.mjs",
     "research:fund-quarterly": "node scripts/fund-quarterly-research.mjs",
-    "research:bootstrap-companies": "node scripts/bootstrap-research-companies.mjs",
-    "research:refresh-inputs": "node scripts/refresh-research-inputs.mjs",
     "analyze:buy-point": "node scripts/analyze-buy-point.mjs",
     "generate:institutional-tracks": "node scripts/generate-institutional-track-snapshot.mjs",
     "sync:eastmoney-company-em2016-profiles": "node scripts/sync-eastmoney-company-em2016-profiles.mjs",

@@ -3,7 +3,7 @@ import riskRulesJson from "../../../../config/research-financial-analysis-risk-r
 import type { ResearchFinancialFrequency, ResearchFinancialMetric, ResearchFinancialObservation, ResearchFinancialQuality, ResearchFinancialSeries, ResearchFinancialSeriesPoint } from "./research-financial-quality";
 
 export const FINANCIAL_ANALYSIS_PROTOCOL_VERSION = "financial-analysis-input.v1";
-export const FINANCIAL_ANALYSIS_PROMPT_VERSION = "financial-analysis.webqa.v8";
+export const FINANCIAL_ANALYSIS_PROMPT_VERSION = "financial-analysis.webqa.v9";
 export const FINANCIAL_ANALYSIS_CODE_VERSION = "financial-analysis-code.v7";
 export const FINANCIAL_ANALYSIS_ORIGIN_TASK_TYPE = "research_financial_analysis";
 export const FINANCIAL_ANALYSIS_TARGET_TYPE = "research_financial_analysis";
@@ -199,15 +199,10 @@ export function projectFinancialAnalysisPromptInput(snapshot: FinancialAnalysisS
   const compactReportedFactTables = buildReportedFactTables(snapshot.reportedFacts);
   const compactObservationTables = buildObservationTables(promptObservations);
   return {
-    schemaVersion: snapshot.schemaVersion,
-    codeVersion: snapshot.codeVersion,
     securityCode: snapshot.securityCode,
     asOf: snapshot.asOf,
-    entityType: snapshot.entityType,
     dataQuality: {
       status: snapshot.dataQuality.status,
-      sourcePolicy: snapshot.dataQuality.sourcePolicy,
-      statutoryVerification: snapshot.dataQuality.statutoryVerification,
       statements: snapshot.dataQuality.statements.map(compactStatementHealth),
       gapSummary: summarizeGaps(snapshot.dataQuality.gaps),
     },
@@ -217,7 +212,6 @@ export function projectFinancialAnalysisPromptInput(snapshot: FinancialAnalysisS
     analysisBrief: buildAnalysisBrief(compactReportedFactTables, compactObservationTables),
     deterministicFlags: snapshot.deterministicFlags.map(compactRiskFlag),
     numericDisplay: { amountUnit: "亿元", shareUnit: "亿股", percentageDecimals: 2 },
-    lineage: { inputFingerprint: snapshot.lineage.inputFingerprint, factCount: snapshot.lineage.factIds.length, sourceCount: snapshot.lineage.sourceIds.length, fullSnapshotPersisted: true },
   };
 }
 

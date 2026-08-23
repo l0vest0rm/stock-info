@@ -146,7 +146,7 @@ await check("company report counts", async () => {
   );
 });
 
-await check("research APIs and workbench pages", async () => {
+await check("published research pages", async () => {
   const pages = [
     ["fund-compare.html", "fund-compare-vue-root", "js/fund-compare-page.js"],
   ];
@@ -161,52 +161,6 @@ await check("research APIs and workbench pages", async () => {
   assert(removedIndustryPage.status === 404, `removed industry research page status=${removedIndustryPage.status}`);
   const removedIndustryApi = await fetchWithTimeout(`${baseUrl}/api/research/industry?industry=${encodeURIComponent("通信设备")}`);
   assert(removedIndustryApi.status === 404, `removed industry research API status=${removedIndustryApi.status}`);
-  const kpiContext = await fetchApi("/api/research/company/300308.SZ/industry-kpi-driver-binding-context");
-  assert(kpiContext.data?.canWriteLocally === true && Array.isArray(kpiContext.data?.rules)
-    && Array.isArray(kpiContext.data?.eligibleEvidence) && Array.isArray(kpiContext.data?.driverPlans),
-  "industry KPI binding context is incomplete");
-  const guidanceEventReviews = await fetchApi("/api/research/company/300308.SZ/guidance-event-impact-reviews");
-  assert(Array.isArray(guidanceEventReviews.data?.items), "formal/event impact review ledger is invalid");
-  assert(guidanceEventReviews.data.items.every((review) => Array.isArray(review.targets)
-    && review.targets.every((target) => typeof target.impactReviewTargetId === "string"
-      && ["requires_review", "no_change", "follow_up_recorded", "not_applicable"].includes(target.reviewState))),
-  "formal/event impact target state contract is invalid");
-  const formalCandidates = await fetchApi("/api/research/company/00700.HK/formal-actual-candidates?eligibility=ready_for_review");
-  assert(Array.isArray(formalCandidates.data?.candidates) && Array.isArray(formalCandidates.data?.reviews)
-    && formalCandidates.data.candidates.every((item) => typeof item.metric === "string"
-      && typeof item.factDictionaryEntryId === "string" && item.factDictionaryEntryId.startsWith("formal-financial-fact:")),
-  "formal actual candidate dictionary contract is invalid");
-  for (const code of ["300750.SZ", "300308.SZ", "00700.HK", "MU.US"]) {
-    const forecasts = await fetchApi(`/api/research/company/${encodeURIComponent(code)}/forecasts`);
-    assert(forecasts.data?.subject?.listedSecurity?.code === code, `forecast subject mismatch: ${code}`);
-    assert(Array.isArray(forecasts.data?.sourceCandidates), `forecast candidates are invalid: ${code}`);
-    assert(Array.isArray(forecasts.data?.sourceForecasts), `source forecasts are invalid: ${code}`);
-    assert(forecasts.data?.managementGuidanceRevisions?.ruleVersion === "management-guidance-revision.v1"
-      && Array.isArray(forecasts.data.managementGuidanceRevisions.directions)
-      && Array.isArray(forecasts.data.managementGuidanceRevisions.chains),
-    `management guidance revision audit model is invalid: ${code}`);
-    assert(forecasts.data?.formalActualHealth?.ruleVersion === "formal-actual-health.v1"
-      && ["available", "partial", "unavailable"].includes(forecasts.data.formalActualHealth.calibrationAvailability),
-    `formal actual health model is invalid: ${code}`);
-    assert(forecasts.data.sourceCandidates.every((item) => item.informationId && item.resultId && item.processingRunId
-      && item.versionId && item.docId && item.processingModel && item.processingPromptVersion && item.processingInputHash),
-    `forecast candidate provenance is incomplete: ${code}`);
-    assert(forecasts.data?.capabilities?.productionLlmEnabled === false, `production LLM flag must stay false: ${code}`);
-    const visibleForecastLedger = JSON.stringify({
-      candidates: forecasts.data?.sourceCandidates,
-      samples: forecasts.data?.sourceForecasts,
-      revisions: forecasts.data?.forecastRevisions,
-      consolidation: forecasts.data?.consolidation,
-    });
-    assert(!/fixture-|https?:\/\/(?:[^/]+\.)?example\.com(?:\/|$)/.test(visibleForecastLedger),
-      `synthetic or reserved-domain forecast evidence is visible for ${code}`);
-    assert(forecasts.data?.consolidation === null || forecasts.data.consolidation.marketConsensus === false, `incomplete forecast sample was called consensus: ${code}`);
-    if (forecasts.data?.consolidation) {
-      assert(forecasts.data.consolidation.label === "已纳入样本的预测汇总", `forecast consolidation label is unsafe: ${code}`);
-      assert(Array.isArray(forecasts.data.consolidation.groups) && Array.isArray(forecasts.data.consolidation.members),
-        `forecast consolidation audit members are incomplete: ${code}`);
-    }
-  }
   const funds = await fetchApi("/api/fund/compare?codes=513100.OF,510300.OF");
   assert(Array.isArray(funds.data?.rows) && funds.data.rows.length === 2, "fund comparison rows are incomplete");
 });
@@ -318,12 +272,6 @@ for (const stock of klineRegressions) {
     );
   });
 }
-
-await check("us MU.US api options", async () => {
-  const body = await fetchApi("/api/options/us?code=MU.US");
-  assert(body.data?.code === "MU.US", `option code mismatch: ${body.data?.code}`);
-  assert(Array.isArray(body.data?.expirations), "option expirations is not an array");
-});
 
 if (failures.length > 0) {
   console.error(`\nSmoke failed: ${failures.length} failed, ${passed} passed`);
