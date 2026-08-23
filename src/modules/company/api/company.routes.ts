@@ -5,6 +5,7 @@ import { fetchEastmoneyCompanyNotices, fetchEastmoneyCompanyOverview } from "../
 import { fetchCninfoCompanyNotices, supportsCninfoCompanyNotices } from "../../../adapters/cninfo";
 import { loadKline } from "../../market/application/load-kline";
 import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
+import { loadLatestFinancialValuation } from "../../finance/application/latest-financial-valuation";
 import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income-statements";
 import { getSecurity } from "../../security/application/search-securities";
 import { bareCode, inferSecurityType, normalizeSecurityCode, securityMarket } from "../../../shared/codes";
@@ -364,7 +365,7 @@ async function fetchCompanyOverview(c: Context<AppEnv>, code: string): Promise<C
       fetchEastmoneyCompanyOverview(c.env.DB, normalized),
       loadKline(c.env, normalized, "day", "normal", "1990-01-01", today()),
     ]);
-    return applyXueqiuKlineOverview(eastmoneyOverview, kline.rows);
+    return applyLatestFinancialValuation(c, normalized, applyXueqiuKlineOverview(eastmoneyOverview, kline.rows));
   } catch (err) {
     if (!isUnsupportedEastmoneyCompanyError(err)) {
       throw err;
@@ -386,7 +387,7 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
   const latestPrice = latest?.close ?? null;
   const previousPrice = previous?.close ?? null;
   const changeAmount = latestPrice !== null && previousPrice !== null ? latestPrice - previousPrice : null;
-  return {
+  return applyLatestFinancialValuation(c, normalized, {
     code: normalized,
     name: security?.name || normalized,
     market: securityMarket(normalized),
@@ -402,14 +403,44 @@ async function fetchGlobalCompanyOverview(c: Context<AppEnv>, code: string): Pro
     marketCapYi: latest?.marketCapital !== null && latest?.marketCapital !== undefined
       ? latest.marketCapital / 100_000_000
       : null,
-    peTtm: latest?.peTtm ?? null,
-    pb: latest?.pb ?? null,
-    psTtm: latest?.ps ?? null,
-    pcfTtm: latest?.pcf ?? null,
+    peTtm: null,
+    pb: null,
+    psTtm: null,
+    pcfTtm: null,
     companyProfile: null,
     source: latest?.source ?? "local",
     updatedAt: Date.now(),
-  };
+  });
+}
+
+async function applyLatestFinancialValuation(
+  c: Context<AppEnv>,
+  code: string,
+  overview: CompanyOverview,
+): Promise<CompanyOverview> {
+  try {
+    const valuation = await loadLatestFinancialValuation(
+      c.env,
+      code,
+      overview.marketCapYi === null ? null : overview.marketCapYi * 100_000_000,
+      { httpOptions: externalHttpOptions(c.env) },
+    );
+    return {
+      ...overview,
+      // Xueqiu is deliberately limited to price, market cap, and historical
+      // observations. Current multiples always come from disclosed financials.
+      peTtm: valuation.peTtm,
+      pb: valuation.pb,
+      psTtm: valuation.psTtm,
+      pcfTtm: valuation.pcfTtm,
+    };
+  } catch (error) {
+    console.warn("latest financial valuation unavailable", {
+      code,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { ...overview, peTtm: null, pb: null, psTtm: null, pcfTtm: null };
+  }
 }
 
 function applyXueqiuKlineOverview(
@@ -428,10 +459,10 @@ function applyXueqiuKlineOverview(
     changeAmount: latest.changeAmount,
     turnover: latest.turnover,
     marketCapYi: latest.marketCapital !== null ? latest.marketCapital / 100_000_000 : null,
-    peTtm: latest.peTtm,
-    pb: latest.pb,
-    psTtm: latest.ps,
-    pcfTtm: latest.pcf,
+    peTtm: null,
+    pb: null,
+    psTtm: null,
+    pcfTtm: null,
     source: "xueqiu",
     updatedAt: latest.updatedAt,
   };

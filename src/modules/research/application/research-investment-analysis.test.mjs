@@ -32,11 +32,19 @@ test("investment analysis requires the complete twelve-section report contract",
 
 test("investment analysis sends a readable research brief instead of a frozen JSON payload", () => {
   const prompt = buildResearchInvestmentAnalysisPrompt({
-    schemaVersion: "investment-analysis-input.v2",
-    promptVersion: "investment-analysis.taskd.v3",
+    schemaVersion: "investment-analysis-input.v3",
+    promptVersion: "investment-analysis.taskd.v8",
     preparedAt: "2026-08-11T02:21:37.011Z",
     security: { code: "300476.SZ", name: "胜宏科技", market: "CN", type: "stock", currency: "CNY" },
-    marketSnapshot: { asOf: "2026-08-11", source: "xueqiu", latestPrice: 277.839, marketCapYi: 2735.586, peTtm: 58.456, pb: 13.964, psTtm: 13.349473, pcfTtm: 43.456741 },
+    marketSnapshot: {
+      asOf: "2026-08-11", marketDataSource: "xueqiu", valuationSource: "financial-statements", latestPrice: 277.839, marketCapYi: 2735.586,
+      peTtm: 58.456, pb: 13.964, psTtm: 13.349473, pcfTtm: 43.456741,
+      valuationBasis: {
+        income: { source: "financial_report", reportDate: "2026-06-30", noticeDate: "2026-08-10" },
+        balance: { source: "financial_report", reportDate: "2026-06-30", noticeDate: "2026-08-10" },
+        cashflow: { source: "financial_report", reportDate: "2026-06-30", noticeDate: "2026-08-10" },
+      },
+    },
     businessBoundary: { status: "confirmed", note: null, products: [], customers: [], regions: [] },
     analysisFramework: { primaryFormula: "收入 = 出货量 × ASP", operatingMetrics: ["出货量"], valuationMethods: ["DCF"], stressFactors: ["价格竞争"] },
   });
@@ -48,6 +56,8 @@ test("investment analysis sends a readable research brief instead of a frozen JS
   assert.doesNotMatch(prompt, /不得调用任何文档、文件、下载、附件或代码执行工具/);
   assert.match(prompt, /## 研究对象/);
   assert.match(prompt, /公司：胜宏科技/);
+  assert.match(prompt, /行情源：xueqiu（仅价格、市值）/);
+  assert.match(prompt, /估值源：financial-statements/);
   assert.match(prompt, /最新价格：277\.84 CNY/);
   assert.match(prompt, /总市值：2735\.59 亿元/);
   assert.match(prompt, /PS（TTM）：13\.35/);
@@ -239,7 +249,7 @@ test("investment-analysis resume only sends same-name recover and marks the KV r
   }
 });
 
-test("investment-analysis recovery projects the verified original result after taskd succeeds", async () => {
+test("investment-analysis recovery preserves an old verified result without presenting its retired valuation contract", async () => {
   const db = new FakeD1();
   await storeFailedInvestmentTask(db);
   const previousFetch = globalThis.fetch;
@@ -257,10 +267,10 @@ test("investment-analysis recovery projects the verified original result after t
     const result = await resumeResearchInvestmentAnalysis({
       DB: db, LLM_RUNTIME: "local", TASKD_BASE_URL: "https://taskd.test", TASKD_NAMESPACE: "stock-info", STOCK_INFO_TASKD_CALLER_TOKEN: "test-token",
     }, "300308.SZ");
-    assert.equal(result.availability, "available");
+    assert.equal(result.availability, "empty");
     assert.equal(result.recovery.phase, "none");
-    assert.match(result.report.markdown, /^# 1\. /);
-    assert.equal((await readStoredResearchInvestmentAnalysis(db, "300308.SZ")).markdown, result.report.markdown);
+    assert.equal(result.report, null);
+    assert.match((await readStoredResearchInvestmentAnalysis(db, "300308.SZ")).markdown, /^# 1\. /);
   } finally {
     globalThis.fetch = previousFetch;
   }

@@ -10,6 +10,8 @@ export type ResearchGate = {
 };
 
 export type ResearchDecisionInput = {
+  /** Current PE/PB must be supplied by the financial-statement valuation boundary, never a K-line row. */
+  currentMultiples: { peTtm: number | null; pb: number | null };
   klineRows: Array<{ close: number | null; peTtm: number | null; pb: number | null }>;
   evidenceCount: number;
   confirmedEvidenceCount: number;
@@ -67,10 +69,13 @@ function drawdown(rows: ResearchDecisionInput["klineRows"], days: number): numbe
 export function buildResearchDecision(input: ResearchDecisionInput): ResearchDecision {
   const latest = input.klineRows.at(-1);
   const close = finite(latest?.close);
-  const peTtm = finite(latest?.peTtm);
-  const pb = finite(latest?.pb);
-  const pePercentile = percentile(peTtm, input.klineRows.map((item) => finite(item.peTtm)));
-  const pbPercentile = percentile(pb, input.klineRows.map((item) => finite(item.pb)));
+  const peTtm = finite(input.currentMultiples.peTtm);
+  const pb = finite(input.currentMultiples.pb);
+  // Historical Xueqiu observations are retained only as history. Exclude the
+  // final market row so it cannot become an implicit current PE/PB fallback.
+  const historicalRows = input.klineRows.slice(0, -1);
+  const pePercentile = percentile(peTtm, historicalRows.map((item) => finite(item.peTtm)));
+  const pbPercentile = percentile(pb, historicalRows.map((item) => finite(item.pb)));
   const return20d = recentReturn(input.klineRows, 20);
   const drawdown90d = drawdown(input.klineRows, 90);
 

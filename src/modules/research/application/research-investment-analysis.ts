@@ -6,6 +6,7 @@ import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client"
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
 import { loadKline } from "../../market/application/load-kline";
+import { loadLatestFinancialValuation, type FinancialValuationBasis } from "../../finance/application/latest-financial-valuation";
 import { getSecurity } from "../../security/application/search-securities";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import industryProfiles from "../../../../config/research-eastmoney-em2016-industry-profiles.json";
@@ -14,7 +15,7 @@ import companyProfiles from "../../../../config/eastmoney-company-em2016-profile
 const TASK_TYPE = "webqa.chatgpt.v1";
 const MODEL = "gpt-5.6-luna" as const;
 const DEFAULT_REASONING_EFFORT = "xhigh";
-const PROMPT_VERSION = "investment-analysis.taskd.v7";
+const PROMPT_VERSION = "investment-analysis.taskd.v8";
 const INVESTMENT_ANALYSIS_NAMESPACE = "research_investment_analysis";
 
 type Row = Record<string, unknown>;
@@ -25,19 +26,25 @@ type AnalysisFramework = {
   stressFactors: string[];
 };
 type InvestmentAnalysisInput = {
-  schemaVersion: "investment-analysis-input.v2";
+  schemaVersion: "investment-analysis-input.v3";
   promptVersion: string;
   preparedAt: string;
   security: { code: string; name: string; market: string; type: string; currency: string | null };
   marketSnapshot: {
     asOf: string;
-    source: "xueqiu";
+    marketDataSource: "xueqiu";
+    valuationSource: "financial-statements";
     latestPrice: number | null;
     marketCapYi: number | null;
     peTtm: number | null;
     pb: number | null;
     psTtm: number | null;
     pcfTtm: number | null;
+    valuationBasis: {
+      income: FinancialValuationBasis | null;
+      balance: FinancialValuationBasis | null;
+      cashflow: FinancialValuationBasis | null;
+    };
   };
   businessBoundary: { status: "confirmed" | "unknown"; note: string | null; products: string[]; customers: string[]; regions: string[] };
   analysisFramework: AnalysisFramework | null;
@@ -224,7 +231,7 @@ async function prepareResearchInvestmentAnalysis(env: AppEnv["Bindings"], securi
     Promise.resolve(localCompanyProfile(code)),
   ]);
   const input: InvestmentAnalysisInput = {
-    schemaVersion: "investment-analysis-input.v2",
+    schemaVersion: "investment-analysis-input.v3",
     promptVersion: PROMPT_VERSION,
     preparedAt: new Date().toISOString(),
     security: { code: security.code, name: security.name, market: security.market, type: security.type, currency: security.currency ?? null },
@@ -246,15 +253,18 @@ async function loadInvestmentAnalysisMarketSnapshot(env: AppEnv["Bindings"], cod
   const kline = await loadKline(env, code, "day", "normal", `${new Date().getUTCFullYear() - 1}-01-01`, today);
   const latest = kline.rows.filter((row): row is KlineBar => "close" in row).at(-1);
   if (!latest) throw new Error(`Xueqiu K-line is empty for investment analysis: ${code}`);
+  const valuation = await loadLatestFinancialValuation(env, code, latest.marketCapital, { availableAt: new Date() });
   return {
     asOf: latest.date,
-    source: "xueqiu",
+    marketDataSource: "xueqiu",
+    valuationSource: valuation.source,
     latestPrice: latest.close,
     marketCapYi: latest.marketCapital === null ? null : latest.marketCapital / 100_000_000,
-    peTtm: latest.peTtm,
-    pb: latest.pb,
-    psTtm: latest.ps,
-    pcfTtm: latest.pcf,
+    peTtm: valuation.peTtm,
+    pb: valuation.pb,
+    psTtm: valuation.psTtm,
+    pcfTtm: valuation.pcfTtm,
+    valuationBasis: valuation.basis,
   };
 }
 
@@ -283,13 +293,17 @@ function investmentAnalysisBrief(input: InvestmentAnalysisInput): string {
     "",
     "## 已确认的市场快照",
     `- 截至：${market.asOf}`,
-    `- 数据源：${market.source}`,
+    `- 行情源：${market.marketDataSource}（仅价格、市值）`,
+    `- 估值源：${market.valuationSource}（按最新已披露财报、快报、预告派生）`,
     `- 最新价格：${display(market.latestPrice, input.security.currency ?? undefined)}`,
     `- 总市值：${display(market.marketCapYi, "亿元")}`,
     `- PE（TTM）：${display(market.peTtm)}`,
     `- PB：${display(market.pb)}`,
     `- PS（TTM）：${display(market.psTtm)}`,
     `- PCF（TTM）：${display(market.pcfTtm)}`,
+    `- 利润/营收口径：${displayBasis(market.valuationBasis.income)}`,
+    `- 净资产口径：${displayBasis(market.valuationBasis.balance)}`,
+    `- 经营现金流口径：${displayBasis(market.valuationBasis.cashflow)}`,
     "",
     "## 研究框架（不是公司事实）",
     `- 量价成本主公式：${framework?.primaryFormula ?? "未提供"}`,
@@ -301,6 +315,10 @@ function investmentAnalysisBrief(input: InvestmentAnalysisInput): string {
 
 function display(value: number | null, unit = ""): string {
   return value === null ? "未提供" : `${Number(value.toFixed(2))}${unit ? ` ${unit}` : ""}`;
+}
+
+function displayBasis(value: FinancialValuationBasis | null): string {
+  return value ? `${value.source}；报告期 ${value.reportDate}；公告日 ${value.noticeDate ?? "未提供"}` : "未提供";
 }
 
 async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input: Record<string, unknown>, task: TaskdTask) {
@@ -394,13 +412,18 @@ function responseFromStoredResult(result: ResultRow) {
   const task = result.task;
   const recovery = result.recovery;
   const recoveryAvailable = task?.status === "failed" && recovery.phase === "none";
+  // Completed reports generated from the old Xueqiu-multiple input contract
+  // must not remain visible as current research. We never replay their
+  // provider turn; a user may explicitly generate a fresh report instead.
+  const staleValuationContract = Boolean(result.markdown) && text(object(parseJson(result.inputJson))?.schemaVersion) !== "investment-analysis-input.v3";
+  const markdown = staleValuationContract ? null : result.markdown;
   return {
-    availability: result.markdown ? "available" as const : task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
+    availability: staleValuationContract ? "empty" as const : markdown ? "available" as const : task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
     task,
     recovery,
-    input: parseJson(result.inputJson),
-    report: result.markdown ? {
-      markdown: result.markdown,
+    input: staleValuationContract ? null : parseJson(result.inputJson),
+    report: markdown ? {
+      markdown,
       citations: parseArray(result.citationsJson),
       sources: parseArray(result.sourcesJson),
       terminalMetadata: parseJson(result.terminalEvidenceJson),
@@ -408,7 +431,7 @@ function responseFromStoredResult(result: ResultRow) {
     } : null,
     resume: {
       available: recoveryAvailable,
-      reason: recoveryAvailable ? "recover_provider_turn" : recovery.phase === "manual_required" ? "manual_required" : result.markdown ? "already_projected" : "not_failed",
+      reason: recoveryAvailable ? "recover_provider_turn" : recovery.phase === "manual_required" ? "manual_required" : markdown ? "already_projected" : "not_failed",
     },
   };
 }

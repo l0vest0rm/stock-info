@@ -65,9 +65,6 @@ type KlineValuationObservation = {
   close?: unknown
   high?: unknown
   low?: unknown
-  peTtm?: unknown
-  pb?: unknown
-  marketCapital?: unknown
 }
 
 type CompanyValuation = {
@@ -413,14 +410,6 @@ function calculatePullbackSignal(latestPrice: number | null, rows: KlineValuatio
 
 function latestKlineObservation(rows: KlineValuationObservation[]): KlineValuationObservation | null {
   return [...rows].reverse().find((row) => numberOrNull(row.close) !== null && numberOrNull(row.close)! > 0) || null
-}
-
-function latestKlinePb(rows: KlineValuationObservation[]): number | null {
-  const observation = [...rows].reverse().find((row) => {
-    const pb = numberOrNull(row.pb)
-    return pb !== null && pb > 0
-  })
-  return observation ? numberOrNull(observation.pb) : null
 }
 
 function forecastProfitCagr(forecasts: Array<Record<string, unknown>>): number | null {
@@ -1225,7 +1214,7 @@ const InstitutionalTracksPage = defineComponent({
       const model = valuationModelFor(row)
       try {
         const [company, forecasts, incomeRows, balanceRows, reportDocs, newsDocs, klineRows, dividend] = await Promise.all([
-          fetchApi<{ marketCapYi?: unknown }>(`/api/company/info?code=${encodeURIComponent(row.code)}`),
+          fetchApi<{ marketCapYi?: unknown, pb?: unknown }>(`/api/company/info?code=${encodeURIComponent(row.code)}`),
           fetchApi<Array<Record<string, unknown>>>(`/api/report/forecast?code=${encodeURIComponent(row.code)}`),
           fetchApi<Array<Record<string, unknown>>>(`/api/finance/income?code=${encodeURIComponent(row.code)}`),
           fetchApi<Array<Record<string, unknown>>>(`/api/finance/balance?code=${encodeURIComponent(row.code)}`).catch(() => []),
@@ -1241,7 +1230,7 @@ const InstitutionalTracksPage = defineComponent({
         const latestNews = evidenceLinks(newsDocs)
         const financeDate = String(incomeRows[0]?.NOTICE_DATE || incomeRows[0]?.REPORT_DATE || '')
         const latestPrice = latestKlineObservation(klineRows) ? numberOrNull(latestKlineObservation(klineRows)!.close) : null
-        const latestPb = latestKlinePb(klineRows)
+        const latestPb = numberOrNull(company.pb)
         const pullbackSignal = calculatePullbackSignal(latestPrice, klineRows)
         performances.value = {
           ...performances.value,
