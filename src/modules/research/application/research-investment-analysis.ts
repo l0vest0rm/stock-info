@@ -17,6 +17,7 @@ const MODEL = "gpt-5.6-luna" as const;
 const DEFAULT_REASONING_EFFORT = "xhigh";
 const PROMPT_VERSION = "investment-analysis.taskd.v8";
 const INVESTMENT_ANALYSIS_NAMESPACE = "research_investment_analysis";
+const CURRENT_INPUT_SCHEMA_VERSION = "investment-analysis-input.v3";
 
 type Row = Record<string, unknown>;
 type AnalysisFramework = {
@@ -71,6 +72,11 @@ type StoredTaskValue = {
 type RecoveryState = {
   phase: "none" | "recovering" | "manual_required";
   reason: string | null;
+};
+type ReportVersion = {
+  status: "current" | "legacy" | "unknown";
+  inputSchemaVersion: string | null;
+  currentInputSchemaVersion: typeof CURRENT_INPUT_SCHEMA_VERSION;
 };
 type StoredResultValue = Omit<ResultRow, "securityCode">;
 
@@ -412,16 +418,16 @@ function responseFromStoredResult(result: ResultRow) {
   const task = result.task;
   const recovery = result.recovery;
   const recoveryAvailable = task?.status === "failed" && recovery.phase === "none";
-  // Completed reports generated from the old Xueqiu-multiple input contract
-  // must not remain visible as current research. We never replay their
-  // provider turn; a user may explicitly generate a fresh report instead.
-  const staleValuationContract = Boolean(result.markdown) && text(object(parseJson(result.inputJson))?.schemaVersion) !== "investment-analysis-input.v3";
-  const markdown = staleValuationContract ? null : result.markdown;
+  // An input-contract upgrade must not discard a completed, validated provider
+  // result. Keep the frozen report readable and make its contract age explicit
+  // so the user, rather than an implicit UI filter, decides whether to refresh.
+  const markdown = result.markdown;
+  const reportVersion = markdown ? reportVersionFromInput(result.inputJson) : null;
   return {
-    availability: staleValuationContract ? "empty" as const : markdown ? "available" as const : task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
+    availability: markdown ? "available" as const : task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
     task,
     recovery,
-    input: staleValuationContract ? null : parseJson(result.inputJson),
+    input: parseJson(result.inputJson),
     report: markdown ? {
       markdown,
       citations: parseArray(result.citationsJson),
@@ -429,10 +435,19 @@ function responseFromStoredResult(result: ResultRow) {
       terminalMetadata: parseJson(result.terminalEvidenceJson),
       projectedAt: result.projectedAt,
     } : null,
+    reportVersion,
     resume: {
       available: recoveryAvailable,
       reason: recoveryAvailable ? "recover_provider_turn" : recovery.phase === "manual_required" ? "manual_required" : markdown ? "already_projected" : "not_failed",
     },
+  };
+}
+function reportVersionFromInput(inputJson: string | null): ReportVersion {
+  const inputSchemaVersion = text(object(parseJson(inputJson))?.schemaVersion) || null;
+  return {
+    status: inputSchemaVersion === CURRENT_INPUT_SCHEMA_VERSION ? "current" : inputSchemaVersion ? "legacy" : "unknown",
+    inputSchemaVersion,
+    currentInputSchemaVersion: CURRENT_INPUT_SCHEMA_VERSION,
   };
 }
 async function persistTaskSnapshot(

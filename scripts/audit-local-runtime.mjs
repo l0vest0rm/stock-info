@@ -22,7 +22,6 @@ const scopes = [
   ["kline", "kline_bars"],
   ["knowledge documents", "knowledge_docs"],
   ["macro", "macro_series"],
-  ["situation", "situation_events"],
 ];
 
 if (!existsSync(localPath)) throw new Error(`LOCAL_DB_PATH does not exist: ${localPath}`);

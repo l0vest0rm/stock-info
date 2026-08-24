@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolve } from "node:path";
 
 import { produceResearchStatutoryOperatingEvidenceCandidates } from "./research-statutory-operating-candidates.ts";
+
+process.env.LOCAL_KNOWLEDGE_COMPANY_CODE_MAPPINGS_PATH = resolve("src/modules/research/application/company-code-mappings.fixture.json");
 
 const indexedDocument = {
   registry: "cninfo", documentId: "AN202601010001", documentUrl: "https://static.cninfo.com.cn/finalpage/2026-01-01/AN202601010001.PDF",
@@ -51,7 +54,7 @@ test("public statutory candidate producer requires exact indexed URL and retains
   assert.match(db.queries[1].sql, /join knowledge_docs doc on doc\.url=statutory\.document_url/);
   assert.match(db.queries[1].sql, /coalesce\(version\.source_url, doc\.url\)=statutory\.document_url/);
   assert.match(db.queries[1].sql, /result\.outcome='extracted'/);
-  assert.match(db.queries[1].sql, /mapping\.company_name=record\.entity and mapping\.code=statutory\.security_code/);
+  assert.doesNotMatch(db.queries[1].sql, /knowledge_company_code_mappings/);
   const allWrites = db.writes.map((write) => write.sql).join("\n");
   assert.match(allWrites, /research_information_evidence_candidates/);
   assert.match(allWrites, /research_statutory_operating_candidate_provenance/);

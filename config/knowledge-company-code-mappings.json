@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "mappings": [
+    {
+      "companyName": "阿里巴巴",
+      "code": "BABA.US",
+      "securityName": "阿里巴巴"
+    },
+    {
+      "companyName": "英伟达",
+      "code": "NVDA.US",
+      "securityName": "英伟达"
+    }
+  ]
+}

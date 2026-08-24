@@ -1,10 +1,6 @@
 export const pagesWithoutLegacyRuntime = new Set([
   'home',
   'macro',
-  'situation',
-  'situation-holdings',
-  'situation-opportunities',
-  'situation-evidence',
   'institutional-tracks',
 ])
 

@@ -22,6 +22,7 @@ import {
 } from "./generated/prompt-text.mjs";
 import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
 import { executeLocalD1Sql } from "./lib/local-d1-sqlite.mjs";
+import { runAutomaticInformationProcessing as runAutomaticInformationProcessingSteps } from "./lib/automatic-information-processing.mjs";
 import { shouldKeepOriginalReportPdf, topicFilterBypassDecision, topicFilterKeywordDecision } from "./lib/knowledge-topic-filter.mjs";
 import {
   downloadPdfBytes,
@@ -328,71 +329,21 @@ console.log(JSON.stringify({
     error: item.error || undefined,
   })),
 }, null, 2));
+if (informationProcessing.status === "incomplete") {
+  process.exitCode = 1;
+}
 
 async function runAutomaticInformationProcessing(cfg, remote) {
   const processing = object(cfg.informationProcessing);
-  if (!processing.enabled || remote) {
-    return { enabled: Boolean(processing.enabled), skipped: remote ? "remote_import" : "disabled", processed: 0 };
-  }
-  const server = text(process.env.INFORMATION_PROCESSING_SERVER || processing.server || "http://127.0.0.1:8000");
-  const concurrency = Math.max(1, Math.min(20, integer(
-    process.env.INFORMATION_PROCESSING_CONCURRENCY ?? processing.concurrency,
-    3,
-  )));
-  const maxDocuments = Math.max(0, Math.min(200, integer(
-    process.env.INFORMATION_PROCESSING_MAX_DOCUMENTS ?? processing.maxDocumentsPerRun,
-    concurrency,
-  )));
-  const maxAgeDays = Math.max(1, Math.min(365, integer(
-    process.env.INFORMATION_PROCESSING_MAX_AGE_DAYS ?? processing.maxAgeDays,
-    30,
-  )));
-  const autoTitleKeywords = array(processing.autoTitleKeywords).map(text).filter(Boolean).slice(0, 100);
-  if (maxDocuments === 0) {
-    return {
-      enabled: true,
-      concurrency,
-      maxDocuments,
-      maxAgeDays,
-      triggerSource: "automatic",
-      titleKeywords: autoTitleKeywords,
-      skipped: "max_documents_zero",
-      requested: 0,
-      processed: 0,
-      needsReview: 0,
-    };
-  }
-  const response = await fetch(`${server.replace(/\/$/, "")}/api/knowledge/processing-jobs`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      auto: true,
-      concurrency,
-      maxDocuments,
-      maxAgeDays,
-      triggerSource: "automatic",
-      titleKeywords: autoTitleKeywords,
-    }),
+  return runAutomaticInformationProcessingSteps({
+    enabled: Boolean(processing.enabled), remote,
+    server: process.env.INFORMATION_PROCESSING_SERVER || processing.server,
+    concurrency: process.env.INFORMATION_PROCESSING_CONCURRENCY ?? processing.concurrency,
+    maxDocuments: process.env.INFORMATION_PROCESSING_MAX_DOCUMENTS ?? processing.maxDocumentsPerRun,
+    maxAgeDays: process.env.INFORMATION_PROCESSING_MAX_AGE_DAYS ?? processing.maxAgeDays,
+    titleKeywords: processing.autoTitleKeywords,
+    requestTimeoutMs: process.env.INFORMATION_PROCESSING_REQUEST_TIMEOUT_MS ?? processing.requestTimeoutMs,
   });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload || payload.code !== 200) {
-    throw new Error(`automatic information processing failed: ${payload?.msg || response.status}`);
-  }
-  const results = array(payload.data?.results);
-  return {
-    enabled: true,
-    enqueued: Number(payload.data?.enqueued || 0),
-    autoEnqueued: Number(payload.data?.auto_enqueued || 0),
-    concurrency,
-    maxDocuments,
-    maxAgeDays,
-    triggerSource: "automatic",
-    titleKeywords: autoTitleKeywords,
-    skipped: "",
-    requested: maxDocuments,
-    processed: results.length,
-    needsReview: results.filter((item) => Boolean(item?.needsReview)).length,
-  };
 }
 
 function runKnowledgeStorageReport(cfg) {

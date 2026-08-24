@@ -1,4 +1,5 @@
 import mappingConfig from "../../../../config/research-information-evidence-mapping.json";
+import { filterExactCompanyCodeMappedRows } from "../../knowledge/application/company-code-mappings";
 import {
   assertEvidenceCandidateReview,
   reusableReferenceFromCandidate,
@@ -167,7 +168,6 @@ export async function refreshResearchInformationEvidenceCandidates(db: D1Databas
       coalesce(version.source_url, doc.url) as sourceUrl, content.content_url as contentUrl, doc.title,
       doc.source_name as sourceName, coalesce(version.published_at, doc.published_at) as publishedAt
     from knowledge_information_records record
-    join knowledge_company_code_mappings mapping on mapping.company_name=record.entity and mapping.code=?
     join knowledge_document_results result on result.result_id=record.result_id
     join knowledge_document_versions version on version.version_id=result.version_id
     join knowledge_docs doc on doc.doc_id=version.doc_id
@@ -178,11 +178,16 @@ export async function refreshResearchInformationEvidenceCandidates(db: D1Databas
     -- unrelated rejected record erase a valid direct disclosure. Failed and
     -- all other outcomes remain ineligible.
     where result.outcome in ('extracted', 'needs_review')
-    order by result.created_at desc, record.sort_order asc, record.information_id asc`).bind(code).all<Row>();
+    order by result.created_at desc, record.sort_order asc, record.information_id asc`).bind().all<Row>();
+  const mappedRecords = await filterExactCompanyCodeMappedRows(
+    db,
+    records.results.map((row) => ({ ...row, entity: text(row.entity) })),
+    code,
+  );
   const materialized = await materializeResearchInformationEvidenceCandidates(
     db,
     code,
-    records.results.map(sourceRecord),
+    mappedRecords.map(sourceRecord),
     createdAt,
   );
   return { created: materialized.created, existing: materialized.existing };

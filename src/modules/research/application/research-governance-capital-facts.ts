@@ -12,6 +12,7 @@ import {
   type ResearchGovernanceCapitalFactCandidateReview,
   type ResearchGovernanceCapitalFactVersion,
 } from "../domain/research-governance-capital-facts";
+import { filterExactCompanyCodeMappedRows } from "../../knowledge/application/company-code-mappings";
 
 type Row = Record<string, unknown>;
 export type GovernanceCapitalFactCandidateReviewWrite = {
@@ -43,15 +44,19 @@ export async function refreshResearchGovernanceCapitalFactCandidates(db: D1Datab
       coalesce(version.source_url, doc.url) as sourceUrl, content.content_url as contentUrl, doc.title,
       doc.source_name as sourceName, coalesce(version.published_at, doc.published_at) as publishedAt
     from knowledge_information_records record
-    join knowledge_company_code_mappings mapping on mapping.company_name=record.entity and mapping.code=?
     join knowledge_document_results result on result.result_id=record.result_id
     join knowledge_document_versions version on version.version_id=result.version_id
     join knowledge_docs doc on doc.doc_id=version.doc_id
     left join knowledge_doc_content_refs content on content.doc_id=doc.doc_id
     where result.outcome='extracted'
-    order by result.created_at desc, record.sort_order asc, record.information_id asc`).bind(code).all<Row>();
+    order by result.created_at desc, record.sort_order asc, record.information_id asc`).bind().all<Row>();
+  const mappedRecords = await filterExactCompanyCodeMappedRows<Row & { entity: string }>(
+    db,
+    records.results.map((row) => ({ ...row, entity: text(row.entity) })),
+    code,
+  );
   let created = 0; let existing = 0;
-  for (const row of records.results) {
+  for (const row of mappedRecords) {
     const mappings = governanceCapitalFactMappings().filter((mapping) => mapping.category === text(row.category) && mapping.informationTypes.includes(text(row.informationType)));
     for (const mapping of mappings) {
       const result = await db.prepare(`insert into research_governance_capital_fact_candidates (

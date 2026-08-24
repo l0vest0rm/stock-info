@@ -36,7 +36,10 @@ export LLM_RUNTIME="local"
 export TASKD_BASE_URL="${TASKD_BASE_URL:-https://task.m2ai.cc}"
 export TASKD_NAMESPACE="${TASKD_NAMESPACE:-stock-info}"
 export LLM_DAILY_LIMIT="${LLM_DAILY_LIMIT:-1000000}"
-export XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS="${XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS:-21600}"
+# Xueqiu can revoke a browser session before the previous six-hour cadence.
+# Refresh inside the observed three-hour usable window so the local runtime
+# does not serve a known-invalid session until the next scheduled run.
+export XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS="${XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS:-10800}"
 export XUEQIU_COOKIE_REFRESH_RETRY_SECONDS="${XUEQIU_COOKIE_REFRESH_RETRY_SECONDS:-300}"
 
 if [[ "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" != <-> || "$XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS" -lt 300 ]]; then

@@ -10,6 +10,8 @@ import {
   buildFinancialAnalysisSnapshot,
   assertFinancialAnalysisSnapshotCanRun,
   financialAnalysisPrompt,
+  FINANCIAL_ANALYSIS_CODE_VERSION,
+  FINANCIAL_ANALYSIS_PROTOCOL_VERSION,
   type FinancialAnalysisSnapshot,
 } from "../domain/financial-analysis";
 
@@ -22,6 +24,13 @@ type Row = Record<string, unknown>;
 type StoredTaskValue = { taskId: number | null; name: string; status: TaskdTask["status"]; errorMessage: string | null; createdAt: number; updatedAt: number; completedAt: number | null };
 type StoredResultValue = { snapshotJson: string | null; markdown: string | null; citationsJson: string; sourcesJson: string; terminalEvidenceJson: string | null; projectedAt: number | null; projectionError: string | null; task: StoredTaskValue | null };
 type ResultRow = StoredResultValue & { securityCode: string };
+type FinancialReportVersion = {
+  status: "current" | "legacy" | "unknown";
+  inputSchemaVersion: string | null;
+  codeVersion: string | null;
+  currentInputSchemaVersion: typeof FINANCIAL_ANALYSIS_PROTOCOL_VERSION;
+  currentCodeVersion: typeof FINANCIAL_ANALYSIS_CODE_VERSION;
+};
 
 /** One stable taskd task owns the current run. Its frozen input and result are
  * projected into one kv_cache record, never a financial-analysis result table. */
@@ -190,11 +199,27 @@ async function storeResult(db: D1Database, securityCode: string, value: StoredRe
 
 function responseFromStoredResult(result: ResultRow) {
   const snapshot = snapshotFromJson(result.snapshotJson);
+  const reportVersion = result.markdown ? financialReportVersion(snapshot) : null;
   return {
     availability: result.markdown ? "available" as const : result.projectionError || isTerminalTask(result.task) ? "failed" as const : result.task ? "pending" as const : "empty" as const,
     task: result.task, snapshot,
     report: result.markdown ? { markdown: result.markdown, citations: parseArray(result.citationsJson), sources: parseArray(result.sourcesJson), terminalMetadata: parseJson(result.terminalEvidenceJson), projectedAt: result.projectedAt } : null,
+    reportVersion,
     resume: { available: !result.markdown && Boolean(result.task), reason: result.markdown ? "already_projected" : result.projectionError ? "retry_projection_only" : isTerminalTask(result.task) ? "inspect_existing_task_only" : "observe_existing_task_only" },
+  };
+}
+
+function financialReportVersion(snapshot: FinancialAnalysisSnapshot | null): FinancialReportVersion {
+  const inputSchemaVersion = text(snapshot?.schemaVersion) || null;
+  const codeVersion = text(snapshot?.codeVersion) || null;
+  return {
+    status: inputSchemaVersion === FINANCIAL_ANALYSIS_PROTOCOL_VERSION && codeVersion === FINANCIAL_ANALYSIS_CODE_VERSION
+      ? "current"
+      : inputSchemaVersion || codeVersion ? "legacy" : "unknown",
+    inputSchemaVersion,
+    codeVersion,
+    currentInputSchemaVersion: FINANCIAL_ANALYSIS_PROTOCOL_VERSION,
+    currentCodeVersion: FINANCIAL_ANALYSIS_CODE_VERSION,
   };
 }
 

@@ -143,6 +143,44 @@ test("investment analysis persists and loads reports from kv_cache without the l
   });
 });
 
+test("investment analysis keeps a completed v2 report readable and marks its input contract as legacy", async () => {
+  const db = new FakeD1();
+  const input = {
+    schemaVersion: "investment-analysis-input.v2",
+    promptVersion: "investment-analysis.taskd.v7",
+    security: { code: "601869.SH" },
+  };
+  const markdown = "# 1. 已完成报告\n\n" + "这是已校验的历史投资研究内容。".repeat(120);
+  await writeStoredResearchInvestmentAnalysis(db, "601869.SH", {
+    inputJson: JSON.stringify(input),
+    markdown,
+    citationsJson: "[{\"id\":\"c1\"}]",
+    sourcesJson: "[{\"url\":\"https://example.com\"}]",
+    terminalEvidenceJson: "{\"schemaVersion\":\"webqa.completion-evidence.v1\",\"outcome\":\"succeeded\"}",
+    projectedAt: 1_234_567,
+    recovery: { phase: "none", reason: null },
+    task: {
+      name: "research:investment-analysis:601869.SH",
+      status: "succeeded",
+      errorMessage: null,
+      createdAt: 1_234_000,
+      updatedAt: 1_234_567,
+      completedAt: 1_234_567,
+    },
+  });
+
+  const result = await loadResearchInvestmentAnalysis({ DB: db, LLM_RUNTIME: "production" }, "601869.SH");
+
+  assert.equal(result.availability, "available");
+  assert.deepEqual(result.input, input);
+  assert.equal(result.report?.markdown, markdown);
+  assert.deepEqual(result.reportVersion, {
+    status: "legacy",
+    inputSchemaVersion: "investment-analysis-input.v2",
+    currentInputSchemaVersion: "investment-analysis-input.v3",
+  });
+});
+
 test("investment analysis loads a task-only kv_cache record so refresh state can short-circuit locally", async () => {
   const db = new FakeD1();
   await writeStoredResearchInvestmentAnalysis(db, "603986.SH", {
@@ -203,7 +241,7 @@ function taskdTask(status, checkpoint = null) {
 
 async function storeFailedInvestmentTask(db) {
   await writeStoredResearchInvestmentAnalysis(db, "300308.SZ", {
-    inputJson: "{\"security\":{\"code\":\"300308.SZ\"}}",
+    inputJson: "{\"schemaVersion\":\"investment-analysis-input.v2\",\"security\":{\"code\":\"300308.SZ\"}}",
     markdown: null,
     citationsJson: "[]",
     sourcesJson: "[]",
@@ -249,7 +287,7 @@ test("investment-analysis resume only sends same-name recover and marks the KV r
   }
 });
 
-test("investment-analysis recovery preserves an old verified result without presenting its retired valuation contract", async () => {
+test("investment-analysis recovery presents a verified legacy result without replaying it", async () => {
   const db = new FakeD1();
   await storeFailedInvestmentTask(db);
   const previousFetch = globalThis.fetch;
@@ -267,9 +305,14 @@ test("investment-analysis recovery preserves an old verified result without pres
     const result = await resumeResearchInvestmentAnalysis({
       DB: db, LLM_RUNTIME: "local", TASKD_BASE_URL: "https://taskd.test", TASKD_NAMESPACE: "stock-info", STOCK_INFO_TASKD_CALLER_TOKEN: "test-token",
     }, "300308.SZ");
-    assert.equal(result.availability, "empty");
+    assert.equal(result.availability, "available");
     assert.equal(result.recovery.phase, "none");
-    assert.equal(result.report, null);
+    assert.match(result.report?.markdown, /^# 1\. /);
+    assert.deepEqual(result.reportVersion, {
+      status: "legacy",
+      inputSchemaVersion: "investment-analysis-input.v2",
+      currentInputSchemaVersion: "investment-analysis-input.v3",
+    });
     assert.match((await readStoredResearchInvestmentAnalysis(db, "300308.SZ")).markdown, /^# 1\. /);
   } finally {
     globalThis.fetch = previousFetch;

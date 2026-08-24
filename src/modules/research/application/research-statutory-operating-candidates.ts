@@ -2,6 +2,7 @@ import {
   materializeResearchInformationEvidenceCandidates,
   type ResearchInformationEvidenceSourceRecord,
 } from "./research-information-evidence";
+import { filterExactCompanyCodeMappedRows } from "../../knowledge/application/company-code-mappings";
 
 type Row = Record<string, unknown>;
 
@@ -57,12 +58,15 @@ export async function produceResearchStatutoryOperatingEvidenceCandidates(
     join knowledge_document_versions version on version.doc_id=doc.doc_id and coalesce(version.source_url, doc.url)=statutory.document_url
     join knowledge_document_results result on result.version_id=version.version_id and result.outcome='extracted'
     join knowledge_information_records record on record.result_id=result.result_id
-    join knowledge_company_code_mappings mapping on mapping.company_name=record.entity and mapping.code=statutory.security_code
     left join knowledge_doc_content_refs content on content.doc_id=doc.doc_id
     where statutory.security_code=?
     order by result.created_at desc, record.sort_order asc, record.information_id asc`)
     .bind(code).all<Row>();
-  const sourceRecords = sourceRows.results.map(statutorilyBoundRecord);
+  const sourceRecords = (await filterExactCompanyCodeMappedRows(
+    db,
+    sourceRows.results.map((row) => ({ ...row, entity: required(row.entity, "stored entity") })),
+    code,
+  )).map(statutorilyBoundRecord);
   const materialized = await materializeResearchInformationEvidenceCandidates(
     db,
     code,

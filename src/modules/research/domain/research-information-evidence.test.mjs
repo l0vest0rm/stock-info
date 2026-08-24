@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolve } from "node:path";
 
 import {
   loadSourceEvidenceReference,
   refreshResearchInformationEvidenceCandidates,
   reviewResearchInformationEvidenceCandidate,
 } from "../application/research-information-evidence.ts";
+
+process.env.LOCAL_KNOWLEDGE_COMPANY_CODE_MAPPINGS_PATH = resolve("src/modules/research/application/company-code-mappings.fixture.json");
 
 const sourceRecord = {
   informationId: "information:shipment:1",
@@ -41,7 +44,7 @@ function refreshDb(records = [sourceRecord]) {
           if (sql.includes("from knowledge_information_records")) {
             sourceQueries.push(sql);
             queryCodes.push(values[0]);
-            return { all: async () => ({ results: values[0] === "300308.SZ" ? records : [] }) };
+            return { all: async () => ({ results: records }) };
           }
           if (sql.includes("insert into research_information_evidence_candidates")) {
             return {
@@ -129,13 +132,13 @@ function sourceEvidenceDb(row) {
   };
 }
 
-test("refresh uses the exact company-code mapping query and preserves the complete source chain", async () => {
+test("refresh uses the exact JSON company-code mapping and preserves the complete source chain", async () => {
   const db = refreshDb();
   const result = await refreshResearchInformationEvidenceCandidates(db, "300308.sz", 100);
 
   assert.deepEqual(result, { created: 1, existing: 0 });
-  assert.deepEqual(db.queryCodes, ["300308.SZ"]);
-  assert.match(db.sourceQueries[0], /mapping\.company_name=record\.entity and mapping\.code=\?/);
+  assert.deepEqual(db.queryCodes, [undefined]);
+  assert.doesNotMatch(db.sourceQueries[0], /knowledge_company_code_mappings/);
   assert.match(db.sourceQueries[0], /result\.outcome in \('extracted', 'needs_review'\)/);
   const values = db.inserted[0].values;
   assert.equal(values[1], "300308.SZ");
@@ -195,7 +198,7 @@ test("refresh is idempotent and never broadens a candidate to a different securi
   assert.deepEqual(await refreshResearchInformationEvidenceCandidates(db, "300308.SZ", 100), { created: 1, existing: 0 });
   assert.deepEqual(await refreshResearchInformationEvidenceCandidates(db, "300308.SZ", 101), { created: 0, existing: 1 });
   assert.deepEqual(await refreshResearchInformationEvidenceCandidates(db, "000001.SZ", 102), { created: 0, existing: 0 });
-  assert.deepEqual(db.queryCodes, ["300308.SZ", "300308.SZ", "000001.SZ"]);
+  assert.deepEqual(db.queryCodes, [undefined, undefined, undefined]);
 });
 
 test("acceptance appends a review and creates only a reusable research_record source reference", async () => {

@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { applyEdits, modify } from "jsonc-parser";
 import { createHash } from "node:crypto";
 import { cookieHeaderFromCdp, validateXueqiuKlineCookie } from "./lib/xueqiu-cookie.mjs";
@@ -16,6 +17,7 @@ const args = new Set(process.argv.slice(2));
 const writeDevVars = args.has("--write-dev-vars");
 const writeWranglerVars = args.has("--write-wrangler-vars");
 const writeLocalCredentialStore = args.has("--write-local-credential-store");
+const validateLocalCredentialStore = args.has("--validate-local-credential-store");
 const jsonOutput = args.has("--json");
 const cdpUrl = process.env.XUEQIU_CDP_URL?.trim() || "http://127.0.0.1:9222";
 
@@ -199,12 +201,57 @@ async function updateWranglerVars(cookie) {
 }
 
 async function updateLocalCredentialStore(cookie) {
-  const path = resolve(process.env.LOCAL_XUEQIU_CREDENTIAL_STORE || "data/local/runtime/xueqiu-credential.json");
+  const path = localCredentialStorePath();
   await mkdir(resolve(path, ".."), { recursive: true });
   const temporary = `${path}.tmp-${process.pid}`;
   await writeFile(temporary, `${JSON.stringify({ cookie, updatedAt: Date.now() })}\n`, { encoding: "utf8", mode: 0o600 });
   await rename(temporary, path);
   return path;
+}
+
+function localCredentialStorePath() {
+  return resolve(process.env.LOCAL_XUEQIU_CREDENTIAL_STORE || "data/local/runtime/xueqiu-credential.json");
+}
+
+/**
+ * Validate the persisted local Node credential without opening or connecting to
+ * Chrome. The returned value deliberately contains only the fingerprint, never
+ * the credential itself, so it is safe to use as CLI JSON output.
+ */
+export async function validateLocalXueqiuCredentialStore({
+  credentialStorePath = localCredentialStorePath(),
+  validateCookie = validateXueqiuKlineCookie,
+} = {}) {
+  let text;
+  try {
+    text = await readFile(credentialStorePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`local Xueqiu credential store does not exist: ${credentialStorePath}`);
+    }
+    throw error;
+  }
+
+  let stored;
+  try {
+    stored = JSON.parse(text);
+  } catch {
+    throw new Error(`local Xueqiu credential store contains invalid JSON: ${credentialStorePath}`);
+  }
+  const cookie = typeof stored?.cookie === "string" ? stored.cookie.trim() : "";
+  if (!cookie) {
+    throw new Error(`local Xueqiu credential store has no usable cookie: ${credentialStorePath}`);
+  }
+
+  const validation = await validateCookie(cookie);
+  return {
+    source: "local-credential-store",
+    cookieFingerprint: cookieFingerprint(cookie),
+    validation: { endpoint: "xueqiu-kline", rowCount: validation.rowCount },
+    writtenToDevVars: false,
+    writtenToWranglerVars: false,
+    localCredentialStore: credentialStorePath,
+  };
 }
 
 function sleep(ms) {
@@ -223,6 +270,20 @@ function waitForChildExit(child) {
 }
 
 async function main() {
+  if (validateLocalCredentialStore) {
+    if (writeDevVars || writeWranglerVars || writeLocalCredentialStore) {
+      throw new Error("--validate-local-credential-store cannot be combined with credential write options");
+    }
+    const result = await validateLocalXueqiuCredentialStore();
+    if (jsonOutput) {
+      process.stdout.write(`${JSON.stringify(result)}\n`);
+    } else {
+      process.stdout.write(
+        `Local Xueqiu credential store validated against K-line (rows=${result.validation.rowCount}, fingerprint=${result.cookieFingerprint}).\n`,
+      );
+    }
+    return;
+  }
   const session = await openCdpSession(cdpUrl);
   try {
     const cookie = await fetchXueqiuCookie(session.endpoint);
@@ -265,4 +326,6 @@ function cookieFingerprint(cookie) {
   return createHash("sha256").update(cookie).digest("hex").slice(0, 16);
 }
 
-await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
+}

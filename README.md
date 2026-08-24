@@ -123,6 +123,7 @@ npm run process:information:institutional -- --all --max-age-days 14
 - 把 `processedDir` 也作为额外输入目录重新扫描
 - 结果写入本地 Node SQLite，并把正文内容写入本地正文缓存，内容键统一为 `knowledge-content/*`
 - 更新本地同步状态文件 `knowledge-remote-sync.jsonl`
+- 导入后的自动信息抽取按“每篇一条 HTTP 请求”推进本地持久化游标；本轮最多处理 `maxDocumentsPerRun` 篇。单篇请求默认 240 秒，超时会在最终 JSON 中标记 `informationProcessing.status: "incomplete"` 并以非零退出，已完成的导入和游标步骤可在下次运行续跑
 - 本地导入直接对 `data/local/stock-info.sqlite` 执行分块事务；远端导入仍使用 `wrangler d1 execute --remote`
 - 增量判断使用排除抓取时间、来源文件名和 mtime 等易变字段后的内容指纹；同步账本会在导入完成后原子压缩，只保留每篇文档在各目标上的最新状态
 

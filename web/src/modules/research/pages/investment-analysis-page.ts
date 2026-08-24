@@ -9,7 +9,8 @@ type Task = { name?: string; status?: "queued" | "leased" | "running" | "interru
 type Recovery = { phase?: "none" | "recovering" | "manual_required"; reason?: string | null };
 type ReportEvidenceItem = { text?: string | null; title?: string | null; url?: string | null };
 type Report = { markdown?: string; citations?: ReportEvidenceItem[]; sources?: ReportEvidenceItem[]; terminalMetadata?: Json | null; projectedAt?: number };
-type InvestmentAnalysis = { availability?: "available" | "empty" | "pending" | "failed"; task?: Task | null; recovery?: Recovery | null; input?: Json | null; report?: Report | null; resume?: { available?: boolean; reason?: string } | null };
+type ReportVersion = { status?: "current" | "legacy" | "unknown"; inputSchemaVersion?: string | null; currentInputSchemaVersion?: string | null };
+type InvestmentAnalysis = { availability?: "available" | "empty" | "pending" | "failed"; task?: Task | null; recovery?: Recovery | null; input?: Json | null; report?: Report | null; reportVersion?: ReportVersion | null; resume?: { available?: boolean; reason?: string } | null };
 type CompanyOverview = { name?: string; latestPrice?: number | null; pctChange?: number | null; marketCapYi?: number | null };
 type KlineBar = { date?: string; close?: number | null };
 type IncomeStatement = { parentNetprofit?: number | null };
@@ -204,6 +205,7 @@ const App = defineComponent({
       const pending = isPending(task);
       const recovery = model.value?.recovery || null;
       const recovering = isRecovering(recovery);
+      const reportVersion = model.value?.reportVersion || null;
       const promptInput = model.value?.input ? JSON.stringify(model.value.input, null, 2) : "";
       return h("main", { class: "ia" }, [
         h("style", `${styles}${recoveryStyles}`),
@@ -221,6 +223,8 @@ const App = defineComponent({
               recovery?.phase === "recovering" ? h("div", { class: "ia-message", role: "status" }, recovery.reason || "正在找回已提交的 ChatGPT 结果（不会重发）。") : null,
               task?.status === "failed" && recovery?.phase !== "manual_required" ? h("div", { class: "ia-message error", role: "status" }, model.value?.resume?.available ? "检测到已提交任务；可只读找回原 ChatGPT 结果，不会重发提示词。" : task.errorMessage || "taskd 任务执行失败；可重新生成。") : null,
               pending && !recovering ? h("div", { class: "ia-message", role: "status" }, "任务已提交给 taskd；页面每 5 秒按业务 name 查询状态，报告完成并通过质量校验后显示。") : null,
+              reportVersion?.status === "legacy" ? h("div", { class: "ia-message", role: "status" }, `这份已完成报告使用 ${reportVersion.inputSchemaVersion || "旧版"} 输入；当前生成使用 ${reportVersion.currentInputSchemaVersion || "最新版"}。报告已保留供阅读，是否重新生成由你决定。`) : null,
+              reportVersion?.status === "unknown" ? h("div", { class: "ia-message", role: "status" }, "这份已完成报告未记录输入版本；报告已保留供阅读，是否重新生成由你决定。") : null,
               issues.length ? h("div", { class: "ia-message error", role: "alert" }, `已拒绝不符合报告契约的结果：${issues.join("；")}`) : null,
               promptInput ? h("details", { class: "ia-prompt" }, [h("summary", "查看工程冻结输入"), h("pre", promptInput)]) : null,
               markdown ? h("article", { class: "ia-markdown", innerHTML: renderMarkdownHtml(markdown) }) : !pending && !recovering && !error.value ? h("div", { class: "ia-message" }, `尚无 ${code} 的投资研究报告。点击“生成完整研究”后提交 ChatGPT 任务。`) : null,

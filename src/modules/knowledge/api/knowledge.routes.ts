@@ -15,10 +15,11 @@ import {
 import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
 import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income-statements";
 import { INFORMATION_PROCESSING_PROMPT_VERSION, processInformationDocument, type InformationProcessResult } from "../application/information-processing";
-import { listKnowledgeCompanyCodeMappings, refreshKnowledgeCompanyCodeMappings } from "../application/company-code-mappings";
+import { resolveKnowledgeCompanyCodeMappings, refreshKnowledgeCompanyCodeMappings } from "../application/company-code-mappings";
 import type { AppEnv } from '../../../types';
 
 export const knowledgeRoutes = new Hono<AppEnv>();
+const AUTOMATIC_INFORMATION_PROCESSING_MAX_DOCUMENTS_PER_REQUEST = 1;
 
 type KnowledgeDocRow = {
   doc_id: string;
@@ -365,7 +366,11 @@ knowledgeRoutes.post("/knowledge/processing-jobs", async (c) => {
   const titleKeywords = (Array.isArray(body.titleKeywords) ? body.titleKeywords : [])
     .map((keyword) => String(keyword || "").trim()).filter(Boolean).slice(0, 100);
   if (requestedIds.length === 0 && !body.auto) return fail(c, 400, "missing documentId");
-  const maxDocuments = Math.min(200, Math.max(1, Number(body.maxDocuments) || Number(body.concurrency) || 1));
+  // A local model response can take minutes. The cursor is persisted after
+  // each document, so one HTTP request owns one durable cursor step.
+  const maxDocuments = body.auto
+    ? AUTOMATIC_INFORMATION_PROCESSING_MAX_DOCUMENTS_PER_REQUEST
+    : Math.min(200, Math.max(1, Number(body.maxDocuments) || Number(body.concurrency) || 1));
   const maxAgeDays = Math.min(365, Math.max(1, Number(body.maxAgeDays) || 30));
   const explicitDocumentIds = [...new Set(requestedIds)];
   let automaticDocumentIds: string[] = [];
@@ -751,7 +756,7 @@ knowledgeRoutes.post("/knowledge/company-code-mappings/refresh", async (c) => {
   }
   const body = await c.req.json().catch(() => ({})) as { maxCompanies?: number };
   const maxCompanies = Math.min(500, Math.max(1, Number(body.maxCompanies) || 100));
-  return ok(c, await refreshKnowledgeCompanyCodeMappings(c.env, maxCompanies));
+  return ok(c, await refreshKnowledgeCompanyCodeMappings(c.env.DB, maxCompanies));
 });
 
 knowledgeRoutes.get("/knowledge/file", async (c) => {
@@ -1616,7 +1621,7 @@ async function enrichKnowledgeDocCompanyMappings(
   const companyNames = items.flatMap((item) => Array.isArray(item.information_entities)
     ? item.information_entities.map((name) => String(name || "").trim()).filter(Boolean)
     : []);
-  const mappings = await listKnowledgeCompanyCodeMappings(db, companyNames);
+  const mappings = await resolveKnowledgeCompanyCodeMappings(db, companyNames);
   const byCompany = new Map<string, Array<{ name: string; code: string }>>();
   for (const mapping of mappings) {
     const targets = byCompany.get(mapping.companyName) ?? [];

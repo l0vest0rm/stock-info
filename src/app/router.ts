@@ -13,7 +13,6 @@ import { klineRoutes } from "../modules/market/api/kline.routes";
 import { optionsRoutes } from "../modules/options/api/options.routes";
 import { securityRoutes } from "../modules/security/api/security.routes";
 import { researchRoutes } from "../modules/research/api/research.routes";
-import { situationRoutes } from "../modules/situation/api/situation.routes";
 import { thirteenFRoutes } from "../modules/thirteenf/api/thirteenf.routes";
 import { fail } from "../platform/http/response";
 import { ExternalConcurrencyTimeoutError, ExternalRequestTimeoutError } from "../shared/http";
@@ -42,7 +41,6 @@ export function createRouter(): Hono<AppEnv> {
   app.route("/api", knowledgeRoutes);
   app.route("/api", localDataRoutes);
   app.route("/api", macroRoutes);
-  app.route("/api", situationRoutes);
 
   // Do not let a retired scheduler URL fall through to the HTML SPA fallback:
   // callers must fail explicitly instead of mistaking a page for an API result.

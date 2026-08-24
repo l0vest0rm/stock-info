@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile, spawn } from "node:child_process";
-import { mkdir, readFile, readlink, rename, writeFile } from "node:fs/promises";
+import { mkdir, readlink, rename, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -21,7 +21,9 @@ const restartBackoffMs = positiveInteger(process.env.LOCAL_SUPERVISOR_RESTART_BA
 const gracefulTimeoutMs = positiveInteger(process.env.LOCAL_SUPERVISOR_GRACEFUL_TIMEOUT_MS, 30_000, "LOCAL_SUPERVISOR_GRACEFUL_TIMEOUT_MS");
 const previousStopTimeoutMs = positiveInteger(process.env.LOCAL_SUPERVISOR_PREVIOUS_STOP_TIMEOUT_MS, gracefulTimeoutMs + 5_000, "LOCAL_SUPERVISOR_PREVIOUS_STOP_TIMEOUT_MS");
 const stateFile = resolve(process.env.LOCAL_XUEQIU_REFRESH_STATE_FILE || "data/local/runtime/xueqiu-cookie-refresh.json");
-const cookieRefreshIntervalMs = positiveInteger(process.env.XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS, 21_600, "XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS") * 1_000;
+// Keep the direct-supervisor default aligned with start-local.sh. Xueqiu has
+// rejected otherwise successfully validated sessions before six hours elapsed.
+const cookieRefreshIntervalMs = positiveInteger(process.env.XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS, 10_800, "XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS") * 1_000;
 const cookieRefreshRetryMs = positiveInteger(process.env.XUEQIU_COOKIE_REFRESH_RETRY_SECONDS, 300, "XUEQIU_COOKIE_REFRESH_RETRY_SECONDS") * 1_000;
 
 let stopping = false;
@@ -52,6 +54,7 @@ function failure(role, event, error, details = {}) {
 async function main() {
   await stopPreviousLocalSupervisors();
   await assertPortsAvailable([httpPort, contentPort]);
+  const cookieReady = await ensureCookieAtStartup();
   const { startLocalCronScheduler } = await import(pathToFileURL(resolve(root, "data/local/runtime/cron.cjs")).href);
   const http = startCore("local-http", process.execPath, [resolve(root, "data/local/runtime/server.mjs")]);
   await waitForHealthy(`http://${host}:${httpPort}/api/health`, "local-http");
@@ -70,7 +73,7 @@ async function main() {
   if (process.env.KNOWLEDGE_INGEST_SCHEDULER === "0") log("local-scheduler", "knowledge_ingest_disabled", { reason: "environment" });
   installShutdown({ cron, ingest });
   scheduleHealthChecks();
-  scheduleCookieRefresh();
+  scheduleCookieRefreshAfter(cookieReady ? cookieRefreshIntervalMs : cookieRefreshRetryMs);
   log("local-supervisor", "ready", {
     http_url: `http://${host}:${httpPort}`,
     content_url: `http://${host}:${contentPort}`,
@@ -217,33 +220,32 @@ function runOneShot({ command, args, cwd, env }) {
   });
 }
 
-function scheduleCookieRefresh() {
-  void (async () => {
-    const dueIn = await cookieRefreshDueIn();
-    cookieTimer = setTimeout(async () => {
-      const succeeded = await refreshCookie();
-      if (!stopping) scheduleCookieRefreshAfter(succeeded ? cookieRefreshIntervalMs : cookieRefreshRetryMs);
-    }, dueIn);
-    cookieTimer.unref();
-    log("local-scheduler", "cookie_refresh_scheduled", { due_in_ms: dueIn });
-  })();
-}
-
 function scheduleCookieRefreshAfter(delay) {
   cookieTimer = setTimeout(async () => {
     const succeeded = await refreshCookie();
     if (!stopping) scheduleCookieRefreshAfter(succeeded ? cookieRefreshIntervalMs : cookieRefreshRetryMs);
   }, delay);
   cookieTimer.unref();
+  log("local-scheduler", "cookie_refresh_scheduled", { due_in_ms: delay });
 }
 
-async function cookieRefreshDueIn() {
+async function ensureCookieAtStartup() {
+  const startedAt = Date.now();
+  log("local-scheduler", "cookie_validation_started", {});
   try {
-    const state = JSON.parse(await readFile(stateFile, "utf8"));
-    const updatedAt = Number(state?.updated_at);
-    if (Number.isFinite(updatedAt) && updatedAt > 0) return Math.max(0, cookieRefreshIntervalMs - (Date.now() - updatedAt));
-  } catch { /* an absent state means refresh now */ }
-  return 0;
+    await runOneShot({
+      command: process.execPath,
+      args: [resolve(root, "scripts/refresh-xueqiu-cookie.mjs"), "--validate-local-credential-store", "--json"],
+      cwd: root,
+      env: process.env,
+    });
+    await recordCookieRefreshState();
+    log("local-scheduler", "cookie_validation_completed", { duration_ms: Date.now() - startedAt });
+    return true;
+  } catch (error) {
+    failure("local-scheduler", "cookie_validation_failed", error, { duration_ms: Date.now() - startedAt });
+    return refreshCookie();
+  }
 }
 
 async function refreshCookie() {
@@ -256,16 +258,20 @@ async function refreshCookie() {
       cwd: root,
       env: process.env,
     });
-    await mkdir(dirname(stateFile), { recursive: true });
-    const temporary = `${stateFile}.tmp-${process.pid}`;
-    await writeFile(temporary, `${JSON.stringify({ updated_at: Date.now() })}\n`, { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, stateFile);
+    await recordCookieRefreshState();
     log("local-scheduler", "cookie_refresh_completed", { duration_ms: Date.now() - startedAt, http_restarted: false });
     return true;
   } catch (error) {
     failure("local-scheduler", "cookie_refresh_failed", error, { duration_ms: Date.now() - startedAt });
     return false;
   }
+}
+
+async function recordCookieRefreshState() {
+  await mkdir(dirname(stateFile), { recursive: true });
+  const temporary = `${stateFile}.tmp-${process.pid}`;
+  await writeFile(temporary, `${JSON.stringify({ updated_at: Date.now() })}\n`, { encoding: "utf8", mode: 0o600 });
+  await rename(temporary, stateFile);
 }
 
 function installShutdown({ cron, ingest }) {

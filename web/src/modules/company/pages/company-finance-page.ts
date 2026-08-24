@@ -48,6 +48,7 @@ type FinanceTabKey = 'analysis' | 'core' | 'income' | 'balance' | 'cashflow'
 type FinancialAnalysisState = {
   availability: 'empty' | 'pending' | 'available' | 'failed'
   task: { taskId?: number; name?: string; status?: string; requestedReasoningEffort?: string | null; lastErrorMessage?: string | null; completedAt?: number | null; updatedAt?: number | null } | null
+  reportVersion?: { status?: 'current' | 'legacy' | 'unknown'; inputSchemaVersion?: string | null; codeVersion?: string | null; currentInputSchemaVersion?: string | null; currentCodeVersion?: string | null } | null
   snapshot: {
     asOf?: string | null
     dataQuality?: { status?: string; sourcePolicy?: string; statutoryVerification?: { status?: string; reason?: string } }
@@ -150,6 +151,7 @@ function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: 
   const snapshot = state?.snapshot
   const quality = snapshot?.dataQuality
   const flags = snapshot?.deterministicFlags || []
+  const reportVersion = state?.reportVersion
   const status = state?.availability === 'available' ? '已完成' : state?.availability === 'failed' ? '失败' : state?.availability === 'pending' ? '生成中' : '尚未生成'
   const reportGeneratedAt = formatFinancialAnalysisTimestamp(state?.task?.completedAt)
   const lastUpdatedAt = formatFinancialAnalysisTimestamp(state?.task?.updatedAt)
@@ -178,6 +180,8 @@ function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: 
       quality ? h('p', { class: 'small text-muted mb-2' }, `数据：${quality.status || 'unknown'}；${quality.sourcePolicy || '来源待载入'}；法定核验：${quality.statutoryVerification?.status || 'unknown'}。${quality.statutoryVerification?.reason || ''}`) : h('p', { class: 'small text-muted' }, '尚无冻结的财务分析输入。'),
       snapshot?.periodCoverage ? h('p', { class: 'small text-muted' }, `覆盖：年度 ${snapshot.periodCoverage.annual?.join('、') || '—'}；季度 ${snapshot.periodCoverage.quarterly?.join('、') || '—'}；TTM 截至 ${snapshot.periodCoverage.ttmEndDate || '—'}。`) : null,
       options.error ? h('p', { class: 'alert alert-danger py-2 small' }, options.error) : null,
+      reportVersion?.status === 'legacy' ? h('p', { class: 'alert alert-info py-2 small' }, `这份已完成报告使用 ${reportVersion.inputSchemaVersion || '旧版'} / ${reportVersion.codeVersion || '旧版'} 输入；当前生成使用 ${reportVersion.currentInputSchemaVersion || '最新版'} / ${reportVersion.currentCodeVersion || '最新版'}。报告已保留供阅读，是否重新生成由你决定。`) : null,
+      reportVersion?.status === 'unknown' ? h('p', { class: 'alert alert-info py-2 small' }, '这份已完成报告未记录输入版本；报告已保留供阅读，是否重新生成由你决定。') : null,
       flags.length ? h('div', { class: 'mb-3' }, [h('strong', { class: 'small' }, '工程触发的财务风险信号'), h('ul', { class: 'small mb-0 mt-1' }, flags.map((flag) => h('li', { key: flag.ruleId }, `[${flag.severity}] ${flag.title}（${flag.period}，${formatFinancialRiskFlagValue(flag)}）`)))]) : null,
       state?.report?.markdown ? h('article', { class: 'company-finance-analysis-markdown' }, renderFinancialAnalysisMarkdown(state.report.markdown)) : h('p', { class: 'text-muted mb-0' }, '报告生成后会在此展示；模型只解释工程冻结的三表指标、缺口和风险信号。'),
       state?.report?.citations?.length ? h('div', { class: 'mt-3 small' }, [h('strong', '引用：'), ...state.report.citations.map((citation, index) => citation.url ? h('a', { class: 'ms-2', key: `${citation.url}-${index}`, href: citation.url, target: '_blank', rel: 'noreferrer' }, citation.title || citation.url) : null)]) : null,

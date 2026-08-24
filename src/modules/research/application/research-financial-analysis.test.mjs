@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  loadResearchFinancialAnalysis,
   readStoredResearchFinancialAnalysis,
   researchFinancialAnalysisTaskName,
   resumeResearchFinancialAnalysis,
@@ -115,5 +116,38 @@ test("financial analysis persists frozen input, task state, and result in one kv
     projectedAt: 1_234_567,
     projectionError: null,
     task: { taskId: 73, name: "research:financial-analysis:300308.SZ", status: "succeeded", errorMessage: null, createdAt: 1_234_000, updatedAt: 1_234_567, completedAt: 1_234_567 },
+  });
+});
+
+test("financial analysis keeps a completed legacy-version report readable", async () => {
+  const db = new FakeD1();
+  const markdown = "# 1. 历史财务分析\n\n" + "可核验分析内容。".repeat(120);
+  const snapshot = {
+    securityCode: "300308.SZ",
+    schemaVersion: "financial-analysis-input.v0",
+    codeVersion: "financial-analysis-code.v6",
+  };
+  await writeStoredResearchFinancialAnalysis(db, "300308.SZ", {
+    snapshotJson: JSON.stringify(snapshot),
+    markdown,
+    citationsJson: "[]",
+    sourcesJson: "[]",
+    terminalEvidenceJson: "{\"schemaVersion\":\"webqa.completion-evidence.v1\",\"outcome\":\"succeeded\"}",
+    projectedAt: 1_234_567,
+    projectionError: null,
+    task: { taskId: 73, name: "research:financial-analysis:300308.SZ", status: "succeeded", errorMessage: null, createdAt: 1_234_000, updatedAt: 1_234_567, completedAt: 1_234_567 },
+  });
+
+  const result = await loadResearchFinancialAnalysis({ DB: db, LLM_RUNTIME: "production" }, "300308.SZ");
+
+  assert.equal(result.availability, "available");
+  assert.deepEqual(result.snapshot, snapshot);
+  assert.equal(result.report?.markdown, markdown);
+  assert.deepEqual(result.reportVersion, {
+    status: "legacy",
+    inputSchemaVersion: "financial-analysis-input.v0",
+    codeVersion: "financial-analysis-code.v6",
+    currentInputSchemaVersion: "financial-analysis-input.v1",
+    currentCodeVersion: "financial-analysis-code.v7",
   });
 });

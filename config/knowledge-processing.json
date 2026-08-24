@@ -32,7 +32,8 @@
     "enabled": true,
     "server": "http://127.0.0.1:8000",
     "concurrency": 3,
-    "maxDocumentsPerRun": 5000,
+    "maxDocumentsPerRun": 200,
+    "requestTimeoutMs": 240000,
     "maxAgeDays": 30,
     "autoTitleKeywords": [
       "公告", "业绩", "财报", "营收", "利润", "订单", "中标", "产能", "投产", "回购", "增持", "减持", "分红",

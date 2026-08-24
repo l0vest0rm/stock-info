@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "mappings": [
+    {
+      "companyName": "上海某公司",
+      "code": "300308.SZ",
+      "securityName": "测试证券"
+    },
+    {
+      "companyName": "建设银行",
+      "code": "300308.SZ",
+      "securityName": "测试证券"
+    }
+  ]
+}

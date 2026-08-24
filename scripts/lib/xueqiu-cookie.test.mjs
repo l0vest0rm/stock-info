@@ -5,6 +5,10 @@ import {
   createXueqiuKlineValidationRequest,
   validateXueqiuKlineCookie,
 } from "./xueqiu-cookie.mjs";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { validateLocalXueqiuCredentialStore } from "../refresh-xueqiu-cookie.mjs";
 
 test("keeps only usable Xueqiu CDP cookies", () => {
   assert.equal(
@@ -43,5 +47,40 @@ test("rejects a candidate cookie when Xueqiu returns its authentication error", 
       }), { status: 200 }),
     }),
     /Xueqiu cookie validation rejected/,
+  );
+});
+
+test("validates the persisted local credential through the K-line validator without returning its cookie", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stock-info-xueqiu-credential-test-"));
+  const credentialStorePath = join(directory, "xueqiu-credential.json");
+  const cookie = "xq_a_token=private-token";
+  await writeFile(credentialStorePath, `${JSON.stringify({ cookie, updatedAt: 1 })}\n`, "utf8");
+
+  let observedCookie;
+  const result = await validateLocalXueqiuCredentialStore({
+    credentialStorePath,
+    validateCookie: async (value) => {
+      observedCookie = value;
+      return { rowCount: 7 };
+    },
+  });
+
+  assert.equal(observedCookie, cookie);
+  assert.deepEqual(result.validation, { endpoint: "xueqiu-kline", rowCount: 7 });
+  assert.equal(result.source, "local-credential-store");
+  assert.equal(result.localCredentialStore, credentialStorePath);
+  assert.equal(JSON.stringify(result).includes(cookie), false);
+  assert.equal(result.writtenToDevVars, false);
+  assert.equal(result.writtenToWranglerVars, false);
+});
+
+test("rejects a local credential store that has no usable cookie before validation", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "stock-info-xueqiu-credential-test-"));
+  const credentialStorePath = join(directory, "xueqiu-credential.json");
+  await writeFile(credentialStorePath, "{}\n", "utf8");
+
+  await assert.rejects(
+    () => validateLocalXueqiuCredentialStore({ credentialStorePath }),
+    /local Xueqiu credential store has no usable cookie/,
   );
 });
