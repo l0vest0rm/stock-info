@@ -51,7 +51,10 @@ export class FredAdapter implements MacroSourceAdapter<FredRequest> {
       const value = finiteNumber(row.value);
       if (!observedAt || value === null) return [];
       return [{
-        seriesId: request.seriesId,
+        // Persistence joins observations to the source catalog by the
+        // provider's series identifier.  `request.seriesId` is only an
+        // internal caller label and must never leak into that join.
+        seriesId: sourceSeriesId,
         value,
         observedAt,
         releasedAt: text(row.realtime_start),
@@ -87,7 +90,7 @@ export class FredAdapter implements MacroSourceAdapter<FredRequest> {
       const observedAt = line.slice(0, separator).trim();
       const value = finiteNumber(line.slice(separator + 1));
       return /^\d{4}-\d{2}-\d{2}$/.test(observedAt) && value !== null ? [{
-        seriesId: request.seriesId,
+        seriesId: sourceSeriesId,
         value,
         observedAt,
         releasedAt: null,

@@ -1,319 +1,199 @@
-import seriesConfig from "../config/series.json";
 import {
   BlsPublicDataAdapter,
   FredAdapter,
-  HkmaOpenApiAdapter,
-  loadFredReleaseCalendar,
+  loadBlsReleaseCalendar,
   macroFetch,
   MacroSourceError,
-  NyFedSofrAdapter,
-  sourceHealthFromError,
-  unsupportedChinaSourceHealth,
   type MacroAdapterResult,
-  type MacroSourceHealth as AdapterSourceHealth,
 } from "../adapters";
-import type { MacroFrequency, MacroObservationVintage, MacroSeries, MacroSourceHealth } from "../domain/model";
-import { putKvCache } from "../../../db/queries";
+import {
+  resolveRegisteredMacroSourceMapping,
+  type RegisteredMacroSourceMapping,
+} from "../config/indicators";
+import type { MacroDataWrite, MacroIndicator } from "../domain/model";
 import { D1MacroRepository } from "./macro-repository";
 import type { Bindings } from "../../../types";
 
-type ConfiguredSeries = {
-  id: string;
-  name: string;
-  category: string;
-  region: string;
-  regions: string[];
-  frequency: MacroFrequency;
-  unit: string;
-  staleDays: number;
-  sourceId: string;
-  transmissions: MacroSeries["transmissions"];
-  interpretation: string;
-  enabled: boolean;
-  fredSeriesId?: string;
+const LEASE_SECONDS = 5 * 60;
+const FAILURE_BACKOFF_MAX_SECONDS = 24 * 60 * 60;
+const INITIAL_BACKFILL_YEARS = 10;
+
+export type MacroSyncStats = {
+  indicatorsDue: number;
+  indicatorsClaimed: number;
+  indicatorsRejectedSourceMapping: number;
+  sourceBatchesAttempted: number;
+  sourceBatchesSucceeded: number;
+  observationsWritten: number;
+  observationsRejectedWithoutPublishedAt: number;
 };
 
-type SyncStats = { sourcesAttempted: number; sourcesSucceeded: number; observationsWritten: number; seriesConfigured: number };
+type ClaimedIndicator = MacroIndicator & { leaseUntil: number; mapping: RegisteredMacroSourceMapping };
 
-const configuredSeries = seriesConfig as ConfiguredSeries[];
-const SYNC_STATE_NAMESPACE = "sync_state";
-const MACRO_SYNC_STATE_KEY = "macro-data";
+export type MacroSyncRepository = Pick<
+  D1MacroRepository,
+  "listDueIndicators" | "claimIndicator" | "scheduleNextFetch" | "putData" | "getLatestData"
+>;
 
-export async function syncMacroData(env: Bindings, scheduledTime = Date.now()): Promise<SyncStats> {
-  const repository = new D1MacroRepository(env.DB);
-  const upstreamFetch = macroFetch(env);
-  const startedAt = Date.now();
-  const stats: SyncStats = { sourcesAttempted: 0, sourcesSucceeded: 0, observationsWritten: 0, seriesConfigured: configuredSeries.length };
-  await writeSyncState(env.DB, "running", startedAt, null, stats, null);
-  try {
-    for (const definition of configuredSeries) await repository.upsertSeries(toDomainSeries(definition, scheduledTime));
-    const previousHealth = new Map((await repository.listSourceHealth()).map((item) => [item.sourceId, item]));
-    const tasks: Array<{ sourceId: string; displayName: string; run: () => Promise<MacroAdapterResult[]> }> = [
-      {
-        sourceId: "ny-fed",
-        displayName: "Federal Reserve Bank of New York",
-        run: async () => [await new NyFedSofrAdapter().load({ startDate: dateYearsAgo(5), endDate: isoDate(scheduledTime) })],
-      },
-      {
-        sourceId: "bls",
-        displayName: "U.S. BLS series (BLS API / FRED official mirror)",
-        run: async () => {
-          const definitions = configuredSeries.filter((item) => item.sourceId === "bls");
-          try {
-            return [await new BlsPublicDataAdapter(upstreamFetch).load({
-              series: definitions.map((item) => ({ id: item.id, name: item.name, unit: item.unit, frequency: item.frequency })),
-              startYear: new Date(scheduledTime).getUTCFullYear() - 9,
-              endYear: new Date(scheduledTime).getUTCFullYear(),
-              registrationKey: env.BLS_API_KEY,
-            })];
-          } catch (error) {
-            if (!(error instanceof MacroSourceError) || (error.code !== "timeout" && error.code !== "http_error")) throw error;
-            console.warn("BLS API unavailable; using the official FRED CSV mirror", error);
-            const adapter = new FredAdapter(undefined, upstreamFetch);
-            const results: MacroAdapterResult[] = [];
-            for (const item of definitions) results.push(await adapter.load({
-              seriesId: item.id, sourceSeriesId: item.fredSeriesId, name: item.name, frequency: item.frequency, unit: item.unit,
-              observationStart: dateYearsAgo(10), observationEnd: isoDate(scheduledTime),
-            }));
-            return results;
-          }
-        },
-      },
-      {
-        sourceId: "hkma",
-        displayName: "Hong Kong Monetary Authority",
-        run: async () => {
-          // Use the same allow-listed native fetch path as the other official
-          // sources. Local Node and the production Worker both fetch upstream
-          // directly; there is no local loopback relay.
-          const adapter = new HkmaOpenApiAdapter(upstreamFetch);
-          const settled = await Promise.allSettled([
-            adapter.load({
-              dataset: "market-data-and-statistics/monthly-statistical-bulletin/er-ir/er-eeri-daily",
-              fields: [
-                { field: "usd", id: "HKMA_USD_HKD", name: "USD/HKD reference rate", unit: "HKD/USD" },
-                { field: "neeri_2020_trade_wgt", id: "HKMA_NEERI", name: "HKD nominal effective exchange rate", unit: "index" },
-              ],
-            }),
-            adapter.load({
-              dataset: "market-data-and-statistics/monthly-statistical-bulletin/er-ir/hk-interbank-ir-daily",
-              fields: [
-                { field: "ir_overnight", id: "HKMA_HIBOR_ON", name: "Overnight HIBOR", unit: "%" },
-                { field: "ir_1m", id: "HKMA_HIBOR_1M", name: "1-month HIBOR", unit: "%" },
-                { field: "ir_3m", id: "HKMA_HIBOR_3M", name: "3-month HIBOR", unit: "%" },
-              ],
-            }),
-          ]);
-          const results = settled.flatMap((item) => item.status === "fulfilled" ? [item.value] : []);
-          const failures = settled.flatMap((item) => item.status === "rejected" ? [item.reason instanceof Error ? item.reason.message : String(item.reason)] : []);
-          if (results.length === 0) throw settled.find((item) => item.status === "rejected")?.reason;
-          if (failures.length === 0) return results;
-          // One HKMA endpoint must not discard usable observations from the
-          // other. Persist the successful component and surface a degraded
-          // source state with the failed component's reason.
-          return results.map((result, index) => index === 0 ? {
-            ...result,
-            health: { ...result.health, state: "degraded", message: failures.join("; ") },
-          } : result);
-        },
-      },
-    ];
+export type MacroSyncDependencies = {
+  repository?: MacroSyncRepository;
+};
 
-    tasks.push({
-      sourceId: "fred",
-      displayName: "Federal Reserve Bank of St. Louis (FRED)",
-      run: async () => {
-        const adapter = new FredAdapter(env.FRED_API_KEY, upstreamFetch);
-        const definitions = configuredSeries.filter((item) => item.sourceId === "fred");
-        const results: MacroAdapterResult[] = [];
-        for (const item of definitions) {
-          results.push(await adapter.load({
-            seriesId: item.id,
-            name: item.name,
-            frequency: item.frequency,
-            unit: item.unit,
-            observationStart: dateYearsAgo(10),
-            observationEnd: isoDate(scheduledTime),
-          }));
-        }
-        return results;
-      },
-    });
-    try {
-      const calendar = await loadFredReleaseCalendar(env.FRED_API_KEY, isoDate(scheduledTime), isoDate(scheduledTime + 30 * 86_400_000), upstreamFetch);
-      for (const event of calendar) await repository.upsertEvent({
-          eventId: `fred:${event.releaseId}:${event.date}`,
-          scheduledAt: Date.parse(`${event.date}T00:00:00Z`),
-          region: "us",
-          importance: releaseImportance(event.name),
-          title: event.name,
-          seriesId: null,
-          actual: null,
-          consensus: null,
-          previous: null,
-          unit: null,
-          status: "scheduled",
-          sourceId: "fred-calendar",
-          sourceUrl: event.sourceUrl,
-          metadata: { timePrecision: "date_only" },
-          updatedAt: scheduledTime,
-      });
-    } catch (err) {
-      console.warn("FRED release calendar sync failed", err);
-    }
+/** Fetches only concrete source mappings already registered in the directory. */
+export async function syncMacroData(env: Bindings, scheduledTime = Date.now(), dependencies: MacroSyncDependencies = {}): Promise<MacroSyncStats> {
+  const now = toSeconds(scheduledTime);
+  const repository = dependencies.repository ?? new D1MacroRepository(env.DB);
 
-    for (const task of tasks) {
-      stats.sourcesAttempted += 1;
-      const attemptedAt = Date.now();
-      try {
-        const results = await task.run();
-        let written = 0;
-        for (const result of results) written += await persistAdapterResult(repository, result, scheduledTime);
-        stats.sourcesSucceeded += 1;
-        stats.observationsWritten += written;
-        const degraded = results.find((item) => item.health.state === "degraded");
-        await repository.putSourceHealth(successHealth(task.sourceId, task.displayName, attemptedAt, Date.now(), written, degraded ? "degraded" : "healthy", degraded?.health.message ?? null));
-      } catch (err) {
-        const mapped = err instanceof MacroSourceError ? sourceHealthFromError(err) : null;
-        const previous = previousHealth.get(task.sourceId);
-        await repository.putSourceHealth(failedHealth(task.sourceId, task.displayName, err, mapped, previous, attemptedAt));
-      }
-    }
-
-    for (const health of unsupportedChinaSourceHealth(new Date(scheduledTime).toISOString())) {
-      await repository.putSourceHealth(adapterHealthToDomain(health, health.sourceId, scheduledTime));
-    }
-    for (const [sourceId, name, message] of [
-      ["bok-ecos", "Bank of Korea ECOS", env.BOK_ECOS_API_KEY ? "ECOS series mapping requires verification before ingestion" : "BOK_ECOS_API_KEY is not configured"],
-      ["kosis", "KOSIS", env.KOSIS_API_KEY ? "KOSIS table mapping requires verification before ingestion" : "KOSIS_API_KEY is not configured"],
-      ["motie", "Korea MOTIE", "A stable official structured export contract has not been verified"],
-    ] as const) await repository.putSourceHealth(disabledHealth(sourceId, name, message, scheduledTime));
-
-    await writeSyncState(env.DB, "succeeded", startedAt, Date.now(), stats, null);
-    return stats;
-  } catch (err) {
-    await writeSyncState(env.DB, "failed", startedAt, Date.now(), stats, err instanceof Error ? err.message : String(err));
-    throw err;
-  }
-}
-
-async function persistAdapterResult(repository: D1MacroRepository, result: MacroAdapterResult, syncTime: number): Promise<number> {
-  let written = 0;
-  for (const series of result.series) {
-    const definition = configuredSeries.find((item) => item.id === series.id);
-    if (!definition) continue;
-    const observations = result.observations.filter((item) => item.seriesId === series.id);
-    if (observations.length === 0) continue;
-    const dates = observations.map((item) => normalizeObservationDate(item.observedAt)).filter((item): item is string => Boolean(item));
-    const existing = dates.length === 0 ? [] : await repository.getObservationSeries(series.id, { from: dates.sort()[0], to: dates.sort().at(-1) });
-    const latest = new Map(existing.map((item) => [item.observationDate, item]));
-    const pending: MacroObservationVintage[] = [];
-    for (const observation of observations) {
-      const observationDate = normalizeObservationDate(observation.observedAt);
-      if (!observationDate) continue;
-      const previous = latest.get(observationDate);
-      if (previous?.value === observation.value) continue;
-      const releasedAt = parseTimestamp(observation.releasedAt) ?? syncTime;
-      const vintageAt = previous ? syncTime : Math.max(releasedAt, syncTime);
-      const item: MacroObservationVintage = {
-        seriesId: series.id,
-        observationDate,
-        releasedAt,
-        vintageAt,
-        revisionNumber: previous ? previous.revisionNumber + 1 : 0,
-        value: observation.value,
-        consensus: null,
-        previousValue: previous?.value ?? null,
-        isPreliminary: false,
-        qualityStatus: "valid",
-        sourceUrl: observation.sourceUrl,
-        rawR2Key: null,
-        observedAt: syncTime,
-      };
-      pending.push(item);
-      latest.set(observationDate, item);
-    }
-    await repository.putObservationVintages(pending);
-    written += pending.length;
-  }
-  return written;
-}
-
-function toDomainSeries(item: ConfiguredSeries, now: number): MacroSeries {
-  return {
-    seriesId: item.id,
-    name: item.name,
-    category: item.category,
-    region: item.region,
-    frequency: item.frequency,
-    unit: item.unit,
-    sourceId: item.sourceId,
-    transmissions: item.transmissions,
-    regions: item.regions,
-    licenseClass: "official",
-    staleAfterSeconds: item.staleDays * 86_400,
-    enabled: item.enabled,
-    metadata: { interpretation: item.interpretation },
-    updatedAt: now,
+  const stats: MacroSyncStats = {
+    indicatorsDue: 0, indicatorsClaimed: 0, indicatorsRejectedSourceMapping: 0,
+    sourceBatchesAttempted: 0, sourceBatchesSucceeded: 0,
+    observationsWritten: 0, observationsRejectedWithoutPublishedAt: 0,
   };
+  const due = await repository.listDueIndicators(now);
+  stats.indicatorsDue = due.length;
+  const claimed: ClaimedIndicator[] = [];
+  for (const indicator of due) {
+    const leaseUntil = now + LEASE_SECONDS;
+    if (!await repository.claimIndicator(indicator.id, now, leaseUntil)) continue;
+    try {
+      const mapping = resolveRegisteredMacroSourceMapping(indicator);
+      claimed.push({ ...indicator, leaseUntil, mapping });
+    } catch (error) {
+      stats.indicatorsRejectedSourceMapping += 1;
+      await repository.scheduleNextFetch({
+        indicatorId: indicator.id,
+        leaseUntil,
+        nextFetchAt: now + failureBackoffSeconds(indicator.consecutiveFailures),
+        completedAt: now,
+        success: false,
+        lastError: errorMessage(error),
+      });
+    }
+  }
+  stats.indicatorsClaimed = claimed.length;
+
+  const bySource = groupBySource(claimed);
+  for (const indicators of bySource.values()) {
+    if (indicators.length === 0) continue;
+    stats.sourceBatchesAttempted += 1;
+    try {
+      const outcome = await syncSourceBatch(indicators[0].mapping.sourceId, indicators, repository, env, now);
+      stats.sourceBatchesSucceeded += 1;
+      stats.observationsWritten += outcome.observationsWritten;
+      stats.observationsRejectedWithoutPublishedAt += outcome.rejectedWithoutPublishedAt;
+      await Promise.all(indicators.map((indicator) => repository.scheduleNextFetch({
+        indicatorId: indicator.id, leaseUntil: indicator.leaseUntil,
+        nextFetchAt: now + indicator.refreshIntervalSeconds, completedAt: now, success: true,
+      })));
+    } catch (error) {
+      const message = errorMessage(error);
+      await Promise.all(indicators.map((indicator) => repository.scheduleNextFetch({
+        indicatorId: indicator.id, leaseUntil: indicator.leaseUntil,
+        nextFetchAt: now + failureBackoffSeconds(indicator.consecutiveFailures), completedAt: now,
+        success: false, lastError: message,
+      })));
+    }
+  }
+  return stats;
 }
 
-function successHealth(sourceId: string, displayName: string, startedAt: number, finishedAt: number, observations: number, state: "healthy" | "degraded" = "healthy", message: string | null = null): MacroSourceHealth {
-  return { sourceId, displayName, state, lastAttemptAt: startedAt, lastSuccessAt: finishedAt, consecutiveFailures: 0, lastError: message, nextRetryAt: null, latencyMs: finishedAt - startedAt, metadata: { observations }, updatedAt: finishedAt };
+async function syncSourceBatch(
+  sourceId: RegisteredMacroSourceMapping["sourceId"],
+  indicators: readonly ClaimedIndicator[],
+  repository: MacroSyncRepository,
+  env: Bindings,
+  now: number,
+): Promise<{ observationsWritten: number; rejectedWithoutPublishedAt: number }> {
+  const fetcher = macroFetch(env);
+  if (sourceId === "fred") {
+    // FRED public CSV has no release/vintage timestamp. Do not fabricate it
+    // from the scheduler's fetch time.
+    if (!env.FRED_API_KEY?.trim()) throw new MacroSourceError("fred", "missing_credential", "FRED_API_KEY is required for trustworthy realtime_start timestamps", false);
+    const adapter = new FredAdapter(env.FRED_API_KEY, fetcher);
+    const results = await Promise.all(indicators.map(async (indicator) => adapter.load({
+      seriesId: String(indicator.id), sourceSeriesId: indicator.mapping.sourceSeriesId,
+      name: indicator.name, frequency: indicator.frequency, unit: indicator.unit,
+      observationStart: await observationStart(repository, indicator, now), observationEnd: isoDate(now),
+    })));
+    return persistResults(results, indicators, repository, (indicator, observation) =>
+      indicator.mapping.publicationTimestampStrategy === "fred_realtime_start" ? timestampFromSource(observation.releasedAt) : null,
+    );
+  }
+  if (sourceId === "bls") {
+    // BLS supplies a current snapshot but no per-row timestamp.  A value is
+    // eligible only when its registered release family has an official,
+    // already-published calendar record. That date is the conservative
+    // known-at boundary for this fetched snapshot, never an invented historic
+    // publication date. `observationStart` bounds an initial load and every
+    // later refresh to the directory-owned revisionLookbackPeriods window.
+    const releaseCalendar = await loadBlsReleaseCalendar(fetcher, now);
+    const earliest = Math.min(...await Promise.all(indicators.map((indicator) => observationStartYear(repository, indicator, now))));
+    const result = await new BlsPublicDataAdapter(fetcher).load({
+      series: indicators.map((indicator) => ({ id: indicator.mapping.sourceSeriesId, name: indicator.name, unit: indicator.unit, frequency: indicator.frequency })),
+      startYear: earliest, endYear: new Date(now * 1000).getUTCFullYear(), registrationKey: env.BLS_API_KEY,
+    });
+    return persistResults(
+      [result], indicators, repository,
+      (indicator) => {
+        return indicator.mapping.publicationTimestampStrategy === "bls_release_calendar" && indicator.mapping.blsReleaseFamily
+          ? releaseCalendar.get(indicator.mapping.blsReleaseFamily) ?? null : null;
+      },
+    );
+  }
+  throw new Error(`unsupported scheduled macro source: ${sourceId}`);
 }
 
-function failedHealth(sourceId: string, displayName: string, err: unknown, mapped: AdapterSourceHealth | null, previous: MacroSourceHealth | undefined, attemptedAt: number): MacroSourceHealth {
-  const now = Date.now();
-  return { sourceId, displayName, state: "failed", lastAttemptAt: attemptedAt, lastSuccessAt: previous?.lastSuccessAt ?? null, consecutiveFailures: (previous?.consecutiveFailures ?? 0) + 1, lastError: mapped?.message ?? (err instanceof Error ? err.message : String(err)), nextRetryAt: now + 60 * 60 * 1000, latencyMs: now - attemptedAt, metadata: {}, updatedAt: now };
+async function persistResults(
+  results: readonly MacroAdapterResult[],
+  indicators: readonly ClaimedIndicator[],
+  repository: MacroSyncRepository,
+  publishedAt: (indicator: ClaimedIndicator, observation: MacroAdapterResult["observations"][number]) => number | null,
+): Promise<{ observationsWritten: number; rejectedWithoutPublishedAt: number }> {
+  const bySourceSeries = new Map(indicators.map((indicator) => [indicator.mapping.sourceSeriesId, indicator]));
+  const observations = results.flatMap((result) => result.observations);
+  const pending: MacroDataWrite[] = [];
+  let rejectedWithoutPublishedAt = 0;
+  for (const observation of observations) {
+    const indicator = bySourceSeries.get(observation.seriesId);
+    if (!indicator) continue;
+    const releasedAt = publishedAt(indicator, observation);
+    if (releasedAt === null) { rejectedWithoutPublishedAt += 1; continue; }
+    pending.push({ indicatorId: indicator.id, period: observation.observedAt, frequency: indicator.frequency, publishedAt: releasedAt, value: observation.value });
+  }
+  await repository.putData(pending);
+  return { observationsWritten: pending.length, rejectedWithoutPublishedAt };
 }
 
-function disabledHealth(sourceId: string, displayName: string, message: string, now: number): MacroSourceHealth {
-  return { sourceId, displayName, state: "disabled", lastAttemptAt: null, lastSuccessAt: null, consecutiveFailures: 0, lastError: message, nextRetryAt: null, latencyMs: null, metadata: {}, updatedAt: now };
+async function observationStart(repository: MacroSyncRepository, indicator: MacroIndicator, now: number): Promise<string> {
+  const latest = await repository.getLatestData(indicator.id);
+  return latest ? dateBeforePeriod(latest.periodDay, indicator.frequency, indicator.revisionLookbackPeriods) : dateYearsAgo(now, INITIAL_BACKFILL_YEARS);
 }
+async function observationStartYear(repository: MacroSyncRepository, indicator: MacroIndicator, now: number): Promise<number> { return Number((await observationStart(repository, indicator, now)).slice(0, 4)); }
 
-function adapterHealthToDomain(health: AdapterSourceHealth, displayName: string, now: number): MacroSourceHealth {
-  return { sourceId: health.sourceId, displayName, state: health.state === "healthy" ? "healthy" : health.state === "degraded" ? "degraded" : "disabled", lastAttemptAt: now, lastSuccessAt: null, consecutiveFailures: 0, lastError: health.message, nextRetryAt: null, latencyMs: null, metadata: {}, updatedAt: now };
+function groupBySource(indicators: readonly ClaimedIndicator[]): Map<string, ClaimedIndicator[]> {
+  const groups = new Map<string, ClaimedIndicator[]>();
+  for (const indicator of indicators) {
+    const key = `${indicator.mapping.sourceId}:${indicator.mapping.sourceBatchKey}`;
+    const group = groups.get(key);
+    if (group) group.push(indicator);
+    else groups.set(key, [indicator]);
+  }
+  return groups;
 }
-
-function normalizeObservationDate(value: string): string | null {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  if (/^\d{4}-\d{2}$/.test(value)) return `${value}-01`;
-  const quarter = /^(\d{4})-Q([1-4])$/.exec(value);
-  if (quarter) return `${quarter[1]}-${String(Number(quarter[2]) * 3).padStart(2, "0")}-01`;
-  if (/^\d{4}$/.test(value)) return `${value}-01-01`;
-  return null;
+function timestampFromSource(value: string | null): number | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const timestamp = Date.parse(`${value}T12:00:00.000Z`);
+  return Number.isFinite(timestamp) ? Math.floor(timestamp / 1000) : null;
 }
-
-function parseTimestamp(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function dateYearsAgo(years: number): string {
-  const date = new Date();
-  date.setUTCFullYear(date.getUTCFullYear() - years);
+function dateBeforePeriod(periodDay: number, frequency: MacroIndicator["frequency"], count: number): string {
+  const date = new Date(Date.UTC(Math.floor(periodDay / 10_000), Math.floor(periodDay / 100) % 100 - 1, periodDay % 100));
+  const months = frequency === "annual" ? count * 12 : frequency === "quarterly" ? count * 3 : frequency === "monthly" ? count : 0;
+  if (months) date.setUTCMonth(date.getUTCMonth() - months);
+  else date.setUTCDate(date.getUTCDate() - (frequency === "weekly" ? count * 7 : count));
   return date.toISOString().slice(0, 10);
 }
-
-function isoDate(timestamp: number): string { return new Date(timestamp).toISOString().slice(0, 10); }
-function releaseImportance(name: string): "medium" | "high" | "unclassified" {
-  return /(Consumer Price|Employment Situation|Gross Domestic Product|FOMC|Personal Income)/i.test(name) ? "high" : /(Producer Price|Industrial Production|Retail Sales|Job Openings)/i.test(name) ? "medium" : "unclassified";
-}
-
-async function writeSyncState(
-  db: D1Database,
-  status: "running" | "succeeded" | "failed",
-  startedAt: number,
-  finishedAt: number | null,
-  stats: SyncStats,
-  error: string | null
-): Promise<void> {
-  await putKvCache(db, {
-    namespace: SYNC_STATE_NAMESPACE,
-    key: MACRO_SYNC_STATE_KEY,
-    valueJson: JSON.stringify({ status, startedAt, finishedAt, error, stats }),
-    expiresAt: null,
-    updatedAt: finishedAt ?? startedAt,
-  });
-}
+function dateYearsAgo(now: number, years: number): string { const date = new Date(now * 1000); date.setUTCFullYear(date.getUTCFullYear() - years); return date.toISOString().slice(0, 10); }
+function isoDate(now: number): string { return new Date(now * 1000).toISOString().slice(0, 10); }
+function toSeconds(value: number): number { return Math.floor(value >= 100_000_000_000 ? value / 1000 : value); }
+function failureBackoffSeconds(consecutiveFailures: number): number { return Math.min(60 * 60 * 2 ** Math.min(consecutiveFailures, 5), FAILURE_BACKOFF_MAX_SECONDS); }
+function errorMessage(error: unknown): string { return (error instanceof Error ? error.message : String(error)).slice(0, 1_000); }

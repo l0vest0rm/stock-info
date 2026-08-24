@@ -31,8 +31,6 @@ export type Bindings = {
   XUEQIU_COOKIE?: string;
   FRED_API_KEY?: string;
   BLS_API_KEY?: string;
-  BOK_ECOS_API_KEY?: string;
-  KOSIS_API_KEY?: string;
 };
 
 export type AppEnv = {

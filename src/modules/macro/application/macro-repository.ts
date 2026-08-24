@@ -1,417 +1,405 @@
 import type {
-  MacroAlertHistoryEntry,
-  MacroEvent,
-  MacroObservationVintage,
-  MacroSeries,
-  MacroSourceHealth,
-  MacroUserWatchConfig,
+  MacroDataPoint,
+  MacroDataWrite,
+  MacroIndicator,
+  MacroIndicatorFrequency,
 } from "../domain/model";
 
+/** The only persistence boundary for the redesigned two-table macro module. */
 export class D1MacroRepository {
   constructor(private readonly db: D1Database) {}
 
-  async upsertSeries(series: MacroSeries): Promise<void> {
+  /** Upserts the static catalog/source contract without resetting scheduler state. */
+  async upsertIndicator(indicator: MacroIndicator): Promise<void> {
+    validateIndicator(indicator);
+    await this.assertDirectoryConsistency(indicator);
     await this.db.prepare(
-      `insert into macro_series
-        (series_id, name, category, region, frequency, unit, source_id,
-         transmission_json, regions_json, license_class, stale_after_seconds,
-         enabled, metadata_json, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       on conflict(series_id) do update set
-         name = excluded.name,
-         category = excluded.category,
-         region = excluded.region,
-         frequency = excluded.frequency,
-         unit = excluded.unit,
-         source_id = excluded.source_id,
-         transmission_json = excluded.transmission_json,
-         regions_json = excluded.regions_json,
-         license_class = excluded.license_class,
-         stale_after_seconds = excluded.stale_after_seconds,
-         enabled = excluded.enabled,
-         metadata_json = excluded.metadata_json,
-         updated_at = excluded.updated_at`
+      `insert into macro_indicators (
+        id, metric_id, category_id, region_code, definition_id,
+        region_name, region_sort, category_code, category_name, category_sort,
+        metric_code, metric_name, metric_description, metric_sort, statistical_definition,
+        name, frequency, unit, unit_format, measurement_kind,
+        yoy_method, yoy_base_periods, yoy_display_format,
+        mom_method, mom_base_periods, mom_display_format, default_trend_periods, enabled,
+        source_id, source_series_id, source_url, publisher, publication_timestamp_strategy, source_batch_key,
+        seasonal_adjustment, lead_lag, transform_method, stale_after_seconds, refresh_interval_seconds,
+        revision_lookback_periods, next_fetch_at, last_success_at, fetch_lease_until,
+        consecutive_failures, last_error
+      ) values (${new Array(45).fill("?").join(", ")})
+      on conflict(id) do update set
+        metric_id = excluded.metric_id,
+        category_id = excluded.category_id,
+        region_code = excluded.region_code,
+        definition_id = excluded.definition_id,
+        region_name = excluded.region_name,
+        region_sort = excluded.region_sort,
+        category_code = excluded.category_code,
+        category_name = excluded.category_name,
+        category_sort = excluded.category_sort,
+        metric_code = excluded.metric_code,
+        metric_name = excluded.metric_name,
+        metric_description = excluded.metric_description,
+        metric_sort = excluded.metric_sort,
+        statistical_definition = excluded.statistical_definition,
+        name = excluded.name,
+        frequency = excluded.frequency,
+        unit = excluded.unit,
+        unit_format = excluded.unit_format,
+        measurement_kind = excluded.measurement_kind,
+        yoy_method = excluded.yoy_method,
+        yoy_base_periods = excluded.yoy_base_periods,
+        yoy_display_format = excluded.yoy_display_format,
+        mom_method = excluded.mom_method,
+        mom_base_periods = excluded.mom_base_periods,
+        mom_display_format = excluded.mom_display_format,
+        default_trend_periods = excluded.default_trend_periods,
+        enabled = excluded.enabled,
+        source_id = excluded.source_id,
+        source_series_id = excluded.source_series_id,
+        source_url = excluded.source_url,
+        publisher = excluded.publisher,
+        publication_timestamp_strategy = excluded.publication_timestamp_strategy,
+        source_batch_key = excluded.source_batch_key,
+        seasonal_adjustment = excluded.seasonal_adjustment,
+        lead_lag = excluded.lead_lag,
+        transform_method = excluded.transform_method,
+        stale_after_seconds = excluded.stale_after_seconds,
+        refresh_interval_seconds = excluded.refresh_interval_seconds,
+        revision_lookback_periods = excluded.revision_lookback_periods`
     ).bind(
-      series.seriesId,
-      series.name,
-      series.category,
-      series.region,
-      series.frequency,
-      series.unit,
-      series.sourceId,
-      JSON.stringify(series.transmissions),
-      JSON.stringify(series.regions),
-      series.licenseClass,
-      series.staleAfterSeconds,
-      series.enabled ? 1 : 0,
-      JSON.stringify(series.metadata),
-      series.updatedAt
+      indicator.id, indicator.metricId, indicator.categoryId, indicator.regionCode, indicator.definitionId,
+      indicator.regionName, indicator.regionSort, indicator.categoryCode, indicator.categoryName, indicator.categorySort,
+      indicator.metricCode, indicator.metricName, indicator.metricDescription, indicator.metricSort, indicator.statisticalDefinition,
+      indicator.name, indicator.frequency, indicator.unit, indicator.unitFormat, indicator.measurementKind,
+      indicator.yoyMethod, indicator.yoyBasePeriods, indicator.yoyDisplayFormat,
+      indicator.momMethod, indicator.momBasePeriods, indicator.momDisplayFormat, indicator.defaultTrendPeriods,
+      indicator.enabled ? 1 : 0,
+      indicator.sourceId, indicator.sourceSeriesId, indicator.sourceUrl, indicator.publisher,
+      indicator.publicationTimestampStrategy, indicator.sourceBatchKey,
+      indicator.seasonalAdjustment, indicator.leadLag, indicator.transformMethod,
+      indicator.staleAfterSeconds, indicator.refreshIntervalSeconds, indicator.revisionLookbackPeriods,
+      indicator.nextFetchAt, indicator.lastSuccessAt, indicator.fetchLeaseUntil,
+      indicator.consecutiveFailures, indicator.lastError,
     ).run();
   }
 
-  async listSeries(filters: { region?: string; category?: string; enabledOnly?: boolean } = {}): Promise<MacroSeries[]> {
+  async listIndicators(options: { regions?: readonly MacroIndicator["regionCode"][]; enabledOnly?: boolean } = {}): Promise<MacroIndicator[]> {
     const clauses: string[] = [];
     const bindings: unknown[] = [];
-    if (filters.region) {
-      clauses.push("region = ?");
-      bindings.push(filters.region);
-    }
-    if (filters.category) {
-      clauses.push("category = ?");
-      bindings.push(filters.category);
-    }
-    if (filters.enabledOnly !== false) clauses.push("enabled = 1");
-    const result = await this.db.prepare(
-      `select series_id as seriesId, name, category, region, frequency, unit,
-        source_id as sourceId, transmission_json as transmissionsJson,
-        regions_json as regionsJson, license_class as licenseClass,
-        stale_after_seconds as staleAfterSeconds, enabled,
-        metadata_json as metadataJson, updated_at as updatedAt
-       from macro_series
-       ${clauses.length ? `where ${clauses.join(" and ")}` : ""}
-       order by region, category, series_id`
-    ).bind(...bindings).all<SeriesRow>();
-    return (result.results ?? []).map(mapSeriesRow);
-  }
-
-  async putObservationVintages(observations: readonly MacroObservationVintage[]): Promise<void> {
-    if (observations.length === 0) return;
-    const grouped = new Map<string, MacroObservationVintage[]>();
-    for (const item of observations) {
-      const group = grouped.get(item.seriesId);
-      if (group) group.push(item);
-      else grouped.set(item.seriesId, [item]);
-    }
-    for (const [seriesId, additions] of grouped) {
-      const history = await this.loadHistory(seriesId);
-      const byVintage = new Map(history.map((item) => [`${item.observationDate}:${item.vintageAt}`, item]));
-      for (const item of additions) byVintage.set(`${item.observationDate}:${item.vintageAt}`, item);
-      const merged = [...byVintage.values()].sort((left, right) => left.observationDate.localeCompare(right.observationDate) || left.vintageAt - right.vintageAt);
-      await this.db.prepare(
-        `insert into macro_series_history (series_id, vintages_json, updated_at)
-         values (?, ?, ?)
-         on conflict(series_id) do update set vintages_json = excluded.vintages_json, updated_at = excluded.updated_at`
-      ).bind(seriesId, compactHistory(merged), Math.max(...merged.map((item) => item.observedAt))).run();
-    }
-  }
-
-  async getObservationSeries(
-    seriesId: string,
-    options: { from?: string; to?: string; asOf?: number; includeAllVintages?: boolean } = {}
-  ): Promise<MacroObservationVintage[]> {
-    const filtered = (await this.loadHistory(seriesId)).filter((item) =>
-      (!options.from || item.observationDate >= options.from)
-      && (!options.to || item.observationDate <= options.to)
-      && (options.asOf === undefined || item.vintageAt <= options.asOf)
-    );
-    if (options.includeAllVintages) return filtered.sort(compareVintage);
-    const latestByPeriod = new Map<string, MacroObservationVintage>();
-    for (const item of filtered) {
-      const current = latestByPeriod.get(item.observationDate);
-      if (!current || item.vintageAt > current.vintageAt) latestByPeriod.set(item.observationDate, item);
-    }
-    return [...latestByPeriod.values()].sort(compareVintage);
-  }
-
-  private async loadHistory(seriesId: string): Promise<MacroObservationVintage[]> {
-    const result = await this.db.prepare(
-      "select vintages_json as vintagesJson from macro_series_history where series_id = ?"
-    ).bind(seriesId).first<HistoryRow>();
-    return result ? parseHistory(result.vintagesJson, seriesId) : [];
-  }
-
-  async upsertEvent(event: MacroEvent): Promise<void> {
-    await this.db.prepare(
-      `insert into macro_events
-        (event_id, scheduled_at, region, importance, title, series_id, actual,
-         consensus, previous, unit, status, source_id, source_url, metadata_json, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       on conflict(event_id) do update set
-         scheduled_at = excluded.scheduled_at,
-         region = excluded.region,
-         importance = excluded.importance,
-         title = excluded.title,
-         series_id = excluded.series_id,
-         actual = excluded.actual,
-         consensus = excluded.consensus,
-         previous = excluded.previous,
-         unit = excluded.unit,
-         status = excluded.status,
-         source_id = excluded.source_id,
-         source_url = excluded.source_url,
-         metadata_json = excluded.metadata_json,
-         updated_at = excluded.updated_at`
-    ).bind(
-      event.eventId, event.scheduledAt, event.region, event.importance, event.title,
-      event.seriesId, event.actual, event.consensus, event.previous, event.unit,
-      event.status, event.sourceId, event.sourceUrl, JSON.stringify(event.metadata), event.updatedAt
-    ).run();
-  }
-
-  async listEvents(options: { from: number; to: number; regions?: string[]; importance?: string }): Promise<MacroEvent[]> {
-    const clauses = ["scheduled_at >= ?", "scheduled_at <= ?"];
-    const bindings: unknown[] = [options.from, options.to];
     if (options.regions?.length) {
-      clauses.push(`region in (${options.regions.map(() => "?").join(",")})`);
+      clauses.push(`region_code in (${options.regions.map(() => "?").join(",")})`);
       bindings.push(...options.regions);
     }
-    if (options.importance) {
-      clauses.push("importance = ?");
-      bindings.push(options.importance);
+    if (options.enabledOnly !== false) clauses.push("enabled = 1");
+    const result = await this.db.prepare(
+      `select ${indicatorColumns} from macro_indicators
+       ${clauses.length ? `where ${clauses.join(" and ")}` : ""}
+       order by region_sort, region_name, category_sort, category_name, metric_sort, metric_name, definition_id`
+    ).bind(...bindings).all<IndicatorRow>();
+    return (result.results ?? []).map(mapIndicatorRow);
+  }
+
+  /** Returns all dynamic display dimensions derived from the persisted catalog. */
+  async listCatalog(options: { enabledOnly?: boolean } = {}): Promise<MacroCatalog> {
+    const series = await this.listIndicators({ enabledOnly: options.enabledOnly });
+    const regions = distinctDirectory(series, (indicator) => indicator.regionCode, (indicator) => ({
+      code: indicator.regionCode, name: indicator.regionName, sort: indicator.regionSort,
+    }), compareDirectory);
+    const categories = distinctDirectory(series, (indicator) => String(indicator.categoryId), (indicator) => ({
+      id: indicator.categoryId, code: indicator.categoryCode, name: indicator.categoryName, sort: indicator.categorySort,
+    }), compareDirectory);
+    const metrics = distinctDirectory(series, (indicator) => String(indicator.metricId), (indicator) => ({
+      id: indicator.metricId, categoryId: indicator.categoryId, code: indicator.metricCode,
+      name: indicator.metricName, description: indicator.metricDescription, sort: indicator.metricSort,
+    }), compareMetricDirectory);
+    return {
+      regions,
+      categories,
+      metrics,
+      series,
+      capabilities: {
+        frequencies: uniqueSorted(series.map((indicator) => indicator.frequency)),
+        measurementKinds: uniqueSorted(series.map((indicator) => indicator.measurementKind)),
+        yoyMethods: uniqueSorted(series.map((indicator) => indicator.yoyMethod)),
+        momMethods: uniqueSorted(series.map((indicator) => indicator.momMethod)),
+      },
+    };
+  }
+
+  async listDueIndicators(now: number, limit = 100): Promise<MacroIndicator[]> {
+    const result = await this.db.prepare(
+      `select ${indicatorColumns} from macro_indicators
+       where enabled = 1
+         and source_id is not null
+         and refresh_interval_seconds > 0
+         and next_fetch_at is not null
+         and next_fetch_at <= ?
+         and (fetch_lease_until is null or fetch_lease_until <= ?)
+       order by next_fetch_at, id limit ?`
+    ).bind(now, now, boundedLimit(limit)).all<IndicatorRow>();
+    return (result.results ?? []).map(mapIndicatorRow);
+  }
+
+  /** Atomically claims one due indicator so overlapping scheduled runs cannot duplicate a fetch. */
+  async claimIndicator(indicatorId: number, now: number, leaseUntil: number): Promise<boolean> {
+    if (!Number.isInteger(indicatorId) || !Number.isInteger(now) || !Number.isInteger(leaseUntil) || leaseUntil <= now) return false;
+    const result = await this.db.prepare(
+      `update macro_indicators set fetch_lease_until = ?
+       where id = ?
+         and enabled = 1
+         and source_id is not null
+         and refresh_interval_seconds > 0
+         and next_fetch_at is not null
+         and next_fetch_at <= ?
+         and (fetch_lease_until is null or fetch_lease_until <= ?)`
+    ).bind(leaseUntil, indicatorId, now, now).run();
+    return (result.meta.changes ?? 0) === 1;
+  }
+
+  /** Records completion only when this worker still owns its lease. */
+  async scheduleNextFetch(input: {
+    indicatorId: number;
+    leaseUntil: number;
+    nextFetchAt: number | null;
+    completedAt: number;
+    success: boolean;
+    lastError?: string | null;
+  }): Promise<boolean> {
+    const result = await this.db.prepare(
+      `update macro_indicators set
+        next_fetch_at = ?,
+        last_success_at = case when ? = 1 then ? else last_success_at end,
+        fetch_lease_until = null,
+        consecutive_failures = case when ? = 1 then 0 else consecutive_failures + 1 end,
+        last_error = case when ? = 1 then null else ? end
+       where id = ? and fetch_lease_until = ?`
+    ).bind(
+      input.nextFetchAt, input.success ? 1 : 0, input.completedAt,
+      input.success ? 1 : 0, input.success ? 1 : 0, input.lastError ?? null,
+      input.indicatorId, input.leaseUntil,
+    ).run();
+    return (result.meta.changes ?? 0) === 1;
+  }
+
+  async putData(points: readonly MacroDataWrite[]): Promise<void> {
+    for (const point of points) {
+      if (!Number.isInteger(point.indicatorId) || !Number.isInteger(point.publishedAt) || !Number.isFinite(point.value)) {
+        throw new Error("macro data requires an integer indicatorId/publishedAt and finite value");
+      }
+      const periodDay = toMacroPeriodDay(point.period, point.frequency);
+      await this.db.prepare(
+        `insert into macro_data (indicator_id, period_day, published_at, value)
+         values (?, ?, ?, ?)
+         on conflict(indicator_id, period_day, published_at) do update set value = excluded.value`
+      ).bind(point.indicatorId, periodDay, point.publishedAt, point.value).run();
     }
+  }
+
+  async getDataSeries(
+    indicatorId: number,
+    options: { fromPeriodDay?: number; toPeriodDay?: number; asOf?: number; includeAllVersions?: boolean } = {},
+  ): Promise<MacroDataPoint[]> {
+    const clauses = ["indicator_id = ?"];
+    const bindings: number[] = [indicatorId];
+    if (options.fromPeriodDay !== undefined) { clauses.push("period_day >= ?"); bindings.push(options.fromPeriodDay); }
+    if (options.toPeriodDay !== undefined) { clauses.push("period_day <= ?"); bindings.push(options.toPeriodDay); }
+    if (options.asOf !== undefined) { clauses.push("published_at <= ?"); bindings.push(options.asOf); }
+    const where = clauses.join(" and ");
+    const sql = options.includeAllVersions
+      ? `select indicator_id as indicatorId, period_day as periodDay, published_at as publishedAt, value
+         from macro_data where ${where} order by period_day, published_at`
+      : `select indicator_id as indicatorId, period_day as periodDay, published_at as publishedAt, value
+          from (
+            select indicator_id, period_day, published_at, value,
+              row_number() over (partition by period_day order by published_at desc) as version_rank
+            from macro_data where ${where}
+          ) where version_rank = 1 order by period_day`;
+    const result = await this.db.prepare(sql).bind(...bindings).all<MacroDataPoint>();
+    return result.results ?? [];
+  }
+
+  /**
+   * Retrieves at most one visible latest revision per requested concrete
+   * series. The query is bounded by explicit IDs and selects revisions after
+   * applying `asOf`, preventing future revisions from leaking into a replay.
+   */
+  async getLatestSnapshots(indicatorIds: readonly number[], asOf?: number): Promise<MacroDataPoint[]> {
+    const ids = boundedIndicatorIds(indicatorIds);
+    if (ids.length === 0) return [];
+    const idPlaceholders = ids.map(() => "?").join(",");
+    const asOfClause = asOf === undefined ? "" : " and published_at <= ?";
     const result = await this.db.prepare(
-      `select event_id as eventId, scheduled_at as scheduledAt, region, importance,
-        title, series_id as seriesId, actual, consensus, previous, unit, status,
-        source_id as sourceId, source_url as sourceUrl, metadata_json as metadataJson,
-        updated_at as updatedAt
-       from macro_events where ${clauses.join(" and ")}
-       order by scheduled_at, importance desc, event_id`
-    ).bind(...bindings).all<EventRow>();
-    return (result.results ?? []).map(mapEventRow);
+      `select indicator_id as indicatorId, period_day as periodDay, published_at as publishedAt, value
+       from (
+         select indicator_id, period_day, published_at, value,
+           row_number() over (
+             partition by indicator_id
+             order by period_day desc, published_at desc
+           ) as snapshot_rank
+         from macro_data
+         where indicator_id in (${idPlaceholders})${asOfClause}
+       ) where snapshot_rank = 1
+       order by indicator_id`
+    ).bind(...ids, ...(asOf === undefined ? [] : [asOf])).all<MacroDataPoint>();
+    return result.results ?? [];
   }
 
-  async putSourceHealth(health: MacroSourceHealth): Promise<void> {
-    await this.db.prepare(
-      `insert into macro_source_health
-        (source_id, display_name, state, last_attempt_at, last_success_at,
-         consecutive_failures, last_error, next_retry_at, latency_ms, metadata_json, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       on conflict(source_id) do update set
-         display_name = excluded.display_name,
-         state = excluded.state,
-         last_attempt_at = excluded.last_attempt_at,
-         last_success_at = excluded.last_success_at,
-         consecutive_failures = excluded.consecutive_failures,
-         last_error = excluded.last_error,
-         next_retry_at = excluded.next_retry_at,
-         latency_ms = excluded.latency_ms,
-         metadata_json = excluded.metadata_json,
-         updated_at = excluded.updated_at`
-    ).bind(
-      health.sourceId, health.displayName, health.state, health.lastAttemptAt,
-      health.lastSuccessAt, health.consecutiveFailures, health.lastError,
-      health.nextRetryAt, health.latencyMs, JSON.stringify(health.metadata), health.updatedAt
-    ).run();
+  async getLatestData(indicatorId: number, asOf?: number): Promise<MacroDataPoint | null> {
+    return (await this.getLatestSnapshots([indicatorId], asOf))[0] ?? null;
   }
 
-  async listSourceHealth(): Promise<MacroSourceHealth[]> {
-    const result = await this.db.prepare(
-      `select source_id as sourceId, display_name as displayName, state,
-        last_attempt_at as lastAttemptAt, last_success_at as lastSuccessAt,
-        consecutive_failures as consecutiveFailures, last_error as lastError,
-        next_retry_at as nextRetryAt, latency_ms as latencyMs,
-        metadata_json as metadataJson, updated_at as updatedAt
-       from macro_source_health order by source_id`
-    ).all<SourceHealthRow>();
-    return (result.results ?? []).map((row) => ({ ...row, metadata: parseObject(row.metadataJson) }));
+  private async assertDirectoryConsistency(indicator: MacroIndicator): Promise<void> {
+    const self = indicator.id;
+    await this.assertNoDirectoryConflict(
+      `region_code = ? and id <> ? and region_name <> '' and (region_name <> ? or region_sort <> ?)`,
+      [indicator.regionCode, self, indicator.regionName, indicator.regionSort],
+      `conflicting directory metadata for region ${indicator.regionCode}`,
+    );
+    await this.assertNoDirectoryConflict(
+      `category_id = ? and id <> ? and category_code <> '' and (category_code <> ? or category_name <> ? or category_sort <> ?)`,
+      [indicator.categoryId, self, indicator.categoryCode, indicator.categoryName, indicator.categorySort],
+      `conflicting directory metadata for category ${indicator.categoryId}`,
+    );
+    await this.assertNoDirectoryConflict(
+      `metric_id = ? and id <> ? and metric_code <> '' and (
+        category_id <> ? or metric_code <> ? or metric_name <> ? or metric_description <> ? or metric_sort <> ?
+      )`,
+      [indicator.metricId, self, indicator.categoryId, indicator.metricCode, indicator.metricName, indicator.metricDescription, indicator.metricSort],
+      `conflicting directory metadata for metric ${indicator.metricId}`,
+    );
   }
 
-  async putUserWatch(config: MacroUserWatchConfig): Promise<void> {
-    await this.db.prepare(
-      `insert into macro_user_watch_configs
-        (owner_key, series_id, enabled, position, alert_rules_json,
-         display_options_json, created_at, updated_at)
-       values (?, ?, ?, ?, ?, ?, ?, ?)
-       on conflict(owner_key, series_id) do update set
-         enabled = excluded.enabled,
-         position = excluded.position,
-         alert_rules_json = excluded.alert_rules_json,
-         display_options_json = excluded.display_options_json,
-         updated_at = excluded.updated_at`
-    ).bind(
-      config.ownerKey, config.seriesId, config.enabled ? 1 : 0, config.position,
-      JSON.stringify(config.alertRules), JSON.stringify(config.displayOptions),
-      config.createdAt, config.updatedAt
-    ).run();
-  }
-
-  async listUserWatches(ownerKey: string): Promise<MacroUserWatchConfig[]> {
-    const result = await this.db.prepare(
-      `select owner_key as ownerKey, series_id as seriesId, enabled, position,
-        alert_rules_json as alertRulesJson, display_options_json as displayOptionsJson,
-        created_at as createdAt, updated_at as updatedAt
-       from macro_user_watch_configs where owner_key = ?
-       order by position, series_id`
-    ).bind(ownerKey).all<UserWatchRow>();
-    return (result.results ?? []).map((row) => ({
-      ...row,
-      enabled: Boolean(row.enabled),
-      alertRules: parseArray(row.alertRulesJson),
-      displayOptions: parseObject(row.displayOptionsJson),
-    }));
-  }
-
-  async recordAlertHistory(entry: Omit<MacroAlertHistoryEntry, "alertId">): Promise<boolean> {
-    const result = await this.db.prepare(
-      `insert into macro_alert_history
-        (owner_key, series_id, observation_date, observation_vintage_at,
-         observed_at, value, rule_operator, rule_threshold, source_url,
-         notification_state, notification_detail, evaluated_at, metadata_json)
-       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       on conflict(owner_key, series_id, observation_date, observation_vintage_at, rule_operator, rule_threshold)
-       do nothing`
-    ).bind(
-      entry.ownerKey, entry.seriesId, entry.observationDate,
-      entry.observationVintageAt, entry.observedAt, entry.value,
-      entry.ruleOperator, entry.ruleThreshold, entry.sourceUrl,
-      entry.notificationState, entry.notificationDetail, entry.evaluatedAt,
-      JSON.stringify(entry.metadata)
-    ).run();
-    return (result.meta.changes ?? 0) > 0;
-  }
-
-  async listAlertHistory(ownerKey: string, limit = 20): Promise<MacroAlertHistoryEntry[]> {
-    const result = await this.db.prepare(
-      `select alert_id as alertId, owner_key as ownerKey, series_id as seriesId,
-        observation_date as observationDate, observation_vintage_at as observationVintageAt,
-        observed_at as observedAt, value, rule_operator as ruleOperator,
-        rule_threshold as ruleThreshold, source_url as sourceUrl,
-        notification_state as notificationState, notification_detail as notificationDetail,
-        evaluated_at as evaluatedAt, metadata_json as metadataJson
-       from macro_alert_history where owner_key = ?
-       order by evaluated_at desc, alert_id desc limit ?`
-    ).bind(ownerKey, limit).all<AlertHistoryRow>();
-    return (result.results ?? []).map((row) => ({ ...row, metadata: parseObject(row.metadataJson) }));
+  private async assertNoDirectoryConflict(where: string, bindings: readonly unknown[], message: string): Promise<void> {
+    const conflict = await this.db.prepare(`select id from macro_indicators where ${where} limit 1`).bind(...bindings).first<{ id: number }>();
+    if (conflict) throw new Error(message);
   }
 }
 
-type SeriesRow = Omit<MacroSeries, "transmissions" | "regions" | "metadata" | "enabled"> & {
-  transmissionsJson: string; regionsJson: string; metadataJson: string; enabled: number;
+type IndicatorRow = Omit<MacroIndicator, "enabled"> & { enabled: number };
+
+export type MacroCatalog = {
+  regions: { code: string; name: string; sort: number }[];
+  categories: { id: number; code: string; name: string; sort: number }[];
+  metrics: { id: number; categoryId: number; code: string; name: string; description: string; sort: number }[];
+  series: MacroIndicator[];
+  capabilities: { frequencies: string[]; measurementKinds: string[]; yoyMethods: string[]; momMethods: string[] };
 };
-type EventRow = Omit<MacroEvent, "metadata"> & { metadataJson: string };
-type SourceHealthRow = Omit<MacroSourceHealth, "metadata"> & { metadataJson: string };
-type UserWatchRow = Omit<MacroUserWatchConfig, "enabled" | "alertRules" | "displayOptions"> & {
-  enabled: number; alertRulesJson: string; displayOptionsJson: string;
-};
-type AlertHistoryRow = Omit<MacroAlertHistoryEntry, "metadata"> & { metadataJson: string };
-type HistoryRow = { vintagesJson: string };
 
-function mapSeriesRow(row: SeriesRow): MacroSeries {
-  return {
-    ...row,
-    enabled: Boolean(row.enabled),
-    transmissions: parseArray(row.transmissionsJson) as MacroSeries["transmissions"],
-    regions: parseArray(row.regionsJson) as string[],
-    metadata: parseObject(row.metadataJson),
-  };
+const indicatorColumns = `
+  id, metric_id as metricId, category_id as categoryId, region_code as regionCode,
+  definition_id as definitionId,
+  region_name as regionName, region_sort as regionSort,
+  category_code as categoryCode, category_name as categoryName, category_sort as categorySort,
+  metric_code as metricCode, metric_name as metricName, metric_description as metricDescription,
+  metric_sort as metricSort, statistical_definition as statisticalDefinition,
+  name, frequency, unit, unit_format as unitFormat, measurement_kind as measurementKind,
+  yoy_method as yoyMethod, yoy_base_periods as yoyBasePeriods, yoy_display_format as yoyDisplayFormat,
+  mom_method as momMethod, mom_base_periods as momBasePeriods, mom_display_format as momDisplayFormat,
+  default_trend_periods as defaultTrendPeriods, enabled,
+  source_id as sourceId, source_series_id as sourceSeriesId, source_url as sourceUrl,
+  publisher, publication_timestamp_strategy as publicationTimestampStrategy, source_batch_key as sourceBatchKey,
+  seasonal_adjustment as seasonalAdjustment, lead_lag as leadLag,
+  transform_method as transformMethod,
+  stale_after_seconds as staleAfterSeconds,
+  refresh_interval_seconds as refreshIntervalSeconds,
+  revision_lookback_periods as revisionLookbackPeriods,
+  next_fetch_at as nextFetchAt, last_success_at as lastSuccessAt,
+  fetch_lease_until as fetchLeaseUntil, consecutive_failures as consecutiveFailures,
+  last_error as lastError`;
+
+function mapIndicatorRow(row: IndicatorRow): MacroIndicator {
+  return { ...row, enabled: Boolean(row.enabled) };
 }
 
-function mapEventRow(row: EventRow): MacroEvent {
-  return { ...row, metadata: parseObject(row.metadataJson) };
+function boundedLimit(value: number): number {
+  return Number.isInteger(value) && value > 0 ? Math.min(value, 500) : 100;
 }
 
-function compareVintage(left: MacroObservationVintage, right: MacroObservationVintage): number {
-  return left.observationDate.localeCompare(right.observationDate) || left.vintageAt - right.vintageAt;
+function boundedIndicatorIds(indicatorIds: readonly number[]): number[] {
+  const ids = [...new Set(indicatorIds)];
+  if (ids.length > 200) throw new Error("macro latest snapshot query accepts at most 200 indicators");
+  if (!ids.every((id) => Number.isInteger(id) && id > 0)) throw new Error("macro latest snapshot query requires positive integer indicator IDs");
+  return ids;
 }
 
-function parseHistory(value: string, seriesId: string): MacroObservationVintage[] {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (isCompactHistory(parsed)) {
-      return parsed.o.flatMap((item) => expandCompactVintage(item, seriesId, parsed.u, parsed.r));
-    }
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((item) => {
-      if (Array.isArray(item)) return expandCompactVintage(item, seriesId);
-      if (!item || typeof item !== "object") return [];
-      const row = item as Record<string, unknown>;
-      const number = (key: string) => typeof row[key] === "number" && Number.isFinite(row[key]) ? row[key] : null;
-      const text = (key: string) => typeof row[key] === "string" ? row[key] : null;
-      const observationDate = text("observationDate");
-      const releasedAt = number("releasedAt"); const vintageAt = number("vintageAt");
-      const revisionNumber = number("revisionNumber"); const observation = number("value"); const observedAt = number("observedAt");
-      if (!observationDate || releasedAt === null || vintageAt === null || revisionNumber === null || observation === null || observedAt === null) return [];
-      return [{
-        seriesId, observationDate, releasedAt, vintageAt, revisionNumber, value: observation,
-        consensus: number("consensus"), previousValue: number("previousValue"),
-        isPreliminary: row.isPreliminary === true || row.isPreliminary === 1,
-        qualityStatus: row.qualityStatus === "suspect" || row.qualityStatus === "missing" ? row.qualityStatus : "valid",
-        sourceUrl: text("sourceUrl"), rawR2Key: text("rawR2Key"), observedAt,
-      } satisfies MacroObservationVintage];
-    });
-  } catch { return []; }
-}
-
-type CompactHistory = { v: 1; u: string[]; r: string[]; o: unknown[][] };
-
-function isCompactHistory(value: unknown): value is CompactHistory {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const snapshot = value as Record<string, unknown>;
-  return snapshot.v === 1 && Array.isArray(snapshot.u) && snapshot.u.every((item) => typeof item === "string")
-    && Array.isArray(snapshot.r) && snapshot.r.every((item) => typeof item === "string")
-    && Array.isArray(snapshot.o) && snapshot.o.every(Array.isArray);
-}
-
-function compactHistory(observations: readonly MacroObservationVintage[]): string {
-  const urls = uniqueText(observations.map((item) => item.sourceUrl));
-  const rawR2Keys = uniqueText(observations.map((item) => item.rawR2Key));
-  const urlIndexes = new Map(urls.map((item, index) => [item, index]));
-  const rawR2KeyIndexes = new Map(rawR2Keys.map((item, index) => [item, index]));
-  return JSON.stringify({
-    v: 1,
-    u: urls,
-    r: rawR2Keys,
-    o: observations.map((item) => compactVintage(item, urlIndexes, rawR2KeyIndexes)),
-  } satisfies CompactHistory);
-}
-
-function uniqueText(values: readonly (string | null)[]): string[] {
-  return [...new Set(values.filter((item): item is string => typeof item === "string"))].sort();
-}
-
-function compactVintage(
-  item: MacroObservationVintage,
-  urlIndexes: ReadonlyMap<string, number>,
-  rawR2KeyIndexes: ReadonlyMap<string, number>
-): unknown[] {
-  return [item.observationDate, item.releasedAt, item.vintageAt, item.revisionNumber, item.value,
-    item.consensus, item.previousValue, item.isPreliminary ? 1 : 0, qualityCode(item.qualityStatus),
-    item.sourceUrl === null ? null : urlIndexes.get(item.sourceUrl) ?? null,
-    item.rawR2Key === null ? null : rawR2KeyIndexes.get(item.rawR2Key) ?? null, item.observedAt];
-}
-
-function expandCompactVintage(
-  row: unknown[], seriesId: string, urls?: readonly string[], rawR2Keys?: readonly string[]
-): MacroObservationVintage[] {
-  const number = (index: number) => typeof row[index] === "number" && Number.isFinite(row[index]) ? row[index] : null;
-  const nullableNumber = (index: number) => row[index] === null ? null : number(index);
-  const text = (index: number) => typeof row[index] === "string" ? row[index] : null;
-  const indexedText = (index: number, dictionary: readonly string[] | undefined) => {
-    if (!dictionary) return text(index);
-    if (row[index] === null) return null;
-    const dictionaryIndex = number(index);
-    return dictionaryIndex !== null && Number.isInteger(dictionaryIndex) ? dictionary[dictionaryIndex] ?? null : null;
-  };
-  const observationDate = text(0); const releasedAt = number(1); const vintageAt = number(2); const revisionNumber = number(3); const value = number(4); const observedAt = number(11);
-  if (!observationDate || releasedAt === null || vintageAt === null || revisionNumber === null || value === null || observedAt === null) return [];
-  return [{ seriesId, observationDate, releasedAt, vintageAt, revisionNumber, value,
-    consensus: nullableNumber(5), previousValue: nullableNumber(6), isPreliminary: row[7] === true || row[7] === 1,
-    qualityStatus: decodeQuality(row[8]),
-    sourceUrl: indexedText(9, urls), rawR2Key: indexedText(10, rawR2Keys), observedAt }];
-}
-
-function qualityCode(value: MacroObservationVintage["qualityStatus"]): number {
-  return value === "suspect" ? 1 : value === "missing" ? 2 : 0;
-}
-
-function decodeQuality(value: unknown): MacroObservationVintage["qualityStatus"] {
-  return value === 1 || value === "suspect" ? "suspect" : value === 2 || value === "missing" ? "missing" : "valid";
-}
-
-function parseArray(value: string): unknown[] {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+function validateIndicator(indicator: MacroIndicator): void {
+  const positiveIntegers: [string, number][] = [
+    ["id", indicator.id], ["metricId", indicator.metricId], ["categoryId", indicator.categoryId],
+    ["definitionId", indicator.definitionId], ["yoyBasePeriods", indicator.yoyBasePeriods],
+    ["momBasePeriods", indicator.momBasePeriods], ["defaultTrendPeriods", indicator.defaultTrendPeriods],
+  ];
+  for (const [name, value] of positiveIntegers) {
+    const permitsZero = name === "definitionId" || name === "yoyBasePeriods" || name === "momBasePeriods";
+    if (!Number.isInteger(value) || value < (permitsZero ? 0 : 1)) throw new Error(`macro indicator requires a valid ${name}`);
+  }
+  for (const [name, value] of Object.entries({
+    regionCode: indicator.regionCode, regionName: indicator.regionName, categoryCode: indicator.categoryCode,
+    categoryName: indicator.categoryName, metricCode: indicator.metricCode, metricName: indicator.metricName,
+    name: indicator.name, frequency: indicator.frequency, unit: indicator.unit, unitFormat: indicator.unitFormat,
+    measurementKind: indicator.measurementKind, yoyMethod: indicator.yoyMethod, yoyDisplayFormat: indicator.yoyDisplayFormat,
+    momMethod: indicator.momMethod, momDisplayFormat: indicator.momDisplayFormat,
+  })) {
+    if (!value.trim()) throw new Error(`macro indicator requires a non-empty ${name}`);
   }
 }
 
-function parseObject(value: string): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
-  } catch {
-    return {};
+function distinctDirectory<T>(
+  series: readonly MacroIndicator[],
+  key: (indicator: MacroIndicator) => string,
+  value: (indicator: MacroIndicator) => T,
+  compare: (left: T, right: T) => number,
+): T[] {
+  const entries = new Map<string, T>();
+  for (const indicator of series) entries.set(key(indicator), value(indicator));
+  return [...entries.values()].sort(compare);
+}
+
+function compareDirectory(left: { name: string; sort: number }, right: { name: string; sort: number }): number {
+  return left.sort - right.sort || left.name.localeCompare(right.name);
+}
+
+function compareMetricDirectory(
+  left: { name: string; sort: number; categoryId: number },
+  right: { name: string; sort: number; categoryId: number },
+): number {
+  return left.categoryId - right.categoryId || left.sort - right.sort || left.name.localeCompare(right.name);
+}
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+/** Converts source calendar labels to the period start required by macro_data. */
+export function toMacroPeriodDay(period: string | number | Date, frequency: MacroIndicatorFrequency): number {
+  const parsed = parseMacroPeriod(period);
+  let month = parsed.month;
+  let day = parsed.day;
+  if (frequency === "annual") { month = 1; day = 1; }
+  else if (frequency === "quarterly") { month = Math.floor((month - 1) / 3) * 3 + 1; day = 1; }
+  else if (frequency === "monthly") day = 1;
+  validateCalendarDay(parsed.year, month, day);
+  return parsed.year * 10_000 + month * 100 + day;
+}
+
+function parseMacroPeriod(period: string | number | Date): { year: number; month: number; day: number } {
+  if (period instanceof Date) {
+    if (!Number.isFinite(period.getTime())) throw new Error("invalid macro period date");
+    return { year: period.getUTCFullYear(), month: period.getUTCMonth() + 1, day: period.getUTCDate() };
+  }
+  const text = String(period).trim();
+  let match = /^(\d{4})[- ]?[Qq]([1-4])$/.exec(text);
+  if (match) return { year: Number(match[1]), month: (Number(match[2]) - 1) * 3 + 1, day: 1 };
+  match = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(text);
+  if (!match) throw new Error(`invalid macro period: ${text}`);
+  return { year: Number(match[1]), month: match[2] ? Number(match[2]) : 1, day: match[3] ? Number(match[3]) : 1 };
+}
+
+function validateCalendarDay(year: number, month: number, day: number): void {
+  if (!Number.isInteger(year) || year < 1000 || year > 9999 || !Number.isInteger(month) || !Number.isInteger(day)) {
+    throw new Error("invalid macro period calendar value");
+  }
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (candidate.getUTCFullYear() !== year || candidate.getUTCMonth() !== month - 1 || candidate.getUTCDate() !== day) {
+    throw new Error("invalid macro period calendar date");
   }
 }

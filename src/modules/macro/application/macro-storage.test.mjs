@@ -9,108 +9,114 @@ const migrations = [
   new URL("../../../../migrations/0018_macro_research_storage.sql", import.meta.url),
   new URL("../../../../migrations/0019_macro_alert_history.sql", import.meta.url),
   new URL("../../../../migrations/0020_compact_macro_series_history.sql", import.meta.url),
+  new URL("../../../../migrations/0117_create_kv_cache.sql", import.meta.url),
+  new URL("../../../../migrations/0130_create_macro_indicator_catalog.sql", import.meta.url),
+  new URL("../../../../migrations/0131_drop_retired_macro_radar.sql", import.meta.url),
+  new URL("../../../../migrations/0132_expand_macro_indicator_directory.sql", import.meta.url),
+  new URL("../../../../migrations/0133_backfill_macro_directory_display_metadata.sql", import.meta.url),
 ];
 
-test("macro storage preserves initial and revised vintages and supports as-of reads", () => {
+test("final macro migration leaves only the catalog and four-value fact ledger", () => {
   const directory = mkdtempSync(join(tmpdir(), "macro-storage-"));
   const database = join(directory, "macro.sqlite");
   try {
-    migrate(database, 1);
-    execute(database, `
-      pragma foreign_keys = on;
-      insert into macro_series
-        (series_id, name, category, region, frequency, unit, source_id,
-         stale_after_seconds, updated_at)
-      values ('GDP', 'GDP', 'growth', 'us', 'quarterly', 'index', 'official', 7776000, 1000);
-      insert into macro_observation_vintages
-        (series_id, observation_date, released_at, vintage_at, revision_number,
-         value, is_preliminary, observed_at)
-      values
-        ('GDP', '2026-03-31', 1000, 1000, 0, 100.0, 1, 1001),
-        ('GDP', '2026-03-31', 2000, 2000, 1, 101.5, 0, 2001);
-    `);
-    assert.equal(queryScalar(database, "select count(*) from macro_observation_vintages"), "2");
-    assert.equal(queryScalar(database, latestVintageSql(1500)), "100.0");
-    assert.equal(queryScalar(database, latestVintageSql(2500)), "101.5");
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test("compaction retains vintages in one D1 history row per series", () => {
-  const directory = mkdtempSync(join(tmpdir(), "macro-storage-"));
-  const database = join(directory, "macro.sqlite");
-  try {
-    execFileSync("sqlite3", [database], { input: readFileSync(migrations[0]), encoding: "utf8" });
-    execute(database, `insert into macro_series (series_id, name, category, region, frequency, unit, source_id, stale_after_seconds, updated_at) values ('GDP', 'GDP', 'growth', 'us', 'quarterly', 'index', 'official', 1, 1);
-      insert into macro_observation_vintages (series_id, observation_date, released_at, vintage_at, revision_number, value, source_url, observed_at) values ('GDP', '2026-03-31', 1, 1, 0, 100, 'https://official.example/gdp', 1), ('GDP', '2026-03-31', 2, 2, 1, 101, 'https://official.example/gdp', 2);`);
-    execFileSync("sqlite3", [database], { input: readFileSync(migrations[2]), encoding: "utf8" });
-    assert.equal(queryScalar(database, "select count(*) from sqlite_master where type = 'table' and name = 'macro_observation_vintages'"), "0");
-    assert.equal(queryScalar(database, "select count(*) from macro_series_history where series_id = 'GDP'"), "1");
-    assert.equal(queryScalar(database, "select json_array_length(vintages_json, '$.o') from macro_series_history where series_id = 'GDP'"), "2");
-    assert.equal(queryScalar(database, "select json_extract(vintages_json, '$.v') from macro_series_history where series_id = 'GDP'"), "1");
-    assert.equal(queryScalar(database, "select json_array_length(vintages_json, '$.u') from macro_series_history where series_id = 'GDP'"), "1");
-    assert.equal(queryScalar(database, "select json_extract(vintages_json, '$.o[1][9]') from macro_series_history where series_id = 'GDP'"), "0");
-    assert.equal(queryScalar(database, "select json_type(vintages_json, '$.o[0]') from macro_series_history where series_id = 'GDP'"), "array");
-  } finally { rmSync(directory, { recursive: true, force: true }); }
-});
-
-test("watch configuration enforces a known macro series", () => {
-  const directory = mkdtempSync(join(tmpdir(), "macro-storage-"));
-  const database = join(directory, "macro.sqlite");
-  try {
-    migrate(database);
-    assert.throws(() => execute(database, `
-      pragma foreign_keys = on;
-      insert into macro_user_watch_configs
-        (owner_key, series_id, created_at, updated_at)
-      values ('local', 'UNKNOWN', 1, 1);
-    `), /FOREIGN KEY constraint failed/);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test("alert history deduplicates repeated evaluations but preserves a new data vintage", () => {
-  const directory = mkdtempSync(join(tmpdir(), "macro-storage-"));
-  const database = join(directory, "macro.sqlite");
-  try {
-    migrate(database);
+    migrate(database, migrations.length - 3);
     execute(database, `
       pragma foreign_keys = on;
       insert into macro_series
         (series_id, name, category, region, frequency, unit, source_id, stale_after_seconds, updated_at)
-      values ('SOFR', 'SOFR', 'rates', 'us', 'daily', '%', 'ny-fed', 259200, 1);
+      values ('SOFR', 'SOFR', 'rates', 'us', 'daily', '%', 'ny-fed', 1, 1);
+      insert into macro_source_health
+        (source_id, display_name, state, consecutive_failures, updated_at)
+      values ('ny-fed', 'NY Fed', 'healthy', 0, 1);
+      insert into macro_user_watch_configs
+        (owner_key, series_id, created_at, updated_at)
+      values ('local', 'SOFR', 1, 1);
       insert into macro_alert_history
         (owner_key, series_id, observation_date, observation_vintage_at, observed_at, value,
          rule_operator, rule_threshold, notification_state, evaluated_at)
-      values ('local', 'SOFR', '2026-07-30', 1000, 1000, 4.25, 'gte', 4, 'not_configured', 2000);
-      insert or ignore into macro_alert_history
-        (owner_key, series_id, observation_date, observation_vintage_at, observed_at, value,
-         rule_operator, rule_threshold, notification_state, evaluated_at)
-      values ('local', 'SOFR', '2026-07-30', 1000, 1000, 4.25, 'gte', 4, 'not_configured', 3000);
-      insert into macro_alert_history
-        (owner_key, series_id, observation_date, observation_vintage_at, observed_at, value,
-         rule_operator, rule_threshold, notification_state, evaluated_at)
-      values ('local', 'SOFR', '2026-07-30', 4000, 4000, 4.5, 'gte', 4, 'not_configured', 4000);
+      values ('local', 'SOFR', '2026-01-01', 1, 1, 4.25, 'gte', 4, 'not_configured', 1);
+      insert into kv_cache (namespace, key, value_json, updated_at) values
+        ('sync_state', 'macro-data', '{}', 1),
+        ('sync_state', 'financial-provisional', '{}', 1);
+      insert into macro_indicators
+        (id, metric_id, category_id, region_code, definition_id, name, frequency, unit,
+         source_id, refresh_interval_seconds, revision_lookback_periods, next_fetch_at)
+      values (12, 1, 1, 'US', 0, '美国实际GDP增速', 'quarterly', '%', 'fred', 86400, 12, 1000);
+      insert into macro_data (indicator_id, period_day, published_at, value) values
+        (12, 20260101, 1000, 2.0),
+        (12, 20260101, 2000, 2.5);
     `);
-    assert.equal(queryScalar(database, "select count(*) from macro_alert_history"), "2");
-    assert.equal(queryScalar(database, "select max(observation_vintage_at) from macro_alert_history"), "4000");
+    migrate(database, migrations.length);
+
+    assert.equal(queryScalar(database, `select group_concat(name, ',') from (
+      select name from sqlite_master where type = 'table' and name glob 'macro_*' order by name
+    )`), "macro_data,macro_indicators");
+    assert.equal(queryScalar(database, `select group_concat(name, ',') from pragma_table_info('macro_data') order by cid`),
+      "indicator_id,period_day,published_at,value");
+    assert.equal(queryScalar(database, "select sql like '%WITHOUT ROWID%' from sqlite_master where type = 'table' and name = 'macro_data'"), "1");
+    assert.equal(queryScalar(database, "select count(*) from macro_data where indicator_id = 12"), "2");
+    assert.equal(queryScalar(database, "select region_name from macro_indicators where id = 12"), "美国");
+    assert.equal(queryScalar(database, "select category_name from macro_indicators where id = 12"), "经济增长与景气");
+    assert.equal(queryScalar(database, "select metric_name from macro_indicators where id = 12"), "实际GDP增速");
+    assert.equal(queryScalar(database, "select count(*) from kv_cache where namespace = 'sync_state' and key = 'macro-data'"), "0");
+    assert.equal(queryScalar(database, "select count(*) from kv_cache where namespace = 'sync_state' and key = 'financial-provisional'"), "1");
+    assert.equal(queryScalar(database, "pragma foreign_key_check"), "");
+
+    // Neither the physical catalog nor the ledger may impose the original
+    // CN/US, eight-category, or sixty-metric bootstrap boundary.
+    execute(database, `
+      insert into macro_indicators (
+        id, metric_id, category_id, region_code, definition_id,
+        region_name, region_sort, category_code, category_name, category_sort,
+        metric_code, metric_name, metric_description, metric_sort, statistical_definition,
+        name, frequency, unit, unit_format, measurement_kind,
+        yoy_method, yoy_base_periods, yoy_display_format,
+        mom_method, mom_base_periods, mom_display_format, default_trend_periods
+      ) values (
+        77, 61, 9, 'KR', 0,
+        '韩国', 30, 'I', '第九分类', 9,
+        'I01', '韩国消费者物价', '第三地区的第九分类测试指标', 61, '全国、季调后',
+        '韩国消费者物价', 'monthly', 'index', 'decimal_2', 'index',
+        'percent_change', 12, 'percent',
+        'percent_change', 1, 'percent', 24
+      );
+      insert into macro_data (indicator_id, period_day, published_at, value) values
+        (77, 20250101, 100, 100.0),
+        (77, 20260101, 200, 110.0),
+        (77, 20260101, 300, 111.0);
+    `);
+    assert.equal(queryScalar(database, "select region_name || ':' || category_name || ':' || metric_name from macro_indicators where id = 77"),
+      "韩国:第九分类:韩国消费者物价");
+    assert.equal(queryScalar(database, "select value from macro_data where indicator_id = 77 and period_day = 20260101 and published_at = 300"), "111.0");
+
+    // Select revisions only after applying asOf: the later revision must not
+    // leak into the 250 replay.
+    assert.equal(queryScalar(database, `
+      select value from (
+        select period_day, value, row_number() over (partition by period_day order by published_at desc) as version_rank
+        from macro_data where indicator_id = 77 and published_at <= 250
+      ) where version_rank = 1 and value = 110.0
+    `), "110.0");
+    assert.equal(queryScalar(database, `
+      select value from (
+        select period_day, value, row_number() over (partition by period_day order by published_at desc) as version_rank
+        from macro_data where indicator_id = 77 and published_at <= 300
+      ) where version_rank = 1 and period_day = 20260101
+    `), "111.0");
+    assert.match(queryScalar(database, `
+      explain query plan select value from macro_data
+       where indicator_id = 77 and period_day between 20250101 and 20260101 and published_at <= 300
+    `), /SEARCH macro_data USING PRIMARY KEY \(indicator_id=\? AND period_day>\? AND period_day<\?\)/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-function migrate(database, count = migrations.length) {
+function migrate(database, count) {
   for (const migration of migrations.slice(0, count)) {
     execFileSync("sqlite3", [database], { input: readFileSync(migration), encoding: "utf8" });
   }
-}
-
-function latestVintageSql(asOf) {
-  return `select value from macro_observation_vintages
-    where series_id = 'GDP' and vintage_at <= ${asOf}
-    order by vintage_at desc limit 1`;
 }
 
 function execute(database, sql) {

@@ -2,10 +2,9 @@ import type { MacroFetch } from "./types";
 
 const OFFICIAL_MACRO_HOSTS = new Set([
   "api.bls.gov",
-  "api.hkma.gov.hk",
+  "www.bls.gov",
   "api.stlouisfed.org",
   "fred.stlouisfed.org",
-  "markets.newyorkfed.org",
 ]);
 
 /**

@@ -1,351 +1,199 @@
-import { createApp, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { createApp, defineComponent, h, onMounted, ref } from "vue";
 
-declare const echarts: any
-
-type Quality = 'fresh' | 'stale' | 'missing'
-type MacroIndicator = {
-  id: string; name: string; category: string; region: string; frequency: string; unit: string
-  transmission: string; interpretation: string; latest: number | null; previous: number | null
-  change: number | null; latestDate: string | null; ageDays: number | null; quality: Quality
-}
-type Dashboard = {
-  generatedAt: string
-  source: { id: string; name: string; url: string }
-  indicators: MacroIndicator[]
-  status: { state: string; total: number; fresh: number; stale: number; missing: number; error?: string | null }
-}
-type SeriesResponse = Array<{ definition: MacroIndicator; points: Array<{ date: string; value: number }> }>
-type MacroEvent = {
-  id?: string; eventId?: string; scheduledAt?: string | number; region?: string; importance?: string
-  title?: string; actual?: number | string | null; consensus?: number | string | null; previous?: number | string | null
-  metadata?: { timePrecision?: string }
-}
-type EventsResponse = { events: MacroEvent[]; status?: string; message?: string }
-type RevisionSummary = { observationDate: string; firstValue: number; latestValue: number; delta: number; revisionCount: number; firstSeenAt: number; latestSeenAt: number }
-type SignalContribution = { factor: string; seriesId?: string; contribution: number; signal: number | null; weight: number; quality: Quality; freshnessWeight: number }
-type SignalMarket = {
-  market: string; score: number | null; confidence: number; confidenceLevel: 'high' | 'medium' | 'low' | 'unavailable'
-  coverage: { configured: number; available: number; fresh: number; stale: number; missing: number; configuredWeight: number; availableWeight: number; effectiveWeight: number }
-  contributions: SignalContribution[]
-}
-type IndustrySignal = { id: string; market: string; name: string; score: number | null; coverage: { available: number; configured: number }; contributions: Array<{ seriesId: string; contribution: number }> }
-type SourceHealth = { sourceId: string; displayName: string; state: 'healthy' | 'degraded' | 'failed' | 'disabled'; lastSuccessAt: number | null; lastError: string | null; nextRetryAt: number | null }
-type AlertHistoryEntry = { alertId: number; seriesId: string; observationDate: string; observationVintageAt: number; value: number; ruleOperator: 'gte' | 'lte'; ruleThreshold: number; sourceUrl: string | null; notificationState: string; evaluatedAt: number }
-type Provenance = { configuredSource: { sourceId: string; sourceSeriesId: string; contract: string; health: string }; latest: { observationDate: string; releasedAt: number; vintageAt: number; observedAt: number; sourceUrl: string | null; actualSource: { sourceId: string; contract: string; differsFromConfigured: boolean } } | null }
-
-const categoryLabels: Record<string, string> = {
-  all: '全部', growth: '增长', inflation: '通胀', rates: '利率', liquidity: '流动性', credit: '信用', fx: '汇率与资金',
-}
-const transmissionLabels: Record<string, string> = {
-  earnings: '盈利', discount: '折现率', risk: '风险溢价', flow: '资金流', funding: '融资成本',
-}
-const regionLabels: Record<string, string> = { global: '全球', us: '美国', cn: '中国', hk: '香港', kr: '韩国' }
-const marketCards = [
-  { region: 'us', title: '美股', subtitle: '盈利 × 美联储 × 实际利率', focus: '实际利率、就业、通胀与美元金融条件' },
-  { region: 'cn', title: 'A股', subtitle: '国内信用 × 政策 × 人民币', focus: '首版已接人民币价格信号，社融与政策数据待接入' },
-  { region: 'hk', title: '港股', subtitle: '中国盈利 × 美元利率 × 离岸流动性', focus: '已接港元、HIBOR和全球利率，中国增长数据依赖官方源' },
-  { region: 'kr', title: '韩国', subtitle: '半导体 × 出口 × 韩元', focus: '首版已接韩元和全球金融条件，ECOS/KOSIS待接入' },
-]
-const macroDimensions = [
-  { key: 'growth', label: '增长', categories: ['growth'], description: '收入与盈利周期' },
-  { key: 'inflation', label: '通胀', categories: ['inflation'], description: '政策约束与利润率' },
-  { key: 'liquidity', label: '流动性', categories: ['rates', 'liquidity'], description: '折现率与融资条件' },
-  { key: 'credit', label: '信用', categories: ['credit'], description: '融资可得性与违约风险' },
-  { key: 'external', label: '外部风险', categories: ['fx'], description: '美元、汇率与跨境资金' },
-]
-const heatmapFactors = [
-  { key: 'growth', label: '增长' }, { key: 'inflation', label: '通胀' }, { key: 'rates', label: '利率' },
-  { key: 'liquidity', label: '流动性' }, { key: 'credit', label: '信用' }, { key: 'fx', label: '汇率/资金' },
-]
+type Region = { code: string; name: string; sort: number };
+type Category = { id: number; code: string; name: string; sort: number };
+type Metric = { id: number; categoryId: number; code: string; name: string; description: string; sort: number };
+type MeasureDefinition = { method: string; basePeriods: number; displayFormat: string };
+type Definition = {
+  id: number; metricId: number; categoryId: number; regionCode: string; definitionId: number;
+  region: Region; category: Category; metric: Metric;
+  name: string; statisticalDefinition: string; frequency: string; unit: string; unitFormat: string;
+  measurementKind: string; seasonalAdjustment: string | null; leadLag: string | null;
+  measures: { yoy: MeasureDefinition; mom: MeasureDefinition };
+  defaultTrendPeriods: number;
+  source: { id: string; seriesId: string | null; url: string | null; publisher: string | null } | null;
+};
+type RawPoint = { value: number; period: string; publishedAt: string };
+type DerivedPoint = { value: number | null; basePeriod: string | null; basePublishedAt: string | null; method: string; status: "available" | "unavailable"; reason: string | null };
+type OverviewEntry = {
+  definition: Definition; current: RawPoint | null; yoy: DerivedPoint; mom: DerivedPoint;
+  freshness: { status: "fresh" | "stale" | "missing"; ageSeconds: number | null; staleAfterSeconds: number };
+  availability: { status: "available" | "unmapped" | "awaiting_first_release" | "awaiting_data"; reason: string | null };
+  trend: { status: "available" | "unavailable"; reason: string | null; defaultPeriods: number; points: RawPoint[] };
+};
+type Catalog = {
+  generatedAt: string; regions: Region[]; categories: Category[]; metrics: Metric[]; series: Definition[];
+  capabilities: { frequencies: string[]; measurementKinds: string[]; yoyMethods: string[]; momMethods: string[] };
+};
+type Overview = { generatedAt: string; asOf: string; regions: string[]; categories: string[]; series: OverviewEntry[] };
+type SeriesPoint = Omit<RawPoint, "value"> & DerivedPoint;
+type SeriesResponse = { generatedAt: string; asOf: string; series: Array<{ definition: Definition; measure: string; points: SeriesPoint[] }> };
+type Detail = { entry: OverviewEntry; measure: "level" | "yoy" | "mom"; from: string; to: string };
+type ApiEnvelope<T> = { code: number; msg: string; data: T };
 
 const style = `
-.macro-page{background:#f4f7f8;box-sizing:border-box;color:#172b2a;min-height:calc(100vh - 8rem);max-width:100vw;overflow-x:hidden;width:100%}.macro-shell{box-sizing:border-box;max-width:1440px;min-width:0;margin:0 auto;padding:1.25rem}
-.macro-hero{background:radial-gradient(circle at 88% 20%,rgba(103,232,192,.24),transparent 22rem),linear-gradient(135deg,#082f2d,#123a67);border-radius:1.4rem;color:#f8fafc;padding:1.5rem}
-.macro-eyebrow{color:#8fe3c7;font-size:.78rem;font-weight:800;letter-spacing:.12em}.macro-hero h1{font-size:clamp(1.65rem,3vw,2.5rem);margin:.35rem 0}.macro-hero p{color:#d8e6e4;max-width:52rem;margin:0}
-.macro-status{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:1rem;padding:1rem;min-width:15rem}.macro-grid{display:grid;gap:1rem}.macro-market-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-  .macro-market-card,.macro-panel,.macro-indicator{background:#fff;border:1px solid #dfe9e8;border-radius:1rem;box-shadow:0 .5rem 1.3rem rgba(15,52,51,.05)}.macro-market-card{padding:1rem}.macro-market-card h2{font-size:1.15rem;margin:0;color:#123a67}.macro-market-score{font-size:1.65rem;font-weight:850;line-height:1;margin:.8rem 0 .25rem}.macro-market-score.support{color:#087f5b}.macro-market-score.pressure{color:#b42318}.macro-market-score.observe{color:#64748b}.macro-driver-list{border-top:1px solid #edf2f1;display:grid;gap:.35rem;margin-top:.8rem;padding-top:.65rem}.macro-driver{display:flex;font-size:.76rem;gap:.4rem;justify-content:space-between}.macro-driver span:last-child{font-variant-numeric:tabular-nums;font-weight:750}.macro-driver-support{color:#087f5b}.macro-driver-pressure{color:#b42318}
-.macro-market-subtitle{color:#0f766e;font-size:.85rem;font-weight:700;margin:.4rem 0}.macro-market-focus{color:#64748b;font-size:.85rem;min-height:2.6rem}.macro-pill{border-radius:999px;display:inline-flex;font-size:.75rem;font-weight:700;padding:.28rem .58rem}
-.macro-pill-fresh{background:#dcfce7;color:#166534}.macro-pill-stale{background:#fef3c7;color:#92400e}.macro-pill-missing{background:#fee2e2;color:#991b1b}.macro-pill-pending{background:#e2e8f0;color:#475569}.macro-panel{padding:1rem}.macro-panel-title{color:#123a67;font-size:1.05rem;font-weight:800;margin:0}
-.macro-tabs{display:flex;flex-wrap:wrap;gap:.45rem}.macro-tab{background:#fff;border:1px solid #cbdad8;border-radius:999px;color:#49615f;padding:.38rem .78rem}.macro-tab.active{background:#0f766e;border-color:#0f766e;color:#fff}.macro-indicator-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-.macro-indicator{cursor:pointer;padding:1rem;text-align:left;transition:transform .15s,border-color .15s;width:100%}.macro-indicator:hover,.macro-indicator.active{border-color:#0f766e;transform:translateY(-1px)}.macro-indicator-name{color:#304b49;font-size:.86rem;font-weight:750}.macro-value{color:#0b3b2e;font-size:1.55rem;font-weight:800;line-height:1.2;margin:.45rem 0}
-.macro-change-up{color:#b42318}.macro-change-down{color:#087f5b}.macro-meta{color:#71817f;font-size:.78rem}.macro-chart{height:360px;width:100%}.macro-note{background:#f8fafc;border-left:3px solid #14b8a6;color:#526462;font-size:.86rem;padding:.75rem}.macro-error{background:#fff1f2;border:1px solid #fecdd3;border-radius:.8rem;color:#9f1239;padding:1rem}
-  .macro-dimension-grid{grid-template-columns:repeat(5,minmax(0,1fr))}.macro-dimension{background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);border-radius:.85rem;padding:.8rem}.macro-dimension-label{font-size:.78rem;color:#b8d7d3}.macro-dimension-state{font-size:1rem;font-weight:800;margin:.18rem 0}.macro-dimension-detail{font-size:.72rem;color:#cfe0df}.macro-source-health{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem}.macro-source-item{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.13);border-radius:.6rem;color:#d8e6e4;font-size:.72rem;padding:.45rem .6rem}.macro-source-item strong{color:#fff}.macro-source-item.failed{border-color:rgba(253,186,116,.6);color:#fde68a}
-.macro-section-head{display:flex;justify-content:space-between;align-items:start;gap:1rem;margin-bottom:1rem}.macro-pending-box{background:#f8fafc;border:1px dashed #a9bbb9;border-radius:.8rem;color:#526462;padding:1rem}.macro-pending-box strong{color:#334155}.macro-heat-wrap{overflow-x:auto}.macro-heatmap{border-collapse:separate;border-spacing:.35rem;min-width:720px;width:100%}.macro-heatmap th{color:#64748b;font-size:.75rem;text-align:center;padding:.35rem}.macro-heatmap th:first-child{text-align:left}.macro-heatmap td{border-radius:.55rem;font-size:.75rem;font-weight:750;height:3.3rem;min-width:5.8rem;text-align:center}.macro-heat-live{background:#d1fae5;color:#166534}.macro-heat-partial{background:#fef3c7;color:#92400e}.macro-heat-pending{background:#eef2f5;color:#64748b}.macro-heat-error{background:#fee2e2;color:#991b1b}.macro-heat-support{background:#dcfce7;color:#166534}.macro-heat-pressure{background:#fee2e2;color:#991b1b}.macro-event-list{display:grid;gap:.65rem}.macro-event{border-left:3px solid #cbd5e1;background:#f8fafc;padding:.7rem .85rem}.macro-event-time{font-variant-numeric:tabular-nums;color:#0f766e;font-size:.78rem;font-weight:750}.macro-research-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.macro-research-card{border:1px solid #dfe9e8;border-radius:.85rem;padding:1rem;min-height:12rem}.macro-research-card h3{color:#123a67;font-size:.95rem;font-weight:800}.macro-field{background:#fff;border:1px solid #cbdad8;border-radius:.5rem;padding:.48rem .65rem;width:100%}.macro-watch-list{display:grid;gap:.45rem;max-height:15rem;overflow:auto}.macro-watch-row{align-items:center;background:#f8fafc;border-radius:.55rem;display:flex;gap:.55rem;padding:.55rem}.macro-table{font-size:.82rem;margin:0}.macro-stage{background:linear-gradient(135deg,#f8fafc,#edf7f5);border:1px solid #dbe8e6;border-radius:.75rem;padding:.85rem}.macro-stage-number{align-items:center;background:#0f766e;border-radius:999px;color:#fff;display:inline-flex;font-size:.7rem;font-weight:800;height:1.45rem;justify-content:center;width:1.45rem}
-.macro-sector-grid{display:grid;gap:.65rem;grid-template-columns:repeat(3,minmax(0,1fr))}.macro-sector{background:#f8fafc;border-radius:.7rem;padding:.75rem}.macro-sector-score{font-size:1.15rem;font-weight:800}.macro-sector-support{color:#087f5b}.macro-sector-pressure{color:#b42318}.macro-alert-list{display:grid;gap:.38rem}.macro-alert-row{align-items:center;background:#f8fafc;border-radius:.45rem;display:flex;flex-wrap:wrap;font-size:.74rem;gap:.4rem;justify-content:space-between;padding:.45rem}.macro-source-link{color:#0f766e;font-size:.74rem;font-weight:700;text-decoration:none}
-@media(max-width:991px){.macro-market-grid{grid-template-columns:repeat(2,1fr)}.macro-indicator-grid{grid-template-columns:repeat(2,1fr)}.macro-dimension-grid{grid-template-columns:repeat(3,1fr)}.macro-research-grid{grid-template-columns:1fr 1fr}.macro-sector-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:575px){.macro-shell{padding:.75rem}.macro-market-grid,.macro-indicator-grid,.macro-dimension-grid,.macro-research-grid,.macro-sector-grid{grid-template-columns:1fr}.macro-chart{height:300px}.macro-section-head{display:block}.macro-section-head>*+*{margin-top:.55rem}}
-`
-
-function formatValue(value: number | null, unit: string): string {
-  if (value === null) return '--'
-  return `${value.toLocaleString('zh-CN', { maximumFractionDigits: Math.abs(value) >= 100 ? 1 : 2 })}${unit === '%' ? '%' : ''}`
-}
-function qualityLabel(quality: Quality): string {
-  return quality === 'fresh' ? '数据正常' : quality === 'stale' ? '数据过期' : '数据缺失'
-}
-function marketVerdict(score: number | null, confidenceLevel: SignalMarket['confidenceLevel'] | undefined): { label: string; className: string; detail: string } {
-  if (score === null || confidenceLevel === 'unavailable') return { label: '证据不足', className: 'observe', detail: '等待已验证数据覆盖' }
-  if (confidenceLevel === 'low') return { label: '低置信观察', className: 'observe', detail: '覆盖不足或含较多过期数据' }
-  if (score >= 0.35) return { label: '宏观支持', className: 'support', detail: '综合传导偏正向' }
-  if (score <= -0.35) return { label: '宏观压力', className: 'pressure', detail: '综合传导偏负向' }
-  return { label: '中性观察', className: 'observe', detail: '支持与压力暂时均衡' }
-}
-function formatScore(value: number | null | undefined): string {
-  return value === null || value === undefined ? '--' : `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
-}
-function eventImportanceLabel(value: string | undefined): string {
-  return value === 'high' ? '高重要性' : value === 'medium' ? '中等重要性' : value === 'low' ? '低重要性' : '待分类'
-}
+.macro-page{background:#f4f6f8;color:#172b2a;min-height:calc(100vh - 8rem);padding:1.25rem}.macro-shell{max-width:1360px;margin:auto}.macro-hero{background:linear-gradient(120deg,#073c3a,#12675d);border-radius:18px;color:#fff;padding:2rem}.macro-eyebrow{font-size:.75rem;letter-spacing:.15em;opacity:.78}.macro-hero h1{font-size:clamp(1.75rem,4vw,2.7rem);margin:.35rem 0 .6rem}.macro-hero p{max-width:780px;margin:0;opacity:.9}.macro-updated{font-size:.78rem;opacity:.8;margin-top:.75rem}.macro-controls,.macro-category,.macro-compare{background:#fff;border:1px solid #e2e8ed;border-radius:14px;margin-top:1.25rem}.macro-controls{padding:1rem 1.15rem}.macro-control-title{font-size:.8rem;font-weight:700;color:#53616b;margin:0 0 .45rem}.macro-region-list{display:flex;flex-wrap:wrap;gap:.45rem}.macro-region-choice{align-items:center;border:1px solid #d9e3e7;border-radius:999px;cursor:pointer;display:inline-flex;gap:.4rem;padding:.36rem .7rem}.macro-region-choice:has(input:checked){background:#e8f4f1;border-color:#4e958b}.macro-filter-row{align-items:end;display:flex;flex-wrap:wrap;gap:.8rem;margin-top:1rem}.macro-filter-row label{color:#53616b;display:grid;font-size:.8rem;font-weight:650;gap:.35rem;min-width:180px}.macro-filter-row input,.macro-filter-row select{background:#fff;border:1px solid #cad6db;border-radius:7px;color:#172b2a;font:inherit;font-size:.9rem;padding:.45rem .55rem}.macro-view-switch{display:flex;gap:.4rem}.macro-view-switch button{background:#f5f8f8;border:1px solid #cbd7da;border-radius:7px;color:#31514f;font-size:.85rem;padding:.45rem .75rem}.macro-view-switch button.active{background:#12675d;border-color:#12675d;color:#fff}.macro-category{overflow:hidden}.macro-category-head{align-items:baseline;border-bottom:1px solid #e7edf0;display:flex;gap:.7rem;justify-content:space-between;padding:1rem 1.15rem}.macro-category h2{font-size:1.05rem;margin:0}.macro-category-note,.macro-meta{color:#66747d;font-size:.78rem}.macro-card-grid{display:grid;gap:.85rem;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));padding:1rem}.macro-card{border:1px solid #e1e9ec;border-radius:11px;display:flex;flex-direction:column;gap:.65rem;min-width:0;padding:.9rem}.macro-card-head{align-items:start;display:flex;gap:.6rem;justify-content:space-between}.macro-card-title{font-size:.95rem;font-weight:700}.macro-card-subtitle{color:#66747d;font-size:.78rem;margin-top:.15rem}.macro-current{font-size:1.25rem;font-variant-numeric:tabular-nums;font-weight:750}.macro-measure-grid{display:grid;gap:.45rem;grid-template-columns:repeat(2,minmax(0,1fr))}.macro-measure{background:#f7faf9;border-radius:7px;min-width:0;padding:.5rem}.macro-measure-label{color:#66747d;font-size:.73rem}.macro-measure-value{font-size:.9rem;font-variant-numeric:tabular-nums;font-weight:700;margin-top:.1rem}.macro-measure-reason{color:#7a5a17;font-size:.72rem;line-height:1.3;margin-top:.15rem}.macro-status{border-radius:999px;display:inline-block;font-size:.72rem;font-weight:650;padding:.22rem .5rem;white-space:nowrap}.macro-status.fresh{background:#e7f5ed;color:#18704b}.macro-status.stale{background:#fff1dd;color:#8b5e00}.macro-status.missing{background:#f1f3f4;color:#64717a}.macro-status.unmapped{background:#fff0ee;color:#94351f}.macro-status.awaiting{background:#fff7df;color:#856109}.macro-trend{align-items:center;display:flex;gap:.5rem;min-height:40px}.macro-sparkline{height:38px;overflow:visible;width:128px}.macro-sparkline-line{fill:none;stroke:#12675d;stroke-width:2}.macro-detail-action{background:none;border:0;color:#0e5c58;font-size:.8rem;padding:0;text-align:left;text-decoration:underline}.macro-compare{overflow-x:auto}.macro-compare-table{border-collapse:collapse;min-width:680px;width:100%}.macro-compare-table th,.macro-compare-table td{border-bottom:1px solid #edf1f3;padding:.85rem;text-align:left;vertical-align:top}.macro-compare-table th{background:#f8fafb;color:#5b6871;font-size:.78rem;font-weight:650}.macro-compare-metric{min-width:200px}.macro-compare-cell{display:grid;gap:.6rem;min-width:220px}.macro-empty{color:#7a5a17;font-size:.85rem;font-weight:600;padding:1rem}.macro-error{background:#fff0ee;border:1px solid #f2beb5;border-radius:10px;color:#94351f;margin-top:1rem;padding:.8rem}.macro-loading{padding:2rem;text-align:center}.macro-detail-backdrop{align-items:flex-start;background:rgba(17,37,38,.45);display:flex;inset:0;justify-content:center;overflow:auto;padding:4vh 1rem;position:fixed;z-index:1050}.macro-detail-panel{background:#fff;border-radius:15px;box-shadow:0 16px 50px rgba(0,0,0,.25);max-width:850px;padding:1.1rem;width:100%}.macro-detail-head{align-items:start;display:flex;gap:1rem;justify-content:space-between}.macro-detail-head h2{font-size:1.2rem;margin:0}.macro-detail-close{background:none;border:0;color:#36514f;font-size:1.5rem;line-height:1;padding:.1rem .3rem}.macro-detail-filters{display:flex;flex-wrap:wrap;gap:.7rem;margin:1rem 0}.macro-detail-filters label{color:#53616b;display:grid;font-size:.78rem;font-weight:650;gap:.25rem}.macro-detail-filters input,.macro-detail-filters select{border:1px solid #cad6db;border-radius:7px;padding:.4rem}.macro-chart{background:#f7faf9;border-radius:10px;min-height:220px;padding:.6rem}.macro-chart svg{display:block;height:210px;width:100%}.macro-chart-line{fill:none;stroke:#12675d;stroke-width:2.25}.macro-chart-dot{fill:#12675d}.macro-point-list{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.8rem}.macro-point{background:#f4f6f8;border-radius:6px;font-size:.76rem;padding:.35rem .5rem}.macro-detail-source{margin-top:1rem}@media(max-width:760px){.macro-page{padding:.75rem}.macro-hero{padding:1.35rem}.macro-controls{padding:.85rem}.macro-filter-row label{min-width:100%}.macro-detail-backdrop{padding:1rem .5rem}.macro-detail-panel{padding:.9rem}.macro-chart{overflow-x:auto}.macro-chart svg{min-width:420px}}
+`;
 
 const MacroPage = defineComponent({
-  name: 'MacroPage',
   setup() {
-    const dashboard = ref<Dashboard | null>(null)
-    const loading = ref(true)
-    const error = ref('')
-    const activeCategory = ref('all')
-    const selectedId = ref('DFII10')
-    const events = ref<MacroEvent[]>([])
-    const eventStatus = ref('loading')
-    const eventMessage = ref('')
-    const watchedIds = ref<string[]>([])
-    const alertEnabled = ref(false)
-    const alertThreshold = ref('')
-    const alertNotice = ref('')
-    const alertHistory = ref<AlertHistoryEntry[]>([])
-    const provenance = ref<Provenance | null>(null)
-    const revisions = ref<RevisionSummary[]>([])
-    const signalMarkets = ref<SignalMarket[]>([])
-    const industrySignals = ref<IndustrySignal[]>([])
-    const sourceHealth = ref<SourceHealth[]>([])
-    const replayFrom = ref(dateYearsAgo(1))
-    const replayTo = ref(localDateInput())
-    const scenarioResult = ref<any>(null)
-    const researchMarket = ref('us')
-    const correlationResult = ref<any>(null)
-    const backtestResult = ref<any>(null)
-    const backtestMode = ref('point-in-time')
-    const researchBusy = ref(false)
-    let chart: any = null
+    const catalog = ref<Catalog | null>(null);
+    const overview = ref<Overview | null>(null);
+    const selectedRegions = ref<string[]>([]);
+    const selectedCategory = ref("");
+    const search = ref("");
+    const view = ref<"overview" | "compare">("overview");
+    const loadingCatalog = ref(false);
+    const loadingOverview = ref(false);
+    const error = ref<string | null>(null);
+    const detail = ref<Detail | null>(null);
+    const detailSeries = ref<SeriesResponse | null>(null);
+    const detailLoading = ref(false);
+    const detailError = ref<string | null>(null);
 
-    const filteredIndicators = () => (dashboard.value?.indicators ?? []).filter((item) => activeCategory.value === 'all' || item.category === activeCategory.value)
-    const dimensionState = (categories: string[]) => {
-      const items = (dashboard.value?.indicators ?? []).filter((item) => categories.includes(item.category))
-      const usable = items.filter((item) => item.quality === 'fresh').length
-      const impaired = items.filter((item) => item.quality === 'stale').length
-      if (usable > 0) return { label: '可观测', className: 'macro-pill-fresh', detail: `${usable}/${items.length} 项数据正常` }
-      if (impaired > 0) return { label: '数据过期', className: 'macro-pill-stale', detail: `${impaired} 项需更新` }
-      return { label: '待接入', className: 'macro-pill-pending', detail: '尚无可计算信号' }
-    }
-    const marketSignal = (region: string) => signalMarkets.value.find((item) => item.market === region)
-    const driverLabel = (entry: SignalContribution) => dashboard.value?.indicators.find((item) => item.id === entry.seriesId)?.name ?? entry.seriesId ?? entry.factor.split('/').at(-1) ?? entry.factor
-    const sourceIssues = () => sourceHealth.value.filter((item) => item.state === 'failed' || item.state === 'degraded')
-    const heatCell = (region: string, category: string) => {
-      const signal = marketSignal(region)
-      const contributions = signal?.contributions.filter((item) => item.factor.startsWith(`${category}/`) && item.freshnessWeight > 0) ?? []
-      if (contributions.length) {
-        const score = contributions.reduce((sum, item) => sum + item.contribution, 0)
-        return { className: score >= 0 ? 'macro-heat-support' : 'macro-heat-pressure', label: `${score >= 0 ? '+' : ''}${score.toFixed(2)}` }
-      }
-      const items = (dashboard.value?.indicators ?? []).filter((item) => item.category === category && (item.region === region || item.region === 'global'))
-      const fresh = items.filter((item) => item.quality === 'fresh').length
-      const stale = items.filter((item) => item.quality === 'stale').length
-      if (fresh > 0 && fresh === items.length) return { className: 'macro-heat-live', label: `${fresh} 项正常` }
-      if (fresh > 0) return { className: 'macro-heat-partial', label: `${fresh}/${items.length} 项正常` }
-      if (stale > 0) return { className: 'macro-heat-error', label: `${stale} 项过期` }
-      return { className: 'macro-heat-pending', label: '待接入' }
-    }
-    const toggleWatch = async (id: string) => {
-      const enabled = !watchedIds.value.includes(id)
-      watchedIds.value = enabled ? [...watchedIds.value, id] : watchedIds.value.filter((item) => item !== id)
-      localStorage.setItem('macro-watched-series', JSON.stringify(watchedIds.value))
-      try { await api('/api/macro/watch', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ownerKey:'local', seriesId:id, enabled }) }) } catch (err) { alertNotice.value = err instanceof Error ? err.message : String(err) }
-    }
-    const saveAlert = async () => {
-      localStorage.setItem('macro-alert-config', JSON.stringify({ enabled: alertEnabled.value, threshold: alertThreshold.value }))
-      const threshold = Number(alertThreshold.value)
-      if (!selectedId.value || !Number.isFinite(threshold)) { alertNotice.value = '请选择指标并填写有效阈值。'; return }
+    const loadOverview = async () => {
+      loadingOverview.value = true;
+      error.value = null;
       try {
-        await api('/api/macro/watch', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ownerKey:'local', seriesId:selectedId.value, enabled:alertEnabled.value, alertRules:[{operator:'gte',threshold}] }) })
-        const evaluated = await api('/api/macro/alerts/evaluate?owner=local', { method:'POST' })
-        await loadAlertHistory()
-        alertNotice.value = `规则已保存并执行；当前触发 ${evaluated.triggered?.length ?? 0} 项，新增留档 ${evaluated.recorded ?? 0} 项；通知渠道尚未配置。`
-      } catch (err) { alertNotice.value = err instanceof Error ? err.message : String(err) }
-    }
-    const api = async (url: string, init?: RequestInit): Promise<any> => {
-      const response = await fetch(url, init); const body = await response.json()
-      if (!response.ok || body.code !== 200) throw new Error(body.msg || `请求失败：${url}`)
-      return body.data
-    }
-    const loadWatches = async () => {
-      try { const rows = await api('/api/macro/watch?owner=local'); if (Array.isArray(rows) && rows.length) watchedIds.value = rows.filter((item:any)=>item.enabled).map((item:any)=>item.seriesId) } catch { /* localStorage remains the offline preference. */ }
-    }
-    const loadAlertHistory = async () => {
-      try { const data = await api('/api/macro/alerts/history?owner=local&limit=6'); alertHistory.value = Array.isArray(data.entries) ? data.entries : [] } catch { alertHistory.value = [] }
-    }
-    const loadSignals = async () => {
-      try { const data = await api('/api/macro/signals'); signalMarkets.value = Array.isArray(data.markets) ? data.markets : [] } catch { signalMarkets.value = [] }
-    }
-    const loadIndustries = async () => {
-      try { const data = await api('/api/macro/research/industries?markets=us,cn,hk,kr'); industrySignals.value = Array.isArray(data.sectors) ? data.sectors : [] } catch { industrySignals.value = [] }
-    }
-    const loadSourceHealth = async () => {
-      try { const data = await api('/api/macro/status'); sourceHealth.value = Array.isArray(data.sources) ? data.sources : [] } catch { sourceHealth.value = [] }
-    }
-    const loadRevisions = async (id: string) => {
-      try { const data = await api(`/api/macro/revisions?id=${encodeURIComponent(id)}&from=${dateYearsAgo(3)}`); revisions.value = Array.isArray(data.revisions) ? data.revisions : [] } catch { revisions.value = [] }
-    }
-    const loadProvenance = async (id: string) => {
-      try { const data = await api(`/api/macro/provenance?ids=${encodeURIComponent(id)}`); provenance.value = data.series?.[0] ?? null } catch { provenance.value = null }
-    }
-    const runScenario = async () => {
-      researchBusy.value = true
-      try { scenarioResult.value = await api(`/api/macro/research/scenario?ids=${encodeURIComponent(watchedIds.value.length ? watchedIds.value.slice(0,5).join(',') : selectedId.value)}&from=${replayFrom.value}&to=${replayTo.value}&asOf=${encodeURIComponent(`${replayTo.value}T23:59:59Z`)}`) } catch (err) { scenarioResult.value = { error:err instanceof Error?err.message:String(err) } } finally { researchBusy.value = false }
-    }
-    const runCorrelation = async () => {
-      researchBusy.value = true
-      try { correlationResult.value = await api(`/api/macro/research/correlation?seriesId=${encodeURIComponent(selectedId.value)}&market=${researchMarket.value}&window=20&from=${dateYearsAgo(5)}`) } catch (err) { correlationResult.value = { error:err instanceof Error?err.message:String(err) } } finally { researchBusy.value = false }
-    }
-    const runBacktest = async () => {
-      researchBusy.value = true
-      try { backtestResult.value = await api(`/api/macro/research/backtest?seriesId=${encodeURIComponent(selectedId.value)}&market=${researchMarket.value}&transform=zscore&operator=gte&threshold=1&horizon=20&from=${dateYearsAgo(10)}&vintageMode=${backtestMode.value}`) } catch (err) { backtestResult.value = { error:err instanceof Error?err.message:String(err) } } finally { researchBusy.value = false }
-    }
-    const loadEvents = async () => {
+        const params = new URLSearchParams();
+        if (selectedRegions.value.length) params.set("regions", selectedRegions.value.join(","));
+        if (selectedCategory.value) params.set("categories", selectedCategory.value);
+        overview.value = await fetchJson<Overview>(`/api/macro/overview?${params.toString()}`);
+      } catch (reason) { error.value = errorMessage(reason); } finally { loadingOverview.value = false; }
+    };
+    const loadCatalog = async () => {
+      loadingCatalog.value = true;
+      error.value = null;
       try {
-        const from = localDateInput()
-        const toDate = new Date(); toDate.setDate(toDate.getDate() + 7)
-        const response = await fetch(`/api/macro/events?from=${from}&to=${localDateInput(toDate)}&regions=us,cn,hk,kr`)
-        const body = await response.json()
-        if (!response.ok || body.code !== 200) throw new Error(body.msg || '加载经济日历失败')
-        const data = body.data as EventsResponse
-        events.value = data.events ?? []; eventStatus.value = data.status ?? (events.value.length ? 'ready' : 'empty'); eventMessage.value = data.message ?? ''
-      } catch (err) {
-        eventStatus.value = 'error'; eventMessage.value = err instanceof Error ? err.message : String(err)
-      }
-    }
-    const renderChart = async (id: string) => {
-      selectedId.value = id
+        const data = await fetchJson<Catalog>("/api/macro/catalog");
+        catalog.value = data;
+        if (!selectedRegions.value.length && data.regions.length) selectedRegions.value = [data.regions[0].code];
+        await loadOverview();
+      } catch (reason) { error.value = errorMessage(reason); } finally { loadingCatalog.value = false; }
+    };
+    const toggleRegion = (regionCode: string, checked: boolean) => {
+      selectedRegions.value = checked ? [...new Set([...selectedRegions.value, regionCode])] : selectedRegions.value.filter((code) => code !== regionCode);
+      if (selectedRegions.value.length < 2 && view.value === "compare") view.value = "overview";
+      void loadOverview();
+    };
+    const changeCategory = (categoryCode: string) => { selectedCategory.value = categoryCode; void loadOverview(); };
+    const loadDetailSeries = async () => {
+      if (!detail.value) return;
+      detailLoading.value = true;
+      detailError.value = null;
       try {
-        void loadRevisions(id)
-        void loadProvenance(id)
-        const response = await fetch(`/api/macro/series?ids=${encodeURIComponent(id)}&from=${dateYearsAgo(3)}`)
-        const body = await response.json()
-        if (!response.ok || body.code !== 200) throw new Error(body.msg || '加载序列失败')
-        const series = (body.data as SeriesResponse)[0]
-        await nextTick()
-        const element = document.getElementById('macro-series-chart')
-        if (!element || typeof echarts === 'undefined') return
-        chart = echarts.getInstanceByDom(element) || echarts.init(element)
-        chart.setOption({
-          animationDuration:350, grid:{left:52,right:24,top:32,bottom:48}, tooltip:{trigger:'axis'},
-          xAxis:{type:'category',data:series?.points.map((point)=>point.date)??[],boundaryGap:false}, yAxis:{type:'value',name:series?.definition.unit??''},
-          dataZoom:[{type:'inside'},{type:'slider',height:18,bottom:8}],
-          series:[{name:series?.definition.name??id,type:'line',data:series?.points.map((point)=>point.value)??[],showSymbol:false,lineStyle:{color:'#0f766e',width:2},areaStyle:{color:'rgba(20,184,166,.10)'}}],
-        }, true)
-      } catch (err) { error.value = err instanceof Error ? err.message : String(err) }
-    }
-    const loadDashboard = async () => {
-      loading.value = true; error.value = ''
-      try {
-        const response = await fetch('/api/macro/dashboard?regions=us,cn,hk,kr')
-        const body = await response.json()
-        if (!response.ok || body.code !== 200) throw new Error(body.msg || '加载宏观数据失败')
-        dashboard.value = body.data as Dashboard
-        const first = dashboard.value.indicators.find((item) => item.id === selectedId.value) ?? dashboard.value.indicators[0]
-        if (first) await renderChart(first.id)
-      } catch (err) { error.value = err instanceof Error ? err.message : String(err) } finally { loading.value = false }
-    }
-    const onResize = () => chart?.resize()
-    onMounted(() => {
-      window.addEventListener('resize', onResize)
-      try {
-        const storedWatch = JSON.parse(localStorage.getItem('macro-watched-series') ?? '[]')
-        if (Array.isArray(storedWatch)) watchedIds.value = storedWatch.filter((item): item is string => typeof item === 'string')
-        const storedAlert = JSON.parse(localStorage.getItem('macro-alert-config') ?? '{}')
-        alertEnabled.value = storedAlert.enabled === true; alertThreshold.value = typeof storedAlert.threshold === 'string' ? storedAlert.threshold : ''
-      } catch { /* Ignore malformed local preferences. */ }
-      void Promise.all([loadDashboard(), loadEvents(), loadSignals(), loadIndustries(), loadWatches(), loadAlertHistory(), loadSourceHealth()])
-    })
-    onBeforeUnmount(() => { window.removeEventListener('resize', onResize); chart?.dispose() })
+        const { entry, measure, from, to } = detail.value;
+        detailSeries.value = await fetchJson<SeriesResponse>(`/api/macro/series?${new URLSearchParams({ ids: String(entry.definition.id), measure, from, to })}`);
+      } catch (reason) { detailError.value = errorMessage(reason); detailSeries.value = null; } finally { detailLoading.value = false; }
+    };
+    const openDetail = async (entry: OverviewEntry) => {
+      const from = entry.trend.points[0]?.period ?? entry.current?.period;
+      const to = entry.current?.period;
+      if (!from || !to) { detailError.value = "该序列尚无可读取的统计期，无法加载趋势详情。"; return; }
+      detail.value = { entry, measure: "level", from, to };
+      await loadDetailSeries();
+    };
+    const updateDetail = (patch: Partial<Omit<Detail, "entry">>) => { if (detail.value) { detail.value = { ...detail.value, ...patch }; void loadDetailSeries(); } };
+    const visibleEntries = () => {
+      const needle = search.value.trim().toLocaleLowerCase();
+      return overview.value?.series.filter((entry) => !needle || [entry.definition.name, entry.definition.metric.name, entry.definition.metric.description, entry.definition.statisticalDefinition, entry.definition.region.name].join(" ").toLocaleLowerCase().includes(needle)) ?? [];
+    };
+    const visibleCategories = () => {
+      const ids = new Set(visibleEntries().map((entry) => entry.definition.category.id));
+      return (catalog.value?.categories ?? []).filter((category) => ids.has(category.id));
+    };
+    const entriesForCategory = (categoryId: number) => visibleEntries().filter((entry) => entry.definition.category.id === categoryId);
+    const compareRows = (categoryId: number) => {
+      const rows = new Map<number, OverviewEntry[]>();
+      for (const entry of entriesForCategory(categoryId)) rows.set(entry.definition.metric.id, [...(rows.get(entry.definition.metric.id) ?? []), entry]);
+      return [...rows.values()].sort((left, right) => left[0].definition.metric.sort - right[0].definition.metric.sort);
+    };
+    const regionsForCompare = () => (catalog.value?.regions ?? []).filter((region) => selectedRegions.value.includes(region.code));
+    const entriesForRegion = (entries: OverviewEntry[], regionCode: string) => entries.filter((entry) => entry.definition.regionCode === regionCode);
 
-    return () => h('main', { class:'macro-page' }, [h('style', style), h('div', { class:'macro-shell' }, [
-      h('section', { class:'macro-hero' }, [
-        h('div',{class:'d-lg-flex justify-content-between align-items-center gap-4'},[
-          h('div', [h('div',{class:'macro-eyebrow'},'GLOBAL MACRO RADAR'),h('h1','全球宏观雷达'),h('p','从盈利、折现率、风险溢价和资金流四条路径，观察全球宏观变化对美股、A股、港股和韩国市场的影响。')]),
-          h('div',{class:'macro-status mt-3 mt-lg-0'},dashboard.value?[h('div',{class:'small text-uppercase opacity-75'},'数据健康'),h('div',{class:'fs-4 fw-bold my-1'},dashboard.value.status.state==='healthy'?'正常':'需要关注'),h('div',{class:'small opacity-75'},`${dashboard.value.status.fresh} 正常 · ${dashboard.value.status.stale} 过期 · ${dashboard.value.status.missing} 缺失`),dashboard.value.status.error?h('div',{class:'small text-warning mt-1'},dashboard.value.status.error):null,h('div',{class:'small opacity-75 mt-1'},`生成于 ${new Date(dashboard.value.generatedAt).toLocaleString('zh-CN')}`)]:h('div',loading.value?'正在加载数据…':'暂无数据')),
+    onMounted(() => { void loadCatalog(); });
+
+    return () => h("main", { class: "macro-page" }, [h("style", style), h("div", { class: "macro-shell" }, [
+      h("section", { class: "macro-hero" }, [h("div", { class: "macro-eyebrow" }, "DATA-DRIVEN MACRO DIRECTORY"), h("h1", "宏观指标浏览器"), h("p", "按目录元数据浏览各地区、分类和统计口径。当前值、同比、环比和趋势均保留数据期、发布时间与不可用原因。"), catalog.value ? h("div", { class: "macro-updated" }, `目录更新于 ${formatTimestamp(catalog.value.generatedAt)}`) : null]),
+      error.value ? h("div", { class: "macro-error" }, [error.value, h("button", { class: "btn btn-sm btn-outline-danger ms-3", onClick: () => void loadCatalog() }, "重试")]) : null,
+      loadingCatalog.value && !catalog.value ? h("div", { class: "macro-loading" }, "正在加载宏观目录…") : null,
+      catalog.value ? h("section", { class: "macro-controls", "data-macro-controls": "directory" }, [
+        h("p", { class: "macro-control-title" }, "国家或地区（可多选）"),
+        h("div", { class: "macro-region-list" }, catalog.value.regions.map((region) => h("label", { class: "macro-region-choice", key: region.code }, [h("input", { type: "checkbox", checked: selectedRegions.value.includes(region.code), onChange: (event: Event) => toggleRegion(region.code, (event.target as HTMLInputElement).checked) }), region.name]))),
+        h("div", { class: "macro-filter-row" }, [
+          h("label", ["分类", h("select", { value: selectedCategory.value, onChange: (event: Event) => changeCategory((event.target as HTMLSelectElement).value) }, [h("option", { value: "" }, "全部分类"), ...catalog.value.categories.map((category) => h("option", { key: category.id, value: category.code }, category.name))])]),
+          h("label", ["搜索指标", h("input", { value: search.value, placeholder: "指标、口径或地区", onInput: (event: Event) => { search.value = (event.target as HTMLInputElement).value; } })]),
+          h("div", [h("p", { class: "macro-control-title" }, "展示方式"), h("div", { class: "macro-view-switch" }, [h("button", { class: view.value === "overview" ? "active" : "", onClick: () => { view.value = "overview"; } }, "概览"), h("button", { class: view.value === "compare" ? "active" : "", disabled: selectedRegions.value.length < 2, onClick: () => { view.value = "compare"; } }, "对比")])]),
         ]),
-        h('div',{class:'macro-grid macro-dimension-grid mt-4'},macroDimensions.map((dimension)=>{const state=dimensionState(dimension.categories);return h('div',{class:'macro-dimension',key:dimension.key},[h('div',{class:'d-flex justify-content-between align-items-center'},[h('div',{class:'macro-dimension-label'},dimension.label),h('span',{class:`macro-pill ${state.className}`},state.label)]),h('div',{class:'macro-dimension-state'},dimension.description),h('div',{class:'macro-dimension-detail'},state.detail)])})),
-        sourceIssues().length?h('div',{class:'macro-source-health'},sourceIssues().map((item)=>h('div',{class:'macro-source-item failed',key:item.sourceId},[h('strong',item.displayName),h('span',` · ${item.lastError??'需要检查'}`)]))):null,
-      ]),
-      error.value?h('div',{class:'macro-error mt-3'},[error.value,h('button',{class:'btn btn-sm btn-outline-danger ms-3',onClick:loadDashboard},'重试')]):null,
-      h('section',{class:'mt-4'},[
-        h('div',{class:'d-flex justify-content-between align-items-end mb-2'},[h('div',[h('h2',{class:'macro-panel-title'},'市场传导框架'),h('div',{class:'macro-meta mt-1'},'同一宏观冲击在不同市场具有不同权重')]),h('span',{class:'macro-pill macro-pill-pending'},'权重配置可审计')]),
-        h('div',{class:'macro-grid macro-market-grid'},marketCards.map((market)=>{const signal=marketSignal(market.region);const verdict=marketVerdict(signal?.score??null,signal?.confidenceLevel);const drivers=signal?.contributions.filter((item)=>item.freshnessWeight>0).slice(0,2)??[];return h('article',{class:'macro-market-card',key:market.region},[h('div',{class:'d-flex justify-content-between align-items-center'},[h('h2',market.title),h('span',{class:`macro-pill ${verdict.className==='support'?'macro-pill-fresh':verdict.className==='pressure'?'macro-pill-missing':'macro-pill-pending'}`},verdict.label)]),h('div',{class:'macro-market-subtitle'},market.subtitle),h('div',{class:`macro-market-score ${verdict.className}`},formatScore(signal?.score)),h('div',{class:'macro-meta'},signal?`置信度 ${Math.round(signal.confidence*100)}% · 新鲜 ${signal.coverage.fresh}/${signal.coverage.configured} · 过期 ${signal.coverage.stale}`:verdict.detail),h('div',{class:'macro-market-focus'},verdict.detail),drivers.length?h('div',{class:'macro-driver-list'},drivers.map((driver)=>h('div',{class:'macro-driver',key:`${market.region}-${driver.factor}`},[h('span',driverLabel(driver)),h('span',{class:driver.contribution>=0?'macro-driver-support':'macro-driver-pressure'},formatScore(driver.contribution))]))):h('div',{class:'macro-driver-list macro-meta'},'尚无可用的因子贡献')])})),
-      ]),
-      h('section',{class:'macro-panel mt-4'},[
-        h('div',{class:'macro-section-head'},[h('div',[h('h2',{class:'macro-panel-title'},'市场 × 因子热力图'),h('div',{class:'macro-meta mt-1'},'有历史数据时展示60期标准化信号×配置敏感度；否则展示覆盖状态')]),h('span',{class:`macro-pill ${signalMarkets.value.length?'macro-pill-fresh':'macro-pill-pending'}`},signalMarkets.value.length?'可审计因子贡献':'数据不足')]),
-        h('div',{class:'macro-heat-wrap'},[
-          h('table',{class:'macro-heatmap'},[
-            h('thead',[h('tr',[h('th','市场 / 因子'),...heatmapFactors.map((factor)=>h('th',{key:factor.key},factor.label))])]),
-            h('tbody',marketCards.map((market)=>h('tr',{key:market.region},[
-              h('th',market.title),
-              ...heatmapFactors.map((factor)=>{const cell=heatCell(market.region,factor.key);return h('td',{class:cell.className,key:factor.key},cell.label)}),
-            ]))),
-          ]),
+      ]) : null,
+      loadingOverview.value ? h("div", { class: "macro-loading" }, "正在更新指标概览…") : null,
+      !loadingOverview.value && overview.value && !visibleEntries().length ? h("div", { class: "macro-empty" }, "当前筛选没有匹配的具体序列。目录中的新地区、分类或指标在有目录数据后会自动出现。") : null,
+      view.value === "overview" ? visibleCategories().map((category) => h("section", { class: "macro-category", key: category.id }, [
+        h("div", { class: "macro-category-head" }, [h("h2", `${category.code} · ${category.name}`), h("span", { class: "macro-category-note" }, `${entriesForCategory(category.id).length} 个具体序列`)]),
+        h("div", { class: "macro-card-grid" }, entriesForCategory(category.id).map((entry) => renderSeriesCard(entry, openDetail))),
+      ])) : selectedRegions.value.length < 2 ? h("div", { class: "macro-empty" }, "选择至少两个国家或地区后可按通用指标对比。") : visibleCategories().map((category) => h("section", { class: "macro-compare", key: category.id }, [
+        h("div", { class: "macro-category-head" }, [h("h2", `${category.code} · ${category.name}`), h("span", { class: "macro-category-note" }, "同一通用指标下按地区动态生成列")]),
+        h("table", { class: "macro-compare-table" }, [
+          h("thead", [h("tr", [h("th", "通用指标"), ...regionsForCompare().map((region) => h("th", { key: region.code }, region.name))])]),
+          h("tbody", compareRows(category.id).map((row) => h("tr", { key: row[0].definition.metric.id }, [
+            h("td", { class: "macro-compare-metric" }, [h("strong", row[0].definition.metric.name), h("div", { class: "macro-meta" }, row[0].definition.metric.description)]),
+            ...regionsForCompare().map((region) => h("td", { key: region.code }, [
+              entriesForRegion(row, region.code).length
+                ? h("div", { class: "macro-compare-cell" }, entriesForRegion(row, region.code).map((entry) => renderSeriesCard(entry, openDetail, true)))
+                : h("span", { class: "macro-meta" }, "该地区没有此统计定义"),
+            ])),
+          ]))),
         ]),
-      ]),
-      h('section',{class:'macro-panel mt-4'},[
-        h('div',{class:'macro-section-head'},[h('div',[h('h2',{class:'macro-panel-title'},'未来 7 天经济日历'),h('div',{class:'macro-meta mt-1'},'实际值、市场一致预期、前值与修订值仅展示上游返回内容')]),h('span',{class:`macro-pill ${eventStatus.value==='ready'?'macro-pill-fresh':eventStatus.value==='error'?'macro-pill-missing':'macro-pill-pending'}`},eventStatus.value==='ready'?`${events.value.length} 项事件`:eventStatus.value==='error'?'加载失败':'数据源待接入')]),
-        events.value.length?h('div',{class:'macro-event-list'},events.value.map((event,index)=>h('article',{class:'macro-event',key:event.id??event.eventId??index},[h('div',{class:'d-flex justify-content-between gap-2'},[h('div',{class:'macro-event-time'},event.scheduledAt?(event.metadata?.timePrecision==='date_only'?`${new Date(event.scheduledAt).toLocaleDateString('zh-CN')}（时间待官方确认）`:new Date(event.scheduledAt).toLocaleString('zh-CN')):'时间待确认'),h('span',{class:`macro-pill ${event.importance==='high'?'macro-pill-missing':event.importance==='medium'?'macro-pill-stale':'macro-pill-pending'}`},eventImportanceLabel(event.importance))]),h('div',{class:'fw-bold mt-1'},event.title??'未命名事件'),h('div',{class:'macro-meta mt-1'},`${regionLabels[event.region??'']??event.region??'全球'} · 实际 ${event.actual??'--'} · 预期 ${event.consensus??'--'} · 前值 ${event.previous??'--'}`)]))):h('div',{class:'macro-pending-box'},[h('strong',eventStatus.value==='error'?'经济日历暂不可用':'官方日历源待接入'),h('div',{class:'small mt-1'},eventMessage.value||'当前接口未返回已验证事件，页面不会猜测发布时间。')]),
-      ]),
-      h('section',{class:'macro-panel mt-4'},[
-        h('div',{class:'d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3'},[h('div',[h('h2',{class:'macro-panel-title'},'核心观测指标'),h('div',{class:'macro-meta mt-1'},dashboard.value?`来源：${dashboard.value.source.name}`:'加载中')]),h('div',{class:'macro-tabs'},Object.entries(categoryLabels).map(([key,label])=>h('button',{class:`macro-tab${activeCategory.value===key?' active':''}`,onClick:()=>{activeCategory.value=key}},label)))]),
-        loading.value?h('div',{class:'py-5 text-center text-muted'},'正在读取宏观序列…'):h('div',{class:'macro-grid macro-indicator-grid'},filteredIndicators().map((item)=>h('button',{class:`macro-indicator${selectedId.value===item.id?' active':''}`,onClick:()=>void renderChart(item.id),key:item.id},[
-          h('div',{class:'d-flex justify-content-between gap-2'},[h('div',{class:'macro-indicator-name'},item.name),h('span',{class:`macro-pill macro-pill-${item.quality}`},qualityLabel(item.quality))]),h('div',{class:'macro-value'},formatValue(item.latest,item.unit)),
-          h('div',{class:item.change===null?'macro-meta':item.change>0?'macro-change-up small fw-bold':item.change<0?'macro-change-down small fw-bold':'macro-meta'},item.change===null?'暂无前值':`较前值 ${item.change>0?'+':''}${item.change.toFixed(3)}`),
-          h('div',{class:'macro-meta mt-2'},`${regionLabels[item.region]??item.region} · ${categoryLabels[item.category]??item.category} · ${transmissionLabels[item.transmission]??item.transmission}`),h('div',{class:'macro-meta'},`数据期 ${item.latestDate??'--'} · ${item.ageDays??'--'} 天前`),
-        ]))),
-      ]),
-      h('section',{class:'macro-panel mt-4'},[
-        h('div',{class:'d-flex justify-content-between align-items-start gap-3 mb-2'},[h('div',[h('h2',{class:'macro-panel-title'},dashboard.value?.indicators.find((item)=>item.id===selectedId.value)?.name??'指标走势'),h('div',{class:'macro-meta mt-1'},'最近三年；拖动底部滑块调整区间')]),h('span',{class:'macro-pill macro-pill-pending'},selectedId.value)]),
-        h('div',{id:'macro-series-chart',class:'macro-chart'}),h('div',{class:'macro-note mt-2'},dashboard.value?.indicators.find((item)=>item.id===selectedId.value)?.interpretation??'点击上方指标查看解释。'),
-        provenance.value?h('div',{class:'macro-provenance mt-2'},[h('span',{class:'macro-meta'},`数据契约：配置 ${provenance.value.configuredSource.sourceId}/${provenance.value.configuredSource.sourceSeriesId} · ${provenance.value.configuredSource.contract} · 实际 ${provenance.value.latest?.actualSource.sourceId??'尚无观测'}${provenance.value.latest?.actualSource.differsFromConfigured?'（与配置源不同）':''}`),provenance.value.latest?.sourceUrl?h('a',{class:'macro-source-link ms-2',href:provenance.value.latest.sourceUrl,target:'_blank',rel:'noreferrer'},'查看官方观测来源'):null]):null,
-      ]),
-      h('section',{class:'macro-grid macro-research-grid mt-4'},[
-        h('article',{class:'macro-panel'},[
-          h('div',{class:'macro-section-head'},[h('div',[h('h2',{class:'macro-panel-title'},'首次值与修订'),h('div',{class:'macro-meta mt-1'},`${selectedId.value} · 仅统计同一统计期发生值变化的记录`)]),h('span',{class:`macro-pill ${revisions.value.length?'macro-pill-stale':'macro-pill-fresh'}`},`${revisions.value.length} 个统计期有修订`)]),
-          revisions.value.length?h('table',{class:'table macro-table mt-3'},[h('thead',[h('tr',[h('th','统计期'),h('th','首次值'),h('th','最新值'),h('th','变化')])]),h('tbody',revisions.value.slice(0,6).map((item)=>h('tr',{key:item.observationDate},[h('td',item.observationDate),h('td',String(item.firstValue)),h('td',String(item.latestValue)),h('td',formatScore(item.delta))]))) ]):h('div',{class:'macro-pending-box'},[h('strong','尚未检测到修订'),h('div',{class:'small mt-1'},'首次值会保留，后续值变化才会显示在这里。')]),
-        ]),
-        h('article',{class:'macro-panel'},[
-          h('div',{class:'macro-section-head'},[h('div',[h('h2',{class:'macro-panel-title'},'关注指标'),h('div',{class:'macro-meta mt-1'},'服务端保存；离线时保留本机副本')]),h('span',{class:'macro-pill macro-pill-fresh'},`${watchedIds.value.length} 项`)]),
-          h('div',{class:'macro-watch-list'},(dashboard.value?.indicators??[]).map((item)=>h('label',{class:'macro-watch-row',key:item.id},[h('input',{type:'checkbox',checked:watchedIds.value.includes(item.id),onChange:()=>toggleWatch(item.id)}),h('span',{class:'small flex-grow-1'},item.name),h('span',{class:`macro-pill macro-pill-${item.quality}`},qualityLabel(item.quality))]))),
-        ]),
-        h('article',{class:'macro-panel'},[
-          h('div',{class:'macro-section-head'},[h('div',[h('h2',{class:'macro-panel-title'},'预警配置'),h('div',{class:'macro-meta mt-1'},'服务端执行阈值判断；通知渠道单独配置')]),h('span',{class:'macro-pill macro-pill-fresh'},'规则执行可用')]),
-          h('label',{class:'d-flex gap-2 align-items-center small mb-3'},[h('input',{type:'checkbox',checked:alertEnabled.value,onChange:(event:Event)=>{alertEnabled.value=(event.target as HTMLInputElement).checked}}),'启用关注指标阈值规则']),
-          h('label',{class:'small fw-bold mb-1'},'指标数值阈值'),h('input',{class:'macro-field',type:'number',placeholder:'例如 0.5',value:alertThreshold.value,onInput:(event:Event)=>{alertThreshold.value=(event.target as HTMLInputElement).value}}),
-          h('div',{class:'macro-meta mt-2'},'当前规则作用于已选择指标，阈值单位与该指标一致。每个官方数据版本只留档一次。'),h('button',{class:'btn btn-sm btn-success mt-3',onClick:()=>void saveAlert()},'保存并立即检查'),alertNotice.value?h('div',{class:'macro-note mt-3'},alertNotice.value):null,
-          h('div',{class:'macro-alert-history mt-3'},[h('div',{class:'small fw-bold mb-1'},'最近触发记录'),alertHistory.value.length?h('div',{class:'macro-alert-list'},alertHistory.value.map((entry)=>h('div',{class:'macro-alert-row',key:entry.alertId},[h('span',`${entry.seriesId} ${entry.ruleOperator==='gte'?'≥':'≤'} ${entry.ruleThreshold}：${entry.value}`),h('span',{class:'macro-meta'},`${entry.observationDate} · ${new Date(entry.evaluatedAt).toLocaleDateString('zh-CN')}`),entry.sourceUrl?h('a',{class:'macro-source-link',href:entry.sourceUrl,target:'_blank',rel:'noreferrer'},'官方来源'):null]))):h('div',{class:'macro-meta'},'尚无已触发记录。')]),
-        ]),
-      ]),
-      h('section',{class:'macro-panel mt-4'},[
-        h('div',{class:'macro-section-head'},[h('div',[h('h2',{class:'macro-panel-title'},'研究工具'),h('div',{class:'macro-meta mt-1'},'使用指定时点可见的宏观 vintage，并只使用东方财富指数K线')]),h('span',{class:`macro-pill ${researchBusy.value?'macro-pill-stale':'macro-pill-fresh'}`},researchBusy.value?'计算中':'第三阶段可用')]),
-        h('div',{class:'macro-grid macro-research-grid'},[
-          h('article',{class:'macro-research-card'},[h('div',{class:'d-flex justify-content-between'},[h('h3','历史情景回放'),h('span',{class:'macro-stage-number'},'1')]),h('div',{class:'row g-2'},[h('div',{class:'col-6'},[h('label',{class:'small fw-bold mb-1'},'开始'),h('input',{class:'macro-field',type:'date',value:replayFrom.value,onInput:(event:Event)=>{replayFrom.value=(event.target as HTMLInputElement).value}})]),h('div',{class:'col-6'},[h('label',{class:'small fw-bold mb-1'},'结束/当时可见'),h('input',{class:'macro-field',type:'date',value:replayTo.value,onInput:(event:Event)=>{replayTo.value=(event.target as HTMLInputElement).value}})])]),h('button',{class:'btn btn-sm btn-outline-success mt-3',onClick:()=>void runScenario()},'运行回放'),scenarioResult.value?h('div',{class:'macro-note mt-3'},scenarioResult.value.error??`返回 ${scenarioResult.value.results?.length??0} 项变化`):null]),
-          h('article',{class:'macro-research-card'},[h('div',{class:'d-flex justify-content-between'},[h('h3','滚动相关性 / 市场敏感度'),h('span',{class:'macro-stage-number'},'2')]),h('select',{class:'macro-field mb-2',value:researchMarket.value,onChange:(event:Event)=>{researchMarket.value=(event.target as HTMLSelectElement).value}},marketCards.map((item)=>h('option',{value:item.region},item.title))),h('div',{class:'macro-meta'},'20期窗口，宏观数据按日期与东方财富指数对齐。韩国使用已验证的 KOSPI 100.KS11。'),h('button',{class:'btn btn-sm btn-outline-success mt-3',onClick:()=>void runCorrelation()},'计算相关性'),correlationResult.value?h('div',{class:'macro-note mt-3'},correlationResult.value.error??`有效输出 ${correlationResult.value.points?.filter((item:any)=>item.value!==null).length??0} 期`):null]),
-          h('article',{class:'macro-research-card'},[h('div',{class:'d-flex justify-content-between'},[h('h3','宏观状态与市场回测'),h('span',{class:'macro-stage-number'},'3')]),h('select',{class:'macro-field mb-2',value:backtestMode.value,onChange:(event:Event)=>{backtestMode.value=(event.target as HTMLSelectElement).value}},[h('option',{value:'point-in-time'},'点时：严格无前视（默认）'),h('option',{value:'retrospective'},'回顾性：含当前修订，仅供探索')]),h('div',{class:'macro-meta'},backtestMode.value==='retrospective'?'使用当前修订值和统计期日期，只适合探索关系，不能作为可交易证据。':'按本系统首次可用时间确认样本；历史回填不会冒充当时已知数据。'),h('button',{class:'btn btn-sm btn-outline-success mt-3',onClick:()=>void runBacktest()},'运行回测'),backtestResult.value?h('div',{class:'macro-note mt-3'},backtestResult.value.error??(backtestResult.value.trades?.length?`${backtestResult.value.lookAheadSafe?'无前视':'回顾性'} · 样本 ${backtestResult.value.trades.length} · 平均 ${formatResearch(backtestResult.value.averageReturnPct)} · 胜率 ${formatResearch(backtestResult.value.winRatePct)}`:'当前没有足够的严格点时样本；系统会随每日同步积累，不应用回顾性结果替代。')):null]),
-        ]),
-        h('div',{class:'d-flex justify-content-between align-items-end mt-4 mb-2'},[h('div',[h('h3',{class:'macro-panel-title'},'行业敏感度'),h('div',{class:'macro-meta mt-1'},'60期标准化宏观信号 × 可审计行业暴露；随上方市场选择联动')]),h('span',{class:'macro-pill macro-pill-fresh'},'第三阶段')]),
-        h('div',{class:'macro-sector-grid'},industrySignals.value.filter((item)=>item.market===researchMarket.value).map((item)=>h('article',{class:'macro-sector',key:item.id},[h('div',{class:'d-flex justify-content-between gap-2'},[h('strong',item.name),h('span',{class:`macro-sector-score ${item.score===null?'':item.score>=0?'macro-sector-support':'macro-sector-pressure'}`},item.score===null?'--':`${item.score>=0?'+':''}${item.score.toFixed(2)}`)]),h('div',{class:'macro-meta mt-1'},`覆盖 ${item.coverage.available}/${item.coverage.configured} 项 · ${item.contributions.slice(0,2).map((entry)=>entry.seriesId).join('、')||'等待数据'}`)]))),
-      ]),
-      h('section',{class:'macro-panel mt-4'},[h('h2',{class:'macro-panel-title'},'覆盖范围与下一步'),h('div',{class:'row g-3 mt-1'},[
-        h('div',{class:'col-md-6'},[h('div',{class:'fw-bold text-success mb-2'},'已实现'),h('ul',{class:'small text-secondary mb-0'},[h('li','NY Fed SOFR、BLS 通胀/就业、HKMA 港汇与HIBOR'),h('li','不可覆盖的 vintage、数据源健康、关注和阈值规则'),h('li','因子贡献、行业敏感度、情景回放、滚动相关性与无前视回测'),h('li','标普500、沪深300、恒生指数、KOSPI的东方财富研究基准')])]),
-        h('div',{class:'col-md-6'},[h('div',{class:'fw-bold text-secondary mb-2'},'需要外部条件'),h('ul',{class:'small text-secondary mb-0'},[h('li','FRED、韩国 ECOS/KOSIS 需要配置 API 密钥并核实系列代码'),h('li','国家统计局、人民银行和韩国出口尚无已验证稳定结构化契约'),h('li','官方日历当前区间无已导入事件时保持空白，不猜测日期'),h('li','告警规则可执行，邮件/短信等通知渠道尚未授权配置')])]),
-      ])]),
-    ])])
+      ])),
+    ]), detail.value ? renderDetail(detail.value, detailSeries.value, detailLoading.value, detailError.value, updateDetail, () => { detail.value = null; detailSeries.value = null; detailError.value = null; }) : null]);
   },
-})
+});
 
-function dateYearsAgo(years: number): string { const date=new Date(); date.setUTCFullYear(date.getUTCFullYear()-years); return date.toISOString().slice(0,10) }
-function localDateInput(date=new Date()): string { const local=new Date(date.getTime()-date.getTimezoneOffset()*60_000); return local.toISOString().slice(0,10) }
-function formatResearch(value: number | null | undefined): string { return value===null||value===undefined?'--':`${value.toFixed(2)}%` }
-const root=document.getElementById('macro-vue-root'); if(root) createApp(MacroPage).mount(root)
+function renderSeriesCard(entry: OverviewEntry, openDetail: (entry: OverviewEntry) => Promise<void>, compact = false) {
+  const { definition, current, availability, freshness, trend } = entry;
+  return h("article", { class: "macro-card", key: definition.id, "data-macro-series": String(definition.id) }, [
+    h("div", { class: "macro-card-head" }, [h("div", [h("div", { class: "macro-card-title" }, compact ? definition.name : definition.metric.name), h("div", { class: "macro-card-subtitle" }, compact ? definition.statisticalDefinition : `${definition.region.name} · ${definition.name} · ${definition.statisticalDefinition}`)]), h("span", { class: `macro-status ${availability.status === "available" ? freshness.status : availability.status === "unmapped" ? "unmapped" : "awaiting"}` }, labelForAvailability(availability.status))]),
+    current ? h("div", [h("div", { class: "macro-current" }, `${formatValue(current.value, definition.unitFormat)}${unitSuffix(definition.unit)}`), h("div", { class: "macro-meta" }, `统计期 ${current.period} · 发布于 ${formatTimestamp(current.publishedAt)}`), h("div", { class: "macro-meta" }, freshness.status === "stale" ? "数据已超过目录的新鲜度阈值" : "数据新鲜度正常")]) : h("div", { class: "macro-empty" }, availability.reason ? reasonLabel(availability.reason) : "暂无可展示的当前值"),
+    h("div", { class: "macro-measure-grid" }, [renderMeasure("同比", entry.yoy, definition.measures.yoy, definition.unit), renderMeasure("环比", entry.mom, definition.measures.mom, definition.unit)]),
+    trend.status === "available" ? h("div", { class: "macro-trend" }, [sparkline(trend.points), h("span", { class: "macro-meta" }, `${trend.points.length} 期趋势摘要`)]) : h("div", { class: "macro-meta" }, trend.reason ? `趋势暂不可用：${reasonLabel(trend.reason)}` : "趋势暂不可用"),
+    h("button", { class: "macro-detail-action", disabled: !current, onClick: () => void openDetail(entry) }, current ? "查看趋势与数据口径" : "暂无趋势详情"),
+  ]);
+}
+
+function renderMeasure(label: string, point: DerivedPoint, definition: MeasureDefinition, unit: string) {
+  const value = point.value === null ? "—" : `${formatSigned(point.value, definition.displayFormat)}${measureSuffix(definition, unit)}`;
+  return h("div", { class: "macro-measure" }, [h("div", { class: "macro-measure-label" }, `${label}${measureMethodLabel(point.method)}`), h("div", { class: "macro-measure-value" }, value), point.status === "available" && point.basePeriod ? h("div", { class: "macro-meta" }, `基期 ${point.basePeriod}`) : h("div", { class: "macro-measure-reason" }, reasonLabel(point.reason ?? "not_configured"))]);
+}
+
+function renderDetail(detail: Detail, response: SeriesResponse | null, loading: boolean, error: string | null, update: (patch: Partial<Omit<Detail, "entry">>) => void, close: () => void) {
+  const points = response?.series[0]?.points ?? [];
+  const definition = detail.entry.definition;
+  return h("div", { class: "macro-detail-backdrop", role: "presentation", onClick: (event: MouseEvent) => { if (event.target === event.currentTarget) close(); } }, [h("section", { class: "macro-detail-panel", role: "dialog", "aria-modal": "true", "aria-label": `${definition.name} 趋势详情` }, [
+    h("div", { class: "macro-detail-head" }, [h("div", [h("h2", definition.name), h("div", { class: "macro-meta" }, `${definition.region.name} · ${definition.statisticalDefinition} · ${definition.frequency} · ${definition.unit}`)]), h("button", { class: "macro-detail-close", "aria-label": "关闭详情", onClick: close }, "×")]),
+    h("div", { class: "macro-detail-filters" }, [h("label", ["测度", h("select", { value: detail.measure, onChange: (event: Event) => update({ measure: (event.target as HTMLSelectElement).value as Detail["measure"] }) }, [h("option", { value: "level" }, "当前值"), h("option", { value: "yoy" }, "同比"), h("option", { value: "mom" }, "环比")])]), h("label", ["开始统计期", h("input", { type: "date", value: detail.from, max: detail.to, onChange: (event: Event) => update({ from: (event.target as HTMLInputElement).value }) })]), h("label", ["结束统计期", h("input", { type: "date", value: detail.to, min: detail.from, onChange: (event: Event) => update({ to: (event.target as HTMLInputElement).value }) })])]),
+    loading ? h("div", { class: "macro-loading" }, "正在按所选窗口加载趋势…") : error ? h("div", { class: "macro-error" }, error) : points.length ? h("div", { class: "macro-chart" }, [
+      chart(points),
+      h("div", { class: "macro-point-list" }, points.map((point) => h("span", { class: "macro-point", key: `${point.period}-${point.publishedAt}` }, `${point.period} · ${point.value === null ? reasonLabel(point.reason ?? "not_configured") : formatValue(point.value, detail.measure === "level" ? definition.unitFormat : measureDefinition(definition, detail.measure).displayFormat)}`))),
+    ]) : h("div", { class: "macro-empty" }, "所选窗口没有可展示的数据。"),
+    h("div", { class: "macro-detail-source" }, [h("div", { class: "macro-meta" }, `同比规则：${measureMethodDescription(definition.measures.yoy)}；环比规则：${measureMethodDescription(definition.measures.mom)}。`), definition.source?.url ? h("a", { href: definition.source.url, target: "_blank", rel: "noreferrer" }, `查看来源：${definition.source.publisher ?? definition.source.id}`) : h("div", { class: "macro-meta" }, "该具体序列尚未登记可访问的来源链接。")]),
+  ])]);
+}
+
+function sparkline(points: RawPoint[]) { const coordinates = lineCoordinates(points, 128, 38, 2); return h("svg", { class: "macro-sparkline", viewBox: "0 0 128 38", role: "img", "aria-label": "趋势摘要" }, coordinates ? [h("polyline", { class: "macro-sparkline-line", points: coordinates })] : []); }
+function chart(points: SeriesPoint[]) { const visible = points.filter((point) => point.value !== null) as Array<SeriesPoint & { value: number }>; const coordinates = lineCoordinates(visible, 760, 210, 14); const dots = plotCoordinates(visible, 760, 210, 14); return h("svg", { viewBox: "0 0 760 210", role: "img", "aria-label": "所选趋势图" }, [h("line", { x1: 14, y1: 196, x2: 746, y2: 196, stroke: "#d8e1e3" }), coordinates ? h("polyline", { class: "macro-chart-line", points: coordinates }) : null, ...dots.map(([x, y], index) => h("circle", { class: "macro-chart-dot", key: `${x}-${y}-${index}`, cx: x, cy: y, r: 2.8 }))]); }
+function lineCoordinates(points: Array<{ value: number }>, width: number, height: number, padding: number): string | null { return plotCoordinates(points, width, height, padding).map(([x, y]) => `${x},${y}`).join(" ") || null; }
+function plotCoordinates(points: Array<{ value: number }>, width: number, height: number, padding: number): Array<[number, number]> { if (!points.length) return []; const values = points.map((point) => point.value); const min = Math.min(...values); const max = Math.max(...values); const span = max - min || 1; const usableWidth = width - padding * 2; const usableHeight = height - padding * 2; return points.map((point, index) => [padding + (points.length === 1 ? usableWidth / 2 : index / (points.length - 1) * usableWidth), padding + (max - point.value) / span * usableHeight]); }
+async function fetchJson<T>(url: string): Promise<T> { const response = await fetch(url); const body = await response.json() as ApiEnvelope<T>; if (!response.ok || body.code !== 200) throw new Error(body.msg || `HTTP ${response.status}`); return body.data; }
+function formatValue(value: number, format = "number"): string { return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: format === "integer" ? 0 : format === "percent" || format === "percentage_point" ? 2 : 3 }).format(value); }
+function formatSigned(value: number, format: string): string { return `${value > 0 ? "+" : ""}${formatValue(value, format)}`; }
+function formatTimestamp(value: string): string { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toLocaleString("zh-CN") : value; }
+function unitSuffix(unit: string): string { return unit ? ` ${unit}` : ""; }
+function measureSuffix(definition: MeasureDefinition, unit: string): string { return definition.method === "percentage_point_change" ? " 个百分点" : definition.displayFormat === "percent" && unit !== "%" ? " %" : ""; }
+function measureDefinition(definition: Definition, measure: Detail["measure"]): MeasureDefinition { return measure === "yoy" ? definition.measures.yoy : definition.measures.mom; }
+function measureMethodLabel(method: string): string { return method === "native" ? "（原生）" : method === "percentage_point_change" ? "（百分点）" : ""; }
+function measureMethodDescription(definition: MeasureDefinition): string { return definition.method === "native" ? "使用来源发布的原生测度" : definition.method === "not_applicable" ? "不适用" : `${definition.method}，基期 ${definition.basePeriods} 期`; }
+function labelForAvailability(status: OverviewEntry["availability"]["status"]): string { return ({ available: "可用", unmapped: "待接入", awaiting_first_release: "等待首发", awaiting_data: "等待数据" })[status]; }
+function reasonLabel(reason: string): string { return ({ unmapped: "尚无已验证来源映射", awaiting_first_release: "来源已登记，等待首次发布", awaiting_data: "当前尚无可见观测", not_applicable: "该测度不适用", not_configured: "尚未配置计算规则", base_period_missing: "缺少严格对应的基期", base_zero: "基期为零，无法计算", insufficient_history: "历史期数不足" })[reason] ?? reason; }
+function errorMessage(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason); }
+
+createApp(MacroPage).mount("#macro-vue-root");

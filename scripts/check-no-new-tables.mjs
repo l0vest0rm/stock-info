@@ -22,7 +22,19 @@ const scanRoot = resolve(root, args.root || ".");
 const migrationsDirectory = resolve(scanRoot, "migrations");
 const allowlistPath = resolve(scanRoot, args.allowlist || relative(scanRoot, defaultAllowlistPath));
 const allowlist = new Set(JSON.parse(readFileSync(allowlistPath, "utf8")));
-const violations = findViolations(migrationsDirectory, allowlist, scanRoot);
+// These names are only present in immutable historical migrations and are
+// removed by 0131_drop_retired_macro_radar.sql.  Keep them out of the active
+// allowlist: a new migration may not recreate any of them.
+const retiredHistoricalTables = new Set([
+  "macro_alert_history",
+  "macro_events",
+  "macro_observation_vintages",
+  "macro_series",
+  "macro_series_history",
+  "macro_source_health",
+  "macro_user_watch_configs",
+]);
+const violations = findViolations(migrationsDirectory, allowlist, retiredHistoricalTables, scanRoot);
 
 if (violations.length > 0) {
   console.error("New database tables require explicit user approval first. Update the allowlist only after approval:");
@@ -52,7 +64,7 @@ function requiredValue(argv, index, flag) {
   return value;
 }
 
-function findViolations(migrationsDirectory, allowlist, scanRoot) {
+function findViolations(migrationsDirectory, allowlist, retiredHistoricalTables, scanRoot) {
   const files = readdirSync(migrationsDirectory)
     .filter((entry) => entry.endsWith(".sql"))
     .sort();
@@ -62,7 +74,7 @@ function findViolations(migrationsDirectory, allowlist, scanRoot) {
     const source = readFileSync(absoluteFile, "utf8");
     for (const match of source.matchAll(createTablePattern)) {
       const table = normalizeIdentifier(match[1] || match[2] || match[3] || match[4] || "");
-      if (!table || allowlist.has(table)) continue;
+      if (!table || allowlist.has(table) || retiredHistoricalTables.has(table)) continue;
       const index = match.index ?? 0;
       violations.push({
         file: relative(scanRoot, absoluteFile) || absoluteFile,

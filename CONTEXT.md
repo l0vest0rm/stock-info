@@ -406,3 +406,17 @@ _Avoid_: Provider lease for deterministic work, model judgement deciding queue e
 **Valuation model version**:
 An immutable, security-specific calculation record containing its declared operating inputs, calculation rule version, source references, FX/share-rights assumptions, outputs, and sensitivity axes at one as-of time. It is distinct from a narrative valuation case and may not silently refresh from later facts.
 _Avoid_: Editable calculator state, timeless target price, company-level value reused across securities
+
+## Macro Indicator Directory
+
+**Macro metric**:
+A cross-region economic concept, such as CPI or a policy rate, used to group comparable concrete statistical series. It is not itself a published observation or a country-specific statistical definition.
+_Avoid_: Country series, source dataset, displayed value
+
+**Concrete macro series**:
+One region's published observations for one macro metric under one declared statistical definition. A different region, adjustment basis, coverage scope, or source definition is a different series even when it shares a metric.
+_Avoid_: Metric, interchangeable country value, generic chart line
+
+**Macro display measure**:
+The current, year-over-year, or period-over-period view derived from a concrete macro series under its declared calculation rule and as-of boundary. It is not a stored historical fact.
+_Avoid_: Derived database column, universally applicable percentage change

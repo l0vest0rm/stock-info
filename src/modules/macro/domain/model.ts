@@ -1,101 +1,71 @@
-export type MacroFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "annual";
-export type MacroTransmission = "earnings" | "discount" | "risk" | "flow" | "funding";
-export type MacroQuality = "valid" | "suspect" | "missing";
+export type MacroIndicatorFrequency = "daily" | "weekly" | "monthly" | "quarterly" | "annual";
+export type MacroIndicatorLeadLag = "leading" | "coincident" | "lagging";
+export type MacroMeasurementKind = string;
+export type MacroDerivedMeasureMethod = string;
 
-export type MacroSeries = {
-  seriesId: string;
+/**
+ * One concrete regional statistical series plus all metadata needed to render
+ * the generic macro catalog. Dimension metadata is intentionally repeated in
+ * this small catalog; `macro_data` remains numeric facts only.
+ */
+export type MacroIndicator = {
+  id: number;
+  metricId: number;
+  categoryId: number;
+  regionCode: string;
+  definitionId: number;
+  regionName: string;
+  regionSort: number;
+  categoryCode: string;
+  categoryName: string;
+  categorySort: number;
+  metricCode: string;
+  metricName: string;
+  metricDescription: string;
+  metricSort: number;
+  statisticalDefinition: string;
   name: string;
-  category: string;
-  region: string;
-  frequency: MacroFrequency;
+  frequency: MacroIndicatorFrequency;
   unit: string;
-  sourceId: string;
-  transmissions: MacroTransmission[];
-  regions: string[];
-  licenseClass: string;
-  staleAfterSeconds: number;
+  unitFormat: string;
+  measurementKind: MacroMeasurementKind;
+  yoyMethod: MacroDerivedMeasureMethod;
+  yoyBasePeriods: number;
+  yoyDisplayFormat: string;
+  momMethod: MacroDerivedMeasureMethod;
+  momBasePeriods: number;
+  momDisplayFormat: string;
+  defaultTrendPeriods: number;
   enabled: boolean;
-  metadata: Record<string, unknown>;
-  updatedAt: number;
-};
-
-export type MacroObservationVintage = {
-  seriesId: string;
-  observationDate: string;
-  releasedAt: number;
-  vintageAt: number;
-  revisionNumber: number;
-  value: number;
-  consensus: number | null;
-  previousValue: number | null;
-  isPreliminary: boolean;
-  qualityStatus: MacroQuality;
+  sourceId: string | null;
+  sourceSeriesId: string | null;
   sourceUrl: string | null;
-  rawR2Key: string | null;
-  observedAt: number;
-};
-
-export type MacroEvent = {
-  eventId: string;
-  scheduledAt: number;
-  region: string;
-  // "unclassified" is deliberate: a source title alone is not enough to
-  // infer market importance. Profiles may promote it after verification.
-  importance: "low" | "medium" | "high" | "unclassified";
-  title: string;
-  seriesId: string | null;
-  actual: number | null;
-  consensus: number | null;
-  previous: number | null;
-  unit: string | null;
-  status: "scheduled" | "released" | "cancelled";
-  sourceId: string;
-  sourceUrl: string | null;
-  metadata: Record<string, unknown>;
-  updatedAt: number;
-};
-
-export type MacroSourceHealth = {
-  sourceId: string;
-  displayName: string;
-  state: "healthy" | "degraded" | "failed" | "disabled";
-  lastAttemptAt: number | null;
+  publisher: string | null;
+  publicationTimestampStrategy: string | null;
+  sourceBatchKey: string | null;
+  seasonalAdjustment: string | null;
+  leadLag: MacroIndicatorLeadLag | null;
+  transformMethod: string | null;
+  staleAfterSeconds: number;
+  refreshIntervalSeconds: number;
+  revisionLookbackPeriods: number;
+  nextFetchAt: number | null;
   lastSuccessAt: number | null;
+  fetchLeaseUntil: number | null;
   consecutiveFailures: number;
   lastError: string | null;
-  nextRetryAt: number | null;
-  latencyMs: number | null;
-  metadata: Record<string, unknown>;
-  updatedAt: number;
 };
 
-export type MacroUserWatchConfig = {
-  ownerKey: string;
-  seriesId: string;
-  enabled: boolean;
-  position: number;
-  alertRules: unknown[];
-  displayOptions: Record<string, unknown>;
-  createdAt: number;
-  updatedAt: number;
-};
-
-/** A persisted threshold match. It records the exact data vintage evaluated. */
-export type MacroAlertHistoryEntry = {
-  alertId: number;
-  ownerKey: string;
-  seriesId: string;
-  observationDate: string;
-  observationVintageAt: number;
-  observedAt: number;
+/** A raw fact row. `periodDay` is YYYYMMDD and is always a period start. */
+export type MacroDataPoint = {
+  indicatorId: number;
+  periodDay: number;
+  publishedAt: number;
   value: number;
-  ruleOperator: "gte" | "lte";
-  ruleThreshold: number;
-  sourceUrl: string | null;
-  notificationState: "not_configured";
-  notificationDetail: string | null;
-  evaluatedAt: number;
-  metadata: Record<string, unknown>;
 };
 
-export type DatedValue = { date: string; value: number };
+/** Input accepted by the repository before it normalizes a calendar period. */
+export type MacroDataWrite = Omit<MacroDataPoint, "periodDay"> & {
+  period: string | number | Date;
+  frequency: MacroIndicatorFrequency;
+};

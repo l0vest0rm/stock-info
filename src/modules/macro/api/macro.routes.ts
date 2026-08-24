@@ -1,487 +1,264 @@
-import { Hono, type Context } from "hono";
-import seriesConfig from "../config/series.json";
-import exposureConfig from "../config/market-exposures.json";
-import industryExposureConfig from "../config/industry-exposures.json";
-import { buildResearchSeries } from "../application/build-research-series";
+import { Hono } from "hono";
 import { D1MacroRepository } from "../application/macro-repository";
 import { syncMacroData } from "../application/sync-macro-data";
-import type { MacroAlertHistoryEntry, MacroObservationVintage, MacroSeries, MacroUserWatchConfig, DatedValue } from "../domain/model";
-import { transformSeries, type SeriesTransform } from "../domain/transforms";
-import { backtestSignal, calculateMarketFactorContributions, initialReleasePoints, replayScenario, rollingCorrelation } from "../domain/research";
-import { loadKline } from "../../market/application/load-kline";
+import type { MacroDataPoint, MacroIndicator } from "../domain/model";
 import { fail, ok } from "../../../shared/http";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
-import type { AppEnv, FundNavRow, KlineBar } from "../../../types";
+import type { AppEnv } from "../../../types";
 
-type ConfiguredSeries = {
-  id: string; name: string; category: string; region: string; regions: string[]; frequency: MacroSeries["frequency"];
-  unit: string; staleDays: number; sourceId: string; transmissions: MacroSeries["transmissions"];
-  interpretation: string; enabled: boolean;
-  fredSeriesId?: string;
-};
-type ExposureConfig = { seriesId: string; factor: string; markets: Record<string, number> };
-type IndustryExposureConfig = { id: string; market: string; name: string; series: Record<string, number> };
-type Quality = "fresh" | "stale" | "missing";
-type AlertTrigger = {
-  seriesId: string;
-  observationDate: string;
-  observationVintageAt: number;
-  observedAt: number;
-  value: number;
-  sourceUrl: string | null;
-  rule: { operator: "gte" | "lte"; threshold: number };
-};
+const MAX_INDICATORS_PER_REQUEST = 20;
+const MAX_FILTER_VALUES = 100;
+/** Must stay aligned with D1MacroRepository.getLatestSnapshots' public ID bound. */
+const MAX_LATEST_SNAPSHOT_IDS_PER_QUERY = 200;
+const MEASURES = new Set(["level", "yoy", "mom"]);
 
-const configured = seriesConfig as ConfiguredSeries[];
-const configuredById = new Map(configured.map((item) => [item.id, item]));
-const exposures = exposureConfig as ExposureConfig[];
-const industryExposures = industryExposureConfig as unknown as IndustryExposureConfig[];
-const transforms = new Set<SeriesTransform>(["level", "mom", "yoy", "zscore", "percentile"]);
-const benchmarkCodes: Record<string, string> = { us: "SPX.US", cn: "000300.SH", hk: "HSI.HK", kr: "KS11.UI" };
-const MAX_SERIES_PER_REQUEST = 20;
+type Measure = "level" | "yoy" | "mom";
+type DerivedStatus = "available" | "unavailable";
+type DerivedReason = "not_applicable" | "not_configured" | "base_period_missing" | "base_zero";
 
 export const macroRoutes = new Hono<AppEnv>();
 
-macroRoutes.get("/macro/dashboard", async (c) => {
-  const repository = new D1MacroRepository(c.env.DB);
-  const regions = csvValues(c.req.query("regions"));
-  const catalog = await loadCatalog(repository);
-  const selected = regions.length === 0 ? catalog : catalog.filter((item) => item.region === "global" || item.regions.some((region) => regions.includes(region)));
-  const now = Date.now();
-  const indicators = await Promise.all(selected.map(async (definition) => {
-    const observations = await repository.getObservationSeries(definition.seriesId, { from: dateDaysAgo(800) });
-    return summarize(definition, observations.map((item) => ({ date: item.observationDate, value: item.value })), now);
-  }));
-  const sourceHealth = await repository.listSourceHealth();
-  const status = summarizeStatus(indicators, sourceHealth);
+/** Directory only: loading selectors must never scan macro_data history. */
+macroRoutes.get("/macro/catalog", async (c) => {
+  const catalog = await new D1MacroRepository(c.env.DB).listCatalog({ enabledOnly: false });
   return ok(c, {
-    generatedAt: new Date(now).toISOString(),
-    source: { id: "official-multi-source", name: "NY Fed、BLS、FRED、HKMA及已配置官方源", url: "/api/macro/status" },
-    coverage: {
-      live: [...new Set(indicators.filter((item) => item.quality !== "missing").map((item) => item.region))],
-      pending: sourceHealth.filter((item) => item.state !== "healthy").map((item) => item.sourceId),
-    },
-    indicators,
-    status,
+    generatedAt: new Date().toISOString(),
+    regions: catalog.regions,
+    categories: catalog.categories,
+    metrics: catalog.metrics,
+    series: catalog.series.map(toDefinition),
+    capabilities: catalog.capabilities,
   });
 });
 
-macroRoutes.get("/macro/catalog", async (c) => ok(c, await loadCatalog(new D1MacroRepository(c.env.DB))));
+/** Compact card data; it uses an ID-bounded snapshot plus a limited lookback. */
+macroRoutes.get("/macro/overview", async (c) => {
+  const regions = parseCsv(c.req.query("regions"));
+  const categories = parseCsv(c.req.query("categories"));
+  if (regions === null || categories === null) return fail(c, 400, `filters may contain at most ${MAX_FILTER_VALUES} values`);
+  const requestedAsOf = parseTimestamp(c.req.query("asOf"));
+  if (c.req.query("asOf") && requestedAsOf === null) return fail(c, 400, "invalid asOf timestamp");
+  const asOf = requestedAsOf ?? nowSeconds();
 
-macroRoutes.get("/macro/provenance", async (c) => {
-  const ids = csvValues(c.req.query("ids"));
-  if (ids.length === 0) return fail(c, 400, "Missing ids parameter");
-  if (ids.length > MAX_SERIES_PER_REQUEST) return fail(c, 400, `Too many series; maximum is ${MAX_SERIES_PER_REQUEST}`);
-  const unknown = ids.filter((id) => !configuredById.has(id));
-  if (unknown.length) return fail(c, 400, `Unknown macro series: ${unknown.join(", ")}`);
   const repository = new D1MacroRepository(c.env.DB);
-  const healthBySource = new Map((await repository.listSourceHealth()).map((item) => [item.sourceId, item]));
-  const series = await Promise.all(ids.map(async (id) => {
-    const configuredSeries = configuredById.get(id)!;
-    const latest = (await repository.getObservationSeries(id, { from: dateDaysAgo(3650) })).at(-1) ?? null;
-    const actualSource = describeActualSource(configuredSeries.sourceId, latest?.sourceUrl ?? null);
-    return {
-      id,
-      name: configuredSeries.name,
-      configuredSource: {
-        sourceId: configuredSeries.sourceId,
-        sourceSeriesId: configuredSeries.fredSeriesId ?? id,
-        contract: configuredContract(configuredSeries.sourceId),
-        health: healthBySource.get(configuredSeries.sourceId)?.state ?? "not_synced",
-      },
-      latest: latest ? {
-        observationDate: latest.observationDate,
-        releasedAt: latest.releasedAt,
-        vintageAt: latest.vintageAt,
-        observedAt: latest.observedAt,
-        sourceUrl: latest.sourceUrl,
-        actualSource,
-      } : null,
-    };
-  }));
-  return ok(c, { generatedAt: new Date().toISOString(), series });
+  const catalog = await repository.listCatalog({ enabledOnly: false });
+  const selected = catalog.series.filter((indicator) =>
+    (regions.length === 0 || regions.includes(indicator.regionCode))
+    && (categories.length === 0 || categories.includes(indicator.categoryCode) || categories.includes(String(indicator.categoryId))),
+  );
+  const snapshots = new Map((await getLatestSnapshotsInBatches(repository, selected.map((indicator) => indicator.id), asOf))
+    .map((point) => [point.indicatorId, point]));
+  const series = await Promise.all(selected.map((indicator) =>
+    toOverviewEntry(repository, indicator, snapshots.get(indicator.id) ?? null, asOf),
+  ));
+  return ok(c, { generatedAt: new Date().toISOString(), asOf: timestampToIso(asOf), regions, categories, series });
 });
 
-macroRoutes.get("/macro/series", async (c) => {
-  const ids = csvValues(c.req.query("ids"));
-  if (ids.length === 0) return fail(c, 400, "Missing ids parameter");
-  if (ids.length > MAX_SERIES_PER_REQUEST) return fail(c, 400, `Too many series; maximum is ${MAX_SERIES_PER_REQUEST}`);
-  const unknown = ids.filter((id) => !configuredById.has(id));
-  if (unknown.length) return fail(c, 400, `Unknown macro series: ${unknown.join(", ")}`);
-  const from = validDate(c.req.query("from")) ?? dateDaysAgo(730);
-  const to = validDate(c.req.query("to")) ?? today();
-  if (from > to) return fail(c, 400, "from must not be after to");
-  const transform = (c.req.query("transform") ?? "level") as SeriesTransform;
-  if (!transforms.has(transform)) return fail(c, 400, "invalid transform");
-  const window = boundedInteger(c.req.query("window"), 60, 2, 1000);
-  const asOf = parseAsOf(c.req.query("asOf"));
-  if (c.req.query("asOf") && asOf === null) return fail(c, 400, "invalid asOf");
-  const includeVintages = c.req.query("includeVintages") === "true";
-  const repository = new D1MacroRepository(c.env.DB);
-  const catalog = new Map((await loadCatalog(repository)).map((item) => [item.seriesId, item]));
-  const rows = await Promise.all(ids.map(async (id) => {
-    const observations = await repository.getObservationSeries(id, { from, to, asOf: asOf ?? undefined, includeAllVintages: includeVintages });
-    const points = includeVintages ? observations.map((item) => ({
-      date: item.observationDate, value: item.value, releasedAt: item.releasedAt, vintageAt: item.vintageAt,
-      revisionNumber: item.revisionNumber, isPreliminary: item.isPreliminary, consensus: item.consensus,
-    })) : transformSeries(observations.map((item) => ({ date: item.observationDate, value: item.value })), transform, { window });
-    return { definition: toApiDefinition(catalog.get(id) ?? configToDomain(configuredById.get(id)!, Date.now())), transform, points };
-  }));
-  return ok(c, rows);
-});
-
-macroRoutes.get("/macro/revisions", async (c) => {
-  const id = c.req.query("id")?.trim() ?? "";
-  if (!configuredById.has(id)) return fail(c, 400, "unknown series id");
-  const repository = new D1MacroRepository(c.env.DB);
-  const observations = await repository.getObservationSeries(id, {
-    from: validDate(c.req.query("from")) ?? undefined,
-    to: validDate(c.req.query("to")) ?? undefined,
-    includeAllVintages: true,
-  });
-  const revisions = summarizeRevisions(observations);
-  return ok(c, {
-    seriesId: id,
-    coverage: { observedPeriods: new Set(observations.map((item) => item.observationDate)).size, revisedPeriods: revisions.length },
-    revisions,
-    // Kept temporarily for callers that need the raw vintages. New UI code
-    // should use revisions so a long observation history is not mislabeled as
-    // a revision count.
-    observations,
-  });
-});
-
-macroRoutes.get("/macro/events", async (c) => {
-  const from = parseDateBoundary(c.req.query("from"), false) ?? Date.now();
-  const to = parseDateBoundary(c.req.query("to"), true) ?? from + 7 * 86_400_000;
-  if (from > to) return fail(c, 400, "from must not be after to");
-  const events = await new D1MacroRepository(c.env.DB).listEvents({ from, to, regions: csvValues(c.req.query("regions")), importance: c.req.query("importance") });
-  return ok(c, { events, status: events.length ? "ready" : "empty", message: events.length ? null : "当前区间没有已验证的官方日历事件。" });
-});
-
-macroRoutes.get("/macro/status", async (c) => ok(c, { generatedAt: new Date().toISOString(), sources: await new D1MacroRepository(c.env.DB).listSourceHealth() }));
-
-macroRoutes.get("/macro/signals", async (c) => {
-  const repository = new D1MacroRepository(c.env.DB);
-  const now = Date.now();
-  const signals = new Map<string, { signal: number | null; quality: Quality; freshnessWeight: number; latestDate: string | null; ageDays: number | null; reason: string }>();
-  for (const definition of await loadCatalog(repository)) {
-    const observations = await repository.getObservationSeries(definition.seriesId, { from: dateDaysAgo(3650) });
-    const series = buildResearchSeries(observations, "zscore", { window: 60 });
-    const latest = [...series].reverse().find((item) => item.value !== null)?.value;
-    signals.set(definition.seriesId, assessSignalQuality(definition, observations, latest ?? null, now));
+/**
+ * The repository deliberately bounds a single snapshot query to keep its SQL
+ * parameter count predictable. The overview is catalog-driven, though, so a
+ * newly added directory must not become unusable once it contains more IDs.
+ * Keeping the batches sequential makes DB pressure bounded while preserving
+ * the catalog's deterministic response order below.
+ */
+async function getLatestSnapshotsInBatches(repository: D1MacroRepository, indicatorIds: readonly number[], asOf: number) {
+  const snapshots: MacroDataPoint[] = [];
+  for (let start = 0; start < indicatorIds.length; start += MAX_LATEST_SNAPSHOT_IDS_PER_QUERY) {
+    snapshots.push(...await repository.getLatestSnapshots(
+      indicatorIds.slice(start, start + MAX_LATEST_SNAPSHOT_IDS_PER_QUERY),
+      asOf,
+    ));
   }
-  const factorExposures = exposures.flatMap((exposure) => {
-    const signal = signals.get(exposure.seriesId) ?? {
-      signal: null, quality: "missing" as const, freshnessWeight: 0, latestDate: null, ageDays: null, reason: "series_not_configured",
-    };
-    return Object.entries(exposure.markets).map(([market, weight]) => ({
-      market,
-      factor: `${exposure.factor}/${exposure.seriesId}`,
-      seriesId: exposure.seriesId,
-      signal: signal.signal,
-      weight,
-      quality: signal.quality,
-      freshnessWeight: signal.freshnessWeight,
-    }));
-  });
-  return ok(c, {
-    generatedAt: new Date(now).toISOString(),
-    methodology: "60-observation rolling z-score × configured market exposure. Scores are divided by total configured exposure; stale inputs decay by staleAfterSeconds / observation age and missing inputs contribute zero.",
-    markets: calculateMarketFactorContributions(factorExposures),
-    indicators: [...signals.entries()].map(([seriesId, item]) => ({ seriesId, ...item })),
-  });
-});
-
-macroRoutes.get("/macro/research/industries", async (c) => {
-  const requestedMarkets = csvValues(c.req.query("markets"));
-  const definitions = requestedMarkets.length
-    ? industryExposures.filter((item) => requestedMarkets.includes(item.market))
-    : industryExposures;
-  const repository = new D1MacroRepository(c.env.DB);
-  const requiredIds = [...new Set(definitions.flatMap((item) => Object.keys(item.series)))];
-  const signals = new Map<string, number>();
-  for (const seriesId of requiredIds) {
-    const observations = await repository.getObservationSeries(seriesId, { from: dateDaysAgo(3650) });
-    const latest = [...buildResearchSeries(observations, "zscore", { window: 60 })].reverse().find((item) => item.value !== null)?.value;
-    if (latest !== null && latest !== undefined) signals.set(seriesId, latest);
-  }
-  const sectors = definitions.map((definition) => {
-    const contributions = Object.entries(definition.series).flatMap(([seriesId, weight]) => {
-      const signal = signals.get(seriesId);
-      return signal === undefined ? [] : [{ seriesId, signal, weight, contribution: signal * weight }];
-    }).sort((left, right) => Math.abs(right.contribution) - Math.abs(left.contribution));
-    const denominator = contributions.reduce((sum, item) => sum + Math.abs(item.weight), 0);
-    return {
-      id: definition.id, market: definition.market, name: definition.name,
-      score: denominator ? contributions.reduce((sum, item) => sum + item.contribution, 0) / denominator : null,
-      coverage: { available: contributions.length, configured: Object.keys(definition.series).length },
-      contributions,
-    };
-  });
-  return ok(c, { generatedAt: new Date().toISOString(), methodology: "latest 60-observation z-score × configured industry exposure", sectors });
-});
-
-macroRoutes.get("/macro/research/scenario", async (c) => {
-  const ids = csvValues(c.req.query("ids"));
-  const from = validDate(c.req.query("from"));
-  const to = validDate(c.req.query("to"));
-  if (!ids.length || ids.some((id) => !configuredById.has(id)) || !from || !to || from > to) return fail(c, 400, "valid ids, from and to are required");
-  const asOf = parseAsOf(c.req.query("asOf"));
-  const repository = new D1MacroRepository(c.env.DB);
-  const byId: Record<string, DatedValue[]> = {};
-  for (const id of ids) byId[id] = (await repository.getObservationSeries(id, { from, to, asOf: asOf ?? undefined })).map((item) => ({ date: item.observationDate, value: item.value }));
-  return ok(c, { from, to, asOf, results: replayScenario(byId, from, to) });
-});
-
-macroRoutes.get("/macro/research/correlation", async (c) => {
-  const seriesId = c.req.query("seriesId")?.trim() ?? "";
-  const market = c.req.query("market")?.trim() ?? "us";
-  if (!configuredById.has(seriesId) || !benchmarkCodes[market]) return fail(c, 400, "unknown seriesId or market");
-  const from = validDate(c.req.query("from")) ?? dateDaysAgo(1825);
-  const to = validDate(c.req.query("to")) ?? today();
-  const window = boundedInteger(c.req.query("window"), 20, 2, 500);
-  const macro = await new D1MacroRepository(c.env.DB).getObservationSeries(seriesId, { from, to, asOf: parseAsOf(c.req.query("asOf")) ?? undefined });
-  const marketPoints = await loadBenchmark(c.env, benchmarkCodes[market], from, to);
-  return ok(c, { seriesId, market, benchmark: benchmarkCodes[market], window, points: rollingCorrelation(macro.map((item) => ({ date: item.observationDate, value: item.value })), marketPoints, window) });
-});
-
-macroRoutes.get("/macro/research/backtest", async (c) => {
-  const seriesId = c.req.query("seriesId")?.trim() ?? "";
-  const market = c.req.query("market")?.trim() ?? "us";
-  const operator = c.req.query("operator") === "lte" ? "lte" : "gte";
-  const threshold = Number(c.req.query("threshold") ?? "1");
-  if (!configuredById.has(seriesId) || !benchmarkCodes[market] || !Number.isFinite(threshold)) return fail(c, 400, "invalid research parameters");
-  const from = validDate(c.req.query("from")) ?? dateDaysAgo(3650);
-  const to = validDate(c.req.query("to")) ?? today();
-  const horizon = boundedInteger(c.req.query("horizon"), 20, 1, 500);
-  const transform = (c.req.query("transform") ?? "zscore") as SeriesTransform;
-  if (!transforms.has(transform)) return fail(c, 400, "invalid transform");
-  const retrospective = c.req.query("vintageMode") === "retrospective";
-  const repository = new D1MacroRepository(c.env.DB);
-  const observations = await repository.getObservationSeries(seriesId, {
-    from, to, asOf: parseAsOf(c.req.query("asOf")) ?? undefined, includeAllVintages: !retrospective,
-  });
-  const signalSeries = retrospective
-    ? buildResearchSeries(observations, transform, { window: boundedInteger(c.req.query("window"), 60, 2, 1000) })
-    : transformSeries(initialReleasePoints(observations), transform, { window: boundedInteger(c.req.query("window"), 60, 2, 1000) });
-  const signals = signalSeries.flatMap((item) => item.value === null ? [] : [{ date: item.date, value: item.value }]);
-  const marketPrices = await loadBenchmark(c.env, benchmarkCodes[market], from, to);
-  return ok(c, {
-    seriesId, market, benchmark: benchmarkCodes[market], condition: { operator, threshold }, horizon,
-    vintagePolicy: retrospective ? "retrospective-latest-revision" : "initial-release-only",
-    signalDatePolicy: retrospective ? "observationDate" : "max(releasedAt,vintageAt)",
-    lookAheadSafe: !retrospective,
-    ...backtestSignal(signals, marketPrices, { operator, threshold }, horizon),
-  });
-});
-
-macroRoutes.get("/macro/watch", async (c) => {
-  const owner = validOwner(c.req.query("owner") ?? "local");
-  if (!owner) return fail(c, 400, "invalid owner");
-  return ok(c, await new D1MacroRepository(c.env.DB).listUserWatches(owner));
-});
-
-macroRoutes.put("/macro/watch", async (c) => {
-  const body = await c.req.json<Record<string, unknown>>().catch(() => null);
-  const ownerKey = validOwner(String(body?.ownerKey ?? "local"));
-  const seriesId = String(body?.seriesId ?? "");
-  if (!ownerKey || !configuredById.has(seriesId)) return fail(c, 400, "invalid watch configuration");
-  const now = Date.now();
-  const rules = Array.isArray(body?.alertRules) ? body.alertRules.filter(validAlertRule) : [];
-  const config: MacroUserWatchConfig = { ownerKey, seriesId, enabled: body?.enabled !== false, position: boundedNumber(body?.position, 100, 0, 10000), alertRules: rules, displayOptions: isRecord(body?.displayOptions) ? body.displayOptions : {}, createdAt: now, updatedAt: now };
-  const repository = new D1MacroRepository(c.env.DB);
-  // A user may configure a watch before the first scheduled sync. Make the
-  // configured series available to the FK without fabricating an observation.
-  await repository.upsertSeries(configToDomain(configuredById.get(seriesId)!, now));
-  await repository.putUserWatch(config);
-  return ok(c, config);
-});
-
-macroRoutes.get("/macro/alerts/history", async (c) => {
-  const owner = validOwner(c.req.query("owner") ?? "local");
-  if (!owner) return fail(c, 400, "invalid owner");
-  const limit = boundedInteger(c.req.query("limit"), 20, 1, 100);
-  return ok(c, { owner, entries: await new D1MacroRepository(c.env.DB).listAlertHistory(owner, limit) });
-});
-
-macroRoutes.get("/macro/alerts/evaluate", async (c) => evaluateAlerts(c, false));
-macroRoutes.post("/macro/alerts/evaluate", async (c) => evaluateAlerts(c, true));
-
-async function evaluateAlerts(c: Context<AppEnv>, persist: boolean) {
-  const owner = validOwner(c.req.query("owner") ?? "local");
-  if (!owner) return fail(c, 400, "invalid owner");
-  const repository = new D1MacroRepository(c.env.DB);
-  const watches = await repository.listUserWatches(owner);
-  const triggered: AlertTrigger[] = [];
-  let recorded = 0;
-  const evaluatedAt = Date.now();
-  for (const watch of watches.filter((item) => item.enabled)) {
-    const points = await repository.getObservationSeries(watch.seriesId, { from: dateDaysAgo(800) });
-    const latest = points.at(-1);
-    if (!latest) continue;
-    for (const rule of watch.alertRules.filter(validAlertRule)) {
-      const typed = rule as { operator: "gte" | "lte"; threshold: number };
-      if ((typed.operator === "gte" && latest.value >= typed.threshold) || (typed.operator === "lte" && latest.value <= typed.threshold)) {
-        const trigger = {
-          seriesId: watch.seriesId,
-          observationDate: latest.observationDate,
-          observationVintageAt: latest.vintageAt,
-          observedAt: latest.observedAt,
-          value: latest.value,
-          sourceUrl: latest.sourceUrl,
-          rule: typed,
-        };
-        triggered.push(trigger);
-        if (persist && await repository.recordAlertHistory({
-          ownerKey: owner,
-          seriesId: trigger.seriesId,
-          observationDate: trigger.observationDate,
-          observationVintageAt: trigger.observationVintageAt,
-          observedAt: trigger.observedAt,
-          value: trigger.value,
-          ruleOperator: typed.operator,
-          ruleThreshold: typed.threshold,
-          sourceUrl: trigger.sourceUrl,
-          notificationState: "not_configured",
-          notificationDetail: "No notification channel is configured.",
-          evaluatedAt,
-          metadata: { evaluationMode: "manual", dataVersion: "latest-stored-vintage" },
-        })) recorded += 1;
-      }
-    }
-  }
-  return ok(c, {
-    owner,
-    evaluatedAt: new Date(evaluatedAt).toISOString(),
-    triggered,
-    recorded,
-    persisted: persist,
-    notification: "not_configured",
-  });
+  return snapshots;
 }
+
+/** Detail history is windowed: `from` and `to` are required by contract. */
+macroRoutes.get("/macro/series", async (c) => {
+  const ids = parseIndicatorIds(c.req.query("ids"));
+  if (ids === null) return fail(c, 400, "ids must be positive integer indicator IDs");
+  if (ids.length === 0) return fail(c, 400, "Missing ids parameter");
+  if (ids.length > MAX_INDICATORS_PER_REQUEST) return fail(c, 400, `Too many indicators; maximum is ${MAX_INDICATORS_PER_REQUEST}`);
+  const from = parsePeriodDay(c.req.query("from"));
+  const to = parsePeriodDay(c.req.query("to"));
+  if (from === null || to === null) return fail(c, 400, "from and to dates are required");
+  if (from > to) return fail(c, 400, "from must not be after to");
+  const requestedAsOf = parseTimestamp(c.req.query("asOf"));
+  if (c.req.query("asOf") && requestedAsOf === null) return fail(c, 400, "invalid asOf timestamp");
+  const measure = (c.req.query("measure") ?? c.req.query("transform") ?? "level").trim();
+  if (!MEASURES.has(measure)) return fail(c, 400, "measure must be level, yoy, or mom");
+  const asOf = requestedAsOf ?? nowSeconds();
+
+  const repository = new D1MacroRepository(c.env.DB);
+  const catalog = await repository.listCatalog({ enabledOnly: false });
+  const byId = new Map(catalog.series.map((indicator) => [indicator.id, indicator]));
+  const unknown = ids.filter((id) => !byId.has(id));
+  if (unknown.length) return fail(c, 400, `Unknown macro indicator IDs: ${unknown.join(", ")}`);
+  const series = await Promise.all(ids.map(async (id) => {
+    const indicator = byId.get(id)!;
+    const basePeriods = measure === "level" ? 0 : basePeriodsFor(indicator, measure as Exclude<Measure, "level">);
+    const lookupFrom = basePeriods > 0 ? shiftPeriodDay(from, indicator.frequency, -basePeriods) : from;
+    const raw = await repository.getDataSeries(id, { fromPeriodDay: lookupFrom, toPeriodDay: to, asOf });
+    const byPeriod = new Map(raw.map((point) => [point.periodDay, point]));
+    const points = raw.filter((point) => point.periodDay >= from)
+      .map((point) => toSeriesPoint(point, indicator, measure as Measure, byPeriod));
+    return { definition: toDefinition(indicator), measure, points };
+  }));
+  return ok(c, { generatedAt: new Date().toISOString(), asOf: timestampToIso(asOf), series });
+});
 
 macroRoutes.post("/macro/sync", async (c) => {
   if (!isLocalDevelopmentRuntime(c.env)) return fail(c, 404, "macro sync endpoint is only available in local development");
   return ok(c, await syncMacroData(c.env));
 });
 
-async function loadCatalog(repository: D1MacroRepository): Promise<MacroSeries[]> {
-  const stored = await repository.listSeries();
-  return stored.length ? stored : configured.filter((item) => item.enabled).map((item) => configToDomain(item, Date.now()));
-}
+async function toOverviewEntry(repository: D1MacroRepository, indicator: MacroIndicator, latest: MacroDataPoint | null, asOf: number) {
+  const definition = toDefinition(indicator);
+  const availability = availabilityFor(indicator, latest);
+  if (!latest) return {
+    definition, current: null,
+    yoy: unavailable(indicator.yoyMethod, availability.reason ?? "awaiting_data"),
+    mom: unavailable(indicator.momMethod, availability.reason ?? "awaiting_data"),
+    freshness: { status: "missing", ageSeconds: null, staleAfterSeconds: indicator.staleAfterSeconds },
+    availability,
+    trend: { status: "unavailable", reason: availability.reason, defaultPeriods: indicator.defaultTrendPeriods, points: [] },
+  };
 
-function configToDomain(item: ConfiguredSeries, now: number): MacroSeries {
-  return { seriesId: item.id, name: item.name, category: item.category, region: item.region, frequency: item.frequency, unit: item.unit, sourceId: item.sourceId, transmissions: item.transmissions, regions: item.regions, licenseClass: "official", staleAfterSeconds: item.staleDays * 86_400, enabled: item.enabled, metadata: { interpretation: item.interpretation }, updatedAt: now };
-}
-
-function toApiDefinition(item: MacroSeries) {
-  return { id: item.seriesId, name: item.name, category: item.category, region: item.region, regions: item.regions, frequency: item.frequency, unit: item.unit, sourceId: item.sourceId, transmission: item.transmissions[0] ?? "earnings", transmissions: item.transmissions, interpretation: String(item.metadata.interpretation ?? ""), staleDays: Math.ceil(item.staleAfterSeconds / 86_400), enabled: item.enabled };
-}
-
-function summarize(item: MacroSeries, points: DatedValue[], now: number) {
-  const latest = points.at(-1); const previous = points.at(-2);
-  const ageDays = latest ? Math.max(0, Math.floor((now - freshnessTimestamp(latest.date, item.frequency)) / 86_400_000)) : null;
-  const quality: Quality = ageDays === null ? "missing" : ageDays > item.staleAfterSeconds / 86_400 ? "stale" : "fresh";
-  return { ...toApiDefinition(item), latest: latest?.value ?? null, previous: previous?.value ?? null, change: latest && previous ? latest.value - previous.value : null, latestDate: latest?.date ?? null, ageDays, quality };
-}
-
-function assessSignalQuality(
-  definition: MacroSeries,
-  observations: Awaited<ReturnType<D1MacroRepository["getObservationSeries"]>>,
-  signal: number | null,
-  now: number,
-): { signal: number | null; quality: Quality; freshnessWeight: number; latestDate: string | null; ageDays: number | null; reason: string } {
-  const latest = [...observations].reverse().find((item) => item.qualityStatus === "valid");
-  if (!latest) return { signal: null, quality: "missing", freshnessWeight: 0, latestDate: null, ageDays: null, reason: "missing_valid_observation" };
-  const ageDays = Math.max(0, Math.floor((now - freshnessTimestamp(latest.observationDate, definition.frequency)) / 86_400_000));
-  if (signal === null || !Number.isFinite(signal)) {
-    return { signal: null, quality: "missing", freshnessWeight: 0, latestDate: latest.observationDate, ageDays, reason: "insufficient_valid_history" };
-  }
-  const staleAfterDays = definition.staleAfterSeconds / 86_400;
-  if (ageDays <= staleAfterDays) {
-    return { signal, quality: "fresh", freshnessWeight: 1, latestDate: latest.observationDate, ageDays, reason: "fresh_observation" };
-  }
+  const trendPeriods = boundedTrendPeriods(indicator.defaultTrendPeriods);
+  const yoyBasePeriods = basePeriodsFor(indicator, "yoy");
+  const momBasePeriods = basePeriodsFor(indicator, "mom");
+  const readStart = Math.min(
+    shiftPeriodDay(latest.periodDay, indicator.frequency, -(trendPeriods - 1)),
+    yoyBasePeriods > 0 ? shiftPeriodDay(latest.periodDay, indicator.frequency, -yoyBasePeriods) : latest.periodDay,
+    momBasePeriods > 0 ? shiftPeriodDay(latest.periodDay, indicator.frequency, -momBasePeriods) : latest.periodDay,
+  );
+  const raw = await repository.getDataSeries(indicator.id, { fromPeriodDay: readStart, toPeriodDay: latest.periodDay, asOf });
+  const byPeriod = new Map(raw.map((point) => [point.periodDay, point]));
+  // The snapshot is authoritative if a new revision appears between reads.
+  byPeriod.set(latest.periodDay, latest);
+  const trendStart = shiftPeriodDay(latest.periodDay, indicator.frequency, -(trendPeriods - 1));
+  const trendPoints = raw.filter((point) => point.periodDay >= trendStart && point.periodDay <= latest.periodDay).map(toRawPoint);
+  const ageSeconds = Math.max(0, asOf - latest.publishedAt);
   return {
-    signal,
-    quality: "stale",
-    freshnessWeight: Math.min(1, staleAfterDays / Math.max(ageDays, 1)),
-    latestDate: latest.observationDate,
-    ageDays,
-    reason: "stale_observation",
+    definition,
+    current: toRawPoint(latest),
+    yoy: derivePoint(latest, indicator, "yoy", byPeriod),
+    mom: derivePoint(latest, indicator, "mom", byPeriod),
+    freshness: { status: ageSeconds > indicator.staleAfterSeconds ? "stale" : "fresh", ageSeconds, staleAfterSeconds: indicator.staleAfterSeconds },
+    availability,
+    trend: trendPoints.length >= 2
+      ? { status: "available", reason: null, defaultPeriods: trendPeriods, points: trendPoints }
+      : { status: "unavailable", reason: "insufficient_history", defaultPeriods: trendPeriods, points: trendPoints },
   };
 }
 
-function summarizeRevisions(observations: MacroObservationVintage[]) {
-  const byPeriod = new Map<string, MacroObservationVintage[]>();
-  for (const item of observations) byPeriod.set(item.observationDate, [...(byPeriod.get(item.observationDate) ?? []), item]);
-  return [...byPeriod.entries()].flatMap(([observationDate, rows]) => {
-    const ordered = [...rows].sort((left, right) => left.vintageAt - right.vintageAt);
-    const first = ordered[0]; const latest = ordered.at(-1);
-    if (!first || !latest || (ordered.length === 1 && latest.revisionNumber === 0)) return [];
-    return [{
-      observationDate,
-      firstValue: first.value,
-      latestValue: latest.value,
-      delta: latest.value - first.value,
-      revisionCount: Math.max(...ordered.map((item) => item.revisionNumber)),
-      firstSeenAt: first.vintageAt,
-      latestSeenAt: latest.vintageAt,
-    }];
-  }).sort((left, right) => right.observationDate.localeCompare(left.observationDate));
+function toSeriesPoint(point: MacroDataPoint, indicator: MacroIndicator, measure: Measure, byPeriod: ReadonlyMap<number, MacroDataPoint>) {
+  if (measure === "level") return { ...toRawPoint(point), method: "level", status: "available" as DerivedStatus, reason: null };
+  return { ...toRawPoint(point), ...derivePoint(point, indicator, measure, byPeriod) };
 }
 
-function configuredContract(sourceId: string): string {
-  return ({
-    fred: "fred-observations-v1",
-    bls: "bls-public-api-v2",
-    "ny-fed": "ny-fed-secured-rates-v1",
-    hkma: "hkma-open-api-v1",
-  } as Record<string, string>)[sourceId] ?? "pending-verification";
+function derivePoint(point: MacroDataPoint, indicator: MacroIndicator, measure: Exclude<Measure, "level">, byPeriod: ReadonlyMap<number, MacroDataPoint>) {
+  const method = measure === "yoy" ? indicator.yoyMethod : indicator.momMethod;
+  const basePeriods = basePeriodsFor(indicator, measure);
+  if (method === "native") return { value: point.value, basePeriod: null, basePublishedAt: null, method, status: "available" as DerivedStatus, reason: null };
+  if (method !== "percent_change" && method !== "percentage_point_change") {
+    return unavailable(method, method === "not_applicable" ? "not_applicable" : "not_configured");
+  }
+  if (basePeriods < 1) return unavailable(method, "not_configured");
+  const expectedBasePeriod = shiftPeriodDay(point.periodDay, indicator.frequency, -basePeriods);
+  const base = byPeriod.get(expectedBasePeriod);
+  if (!base) return { value: null, basePeriod: periodDayToIso(expectedBasePeriod), basePublishedAt: null, method, status: "unavailable" as DerivedStatus, reason: "base_period_missing" as DerivedReason };
+  if (method === "percent_change" && base.value === 0) return { value: null, basePeriod: periodDayToIso(base.periodDay), basePublishedAt: timestampToIso(base.publishedAt), method, status: "unavailable" as DerivedStatus, reason: "base_zero" as DerivedReason };
+  return {
+    value: method === "percent_change" ? (point.value / base.value - 1) * 100 : point.value - base.value,
+    basePeriod: periodDayToIso(base.periodDay), basePublishedAt: timestampToIso(base.publishedAt), method,
+    status: "available" as DerivedStatus, reason: null,
+  };
 }
 
-function describeActualSource(configuredSourceId: string, sourceUrl: string | null) {
-  let host = "";
-  try { host = sourceUrl ? new URL(sourceUrl).hostname : ""; } catch { /* Stored URL is retained but not classified. */ }
-  const sourceId = host.endsWith("stlouisfed.org") ? "fred"
-    : host.endsWith("bls.gov") ? "bls"
-      : host.endsWith("newyorkfed.org") ? "ny-fed"
-        : host.endsWith("hkma.gov.hk") ? "hkma"
-          : configuredSourceId;
-  const contract = sourceId === "fred" && sourceUrl?.includes("/graph/fredgraph.csv")
-    ? "fred-public-csv-v1"
-    : configuredContract(sourceId);
-  return { sourceId, contract, differsFromConfigured: sourceId !== configuredSourceId };
+function unavailable(method: string, reason: DerivedReason | "unmapped" | "awaiting_first_release" | "awaiting_data") {
+  return { value: null, basePeriod: null, basePublishedAt: null, method, status: "unavailable" as DerivedStatus, reason };
 }
 
-function freshnessTimestamp(date: string, frequency: MacroSeries["frequency"]): number {
-  const parsed = new Date(`${date}T00:00:00Z`);
-  if (frequency === "monthly" || frequency === "quarterly") return Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth() + 1, 0);
-  if (frequency === "annual") return Date.UTC(parsed.getUTCFullYear(), 11, 31);
-  return parsed.getTime();
+function availabilityFor(indicator: MacroIndicator, latest: MacroDataPoint | null) {
+  if (latest) return { status: "available" as const, reason: null };
+  if (!indicator.sourceId) return { status: "unmapped" as const, reason: "unmapped" as const };
+  if (indicator.lastSuccessAt === null) return { status: "awaiting_first_release" as const, reason: "awaiting_first_release" as const };
+  return { status: "awaiting_data" as const, reason: "awaiting_data" as const };
 }
 
-function summarizeStatus(indicators: Array<{ quality: Quality }>, sources: Array<{ state: string; sourceId: string; lastError: string | null }>) {
-  const fresh = indicators.filter((item) => item.quality === "fresh").length;
-  const stale = indicators.filter((item) => item.quality === "stale").length;
-  const missing = indicators.length - fresh - stale;
-  const failed = sources.filter((item) => item.state === "failed");
-  return { state: failed.length || missing ? "degraded" : stale ? "stale" : "healthy", total: indicators.length, fresh, stale, missing, error: failed.map((item) => `${item.sourceId}: ${item.lastError ?? "failed"}`).join("; ") || null };
+/** Scheduler state and provider errors intentionally stay out of the public catalog. */
+function toDefinition(indicator: MacroIndicator) {
+  return {
+    id: indicator.id, metricId: indicator.metricId, categoryId: indicator.categoryId, regionCode: indicator.regionCode, definitionId: indicator.definitionId,
+    region: { code: indicator.regionCode, name: indicator.regionName, sort: indicator.regionSort },
+    category: { id: indicator.categoryId, code: indicator.categoryCode, name: indicator.categoryName, sort: indicator.categorySort },
+    metric: { id: indicator.metricId, code: indicator.metricCode, name: indicator.metricName, description: indicator.metricDescription, sort: indicator.metricSort },
+    name: indicator.name, statisticalDefinition: indicator.statisticalDefinition,
+    frequency: indicator.frequency, unit: indicator.unit, unitFormat: indicator.unitFormat,
+    measurementKind: indicator.measurementKind, seasonalAdjustment: indicator.seasonalAdjustment, leadLag: indicator.leadLag,
+    measures: {
+      yoy: { method: indicator.yoyMethod, basePeriods: indicator.yoyBasePeriods, displayFormat: indicator.yoyDisplayFormat },
+      mom: { method: indicator.momMethod, basePeriods: indicator.momBasePeriods, displayFormat: indicator.momDisplayFormat },
+    },
+    defaultTrendPeriods: indicator.defaultTrendPeriods,
+    source: indicator.sourceId ? { id: indicator.sourceId, seriesId: indicator.sourceSeriesId, url: indicator.sourceUrl, publisher: indicator.publisher } : null,
+  };
 }
 
-async function loadBenchmark(env: AppEnv["Bindings"], code: string, from: string, to: string): Promise<DatedValue[]> {
-  const result = await loadKline(env, code, "day", "normal", from, to);
-  return result.rows.flatMap((row: KlineBar | FundNavRow) => "close" in row && row.close !== null ? [{ date: row.date, value: row.close }] : []);
+function toRawPoint(point: MacroDataPoint) { return { value: point.value, period: periodDayToIso(point.periodDay), publishedAt: timestampToIso(point.publishedAt) }; }
+
+function parseIndicatorIds(value: string | undefined): number[] | null {
+  if (!value?.trim()) return [];
+  const values = value.split(",").map((item) => Number(item.trim()));
+  if (values.some((item) => !Number.isSafeInteger(item) || item < 1)) return null;
+  return [...new Set(values)];
 }
 
-function csvValues(value: string | undefined): string[] { return [...new Set((value ?? "").split(",").map((item) => item.trim()).filter(Boolean))]; }
-function validDate(value: string | undefined): string | null { return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null; }
-function today(): string { return new Date().toISOString().slice(0, 10); }
-function dateDaysAgo(days: number): string { return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10); }
-function parseAsOf(value: string | undefined): number | null { if (!value) return null; const numeric = Number(value); const parsed = Number.isFinite(numeric) ? numeric : Date.parse(value); return Number.isFinite(parsed) ? parsed : null; }
-function parseDateBoundary(value: string | undefined, end: boolean): number | null { const date = validDate(value); return date ? Date.parse(`${date}T${end ? "23:59:59.999" : "00:00:00.000"}Z`) : null; }
-function boundedInteger(value: string | undefined, fallback: number, min: number, max: number): number { const parsed = Number(value); return Number.isInteger(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback; }
-function boundedNumber(value: unknown, fallback: number, min: number, max: number): number { const parsed = Number(value); return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback; }
-function validOwner(value: string): string | null { return /^[A-Za-z0-9:_-]{1,80}$/.test(value) ? value : null; }
-function isRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
-function validAlertRule(value: unknown): boolean { if (!isRecord(value)) return false; return (value.operator === "gte" || value.operator === "lte") && Number.isFinite(Number(value.threshold)); }
+function parseCsv(value: string | undefined): string[] | null {
+  const values = [...new Set((value ?? "").split(",").map((item) => item.trim()).filter(Boolean))];
+  return values.length <= MAX_FILTER_VALUES ? values : null;
+}
+
+function parsePeriodDay(value: string | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const periodDay = Number(`${match[1]}${match[2]}${match[3]}`);
+  return periodDayToIso(periodDay) ? periodDay : null;
+}
+
+function parseTimestamp(value: string | undefined): number | null {
+  if (!value) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric >= 0) return Math.floor(numeric >= 10_000_000_000 ? numeric / 1000 : numeric);
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
+}
+
+function periodDayToIso(periodDay: number): string | null {
+  const text = String(periodDay);
+  if (!/^\d{8}$/.test(text)) return null;
+  const iso = `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
+  const date = new Date(`${iso}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().startsWith(iso) ? iso : null;
+}
+
+function timestampToIso(seconds: number): string { return new Date(seconds * 1000).toISOString(); }
+function nowSeconds(): number { return Math.floor(Date.now() / 1000); }
+function basePeriodsFor(indicator: MacroIndicator, measure: Exclude<Measure, "level">): number { return measure === "yoy" ? indicator.yoyBasePeriods : indicator.momBasePeriods; }
+function boundedTrendPeriods(value: number): number { return Number.isInteger(value) ? Math.min(240, Math.max(2, value)) : 12; }
+
+/** Shifts exact calendar period starts; it intentionally never chooses a nearby observation. */
+function shiftPeriodDay(periodDay: number, frequency: MacroIndicator["frequency"], periods: number): number {
+  const iso = periodDayToIso(periodDay);
+  if (!iso) throw new Error(`invalid macro period day: ${periodDay}`);
+  const year = Number(iso.slice(0, 4));
+  const month = Number(iso.slice(5, 7));
+  const day = Number(iso.slice(8, 10));
+  if (frequency === "daily") return dateToPeriodDay(new Date(Date.UTC(year, month - 1, day + periods)));
+  if (frequency === "weekly") return dateToPeriodDay(new Date(Date.UTC(year, month - 1, day + periods * 7)));
+  const monthDelta = frequency === "monthly" ? periods : frequency === "quarterly" ? periods * 3 : periods * 12;
+  const shifted = new Date(Date.UTC(year, month - 1 + monthDelta, 1));
+  return shifted.getUTCFullYear() * 10_000 + (shifted.getUTCMonth() + 1) * 100 + 1;
+}
+function dateToPeriodDay(date: Date): number { return date.getUTCFullYear() * 10_000 + (date.getUTCMonth() + 1) * 100 + date.getUTCDate(); }

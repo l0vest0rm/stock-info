@@ -58,82 +58,48 @@ await check("institutional tracks page", async () => {
   assert(html.includes("js/institutional-tracks-page.js"), "institutional tracks bundle is missing");
 });
 
-await check("macro page and dashboard schema", async () => {
+await check("macro catalog directory and generic overview", async () => {
   const page = await fetchWithTimeout(`${baseUrl}/macro.html`);
   const html = await page.text();
   assert(page.status < 400, `macro page status=${page.status}`);
   assert(html.includes("macro-vue-root"), "macro page root is missing");
   assert(html.includes("js/macro-page.js"), "macro page bundle is missing");
 
-  const body = await fetchApi("/api/macro/dashboard?regions=us,cn,hk,kr");
-  assert(Array.isArray(body.data?.indicators), "macro indicators are not an array");
-  assert(body.data.indicators.length >= 10, "macro indicator catalog is incomplete");
-  assert(typeof body.data?.status?.state === "string", "macro source status is missing");
+  const body = await fetchApi("/api/macro/catalog");
+  assert(Array.isArray(body.data?.regions), "macro regions are not an array");
+  assert(Array.isArray(body.data?.categories), "macro categories are not an array");
+  assert(Array.isArray(body.data?.metrics), "macro metrics are not an array");
+  assert(Array.isArray(body.data?.series), "macro concrete series are not an array");
   assert(
-    body.data.indicators.every((item) => item.id && item.name && ["fresh", "stale", "missing"].includes(item.quality)),
-    "macro indicators contain invalid quality metadata"
+    body.data.series.every((item) => Number.isInteger(item.id) && item.region?.code && item.category?.code && item.metric?.name && item.measures?.yoy && item.measures?.mom),
+    "macro series directory contains incomplete metadata"
   );
+  assert(body.data.capabilities && Array.isArray(body.data.capabilities.frequencies), "macro catalog capabilities are missing");
+
+  const region = body.data.regions[0]?.code;
+  const overview = await fetchApi(`/api/macro/overview${region ? `?regions=${encodeURIComponent(region)}` : ""}`);
+  assert(Array.isArray(overview.data?.series), "macro overview series are not an array");
+  assert(
+    overview.data.series.every((item) => item.definition?.id && item.yoy?.status && item.mom?.status && item.freshness?.status && item.availability?.status && item.trend?.status),
+    "macro overview does not expose the card contract"
+  );
+  if (region) assert(overview.data.series.every((item) => item.definition.regionCode === region), "macro overview ignores the selected region");
 });
 
-await check("macro research, vintage, watch and source-health APIs", async () => {
-  const series = await fetchApi("/api/macro/series?ids=SOFR&from=2024-01-01&transform=zscore&window=20");
-  assert(Array.isArray(series.data) && Array.isArray(series.data[0]?.points), "macro transformed series is invalid");
-  assert(series.data[0]?.transform === "zscore", "macro transform was not applied");
-
-  const provenance = await fetchApi("/api/macro/provenance?ids=SOFR");
-  assert(provenance.data?.series?.[0]?.configuredSource?.sourceId === "ny-fed", "macro provenance does not expose its configured source");
-
-  const revisions = await fetchApi("/api/macro/revisions?id=SOFR&from=2024-01-01");
-  assert(Array.isArray(revisions.data?.observations), "macro revisions are not an array");
-
-  const signals = await fetchApi("/api/macro/signals");
-  assert(Array.isArray(signals.data?.markets), "macro market signals are not an array");
-  assert(typeof signals.data?.methodology === "string", "macro signal methodology is missing");
-
-  const scenario = await fetchApi("/api/macro/research/scenario?ids=SOFR&from=2024-01-01&to=2026-07-30&asOf=2026-07-30T23%3A59%3A59Z");
-  assert(Array.isArray(scenario.data?.results), "macro scenario results are not an array");
-
-  const correlation = await fetchApi("/api/macro/research/correlation?seriesId=SOFR&market=cn&from=2026-01-01&to=2026-07-30&window=20");
-  assert(correlation.data?.benchmark === "000300.SH", "macro correlation benchmark is incorrect");
-  assert(Array.isArray(correlation.data?.points), "macro correlation points are not an array");
-
-  const industries = await fetchApi("/api/macro/research/industries?markets=us,cn,hk,kr");
-  assert(Array.isArray(industries.data?.sectors) && industries.data.sectors.length >= 8, "macro industry sensitivity coverage is incomplete");
-  assert(industries.data.sectors.every((item) => item.coverage?.configured > 0), "macro industry sensitivity metadata is invalid");
-
-  const backtest = await fetchApi("/api/macro/research/backtest?seriesId=SOFR&market=cn&from=2026-01-01&to=2026-07-30&window=20&horizon=20");
-  assert(backtest.data?.vintagePolicy === "initial-release-only", "macro backtest vintage policy is unsafe");
-  assert(Array.isArray(backtest.data?.trades), "macro backtest trades are not an array");
-  const retrospective = await fetchApi("/api/macro/research/backtest?seriesId=SOFR&market=cn&from=2024-01-01&to=2026-07-30&window=20&horizon=20&vintageMode=retrospective");
-  assert(retrospective.data?.vintagePolicy === "retrospective-latest-revision", "macro retrospective backtest mode is missing");
-  assert(retrospective.data?.lookAheadSafe === false, "macro retrospective backtest must disclose look-ahead risk");
-
-  await fetchApi("/api/macro/watch", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ownerKey: "smoke-macro", seriesId: "SOFR", enabled: true, alertRules: [{ operator: "gte", threshold: -999 }] }),
-  });
-  const watches = await fetchApi("/api/macro/watch?owner=smoke-macro");
-  assert(watches.data?.some((item) => item.seriesId === "SOFR" && item.enabled), "macro watch was not persisted");
-  const alerts = await fetchApi("/api/macro/alerts/evaluate?owner=smoke-macro", { method: "POST" });
-  assert(Array.isArray(alerts.data?.triggered), "macro alerts result is invalid");
-  assert(alerts.data?.persisted === true, "macro alerts were not persisted");
-  const history = await fetchApi("/api/macro/alerts/history?owner=smoke-macro");
-  assert(Array.isArray(history.data?.entries), "macro alert history is invalid");
-  assert(history.data.entries.some((entry) => entry.seriesId === "SOFR"), "macro alert history did not retain the data vintage");
-
-  const status = await fetchApi("/api/macro/status");
-  assert(Array.isArray(status.data?.sources), "macro source health is not an array");
-  assert(status.data.sources.every((item) => ["healthy", "degraded", "failed", "disabled"].includes(item.state)), "macro source health contains an invalid state");
-});
-
-await check("company report counts", async () => {
-  const body = await fetchApi("/api/companies/report/cnt?days=90");
-  const entries = Object.entries(body.data || {});
-  assert(
-    entries.every(([code, count]) => /^[A-Z0-9]+\.[A-Z]+$/.test(code) && Number.isInteger(count) && count > 0),
-    `company report counts contain invalid entries: ${truncate(JSON.stringify(entries.slice(0, 5)))}`
-  );
+await check("macro windowed series and retired API removal", async () => {
+  const catalog = await fetchApi("/api/macro/catalog");
+  const region = catalog.data?.regions?.[0]?.code;
+  const overview = await fetchApi(`/api/macro/overview${region ? `?regions=${encodeURIComponent(region)}` : ""}`);
+  const current = overview.data?.series?.find((item) => item.current?.period);
+  if (current) {
+    const series = await fetchApi(`/api/macro/series?ids=${current.definition.id}&measure=level&from=${current.current.period}&to=${current.current.period}`);
+    assert(Array.isArray(series.data?.series) && series.data.series.length === 1, "macro windowed series response is invalid");
+    assert(series.data.series[0].measure === "level" && Array.isArray(series.data.series[0].points), "macro series measure contract is invalid");
+  }
+  for (const path of ["/api/macro/dashboard", "/api/macro/events", "/api/macro/status", "/api/macro/signals", "/api/macro/watch", "/api/macro/alerts/history", "/api/macro/provenance", "/api/macro/research/backtest"]) {
+    const response = await fetchWithTimeout(`${baseUrl}${path}`);
+    assert(response.status === 404, `${path} status=${response.status}; retired macro endpoint is still available`);
+  }
 });
 
 await check("published research pages", async () => {

@@ -1,0 +1,1 @@
+{"code":200,"msg":"OK","data":{"indicatorsSeeded":120,"indicatorsDue":31,"indicatorsClaimed":31,"sourceBatchesAttempted":2,"sourceBatchesSucceeded":0,"observationsWritten":0,"observationsRejectedWithoutPublishedAt":0}}
