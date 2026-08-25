@@ -32,6 +32,11 @@ test("macro API is catalog driven and applies asOf before derived measurements",
     await repository.upsertIndicator(indicator({ id: 104, metricId: 74, metricCode: "I04", metricName: "未映射", metricSort: 4, sourceId: null, sourceSeriesId: null, sourceUrl: null, publisher: null }));
     await repository.upsertIndicator(indicator({ id: 105, metricId: 75, metricCode: "I05", metricName: "首发未到", metricSort: 5 }));
     await repository.upsertIndicator(indicator({ id: 106, metricId: 76, metricCode: "I06", metricName: "缺少基期", metricSort: 6 }));
+    await repository.upsertIndicator(indicator({
+      id: 107, metricId: 71, metricCode: "I01", metricName: "生产指数", metricSort: 1,
+      definitionId: 1, frequency: "annual", statisticalDefinition: "IMF WEO 年度增长率；不等同于本国月度指数",
+      yoyMethod: "not_applicable", yoyBasePeriods: 0, momMethod: "not_applicable", momBasePeriods: 0,
+    }));
     await repository.putData([
       point(101, "2025-01", 100, 1_000, "monthly"), point(101, "2025-12", 110, 1_000, "monthly"),
       point(101, "2026-01", 120, 2_000, "monthly"), point(101, "2026-01", 125, 3_000, "monthly"),
@@ -65,6 +70,13 @@ test("macro API is catalog driven and applies asOf before derived measurements",
     const series = await request(db, "/macro/series?ids=101&measure=yoy&from=2026-01-01&to=2026-01-01&asOf=2500");
     assertMetric(series.data.series[0].points[0], 20, "2025-01-01", "percent_change");
     assert.equal(series.data.series[0].points[0].publishedAt, "1970-01-01T00:33:20.000Z");
+    assert.deepEqual(series.data.comparison, { status: "single_series", comparedIndicatorIds: [101], reasons: [] });
+
+    const unsafeComparison = await request(db, "/macro/series?ids=101,107&measure=level&from=2026-01-01&to=2026-01-01&asOf=2500");
+    assert.deepEqual(unsafeComparison.data.comparison, {
+      status: "not_comparable", comparedIndicatorIds: [101, 107],
+      reasons: ["definition_mismatch", "statistical_definition_mismatch", "frequency_mismatch"],
+    }, "same metric alone cannot silently merge a monthly domestic series with an annual WEO definition");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -1,10 +1,9 @@
 import { MacroSourceError } from "./errors";
-import { fetchJson, fetchText, finiteNumber, recordArray } from "./http";
+import { fetchJson, finiteNumber, recordArray } from "./http";
 import type { MacroAdapterResult, MacroFetch, MacroSourceAdapter } from "./types";
 
 const SOURCE_ID = "fred";
 const ENDPOINT = "https://api.stlouisfed.org/fred/series/observations";
-const PUBLIC_CSV_ENDPOINT = "https://fred.stlouisfed.org/graph/fredgraph.csv";
 
 export type FredRequest = {
   seriesId: string;
@@ -29,7 +28,11 @@ export class FredAdapter implements MacroSourceAdapter<FredRequest> {
     if (!/^[A-Za-z0-9._-]+$/.test(request.seriesId)) {
       throw new MacroSourceError(SOURCE_ID, "invalid_request", "Invalid FRED series id", false);
     }
-    return this.apiKey?.trim() ? this.loadApi(request, this.apiKey.trim()) : this.loadPublicCsv(request);
+    const apiKey = this.apiKey?.trim();
+    if (!apiKey) {
+      throw new MacroSourceError(SOURCE_ID, "missing_credential", "FRED_API_KEY is required for realtime_start publication timestamps", false);
+    }
+    return this.loadApi(request, apiKey);
   }
 
   private async loadApi(request: FredRequest, apiKey: string): Promise<MacroAdapterResult> {
@@ -69,41 +72,6 @@ export class FredAdapter implements MacroSourceAdapter<FredRequest> {
     };
   }
 
-  private async loadPublicCsv(request: FredRequest): Promise<MacroAdapterResult> {
-    const sourceSeriesId = request.sourceSeriesId ?? request.seriesId;
-    const url = new URL(PUBLIC_CSV_ENDPOINT);
-    url.searchParams.set("id", sourceSeriesId);
-    if (request.observationStart) url.searchParams.set("cosd", request.observationStart);
-    if (request.observationEnd) url.searchParams.set("coed", request.observationEnd);
-    const sourceUrl = url.toString();
-    const csv = await fetchText(SOURCE_ID, this.fetcher, sourceUrl, this.timeoutMs, {
-      headers: { "User-Agent": "Mozilla/5.0 stock-info-macro/0.1", "Accept-Language": "en-US,en;q=0.8" },
-    });
-    const lines = csv.replace(/^\uFEFF/, "").trim().split(/\r?\n/);
-    const header = lines.shift()?.split(",").map((item) => item.trim()) ?? [];
-    if (header[0] !== "observation_date" || header[1] !== sourceSeriesId) {
-      throw new MacroSourceError(SOURCE_ID, "invalid_response", "FRED CSV response has an unexpected header", false);
-    }
-    const observations = lines.flatMap((line) => {
-      const separator = line.indexOf(",");
-      if (separator < 0) return [];
-      const observedAt = line.slice(0, separator).trim();
-      const value = finiteNumber(line.slice(separator + 1));
-      return /^\d{4}-\d{2}-\d{2}$/.test(observedAt) && value !== null ? [{
-        seriesId: sourceSeriesId,
-        value,
-        observedAt,
-        releasedAt: null,
-        vintage: null,
-        sourceUrl,
-      }] : [];
-    });
-    return {
-      series: [{ id: request.seriesId, sourceId: SOURCE_ID, sourceSeriesId, name: request.name, frequency: request.frequency, unit: request.unit, sourceUrl }],
-      observations,
-      health: { sourceId: SOURCE_ID, state: "healthy", checkedAt: new Date().toISOString(), observationCount: observations.length, message: "official public CSV" },
-    };
-  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

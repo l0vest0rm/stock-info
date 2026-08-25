@@ -27,7 +27,8 @@ type Catalog = {
 };
 type Overview = { generatedAt: string; asOf: string; regions: string[]; categories: string[]; series: OverviewEntry[] };
 type SeriesPoint = Omit<RawPoint, "value"> & DerivedPoint;
-type SeriesResponse = { generatedAt: string; asOf: string; series: Array<{ definition: Definition; measure: string; points: SeriesPoint[] }> };
+type Comparison = { status: "not_requested" | "single_series" | "comparable" | "not_comparable"; comparedIndicatorIds: number[]; reasons: string[] };
+type SeriesResponse = { generatedAt: string; asOf: string; series: Array<{ definition: Definition; measure: string; points: SeriesPoint[] }>; comparison: Comparison };
 type Detail = { entry: OverviewEntry; measure: "level" | "yoy" | "mom"; from: string; to: string };
 type ApiEnvelope<T> = { code: number; msg: string; data: T };
 
@@ -104,8 +105,16 @@ const MacroPage = defineComponent({
     };
     const entriesForCategory = (categoryId: number) => visibleEntries().filter((entry) => entry.definition.category.id === categoryId);
     const compareRows = (categoryId: number) => {
-      const rows = new Map<number, OverviewEntry[]>();
-      for (const entry of entriesForCategory(categoryId)) rows.set(entry.definition.metric.id, [...(rows.get(entry.definition.metric.id) ?? []), entry]);
+      // A shared metric is an economic concept, not proof that two concrete
+      // series are comparable. Keep each distinct statistical definition in a
+      // separate row so annual WEO and domestic monthly/quarterly series can
+      // never appear as one merged comparison.
+      const rows = new Map<string, OverviewEntry[]>();
+      for (const entry of entriesForCategory(categoryId)) {
+        const definition = entry.definition;
+        const key = [definition.metric.id, definition.definitionId, definition.statisticalDefinition, definition.frequency, definition.unit, definition.unitFormat].join("\u0000");
+        rows.set(key, [...(rows.get(key) ?? []), entry]);
+      }
       return [...rows.values()].sort((left, right) => left[0].definition.metric.sort - right[0].definition.metric.sort);
     };
     const regionsForCompare = () => (catalog.value?.regions ?? []).filter((region) => selectedRegions.value.includes(region.code));
@@ -135,8 +144,8 @@ const MacroPage = defineComponent({
         h("div", { class: "macro-category-head" }, [h("h2", `${category.code} · ${category.name}`), h("span", { class: "macro-category-note" }, "同一通用指标下按地区动态生成列")]),
         h("table", { class: "macro-compare-table" }, [
           h("thead", [h("tr", [h("th", "通用指标"), ...regionsForCompare().map((region) => h("th", { key: region.code }, region.name))])]),
-          h("tbody", compareRows(category.id).map((row) => h("tr", { key: row[0].definition.metric.id }, [
-            h("td", { class: "macro-compare-metric" }, [h("strong", row[0].definition.metric.name), h("div", { class: "macro-meta" }, row[0].definition.metric.description)]),
+          h("tbody", compareRows(category.id).map((row) => h("tr", { key: comparisonKey(row[0].definition) }, [
+            h("td", { class: "macro-compare-metric" }, [h("strong", row[0].definition.metric.name), h("div", { class: "macro-meta" }, row[0].definition.metric.description), h("div", { class: "macro-meta" }, `可比口径：${row[0].definition.statisticalDefinition} · ${row[0].definition.frequency} · ${row[0].definition.unit}`)]),
             ...regionsForCompare().map((region) => h("td", { key: region.code }, [
               entriesForRegion(row, region.code).length
                 ? h("div", { class: "macro-compare-cell" }, entriesForRegion(row, region.code).map((entry) => renderSeriesCard(entry, openDetail, true)))
@@ -175,7 +184,7 @@ function renderDetail(detail: Detail, response: SeriesResponse | null, loading: 
       chart(points),
       h("div", { class: "macro-point-list" }, points.map((point) => h("span", { class: "macro-point", key: `${point.period}-${point.publishedAt}` }, `${point.period} · ${point.value === null ? reasonLabel(point.reason ?? "not_configured") : formatValue(point.value, detail.measure === "level" ? definition.unitFormat : measureDefinition(definition, detail.measure).displayFormat)}`))),
     ]) : h("div", { class: "macro-empty" }, "所选窗口没有可展示的数据。"),
-    h("div", { class: "macro-detail-source" }, [h("div", { class: "macro-meta" }, `同比规则：${measureMethodDescription(definition.measures.yoy)}；环比规则：${measureMethodDescription(definition.measures.mom)}。`), definition.source?.url ? h("a", { href: definition.source.url, target: "_blank", rel: "noreferrer" }, `查看来源：${definition.source.publisher ?? definition.source.id}`) : h("div", { class: "macro-meta" }, "该具体序列尚未登记可访问的来源链接。")]),
+    h("div", { class: "macro-detail-source" }, [h("div", { class: "macro-meta" }, `同比规则：${measureMethodDescription(definition.measures.yoy)}；环比规则：${measureMethodDescription(definition.measures.mom)}。`), definition.source?.url ? h("a", { href: definition.source.url, target: "_blank", rel: "noreferrer" }, `查看来源：${definition.source.publisher ?? definition.source.id}`) : h("div", { class: "macro-meta" }, "该具体序列尚未登记已验证来源；不会用镜像、抓取时刻或近似指标填充。")]),
   ])]);
 }
 
@@ -194,6 +203,7 @@ function measureMethodLabel(method: string): string { return method === "native"
 function measureMethodDescription(definition: MeasureDefinition): string { return definition.method === "native" ? "使用来源发布的原生测度" : definition.method === "not_applicable" ? "不适用" : `${definition.method}，基期 ${definition.basePeriods} 期`; }
 function labelForAvailability(status: OverviewEntry["availability"]["status"]): string { return ({ available: "可用", unmapped: "待接入", awaiting_first_release: "等待首发", awaiting_data: "等待数据" })[status]; }
 function reasonLabel(reason: string): string { return ({ unmapped: "尚无已验证来源映射", awaiting_first_release: "来源已登记，等待首次发布", awaiting_data: "当前尚无可见观测", not_applicable: "该测度不适用", not_configured: "尚未配置计算规则", base_period_missing: "缺少严格对应的基期", base_zero: "基期为零，无法计算", insufficient_history: "历史期数不足" })[reason] ?? reason; }
+function comparisonKey(definition: Definition): string { return [definition.metricId, definition.definitionId, definition.statisticalDefinition, definition.frequency, definition.unit, definition.unitFormat].join("\u0000"); }
 function errorMessage(reason: unknown): string { return reason instanceof Error ? reason.message : String(reason); }
 
 createApp(MacroPage).mount("#macro-vue-root");

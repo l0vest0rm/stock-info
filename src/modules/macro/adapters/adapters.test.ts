@@ -1,4 +1,4 @@
-import { BlsPublicDataAdapter, FredAdapter, loadBlsReleaseCalendar } from "./index";
+import { BlsPublicDataAdapter, DbnomicsAdapter, FredAdapter, loadBlsReleaseCalendar } from "./index";
 import type { MacroFetch } from "./types";
 
 function equal(actual: unknown, expected: unknown, message: string): void {
@@ -26,6 +26,13 @@ async function testFred(): Promise<void> {
   equal(result.observations[0].sourceUrl.includes("secret-key"), false, "FRED public URL redaction");
 }
 
+async function testFredRejectsPublicCsvFallback(): Promise<void> {
+  const adapter = new FredAdapter(undefined, jsonFetch({ observations: [] }));
+  await adapter.load({ seriesId: "UNRATE", name: "Unemployment rate", frequency: "monthly", unit: "%" })
+    .then(() => { throw new Error("FRED without an API key must be rejected"); })
+    .catch((error: unknown) => equal((error as { code?: string }).code, "missing_credential", "FRED rejects public CSV fallback"));
+}
+
 async function testBls(): Promise<void> {
   let method = "";
   const fetcher = jsonFetch({ status: "REQUEST_SUCCEEDED", Results: { series: [{ seriesID: "LNS14000000", data: [{ year: "2026", period: "M06", value: "4.2", latest: "true" }] }] } }, (_url, init) => { method = init?.method ?? ""; });
@@ -46,7 +53,21 @@ async function testBlsReleaseCalendar(): Promise<void> {
   equal(calendar.get("ppi"), 1786622400, "PPI release date");
 }
 
+async function testDbnomics(): Promise<void> {
+  let requested = "";
+  const adapter = new DbnomicsAdapter(jsonFetch({ series: { docs: [{
+    period_start_day: ["2023-01-01", "2024-01-01", "2025-01-01"], value: [5.2, "NA", 4.9], indexed_at: "2024-10-31T02:17:18.509Z",
+  }] } }, (url) => { requested = url; }));
+  const result = await adapter.load({ sourceSeriesId: "IMF/WEO:2024-10/CHN.NGDP_RPCH.pcent_change", name: "China GDP growth", frequency: "annual", unit: "%", observationEnd: "2024-12-31" });
+  equal(requested, "https://api.db.nomics.world/v22/series/IMF/WEO%3A2024-10/CHN.NGDP_RPCH.pcent_change?observations=1", "DBnomics encoded request");
+  equal(result.observations.length, 1, "DBnomics ignores unavailable and forecast values");
+  equal(result.observations[0].releasedAt, null, "DBnomics adapter does not invent a release timestamp");
+  equal(result.observations[0].seriesId, "IMF/WEO:2024-10/CHN.NGDP_RPCH.pcent_change", "DBnomics observations retain full catalog mapping");
+}
+
 await testFred();
+await testFredRejectsPublicCsvFallback();
 await testBls();
 await testBlsReleaseCalendar();
+await testDbnomics();
 console.log("macro adapter tests passed");

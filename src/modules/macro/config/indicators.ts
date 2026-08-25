@@ -5,8 +5,8 @@
  * `macro_indicators`, not a second runtime-owned catalog.
  */
 
-export type MacroPublicationTimestampStrategy = "fred_realtime_start" | "bls_release_calendar";
-export type MacroScheduledSourceId = "fred" | "bls";
+export type MacroPublicationTimestampStrategy = "fred_realtime_start" | "bls_release_calendar" | "dbnomics_dataset_release";
+export type MacroScheduledSourceId = "fred" | "bls" | "dbnomics";
 export type BlsReleaseFamily = "employment" | "jolts" | "ppi";
 
 export type RegisteredMacroSourceMapping = {
@@ -15,6 +15,8 @@ export type RegisteredMacroSourceMapping = {
   publicationTimestampStrategy: MacroPublicationTimestampStrategy;
   sourceBatchKey: string;
   blsReleaseFamily?: BlsReleaseFamily;
+  datasetReleasedAt?: number;
+  observedThrough?: string;
 };
 
 export type MacroDirectorySourceFields = {
@@ -77,12 +79,71 @@ export function resolveRegisteredMacroSourceMapping(indicator: MacroDirectorySou
     }
     return { sourceId, sourceSeriesId, publicationTimestampStrategy, sourceBatchKey, blsReleaseFamily };
   }
+  if (sourceId === "dbnomics") {
+    const series = /^IMF\/(WEO:\d{4}-\d{2})\/([A-Za-z0-9._:-]+)$/.exec(sourceSeriesId);
+    if (!series) {
+      throw new MacroSourceRegistrationError("invalid_source_series", `macro indicator ${indicator.id} must use an explicitly released IMF WEO DBnomics dataset`);
+    }
+    if (publicationTimestampStrategy !== "dbnomics_dataset_release") {
+      throw new MacroSourceRegistrationError("unsupported_release_calendar", `macro indicator ${indicator.id} must use a verified DBnomics dataset release timestamp`);
+    }
+    const release = dbnomicsWEORelease(sourceBatchKey, series[1]);
+    if (release === null) {
+      throw new MacroSourceRegistrationError("unsupported_release_calendar", `macro indicator ${indicator.id} has no verified DBnomics dataset release timestamp`);
+    }
+    return { sourceId, sourceSeriesId, publicationTimestampStrategy, sourceBatchKey, datasetReleasedAt: release.datasetReleasedAt, observedThrough: release.observedThrough };
+  }
   throw new MacroSourceRegistrationError("unsupported_source", `macro indicator ${indicator.id} uses unsupported scheduled source: ${sourceId}`);
 }
 
 function resolveBlsReleaseFamily(seriesId: string): BlsReleaseFamily | null {
-  if (seriesId.startsWith("LNS")) return "employment";
-  if (seriesId.startsWith("JTS")) return "jolts";
-  if (seriesId.startsWith("WPU")) return "ppi";
-  return null;
+  return REGISTERED_BLS_RELEASE_FAMILIES.get(seriesId) ?? null;
 }
+
+/**
+ * WEO release packages contain forecasts. The macro-observation view accepts
+ * only completed calendar years, keeping projections out of the page's
+ * current-value and historical-observation semantics.
+ */
+function dbnomicsWEORelease(sourceBatchKey: string, datasetCode: string): { datasetReleasedAt: number; observedThrough: string } | null {
+  const release = VERIFIED_DBNOMICS_WEO_RELEASES.get(datasetCode);
+  return release?.sourceBatchKey === sourceBatchKey ? release : null;
+}
+
+/**
+ * BLS returns an undated current snapshot. These are the only BLS series for
+ * which this source layer has verified that the official schedule's release
+ * family supplies the snapshot's known-at boundary. Do not widen this by
+ * prefix: a similar-looking BLS id is not proof of the same release contract.
+ */
+const REGISTERED_BLS_RELEASE_FAMILIES: ReadonlyMap<string, BlsReleaseFamily> = new Map([
+  ["LNS14000000", "employment"], // unemployment rate
+  ["LNS11300000", "employment"], // labor-force participation rate
+  ["JTS000000000000000JOL", "jolts"], // total nonfarm job openings
+  ["WPUFD4", "ppi"], // final demand PPI
+]);
+
+type VerifiedDbnomicsWEORelease = {
+  sourceBatchKey: string;
+  datasetReleasedAt: number;
+  observedThrough: string;
+};
+
+/**
+ * DBnomics is a carrier, not a release-vintage provider. Only a WEO dataset
+ * whose immutable batch and official IMF release date are listed here can be
+ * scheduled. Adding another WEO edition is an explicit source-contract change;
+ * arbitrary IFS/WDI/OECD or unverified WEO snapshots remain rejected.
+ */
+const VERIFIED_DBNOMICS_WEO_RELEASES: ReadonlyMap<string, VerifiedDbnomicsWEORelease> = new Map([
+  ["WEO:2024-10", {
+    sourceBatchKey: "imf-weo-2024-10:1729598400",
+    datasetReleasedAt: 1729598400,
+    observedThrough: "2023-12-31",
+  }],
+  ["WEO:2025-04", {
+    sourceBatchKey: "imf-weo-2025-04:1745323200",
+    datasetReleasedAt: 1745323200,
+    observedThrough: "2024-12-31",
+  }],
+]);

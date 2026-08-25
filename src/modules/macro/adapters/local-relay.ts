@@ -5,12 +5,14 @@ const OFFICIAL_MACRO_HOSTS = new Set([
   "www.bls.gov",
   "api.stlouisfed.org",
   "fred.stlouisfed.org",
+  "api.db.nomics.world",
 ]);
 
 /**
- * Macro adapters may only contact their documented official sources. Both
+ * Macro adapters may only contact their documented provider endpoints. Both
  * runtimes use their native fetch implementation; local Node intentionally
- * has no loopback relay or second service lifecycle.
+ * has no loopback relay or second service lifecycle. DBnomics is restricted
+ * to catalog mappings with a separately verified source publication contract.
  */
 export function macroFetch(_env: object): MacroFetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {

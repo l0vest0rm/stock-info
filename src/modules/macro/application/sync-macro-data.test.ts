@@ -84,8 +84,8 @@ function blsFetch(calendarHtml: string, rows: readonly Record<string, unknown>[]
   }) as typeof fetch;
 }
 
-test("sync records a directory mapping error instead of falling back or fabricating a value", async () => {
-  const due = indicator({ sourceId: "dbnomics", sourceSeriesId: "KRCPIALL", publicationTimestampStrategy: "published_at" });
+test("sync records an unsupported directory source instead of falling back or fabricating a value", async () => {
+  const due = indicator({ sourceId: "unregistered-source", sourceSeriesId: "KRCPIALL", publicationTimestampStrategy: "published_at" });
   const completions: Array<Parameters<MacroSyncRepository["scheduleNextFetch"]>[0]> = [];
   const repository: MacroSyncRepository = {
     listDueIndicators: async () => [due],
@@ -108,7 +108,54 @@ test("sync records a directory mapping error instead of falling back or fabricat
   });
   assert.equal(completions.length, 1);
   assert.equal(completions[0].success, false);
-  assert.match(completions[0].lastError ?? "", /unsupported scheduled source: dbnomics/);
+  assert.match(completions[0].lastError ?? "", /unsupported scheduled source: unregistered-source/);
+});
+
+test("sync persists a DBnomics fixed-release dataset using the catalog release timestamp, never fetch time", async () => {
+  const due = indicator({
+    id: 1001, frequency: "annual", sourceId: "dbnomics",
+    sourceSeriesId: "IMF/WEO:2025-04/CHN.NGDP_RPCH.pcent_change",
+    publicationTimestampStrategy: "dbnomics_dataset_release",
+    sourceBatchKey: "imf-weo-2025-04:1745323200",
+  });
+  const writes: Array<Parameters<MacroSyncRepository["putData"]>[0]> = [];
+  const { repository, completions } = repositoryFor(due, writes);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    assert.equal(String(input), "https://api.db.nomics.world/v22/series/IMF/WEO%3A2025-04/CHN.NGDP_RPCH.pcent_change?observations=1");
+    return new Response(JSON.stringify({ series: { docs: [{
+      period_start_day: ["2022-01-01", "2023-01-01", "2025-01-01"], value: [3, 5.2, 4.9], indexed_at: "2024-10-31T02:17:18.509Z",
+    }] } }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const stats = await syncMacroData({} as never, 1_780_000_000, { repository });
+    assert.equal(stats.observationsWritten, 2);
+    assert.deepEqual(writes, [[
+      { indicatorId: 1001, period: "2022-01-01", frequency: "annual", publishedAt: 1745323200, value: 3 },
+      { indicatorId: 1001, period: "2023-01-01", frequency: "annual", publishedAt: 1745323200, value: 5.2 },
+    ]]);
+    assert.equal(completions[0].success, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("sync refuses an otherwise valid fixed WEO batch before its official release date", async () => {
+  const due = indicator({
+    id: 1001, frequency: "annual", sourceId: "dbnomics",
+    sourceSeriesId: "IMF/WEO:2025-04/CHN.NGDP_RPCH.pcent_change",
+    publicationTimestampStrategy: "dbnomics_dataset_release",
+    sourceBatchKey: "imf-weo-2025-04:1745323200",
+  });
+  const writes: Array<Parameters<MacroSyncRepository["putData"]>[0]> = [];
+  const { repository, completions } = repositoryFor(due, writes);
+
+  const stats = await syncMacroData({} as never, 1_700_000_000, { repository });
+
+  assert.equal(stats.observationsWritten, 0);
+  assert.deepEqual(writes, []);
+  assert.equal(completions[0].success, false);
+  assert.match(completions[0].lastError ?? "", /was not released at the scheduled time/);
 });
 
 test("sync ingests a third-region and ninth-category series using its directory mapping only", async () => {

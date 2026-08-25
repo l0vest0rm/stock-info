@@ -2,6 +2,14 @@ import { Hono } from "hono";
 import { D1MacroRepository } from "../application/macro-repository";
 import { syncMacroData } from "../application/sync-macro-data";
 import type { MacroDataPoint, MacroIndicator } from "../domain/model";
+import {
+  assessMacroComparisonSafety,
+  deriveMacroDisplayMeasure,
+  periodDayToIso,
+  shiftMacroPeriodDay,
+  timestampToIso,
+  type MacroDisplayMeasure,
+} from "../domain/display-measures";
 import { fail, ok } from "../../../shared/http";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
 import type { AppEnv } from "../../../types";
@@ -12,15 +20,13 @@ const MAX_FILTER_VALUES = 100;
 const MAX_LATEST_SNAPSHOT_IDS_PER_QUERY = 200;
 const MEASURES = new Set(["level", "yoy", "mom"]);
 
-type Measure = "level" | "yoy" | "mom";
-type DerivedStatus = "available" | "unavailable";
-type DerivedReason = "not_applicable" | "not_configured" | "base_period_missing" | "base_zero";
+type Measure = MacroDisplayMeasure;
 
 export const macroRoutes = new Hono<AppEnv>();
 
 /** Directory only: loading selectors must never scan macro_data history. */
 macroRoutes.get("/macro/catalog", async (c) => {
-  const catalog = await new D1MacroRepository(c.env.DB).listCatalog({ enabledOnly: false });
+  const catalog = await new D1MacroRepository(c.env.DB).listCatalog();
   return ok(c, {
     generatedAt: new Date().toISOString(),
     regions: catalog.regions,
@@ -41,7 +47,7 @@ macroRoutes.get("/macro/overview", async (c) => {
   const asOf = requestedAsOf ?? nowSeconds();
 
   const repository = new D1MacroRepository(c.env.DB);
-  const catalog = await repository.listCatalog({ enabledOnly: false });
+  const catalog = await repository.listCatalog();
   const selected = catalog.series.filter((indicator) =>
     (regions.length === 0 || regions.includes(indicator.regionCode))
     && (categories.length === 0 || categories.includes(indicator.categoryCode) || categories.includes(String(indicator.categoryId))),
@@ -89,21 +95,26 @@ macroRoutes.get("/macro/series", async (c) => {
   const asOf = requestedAsOf ?? nowSeconds();
 
   const repository = new D1MacroRepository(c.env.DB);
-  const catalog = await repository.listCatalog({ enabledOnly: false });
+  const catalog = await repository.listCatalog();
   const byId = new Map(catalog.series.map((indicator) => [indicator.id, indicator]));
   const unknown = ids.filter((id) => !byId.has(id));
   if (unknown.length) return fail(c, 400, `Unknown macro indicator IDs: ${unknown.join(", ")}`);
   const series = await Promise.all(ids.map(async (id) => {
     const indicator = byId.get(id)!;
     const basePeriods = measure === "level" ? 0 : basePeriodsFor(indicator, measure as Exclude<Measure, "level">);
-    const lookupFrom = basePeriods > 0 ? shiftPeriodDay(from, indicator.frequency, -basePeriods) : from;
+    const lookupFrom = basePeriods > 0 ? shiftMacroPeriodDay(from, indicator.frequency, -basePeriods) : from;
     const raw = await repository.getDataSeries(id, { fromPeriodDay: lookupFrom, toPeriodDay: to, asOf });
     const byPeriod = new Map(raw.map((point) => [point.periodDay, point]));
     const points = raw.filter((point) => point.periodDay >= from)
       .map((point) => toSeriesPoint(point, indicator, measure as Measure, byPeriod));
     return { definition: toDefinition(indicator), measure, points };
   }));
-  return ok(c, { generatedAt: new Date().toISOString(), asOf: timestampToIso(asOf), series });
+  return ok(c, {
+    generatedAt: new Date().toISOString(), asOf: timestampToIso(asOf), series,
+    // `/macro/series` already accepts multiple IDs, so parallel histories are
+    // never mistaken for a safe merged comparison by an API consumer.
+    comparison: assessMacroComparisonSafety(ids.map((id) => byId.get(id)!)),
+  });
 });
 
 macroRoutes.post("/macro/sync", async (c) => {
@@ -116,8 +127,8 @@ async function toOverviewEntry(repository: D1MacroRepository, indicator: MacroIn
   const availability = availabilityFor(indicator, latest);
   if (!latest) return {
     definition, current: null,
-    yoy: unavailable(indicator.yoyMethod, availability.reason ?? "awaiting_data"),
-    mom: unavailable(indicator.momMethod, availability.reason ?? "awaiting_data"),
+    yoy: unavailableForAvailability(indicator.yoyMethod, availability.reason ?? "awaiting_data"),
+    mom: unavailableForAvailability(indicator.momMethod, availability.reason ?? "awaiting_data"),
     freshness: { status: "missing", ageSeconds: null, staleAfterSeconds: indicator.staleAfterSeconds },
     availability,
     trend: { status: "unavailable", reason: availability.reason, defaultPeriods: indicator.defaultTrendPeriods, points: [] },
@@ -127,15 +138,15 @@ async function toOverviewEntry(repository: D1MacroRepository, indicator: MacroIn
   const yoyBasePeriods = basePeriodsFor(indicator, "yoy");
   const momBasePeriods = basePeriodsFor(indicator, "mom");
   const readStart = Math.min(
-    shiftPeriodDay(latest.periodDay, indicator.frequency, -(trendPeriods - 1)),
-    yoyBasePeriods > 0 ? shiftPeriodDay(latest.periodDay, indicator.frequency, -yoyBasePeriods) : latest.periodDay,
-    momBasePeriods > 0 ? shiftPeriodDay(latest.periodDay, indicator.frequency, -momBasePeriods) : latest.periodDay,
+    shiftMacroPeriodDay(latest.periodDay, indicator.frequency, -(trendPeriods - 1)),
+    yoyBasePeriods > 0 ? shiftMacroPeriodDay(latest.periodDay, indicator.frequency, -yoyBasePeriods) : latest.periodDay,
+    momBasePeriods > 0 ? shiftMacroPeriodDay(latest.periodDay, indicator.frequency, -momBasePeriods) : latest.periodDay,
   );
   const raw = await repository.getDataSeries(indicator.id, { fromPeriodDay: readStart, toPeriodDay: latest.periodDay, asOf });
   const byPeriod = new Map(raw.map((point) => [point.periodDay, point]));
   // The snapshot is authoritative if a new revision appears between reads.
   byPeriod.set(latest.periodDay, latest);
-  const trendStart = shiftPeriodDay(latest.periodDay, indicator.frequency, -(trendPeriods - 1));
+  const trendStart = shiftMacroPeriodDay(latest.periodDay, indicator.frequency, -(trendPeriods - 1));
   const trendPoints = raw.filter((point) => point.periodDay >= trendStart && point.periodDay <= latest.periodDay).map(toRawPoint);
   const ageSeconds = Math.max(0, asOf - latest.publishedAt);
   return {
@@ -152,31 +163,16 @@ async function toOverviewEntry(repository: D1MacroRepository, indicator: MacroIn
 }
 
 function toSeriesPoint(point: MacroDataPoint, indicator: MacroIndicator, measure: Measure, byPeriod: ReadonlyMap<number, MacroDataPoint>) {
-  if (measure === "level") return { ...toRawPoint(point), method: "level", status: "available" as DerivedStatus, reason: null };
+  if (measure === "level") return { ...toRawPoint(point), method: "level", status: "available" as const, reason: null };
   return { ...toRawPoint(point), ...derivePoint(point, indicator, measure, byPeriod) };
 }
 
 function derivePoint(point: MacroDataPoint, indicator: MacroIndicator, measure: Exclude<Measure, "level">, byPeriod: ReadonlyMap<number, MacroDataPoint>) {
-  const method = measure === "yoy" ? indicator.yoyMethod : indicator.momMethod;
-  const basePeriods = basePeriodsFor(indicator, measure);
-  if (method === "native") return { value: point.value, basePeriod: null, basePublishedAt: null, method, status: "available" as DerivedStatus, reason: null };
-  if (method !== "percent_change" && method !== "percentage_point_change") {
-    return unavailable(method, method === "not_applicable" ? "not_applicable" : "not_configured");
-  }
-  if (basePeriods < 1) return unavailable(method, "not_configured");
-  const expectedBasePeriod = shiftPeriodDay(point.periodDay, indicator.frequency, -basePeriods);
-  const base = byPeriod.get(expectedBasePeriod);
-  if (!base) return { value: null, basePeriod: periodDayToIso(expectedBasePeriod), basePublishedAt: null, method, status: "unavailable" as DerivedStatus, reason: "base_period_missing" as DerivedReason };
-  if (method === "percent_change" && base.value === 0) return { value: null, basePeriod: periodDayToIso(base.periodDay), basePublishedAt: timestampToIso(base.publishedAt), method, status: "unavailable" as DerivedStatus, reason: "base_zero" as DerivedReason };
-  return {
-    value: method === "percent_change" ? (point.value / base.value - 1) * 100 : point.value - base.value,
-    basePeriod: periodDayToIso(base.periodDay), basePublishedAt: timestampToIso(base.publishedAt), method,
-    status: "available" as DerivedStatus, reason: null,
-  };
+  return deriveMacroDisplayMeasure(point, indicator, measure, byPeriod);
 }
 
-function unavailable(method: string, reason: DerivedReason | "unmapped" | "awaiting_first_release" | "awaiting_data") {
-  return { value: null, basePeriod: null, basePublishedAt: null, method, status: "unavailable" as DerivedStatus, reason };
+function unavailableForAvailability(method: string, reason: "unmapped" | "awaiting_first_release" | "awaiting_data") {
+  return { value: null, basePeriod: null, basePublishedAt: null, method, status: "unavailable" as const, reason };
 }
 
 function availabilityFor(indicator: MacroIndicator, latest: MacroDataPoint | null) {
@@ -235,30 +231,6 @@ function parseTimestamp(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
 }
 
-function periodDayToIso(periodDay: number): string | null {
-  const text = String(periodDay);
-  if (!/^\d{8}$/.test(text)) return null;
-  const iso = `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
-  const date = new Date(`${iso}T00:00:00Z`);
-  return Number.isFinite(date.getTime()) && date.toISOString().startsWith(iso) ? iso : null;
-}
-
-function timestampToIso(seconds: number): string { return new Date(seconds * 1000).toISOString(); }
 function nowSeconds(): number { return Math.floor(Date.now() / 1000); }
 function basePeriodsFor(indicator: MacroIndicator, measure: Exclude<Measure, "level">): number { return measure === "yoy" ? indicator.yoyBasePeriods : indicator.momBasePeriods; }
 function boundedTrendPeriods(value: number): number { return Number.isInteger(value) ? Math.min(240, Math.max(2, value)) : 12; }
-
-/** Shifts exact calendar period starts; it intentionally never chooses a nearby observation. */
-function shiftPeriodDay(periodDay: number, frequency: MacroIndicator["frequency"], periods: number): number {
-  const iso = periodDayToIso(periodDay);
-  if (!iso) throw new Error(`invalid macro period day: ${periodDay}`);
-  const year = Number(iso.slice(0, 4));
-  const month = Number(iso.slice(5, 7));
-  const day = Number(iso.slice(8, 10));
-  if (frequency === "daily") return dateToPeriodDay(new Date(Date.UTC(year, month - 1, day + periods)));
-  if (frequency === "weekly") return dateToPeriodDay(new Date(Date.UTC(year, month - 1, day + periods * 7)));
-  const monthDelta = frequency === "monthly" ? periods : frequency === "quarterly" ? periods * 3 : periods * 12;
-  const shifted = new Date(Date.UTC(year, month - 1 + monthDelta, 1));
-  return shifted.getUTCFullYear() * 10_000 + (shifted.getUTCMonth() + 1) * 100 + 1;
-}
-function dateToPeriodDay(date: Date): number { return date.getUTCFullYear() * 10_000 + (date.getUTCMonth() + 1) * 100 + date.getUTCDate(); }

@@ -1,5 +1,6 @@
 import {
   BlsPublicDataAdapter,
+  DbnomicsAdapter,
   FredAdapter,
   loadBlsReleaseCalendar,
   macroFetch,
@@ -138,6 +139,28 @@ async function syncSourceBatch(
         return indicator.mapping.publicationTimestampStrategy === "bls_release_calendar" && indicator.mapping.blsReleaseFamily
           ? releaseCalendar.get(indicator.mapping.blsReleaseFamily) ?? null : null;
       },
+    );
+  }
+  if (sourceId === "dbnomics") {
+    const releaseAfterSchedule = indicators.find((indicator) => (indicator.mapping.datasetReleasedAt ?? Number.POSITIVE_INFINITY) > now);
+    if (releaseAfterSchedule) {
+      throw new MacroSourceError(
+        "dbnomics",
+        "invalid_request",
+        `DBnomics WEO batch ${releaseAfterSchedule.mapping.sourceBatchKey} was not released at the scheduled time`,
+        false,
+      );
+    }
+    const results = await Promise.all(indicators.map((indicator) => new DbnomicsAdapter(fetcher).load({
+      sourceSeriesId: indicator.mapping.sourceSeriesId,
+      name: indicator.name,
+      frequency: indicator.frequency,
+      unit: indicator.unit,
+      observationEnd: indicator.mapping.observedThrough,
+    })));
+    return persistResults(results, indicators, repository, (indicator) =>
+      indicator.mapping.publicationTimestampStrategy === "dbnomics_dataset_release"
+        ? indicator.mapping.datasetReleasedAt ?? null : null,
     );
   }
   throw new Error(`unsupported scheduled macro source: ${sourceId}`);

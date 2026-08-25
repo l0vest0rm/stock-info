@@ -14,13 +14,20 @@ const migrations = [
   new URL("../../../../migrations/0131_drop_retired_macro_radar.sql", import.meta.url),
   new URL("../../../../migrations/0132_expand_macro_indicator_directory.sql", import.meta.url),
   new URL("../../../../migrations/0133_backfill_macro_directory_display_metadata.sql", import.meta.url),
+  new URL("../../../../migrations/0134_register_dbnomics_imf_weo_2025_04.sql", import.meta.url),
+  new URL("../../../../migrations/0135_remove_dbnomics_weo_forecasts.sql", import.meta.url),
+  new URL("../../../../migrations/0136_rebuild_macro_directory_to_nine_categories.sql", import.meta.url),
+  new URL("../../../../migrations/0137_register_verified_us_macro_sources.sql", import.meta.url),
+  new URL("../../../../migrations/0138_retire_unavailable_fred_source_mappings.sql", import.meta.url),
 ];
+
+const legacyCatalogMigrationCount = 5;
 
 test("final macro migration leaves only the catalog and four-value fact ledger", () => {
   const directory = mkdtempSync(join(tmpdir(), "macro-storage-"));
   const database = join(directory, "macro.sqlite");
   try {
-    migrate(database, migrations.length - 3);
+    migrate(database, legacyCatalogMigrationCount);
     execute(database, `
       pragma foreign_keys = on;
       insert into macro_series
@@ -46,6 +53,12 @@ test("final macro migration leaves only the catalog and four-value fact ledger",
       insert into macro_data (indicator_id, period_day, published_at, value) values
         (12, 20260101, 1000, 2.0),
         (12, 20260101, 2000, 2.5);
+      insert into macro_indicators
+        (id, metric_id, category_id, region_code, definition_id, name, frequency, unit,
+         source_id, refresh_interval_seconds, revision_lookback_periods, next_fetch_at)
+      values (171, 17, 3, 'CN', 0, '中国CPI同比', 'monthly', '%', 'legacy', 86400, 12, 1000);
+      insert into macro_data (indicator_id, period_day, published_at, value)
+      values (171, 20260101, 1000, 2.1);
     `);
     migrate(database, migrations.length);
 
@@ -57,11 +70,19 @@ test("final macro migration leaves only the catalog and four-value fact ledger",
     assert.equal(queryScalar(database, "select sql like '%WITHOUT ROWID%' from sqlite_master where type = 'table' and name = 'macro_data'"), "1");
     assert.equal(queryScalar(database, "select count(*) from macro_data where indicator_id = 12"), "2");
     assert.equal(queryScalar(database, "select region_name from macro_indicators where id = 12"), "美国");
-    assert.equal(queryScalar(database, "select category_name from macro_indicators where id = 12"), "经济增长与景气");
-    assert.equal(queryScalar(database, "select metric_name from macro_indicators where id = 12"), "实际GDP增速");
+    assert.equal(queryScalar(database, "select category_name from macro_indicators where id = 12"), "增长、需求与领先调查");
+    assert.equal(queryScalar(database, "select metric_name from macro_indicators where id = 12"), "实际 GDP");
+    assert.equal(queryScalar(database, "select source_id || ':' || source_series_id from macro_indicators where id = 12"), "fred:GDPC1");
+    assert.equal(queryScalar(database, "select coalesce(source_id, 'null') || ':' || refresh_interval_seconds from macro_indicators where metric_id = 7 and region_code = 'US' and definition_id = 0"), "null:0");
     assert.equal(queryScalar(database, "select count(*) from kv_cache where namespace = 'sync_state' and key = 'macro-data'"), "0");
     assert.equal(queryScalar(database, "select count(*) from kv_cache where namespace = 'sync_state' and key = 'financial-provisional'"), "1");
     assert.equal(queryScalar(database, "pragma foreign_key_check"), "");
+    assert.equal(queryScalar(database, "select count(distinct metric_id) from macro_indicators where enabled = 1 and metric_id between 1 and 60"), "60");
+    assert.equal(queryScalar(database, "select metric_id || ':' || definition_id || ':' || metric_code from macro_indicators where id = 10001"), "1:1:A01");
+    assert.equal(queryScalar(database, "select source_series_id || ':' || measurement_kind from macro_indicators where id = 10001"), "IMF/WEO:2025-04/CHN.NGDP_R.national_currency:level");
+    assert.equal(queryScalar(database, "select count(*) from macro_data where indicator_id in (10001, 10002)"), "0");
+    assert.equal(queryScalar(database, "select enabled || ':' || metric_code from macro_indicators where id = 171"), "0:RETIRED_M17");
+    assert.equal(queryScalar(database, "select value from macro_data where indicator_id = 171 and period_day = 20260101 and published_at = 1000"), "2.1");
 
     // Neither the physical catalog nor the ledger may impose the original
     // CN/US, eight-category, or sixty-metric bootstrap boundary.
