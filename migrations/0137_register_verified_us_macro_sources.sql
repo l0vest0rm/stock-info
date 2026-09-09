@@ -9,27 +9,16 @@
 -- after 0136, so it updates the retained native row when one exists and the
 -- stable US placeholder otherwise.
 
-create temp table macro_verified_us_sources_0137 (
-  metric_id integer primary key,
-  source_id text not null,
-  source_series_id text not null,
-  source_url text not null,
-  publisher text not null,
-  publication_timestamp_strategy text not null,
-  source_batch_key text not null,
-  frequency text not null,
-  unit text not null,
-  unit_format text not null,
-  seasonal_adjustment text,
-  measurement_kind text not null,
-  statistical_definition text not null,
-  refresh_interval_seconds integer not null,
-  revision_lookback_periods integer not null,
-  stale_after_seconds integer not null,
-  lead_lag text
-);
-
-insert into macro_verified_us_sources_0137 values
+-- D1 remote migrations reject TEMP tables. This source catalog is needed only
+-- by this migration, so a disposable view keeps the same relational contract.
+create view macro_verified_us_sources_0137 (
+  metric_id, source_id, source_series_id, source_url, publisher,
+  publication_timestamp_strategy, source_batch_key, frequency, unit,
+  unit_format, seasonal_adjustment, measurement_kind, statistical_definition,
+  refresh_interval_seconds, revision_lookback_periods, stale_after_seconds,
+  lead_lag
+) as
+select * from (values
   (1, 'fred', 'GDPC1', 'https://fred.stlouisfed.org/series/GDPC1', 'U.S. Bureau of Economic Analysis via FRED', 'fred_realtime_start', 'fred:GDPC1', 'quarterly', 'billions of chained 2017 dollars', 'decimal_1', 'seasonally_adjusted_annual_rate', 'level', 'BEA real GDP, seasonally adjusted annual rate.', 86400, 16, 15552000, 'coincident'),
   (2, 'fred', 'GDP', 'https://fred.stlouisfed.org/series/GDP', 'U.S. Bureau of Economic Analysis via FRED', 'fred_realtime_start', 'fred:GDP', 'quarterly', 'billions of dollars', 'decimal_1', 'seasonally_adjusted_annual_rate', 'level', 'BEA current-dollar GDP, seasonally adjusted annual rate.', 86400, 16, 15552000, 'coincident'),
   (3, 'fred', 'INDPRO', 'https://fred.stlouisfed.org/series/INDPRO', 'Federal Reserve via FRED', 'fred_realtime_start', 'fred:INDPRO', 'monthly', 'index 2017=100', 'decimal_2', 'seasonally_adjusted', 'index', 'Federal Reserve industrial production index.', 86400, 24, 7776000, 'coincident'),
@@ -66,7 +55,7 @@ insert into macro_verified_us_sources_0137 values
   (54, 'fred', 'NFCI', 'https://fred.stlouisfed.org/series/NFCI', 'Federal Reserve Bank of Chicago via FRED', 'fred_realtime_start', 'fred:NFCI', 'weekly', 'index', 'decimal_2', 'not_applicable', 'index', 'Chicago Fed National Financial Conditions Index.', 86400, 104, 2592000, 'leading'),
   (55, 'fred', 'DCOILBRENTEU', 'https://fred.stlouisfed.org/series/DCOILBRENTEU', 'U.S. Energy Information Administration via FRED', 'fred_realtime_start', 'fred:DCOILBRENTEU', 'daily', 'dollars per barrel', 'decimal_2', 'not_applicable', 'level', 'Europe Brent spot price FOB.', 21600, 260, 604800, 'coincident'),
   (56, 'fred', 'DHHNGSP', 'https://fred.stlouisfed.org/series/DHHNGSP', 'U.S. Energy Information Administration via FRED', 'fred_realtime_start', 'fred:DHHNGSP', 'daily', 'dollars per million Btu', 'decimal_2', 'not_applicable', 'level', 'Henry Hub natural-gas spot price.', 21600, 260, 604800, 'coincident'),
-  (59, 'fred', 'GOLDAMGBD228NLBM', 'https://fred.stlouisfed.org/series/GOLDAMGBD228NLBM', 'ICE Benchmark Administration via FRED', 'fred_realtime_start', 'fred:GOLDAMGBD228NLBM', 'daily', 'dollars per troy ounce', 'decimal_2', 'not_applicable', 'level', 'London Bullion Market Association gold fixing price.', 21600, 260, 604800, 'coincident');
+  (59, 'fred', 'GOLDAMGBD228NLBM', 'https://fred.stlouisfed.org/series/GOLDAMGBD228NLBM', 'ICE Benchmark Administration via FRED', 'fred_realtime_start', 'fred:GOLDAMGBD228NLBM', 'daily', 'dollars per troy ounce', 'decimal_2', 'not_applicable', 'level', 'London Bullion Market Association gold fixing price.', 21600, 260, 604800, 'coincident'));
 
 update macro_indicators
 set
@@ -131,4 +120,4 @@ where id in (10001, 10002)
   and metric_id = 1
   and definition_id = 1;
 
-drop table macro_verified_us_sources_0137;
+drop view macro_verified_us_sources_0137;

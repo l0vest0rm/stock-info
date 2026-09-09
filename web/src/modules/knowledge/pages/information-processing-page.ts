@@ -326,7 +326,7 @@ function renderDetail(data: any, close: () => void) {
         document ? renderSourceDocument(document, result, originalContent, originalContentError) : null,
         h('p', { class: 'small text-secondary mt-3' }, `处理结果：${outcomeLabels[result.outcome] || result.outcome || '-'}`),
         h('h3', { class: 'h6 mt-3' }, visibleEntity ? `该主体的信息记录（${records.length}）` : `信息记录（${records.length}）`),
-        records.length ? h('div', { class: 'vstack gap-2' }, records.map(renderRecord)) : h('p', { class: 'small text-secondary mb-0' }, result.outcome === 'no_information' ? '该原文没有可提取的信息。' : '没有可展示的信息记录。'),
+        records.length ? h('div', { class: 'vstack gap-2' }, records.map((record) => renderRecord(record))) : h('p', { class: 'small text-secondary mb-0' }, result.outcome === 'no_information' ? '该原文没有可提取的信息。' : '没有可展示的信息记录。'),
       ]),
     ])])]), h('div', { class: 'modal-backdrop fade show' }),
   ])

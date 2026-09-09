@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import type { Bindings, SecurityRecord } from "../../../types";
 import { classifyResearchSecurity } from "../domain/research-identity";
 import { loadResearchFinancialFactSet } from "./research-financials";
@@ -119,7 +120,7 @@ export async function bootstrapResearchCompany(
 }
 
 async function bootstrapPlainEquityRights(
-  db: D1Database,
+  db: Database,
   classified: ReturnType<typeof classifyResearchSecurity>,
   security: SecurityRecord,
   registry: "cninfo" | "hkex" | "sec",

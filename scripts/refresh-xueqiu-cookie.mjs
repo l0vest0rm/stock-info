@@ -5,7 +5,6 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyEdits, modify } from "jsonc-parser";
 import { createHash } from "node:crypto";
 import { cookieHeaderFromCdp, validateXueqiuKlineCookie } from "./lib/xueqiu-cookie.mjs";
 
@@ -15,7 +14,7 @@ const XUEQIU_PAGE_TIMEOUT_MS = 60_000;
 const XUEQIU_SETTLE_DELAY_MS = 3_000;
 const args = new Set(process.argv.slice(2));
 const writeDevVars = args.has("--write-dev-vars");
-const writeWranglerVars = args.has("--write-wrangler-vars");
+if (args.has("--write-wrangler-vars")) throw new Error("Versioned Cookie vars are retired. Use --write-local-credential-store, then npm run deploy to upload the Worker secret.");
 const writeLocalCredentialStore = args.has("--write-local-credential-store");
 const validateLocalCredentialStore = args.has("--validate-local-credential-store");
 const jsonOutput = args.has("--json");
@@ -191,15 +190,6 @@ function putDevVar(text, key, value) {
     : `${text}${text && !text.endsWith("\n") ? "\n" : ""}${line}\n`;
 }
 
-async function updateWranglerVars(cookie) {
-  const path = join(process.cwd(), "wrangler.jsonc");
-  const text = await readFile(path, "utf8");
-  const edits = modify(text, ["vars", "XUEQIU_COOKIE"], cookie, {
-    formattingOptions: { insertSpaces: true, tabSize: 2 },
-  });
-  await writeFile(path, applyEdits(text, edits));
-}
-
 async function updateLocalCredentialStore(cookie) {
   const path = localCredentialStorePath();
   await mkdir(resolve(path, ".."), { recursive: true });
@@ -271,7 +261,7 @@ function waitForChildExit(child) {
 
 async function main() {
   if (validateLocalCredentialStore) {
-    if (writeDevVars || writeWranglerVars || writeLocalCredentialStore) {
+    if (writeDevVars || writeLocalCredentialStore) {
       throw new Error("--validate-local-credential-store cannot be combined with credential write options");
     }
     const result = await validateLocalXueqiuCredentialStore();
@@ -295,9 +285,6 @@ async function main() {
     if (writeDevVars) {
       await updateDevVars(cookie);
     }
-    if (writeWranglerVars) {
-      await updateWranglerVars(cookie);
-    }
     if (writeLocalCredentialStore) {
       localCredentialStore = await updateLocalCredentialStore(cookie);
     }
@@ -307,13 +294,13 @@ async function main() {
         cookieFingerprint: cookieFingerprint(cookie),
         validation: { endpoint: "xueqiu-kline", rowCount: validation.rowCount },
         writtenToDevVars: writeDevVars,
-        writtenToWranglerVars: writeWranglerVars,
+        writtenToWranglerVars: false,
         localCredentialStore,
       })}\n`);
     } else {
       process.stdout.write(
         `Xueqiu cookie validated against K-line (rows=${validation.rowCount}, fingerprint=${cookieFingerprint(cookie)}).${
-          !writeDevVars && !writeWranglerVars && !writeLocalCredentialStore ? " Re-run with --write-local-credential-store for local Node, and/or --write-dev-vars / --write-wrangler-vars to stage configuration." : ""
+          !writeDevVars && !writeLocalCredentialStore ? " Re-run with --write-local-credential-store for local Node, and/or --write-dev-vars; npm run deploy uploads the production secret." : ""
         }\n`,
       );
     }

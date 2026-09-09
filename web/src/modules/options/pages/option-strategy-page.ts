@@ -21,7 +21,7 @@ declare const echarts: {
 
 type Underlying = { code: string; name: string; spot: string; spotAsOf?: string; multiplier: string }
 type Strategy = { id: string; name: string; savedAt: number; underlying: Underlying; legs: StrategyLeg[]; sequence?: number; isAutoName?: boolean }
-type DraftLeg = Omit<StrategyLeg, 'id'>
+type DraftLeg = Omit<StrategyLeg, 'id' | 'strike' | 'premium' | 'quantity' | 'multiplier'> & { strike: string | number; premium: string | number; quantity: string | number; multiplier: string | number }
 type PayoffChartStrategy = { id: string; name: string; legs: StrategyLeg[] }
 type HistoryRow = Strategy & { isCurrent: boolean }
 type PremiumUpdateTarget = {
@@ -41,7 +41,7 @@ const RECENT_EXPIRATIONS_KEY = 'option-strategy-recent-expirations-v2'
 const STRATEGY_SEQUENCE_KEY = 'option-strategy-sequence-v1'
 
 function initialDraftLeg(): DraftLeg {
-  return { side: 'buy', type: 'call', strike: '', expiration: '', premium: '', quantity: 1, multiplier: 100 } as unknown as DraftLeg
+  return { side: 'buy', type: 'call', strike: '', expiration: '', premium: '', quantity: 1, multiplier: 100 }
 }
 
 function number(value: unknown): number {
@@ -562,8 +562,8 @@ const OptionStrategyPage = defineComponent({
               ]),
             ]),
             h('div', { class: 'col-6 col-md-2' }, [h('label', { class: 'form-label mb-1' }, '权利金 / 股'), h('input', { class: 'form-control form-control-sm text-end', type: 'text', inputmode: 'decimal', pattern: '[0-9]*\\.?[0-9]*', placeholder: '如 0.125', value: legDraft.value.premium, onInput: (event: Event) => legDraft.value = { ...legDraft.value, premium: (event.target as HTMLInputElement).value } })]),
-            h('div', { class: 'col-3 col-md-1' }, [h('label', { class: 'form-label mb-1' }, '张数'), h('input', { class: 'form-control form-control-sm text-end', type: 'number', min: '1', step: '1', value: legDraft.value.quantity, onInput: (event: Event) => legDraft.value = { ...legDraft.value, quantity: (event.target as HTMLInputElement).value as unknown as number } })]),
-            h('div', { class: 'col-3 col-md-1' }, [h('label', { class: 'form-label mb-1' }, '乘数'), h('input', { class: 'form-control form-control-sm text-end', type: 'number', min: '1', step: '1', value: legDraft.value.multiplier, onInput: (event: Event) => legDraft.value = { ...legDraft.value, multiplier: (event.target as HTMLInputElement).value as unknown as number } })]),
+            h('div', { class: 'col-3 col-md-1' }, [h('label', { class: 'form-label mb-1' }, '张数'), h('input', { class: 'form-control form-control-sm text-end', type: 'number', min: '1', step: '1', value: legDraft.value.quantity, onInput: (event: Event) => legDraft.value = { ...legDraft.value, quantity: (event.target as HTMLInputElement).value } })]),
+            h('div', { class: 'col-3 col-md-1' }, [h('label', { class: 'form-label mb-1' }, '乘数'), h('input', { class: 'form-control form-control-sm text-end', type: 'number', min: '1', step: '1', value: legDraft.value.multiplier, onInput: (event: Event) => legDraft.value = { ...legDraft.value, multiplier: (event.target as HTMLInputElement).value } })]),
             h('div', { class: 'col-12 col-md-2' }, [h('button', { type: 'button', class: 'btn btn-success btn-sm w-100', onClick: addLeg }, '加入组合')]),
           ]),
           searchStatus.value ? h('div', { class: 'small text-muted mt-2', role: 'status' }, searchStatus.value) : null,

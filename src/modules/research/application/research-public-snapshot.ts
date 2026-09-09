@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import {
   PUBLIC_RESEARCH_SNAPSHOT_KIND,
   planPublicResearchSnapshotDifferences,
@@ -33,7 +34,7 @@ export type PublicResearchSnapshotHistoryItem = {
   differences: ResearchSnapshotModuleDifference[];
 };
 
-export async function savePublicResearchSnapshot(db: D1Database, input: PublicResearchSnapshotWrite) {
+export async function savePublicResearchSnapshot(db: Database, input: PublicResearchSnapshotWrite) {
   assertWrite(input);
   try {
     const prior = await db.prepare(`select analysis_snapshot_id as analysisSnapshotId from research_analysis_snapshots
@@ -59,7 +60,7 @@ export async function savePublicResearchSnapshot(db: D1Database, input: PublicRe
       localLlmDraftIncluded: false,
       realtimeMarketDataIncluded: false,
     };
-    const statements: D1PreparedStatement[] = [db.prepare(`insert into research_analysis_snapshots (
+    const statements: PreparedStatement[] = [db.prepare(`insert into research_analysis_snapshots (
       analysis_snapshot_id, company_id, security_code, as_of, completion_level, state, summary_json, module_status_json, created_at
     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(input.analysisSnapshotId, input.companyId, input.securityCode, input.asOf, input.completionLevel, input.state,
@@ -80,7 +81,7 @@ export async function savePublicResearchSnapshot(db: D1Database, input: PublicRe
 }
 
 /** History is exclusively replayed from frozen module payloads. */
-export async function loadPublicResearchSnapshotHistory(db: D1Database, input: { securityCode: string; asOf: number; limit?: number }) {
+export async function loadPublicResearchSnapshotHistory(db: Database, input: { securityCode: string; asOf: number; limit?: number }) {
   const securityCode = input.securityCode.trim().toUpperCase();
   if (!securityCode) throw new Error("public research snapshot securityCode is required");
   const limit = Math.min(Math.max(Math.floor(input.limit ?? 24), 1), 100);
@@ -126,7 +127,7 @@ export async function loadPublicResearchSnapshotHistory(db: D1Database, input: {
   }
 }
 
-function differenceStatement(db: D1Database, item: ResearchSnapshotModuleDifference): D1PreparedStatement {
+function differenceStatement(db: Database, item: ResearchSnapshotModuleDifference): PreparedStatement {
   return db.prepare(`insert into research_snapshot_module_differences (
     difference_id, company_id, security_code, baseline_snapshot_id, current_snapshot_id, module_id, diff_version, change_type, baseline_json, current_json, fields_json, created_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)

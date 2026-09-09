@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { assertSourceReferences, type ResearchEpistemicType, type ResearchSourceReference } from "../domain/research-dossier";
 
 export type ResearchGovernanceRecord = {
@@ -14,7 +15,7 @@ export type ResearchGovernanceRecord = {
   updatedAt: number;
 };
 
-export async function loadResearchGovernance(db: D1Database, companyId: string | null, asOf: number) {
+export async function loadResearchGovernance(db: Database, companyId: string | null, asOf: number) {
   if (!companyId) return { availability: "unavailable", reason: "identity_not_found", items: [] as ResearchGovernanceRecord[] };
   try {
     const rows = await db.prepare(`select governance_record_id as governanceRecordId, company_id as companyId, as_of as asOf,
@@ -29,7 +30,7 @@ export async function loadResearchGovernance(db: D1Database, companyId: string |
   }
 }
 
-export async function insertResearchGovernance(db: D1Database, input: ResearchGovernanceRecord) {
+export async function insertResearchGovernance(db: Database, input: ResearchGovernanceRecord) {
   assertSourceReferences(input.epistemicType, input.sourceReferences);
   await db.prepare(`insert into research_governance_records (
     governance_record_id, company_id, as_of, dimension, title, statement, status, epistemic_type, source_refs_json, created_at, updated_at

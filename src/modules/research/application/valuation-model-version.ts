@@ -1,8 +1,9 @@
+import type { Database } from "../../../platform/contracts";
 import { buildDcfValuationModelVersion, type BuildDcfValuationModelInput, type ResearchDcfValuationModelVersion } from "../domain/valuation-model-version";
 
 type Row = Record<string, unknown>;
 
-export async function createDcfValuationModelVersion(db: D1Database, input: BuildDcfValuationModelInput): Promise<ResearchDcfValuationModelVersion> {
+export async function createDcfValuationModelVersion(db: Database, input: BuildDcfValuationModelInput): Promise<ResearchDcfValuationModelVersion> {
   const model = buildDcfValuationModelVersion(input);
   await db.prepare(`insert into research_valuation_model_versions (
     model_version_id, company_id, security_code, as_of, status, model_kind, algorithm_version, valuation_currency, amount_scale,
@@ -17,7 +18,7 @@ export async function createDcfValuationModelVersion(db: D1Database, input: Buil
   return model;
 }
 
-export async function loadDcfValuationModelVersions(db: D1Database, securityCode: string, asOf: number): Promise<{ availability: "available" | "empty" | "unavailable"; reason: string | null; items: ResearchDcfValuationModelVersion[] }> {
+export async function loadDcfValuationModelVersions(db: Database, securityCode: string, asOf: number): Promise<{ availability: "available" | "empty" | "unavailable"; reason: string | null; items: ResearchDcfValuationModelVersion[] }> {
   try {
     const rows = await db.prepare(`select * from research_valuation_model_versions where security_code=? and as_of<=? and status<>'superseded' order by as_of desc, created_at desc`).bind(securityCode, asOf).all<Row>();
     return { availability: rows.results.length ? "available" : "empty", reason: rows.results.length ? null : "no_records", items: rows.results.map(map) };

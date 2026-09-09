@@ -1,3 +1,4 @@
+import type { Database } from "../platform/contracts";
 import { bareCode, normalizeSecurityCode, securitySuffix } from "../shared/codes";
 import { cachedFetchJson } from "../shared/http";
 import type { CompanyNotice } from "../types";
@@ -25,12 +26,49 @@ export function supportsCninfoCompanyNotices(code: string): boolean {
   return ["SH", "SZ", "BJ", "HK"].includes(securitySuffix(normalizeSecurityCode(code)));
 }
 
+// CNINFO exposes investor-relations materials through the same disclosure
+// endpoint, but under its separate `relation` tab.  The stock-detail page
+// only exposes that tab for Shenzhen-listed companies.
+export function supportsCninfoCompanyResearch(code: string): boolean {
+  return securitySuffix(normalizeSecurityCode(code)) === "SZ";
+}
+
 export async function fetchCninfoCompanyNotices(
-  db: D1Database,
+  db: Database,
   code: string,
   page = 1,
   pageSize = 20,
   category = ""
+): Promise<CompanyNotice[]> {
+  return fetchCninfoCompanyDisclosure(db, code, page, pageSize, {
+    tabName: "fulltext",
+    category,
+    fallbackNoticeType: "公告",
+  });
+}
+
+export async function fetchCninfoCompanyResearch(
+  db: Database,
+  code: string,
+  page = 1,
+  pageSize = 20
+): Promise<CompanyNotice[]> {
+  if (!supportsCninfoCompanyResearch(code)) {
+    throw new Error(`unsupported CNINFO company research code: ${code}`);
+  }
+  return fetchCninfoCompanyDisclosure(db, code, page, pageSize, {
+    tabName: "relation",
+    category: "",
+    fallbackNoticeType: "公司调研",
+  });
+}
+
+async function fetchCninfoCompanyDisclosure(
+  db: Database,
+  code: string,
+  page: number,
+  pageSize: number,
+  options: { tabName: "fulltext" | "relation"; category: string; fallbackNoticeType: string }
 ): Promise<CompanyNotice[]> {
   const normalized = normalizeSecurityCode(code);
   const suffix = securitySuffix(normalized);
@@ -38,9 +76,8 @@ export async function fetchCninfoCompanyNotices(
   const market = cninfoMarket(suffix);
   const validStockCode = suffix === "HK" ? /^\d{5}$/.test(stockCode) : /^\d{6}$/.test(stockCode);
   if (!market || !validStockCode) {
-    throw new Error(`unsupported CNINFO company notice code: ${code}`);
+    throw new Error(`unsupported CNINFO company disclosure code: ${code}`);
   }
-
   if (!Number.isInteger(page) || page < 1 || page > 100) {
     throw new Error(`CNINFO announcement page must be between 1 and 100: ${page}`);
   }
@@ -53,11 +90,11 @@ export async function fetchCninfoCompanyNotices(
 
   const body = new URLSearchParams({
     stock: `${stockCode},${orgId}`,
-    tabName: "fulltext",
+    tabName: options.tabName,
     pageSize: String(effectivePageSize),
     pageNum: String(page),
     column: market.column,
-    category,
+    category: options.category,
     plate: market.plate,
     seDate: "",
     searchkey: "",
@@ -79,14 +116,14 @@ export async function fetchCninfoCompanyNotices(
       artCode: item.announcementId?.trim() ?? "",
       title: stripHtml(item.announcementTitle ?? ""),
       noticeDate: cninfoDate(item.announcementTime),
-      noticeType: item.announcementTypeName?.trim() || "公告",
+      noticeType: item.announcementTypeName?.trim() || options.fallbackNoticeType,
       pdfUrl: adjunctUrl ? new URL(adjunctUrl, `${CNINFO_PDF_ORIGIN}/`).toString() : "",
     };
   }).filter((item) => item.artCode && item.title);
 }
 
 async function fetchCninfoSecurity(
-  db: D1Database,
+  db: Database,
   stockCode: string
 ): Promise<CninfoSecurityResponse> {
   const url = new URL(`${CNINFO_ORIGIN}/new/information/topSearch/query`);

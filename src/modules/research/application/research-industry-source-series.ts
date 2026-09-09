@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import extractionConfig from "../../../../config/research-industry-source-extraction.json";
 import { requestLocalDirectLlmText } from "../../../shared/local-direct-llm";
 import type { Bindings } from "../../../types";
@@ -52,7 +53,7 @@ export async function syncResearchIndustrySourceSeries(env: Bindings, securityCo
   return { securityCode: code, promptVersion: config.version, documents: outcomes, processedDocuments: outcomes.filter((item) => item.status === "processed").length };
 }
 
-export async function loadResearchIndustrySourceSeries(db: D1Database, securityCode: string) {
+export async function loadResearchIndustrySourceSeries(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select industry_series_observation_id as observationId, industry_key as industryKey, metric_key as metricKey,
@@ -70,7 +71,7 @@ export async function loadResearchIndustrySourceSeries(db: D1Database, securityC
   }
 }
 
-async function sourceDocuments(db: D1Database, code: string): Promise<SourceDocument[]> {
+async function sourceDocuments(db: Database, code: string): Promise<SourceDocument[]> {
   const values = config.allowedSourceTypes;
   const placeholders = values.map(() => "?").join(", ");
   const rows = await db.prepare(`select doc.doc_id as docId, doc.source_type as sourceType, doc.title, doc.url, content.content_key as contentKey

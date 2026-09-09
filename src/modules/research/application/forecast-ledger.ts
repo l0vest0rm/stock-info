@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import { securityMarket } from "../../../shared/codes";
 import type { SecurityRecord } from "../../../types";
 import {
@@ -229,7 +230,7 @@ export const FORECAST_ACCOUNTING_BASES = ["gaap", "non_gaap", "adjusted", "unspe
 export const FORECAST_OWNERSHIP_BASES = ["attributable_to_parent", "consolidated", "common_shareholders", "unspecified"] as const;
 export const FORECAST_SHARE_BASES = ["basic", "diluted", "unspecified"] as const;
 
-export async function loadForecastWorkspace(db: D1Database, code: string, security: SecurityRecord | null) {
+export async function loadForecastWorkspace(db: Database, code: string, security: SecurityRecord | null) {
   const [subject, candidateRows, sourceRows, revisionRows, consolidation, sourceIdentityRegistry, scenarios, formalActualCalibrations, formalActuals, formalActualCandidates, formalActualCandidateReviews] = await Promise.all([
     resolveResearchSubject(db, code, security),
     listForecastCandidates(db, code),
@@ -316,7 +317,7 @@ export async function loadForecastWorkspace(db: D1Database, code: string, securi
  * the identity id; the group is resolved here and also frozen into a consolidation
  * member whenever that forecast is aggregated.
  */
-export async function loadForecastSourceIdentityRegistry(db: D1Database) {
+export async function loadForecastSourceIdentityRegistry(db: Database) {
   const [groups, identities, modelLineages, assertions] = await Promise.all([
     db.prepare(`select independence_group_id as independenceGroupId, canonical_name as canonicalName,
       status, created_by as createdBy, created_at as createdAt
@@ -339,7 +340,7 @@ export async function loadForecastSourceIdentityRegistry(db: D1Database) {
   return { groups: groups.results, identities: identities.results, modelLineages: modelLineages.results, assertions: assertions.results };
 }
 
-export async function createForecastSourceIndependenceGroup(db: D1Database, input: ForecastSourceIndependenceGroupWrite) {
+export async function createForecastSourceIndependenceGroup(db: Database, input: ForecastSourceIndependenceGroupWrite) {
   const canonicalName = requiredText(input.canonicalName, "canonicalName");
   const known = await db.prepare(`select independence_group_id as independenceGroupId from research_forecast_source_independence_groups
     where lower(canonical_name)=lower(?)`).bind(canonicalName).first<{ independenceGroupId: string }>();
@@ -353,7 +354,7 @@ export async function createForecastSourceIndependenceGroup(db: D1Database, inpu
   return { independenceGroupId, canonicalName, status: "confirmed" as const, createdAt };
 }
 
-export async function createForecastSourceIdentity(db: D1Database, input: ForecastSourceIdentityWrite) {
+export async function createForecastSourceIdentity(db: Database, input: ForecastSourceIdentityWrite) {
   const displayName = requiredText(input.displayName, "displayName");
   const identityType = requireEnum(input.identityType, FORECAST_SOURCE_IDENTITY_TYPES, "identityType");
   const independenceGroupId = requiredText(input.independenceGroupId, "independenceGroupId");
@@ -380,7 +381,7 @@ export async function createForecastSourceIdentity(db: D1Database, input: Foreca
 }
 
 /** A model lineage is an explicit origin-model identity, never a guessed analyst name. */
-export async function createForecastModelLineage(db: D1Database, input: ForecastModelLineageWrite) {
+export async function createForecastModelLineage(db: Database, input: ForecastModelLineageWrite) {
   const originSourceIdentityId = requiredText(input.originSourceIdentityId, "originSourceIdentityId");
   const lineageName = requiredText(input.lineageName, "lineageName");
   const evidenceUrl = requireHttpsUrl(input.evidenceUrl, "evidenceUrl");
@@ -408,7 +409,7 @@ export async function createForecastModelLineage(db: D1Database, input: Forecast
  * deliberately one-to-one with doc/version, preventing a later relabel from
  * changing the provenance of an accepted forecast.
  */
-export async function createForecastSourceIdentityAssertion(db: D1Database, input: ForecastSourceIdentityAssertionWrite) {
+export async function createForecastSourceIdentityAssertion(db: Database, input: ForecastSourceIdentityAssertionWrite) {
   const docId = requiredText(input.docId, "docId");
   const versionId = requiredText(input.versionId, "versionId");
   const contentHash = requiredText(input.contentHash, "contentHash");
@@ -451,7 +452,7 @@ export async function createForecastSourceIdentityAssertion(db: D1Database, inpu
     modelLineageId, carrierRelation, evidenceUrl, evidenceTitle, evidenceDocId, assertionStatus: "confirmed" as const, createdAt };
 }
 
-export async function saveForecastReview(db: D1Database, code: string, input: ForecastReviewWrite) {
+export async function saveForecastReview(db: Database, code: string, input: ForecastReviewWrite) {
   const candidate = await getForecastCandidate(db, code, input.informationId);
   if (!candidate) throw new Error("forecast information record not found for this security");
   if (!isOneOf(input.reviewStatus, ["included", "excluded", "needs_review"] as const)) throw new Error("invalid review status");
@@ -544,7 +545,7 @@ export async function saveForecastReview(db: D1Database, code: string, input: Fo
  * Incomplete candidates become an automatically recorded exclusion so the
  * read model can state exactly which new machine-readable input is needed.
  */
-export async function syncAutomaticThirdPartyForecastEvidence(db: D1Database, code: string) {
+export async function syncAutomaticThirdPartyForecastEvidence(db: Database, code: string) {
   const candidates = await listForecastCandidates(db, code);
   const identity = await db.prepare(`select company_id as companyId from research_listed_securities
     where security_code=? and mapping_status in ('confirmed','provisional')`).bind(code).first<{ companyId: string | null }>();
@@ -628,7 +629,7 @@ export async function syncAutomaticThirdPartyForecastEvidence(db: D1Database, co
  * A self-built scenario is intentionally versioned and never merges into a
  * source forecast or its opportunistic sample consolidation.
  */
-export async function saveForecastScenario(db: D1Database, code: string, input: ForecastScenarioWrite) {
+export async function saveForecastScenario(db: Database, code: string, input: ForecastScenarioWrite) {
   if (!isOneOf(input.scenarioName, ["downside", "base", "upside"] as const)) throw new Error("invalid scenarioName");
   if (!Array.isArray(input.assumptions) || !Array.isArray(input.outputs)) throw new Error("scenario assumptions and outputs must be arrays");
   if (!isOneOf(input.status ?? "draft", ["draft", "reviewed"] as const)) throw new Error("invalid scenario status");
@@ -649,12 +650,12 @@ export async function saveForecastScenario(db: D1Database, code: string, input: 
   return { scenarioId, version };
 }
 
-export async function persistForecastConsolidation(db: D1Database, code: string, companyId: string | null) {
+export async function persistForecastConsolidation(db: Database, code: string, companyId: string | null) {
   const sourceRows = await listCurrentSourceForecasts(db, code);
   const projection = buildForecastConsolidation(sourceRows.map(toDomainInput));
   const now = Date.now();
   const consolidationId = `forecast-consolidation:${crypto.randomUUID()}`;
-  const statements: D1PreparedStatement[] = [
+  const statements: PreparedStatement[] = [
     db.prepare(`insert into research_forecast_consolidations (
       consolidation_id, security_code, company_id, as_of, label, source_universe, market_consensus, rule_version, created_at
     ) values (?, ?, ?, ?, ?, ?, 0, ?, ?)`)
@@ -685,7 +686,7 @@ export async function persistForecastConsolidation(db: D1Database, code: string,
   return { consolidationId, projection };
 }
 
-async function resolveResearchSubject(db: D1Database, code: string, security: SecurityRecord | null) {
+async function resolveResearchSubject(db: Database, code: string, security: SecurityRecord | null) {
   const row = await db.prepare(`select s.security_code as securityCode, s.company_id as companyId, s.venue,
       s.trading_currency as tradingCurrency, s.share_class as shareClass, s.depositary_ratio as depositaryRatio,
       s.mapping_status as mappingStatus, s.mapping_basis as mappingBasis, c.canonical_name as companyName,
@@ -719,21 +720,21 @@ function expectedTradingCurrency(code: string): "CNY" | "HKD" | "USD" {
   return market === "hk" ? "HKD" : market === "us" ? "USD" : "CNY";
 }
 
-async function listForecastCandidates(db: D1Database, code: string): Promise<ForecastCandidateRow[]> {
+async function listForecastCandidates(db: Database, code: string): Promise<ForecastCandidateRow[]> {
   const rows = await db.prepare(`${forecastCandidateSelect()}
     and d.target_code_normalized=? and record.information_type='forecast'
     order by d.published_at desc, record.sort_order, record.information_id`).bind(code).all<ForecastCandidateRow>();
   return rows.results.filter(isPresentableForecastRow);
 }
 
-async function getForecastCandidate(db: D1Database, code: string, informationId: string): Promise<ForecastCandidateRow | null> {
+async function getForecastCandidate(db: Database, code: string, informationId: string): Promise<ForecastCandidateRow | null> {
   const candidate = await db.prepare(`${forecastCandidateSelect()}
     and d.target_code_normalized=? and record.information_id=? and record.information_type='forecast'`)
     .bind(code, informationId).first<ForecastCandidateRow>();
   return candidate && isPresentableForecastRow(candidate) ? candidate : null;
 }
 
-async function getConfirmedForecastSourceIdentity(db: D1Database, sourceIdentityId: string) {
+async function getConfirmedForecastSourceIdentity(db: Database, sourceIdentityId: string) {
   const identity = await db.prepare(`select identity.source_identity_id as sourceIdentityId, identity.display_name as displayName,
       identity.independence_group_id as independenceGroupId
     from research_forecast_source_identities identity
@@ -745,7 +746,7 @@ async function getConfirmedForecastSourceIdentity(db: D1Database, sourceIdentity
   return identity;
 }
 
-async function getConfirmedForecastModelLineage(db: D1Database, modelLineageId: string) {
+async function getConfirmedForecastModelLineage(db: Database, modelLineageId: string) {
   const lineage = await db.prepare(`select model_lineage_id as modelLineageId, origin_source_identity_id as originSourceIdentityId
     from research_forecast_model_lineages where model_lineage_id=? and lineage_status='confirmed'`).bind(modelLineageId)
     .first<{ modelLineageId: string; originSourceIdentityId: string }>();
@@ -754,7 +755,7 @@ async function getConfirmedForecastModelLineage(db: D1Database, modelLineageId: 
 }
 
 async function getConfirmedForecastSourceIdentityAssertion(
-  db: D1Database,
+  db: Database,
   sourceIdentityAssertionId: string,
   candidate: Pick<ForecastCandidateRow, "docId" | "versionId" | "contentHash">,
 ) {
@@ -791,7 +792,7 @@ async function getConfirmedForecastSourceIdentityAssertion(
   return { ...assertion, originDisplayName: assertion.originDisplayName };
 }
 
-async function assertEvidenceDoc(db: D1Database, evidenceDocId: string) {
+async function assertEvidenceDoc(db: Database, evidenceDocId: string) {
   const evidenceDoc = await db.prepare(`select doc_id as docId from knowledge_docs where doc_id=?`).bind(evidenceDocId).first<{ docId: string }>();
   if (!evidenceDoc) throw new Error("evidenceDocId must identify an existing knowledge document");
 }
@@ -822,7 +823,7 @@ function forecastCandidateSelect(): string {
       order by r2.created_at desc, r2.result_id desc limit 1)`;
 }
 
-async function listCurrentSourceForecasts(db: D1Database, code: string): Promise<SourceForecastRow[]> {
+async function listCurrentSourceForecasts(db: Database, code: string): Promise<SourceForecastRow[]> {
   const rows = await db.prepare(`select f.forecast_id as forecastId, f.review_id as reviewId,
       f.information_id as informationId, f.version_id as versionId, f.doc_id as docId,
       f.security_code as securityCode, f.company_id as companyId, f.institution, f.source_identity_id as sourceIdentityId,
@@ -857,7 +858,7 @@ async function listCurrentSourceForecasts(db: D1Database, code: string): Promise
  * to current review heads, so historical values cannot accidentally enter a
  * fresh included-sample consolidation.
  */
-async function listForecastRevisionHistory(db: D1Database, code: string): Promise<SourceForecastRow[]> {
+async function listForecastRevisionHistory(db: Database, code: string): Promise<SourceForecastRow[]> {
   const rows = await db.prepare(`select f.forecast_id as forecastId, f.review_id as reviewId,
       f.information_id as informationId, f.version_id as versionId, f.doc_id as docId,
       f.security_code as securityCode, f.company_id as companyId, f.institution, f.source_identity_id as sourceIdentityId,
@@ -887,7 +888,7 @@ async function listForecastRevisionHistory(db: D1Database, code: string): Promis
   return rows.results.filter(isPresentableForecastRow);
 }
 
-async function loadLatestConsolidation(db: D1Database, code: string) {
+async function loadLatestConsolidation(db: Database, code: string) {
   const header = await db.prepare(`select consolidation_id as consolidationId, as_of as asOf, label,
       source_universe as sourceUniverse, market_consensus as marketConsensus, rule_version as ruleVersion, created_at as createdAt
     from research_forecast_consolidations where security_code=? order by as_of desc, created_at desc limit 1`)
@@ -936,17 +937,17 @@ async function loadLatestConsolidation(db: D1Database, code: string) {
   };
 }
 
-async function upsertReview(db: D1Database, input: {
+async function upsertReview(db: Database, input: {
   reviewId: string; code: string; companyId: string | null; informationId: string; currentForecastId: string | null;
   reviewStatus: ForecastReviewWrite["reviewStatus"]; reviewReason: string | null; now: number;
 }) {
   await reviewUpsertStatement(db, input).run();
 }
 
-function reviewUpsertStatement(db: D1Database, input: {
+function reviewUpsertStatement(db: Database, input: {
   reviewId: string; code: string; companyId: string | null; informationId: string; currentForecastId: string | null;
   reviewStatus: ForecastReviewWrite["reviewStatus"]; reviewReason: string | null; now: number;
-}): D1PreparedStatement {
+}): PreparedStatement {
   return db.prepare(`insert into research_forecast_source_reviews (
       review_id, security_code, company_id, information_id, current_forecast_id, review_status, review_reason,
       reviewed_by, reviewed_at, created_at, updated_at
@@ -959,7 +960,7 @@ function reviewUpsertStatement(db: D1Database, input: {
       input.reviewStatus, input.reviewReason, input.now, input.now, input.now);
 }
 
-async function recordAutomaticForecastBlock(db: D1Database, input: {
+async function recordAutomaticForecastBlock(db: Database, input: {
   code: string; companyId: string | null; candidate: ForecastCandidateRow; reason: string; now: number;
 }) {
   const reviewId = input.candidate.reviewId ?? `forecast-auto-gate:${crypto.randomUUID()}`;
@@ -970,7 +971,7 @@ async function recordAutomaticForecastBlock(db: D1Database, input: {
 }
 
 async function ensureAutomaticOriginalSourceAssertion(
-  db: D1Database,
+  db: Database,
   candidate: ForecastCandidateRow,
   contract: AutomaticForecastEvidenceContract,
   now: number,
@@ -1040,7 +1041,7 @@ async function ensureAutomaticOriginalSourceAssertion(
   return { sourceIdentityAssertionId, sourceIdentityId, modelLineageId, independenceGroupId };
 }
 
-async function writeAutomaticSourceForecast(db: D1Database, input: {
+async function writeAutomaticSourceForecast(db: Database, input: {
   code: string; companyId: string | null; candidate: ForecastCandidateRow; sourceIdentityAssertionId: string;
   measurement: AutomaticForecastMeasurement; now: number;
 }) {
@@ -1097,7 +1098,7 @@ async function writeAutomaticSourceForecast(db: D1Database, input: {
   return { forecastId };
 }
 
-function automaticReviewUpsertStatement(db: D1Database, input: {
+function automaticReviewUpsertStatement(db: Database, input: {
   reviewId: string; code: string; companyId: string | null; informationId: string; currentForecastId: string | null;
   reviewStatus: ForecastReviewWrite["reviewStatus"]; reviewReason: string | null; now: number;
 }) {

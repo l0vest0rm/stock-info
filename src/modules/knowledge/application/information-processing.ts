@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import preprocessingConfig from "../../../../config/knowledge-preprocessing.json";
 import ontologyConfig from "../../../../config/knowledge-ontology.json";
 import {
@@ -272,7 +273,7 @@ function parseJsonResponse(value: string): unknown {
   }
 }
 
-export async function persistStructuredResult(db: D1Database, versionId: string, analysis: StructuredAnalysis): Promise<number> {
+export async function persistStructuredResult(db: Database, versionId: string, analysis: StructuredAnalysis): Promise<number> {
   const now = Date.now();
   const resultId = `knowledge-information-result:${crypto.randomUUID()}`;
   await db.prepare(
@@ -301,7 +302,7 @@ async function loadDocumentContent(env: Bindings, document: SourceDocument): Pro
   return document.content_preview || "";
 }
 
-async function ensureVersion(db: D1Database, document: SourceDocument, contentHash: string): Promise<{ versionId: string }> {
+async function ensureVersion(db: Database, document: SourceDocument, contentHash: string): Promise<{ versionId: string }> {
   const known = await db.prepare("select version_id from knowledge_document_versions where doc_id = ? and content_hash = ?")
     .bind(document.doc_id, contentHash).first<{ version_id: string }>();
   if (known) return { versionId: known.version_id };
@@ -319,7 +320,7 @@ async function ensureVersion(db: D1Database, document: SourceDocument, contentHa
 }
 
 async function preprocess(
-  db: D1Database,
+  db: Database,
   document: SourceDocument,
   content: string,
   contentHash: string,

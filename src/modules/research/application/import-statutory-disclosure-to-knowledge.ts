@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import type { Bindings } from "../../../types";
 
 type Row = Record<string, unknown>;
@@ -110,7 +111,7 @@ export async function importIndexedStatutoryDisclosureToKnowledge(
 }
 
 async function insertImmutableKnowledgeDocument(
-  db: D1Database,
+  db: Database,
   input: { disclosure: IndexedStatutoryDisclosure; knowledgeDocumentId: string; contentKey: string; content: string; contentSha256: string; contentBytes: number; importedAt: number },
 ): Promise<void> {
   const { disclosure, knowledgeDocumentId, contentKey, content, contentSha256, contentBytes, importedAt } = input;
@@ -129,7 +130,7 @@ async function insertImmutableKnowledgeDocument(
     importedAt,
   });
   const fetchedAt = new Date(importedAt).toISOString();
-  const statements: D1PreparedStatement[] = [
+  const statements: PreparedStatement[] = [
     db.prepare(`insert into knowledge_docs (
       doc_id, source_type, report_type, source_name, title, url, published_at, fetched_at,
       event_time, target_name, target_code, discovery_method, access_method, summary,

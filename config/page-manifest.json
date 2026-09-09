@@ -1,0 +1,233 @@
+[
+  {
+    "path": "/13f-position.html",
+    "entry": "src/modules/thirteenf/pages/thirteenf-position-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiThirteenFPositionPage"
+  },
+  {
+    "path": "/13f.html",
+    "entry": "src/modules/thirteenf/pages/thirteenf-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiThirteenFPage"
+  },
+  {
+    "path": "/companies-change.html",
+    "entry": "src/modules/companies/pages/companies-change-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompaniesChangePage"
+  },
+  {
+    "path": "/companies-filter.html",
+    "entry": "src/modules/companies/pages/companies-filter-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompaniesFilterPage"
+  },
+  {
+    "path": "/companies-follow.html",
+    "entry": "src/modules/companies/pages/companies-follow-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompaniesFollowPage"
+  },
+  {
+    "path": "/companies-holding.html",
+    "entry": "src/modules/companies/pages/companies-holding-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompaniesHoldingPage"
+  },
+  {
+    "path": "/company-dividend.html",
+    "entry": "src/modules/company/pages/company-dividend-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompanyDividendPage"
+  },
+  {
+    "path": "/company-finance.html",
+    "entry": "src/modules/company/pages/company-finance-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompanyFinancePage"
+  },
+  {
+    "path": "/company-holders.html",
+    "entry": "src/modules/company/pages/company-holders-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompanyHoldersPage"
+  },
+  {
+    "path": "/company-news.html",
+    "entry": "src/modules/company/pages/company-news-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompanyNewsPage"
+  },
+  {
+    "path": "/company-notice.html",
+    "entry": "src/modules/company/pages/company-notice-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompanyNoticePage"
+  },
+  {
+    "path": "/company-option-theta.html",
+    "entry": "src/modules/company/pages/company-option-theta-page.ts",
+    "runtime": "local",
+    "legacy": true,
+    "globalName": "LicaiCompanyOptionThetaPage"
+  },
+  {
+    "path": "/company-option.html",
+    "entry": "src/modules/company/pages/company-option-page.ts",
+    "runtime": "local",
+    "legacy": true,
+    "globalName": "LicaiCompanyOptionPage"
+  },
+  {
+    "path": "/company-report.html",
+    "entry": "src/modules/company/pages/company-report-page.ts",
+    "runtime": "all",
+    "legacy": false,
+    "globalName": "LicaiCompanyReportPage"
+  },
+  {
+    "path": "/company-shares.html",
+    "entry": "src/modules/company/pages/company-shares-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompanySharesPage"
+  },
+  {
+    "path": "/company-trade.html",
+    "entry": "src/modules/company/pages/company-trade-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompanyTradePage"
+  },
+  {
+    "path": "/company.html",
+    "entry": "src/modules/company/pages/company-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiCompanyPage"
+  },
+  {
+    "path": "/fund-compare.html",
+    "entry": "src/modules/research/pages/fund-compare-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiFundComparePage"
+  },
+  {
+    "path": "/fund-notice.html",
+    "entry": "src/modules/fund/pages/fund-notice-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiFundNoticePage"
+  },
+  {
+    "path": "/fund-position.html",
+    "entry": "src/modules/fund/pages/fund-position-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiFundPositionPage"
+  },
+  {
+    "path": "/fund.html",
+    "entry": "src/modules/fund/pages/fund-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiFundPage"
+  },
+  {
+    "path": "/funds.html",
+    "entry": "src/modules/fund/pages/funds-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiFundsPage"
+  },
+  {
+    "path": "/home.html",
+    "entry": "src/modules/home/pages/home-page.ts",
+    "runtime": "all",
+    "legacy": false,
+    "globalName": "LicaiHomePage"
+  },
+  {
+    "path": "/index-position.html",
+    "entry": "src/modules/index/pages/index-position-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiIndexPositionPage"
+  },
+  {
+    "path": "/index.html",
+    "entry": "src/modules/index/pages/index-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiIndexPage"
+  },
+  {
+    "path": "/information-processing.html",
+    "entry": "src/modules/knowledge/pages/information-processing-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiInformationProcessingPage"
+  },
+  {
+    "path": "/institutional-tracks.html",
+    "entry": "src/modules/companies/pages/institutional-tracks-page.ts",
+    "runtime": "all",
+    "legacy": false,
+    "globalName": "LicaiInstitutionalTracksPage"
+  },
+  {
+    "path": "/investment-analysis.html",
+    "entry": "src/modules/research/pages/investment-analysis-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiInvestmentAnalysisPage"
+  },
+  {
+    "path": "/knowledge-config.html",
+    "entry": "src/modules/knowledge/pages/knowledge-config-page.ts",
+    "runtime": "local",
+    "legacy": true,
+    "globalName": "LicaiKnowledgeConfigPage"
+  },
+  {
+    "path": "/macro.html",
+    "entry": "src/modules/macro/pages/macro-page.ts",
+    "runtime": "all",
+    "legacy": false,
+    "globalName": "LicaiMacroPage"
+  },
+  {
+    "path": "/option-strategy.html",
+    "entry": "src/modules/options/pages/option-strategy-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiOptionStrategyPage"
+  },
+  {
+    "path": "/research-news.html",
+    "entry": "src/modules/knowledge/pages/knowledge-news-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiKnowledgeNewsPage"
+  },
+  {
+    "path": "/sector-flow.html",
+    "entry": "src/modules/market/pages/sector-flow-page.ts",
+    "runtime": "all",
+    "legacy": true,
+    "globalName": "LicaiSectorFlowPage"
+  }
+]

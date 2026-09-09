@@ -12,7 +12,9 @@ import {
 } from "../domain/display-measures";
 import { fail, ok } from "../../../shared/http";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
+import { isTaskdReadUnavailable } from "../../../shared/taskd-client";
 import type { AppEnv } from "../../../types";
+import { enqueueMacroAnalysis, loadMacroAnalysis, resumeMacroAnalysis, syncMacroAnalysis } from "../application/macro-analysis";
 
 const MAX_INDICATORS_PER_REQUEST = 20;
 const MAX_FILTER_VALUES = 100;
@@ -23,6 +25,43 @@ const MEASURES = new Set(["level", "yoy", "mom"]);
 type Measure = MacroDisplayMeasure;
 
 export const macroRoutes = new Hono<AppEnv>();
+
+macroRoutes.get("/macro/analysis", async (c) => {
+  try {
+    return ok(c, await loadMacroAnalysis(c.env));
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+macroRoutes.post("/macro/analysis/refresh", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") return fail(c, 404, "macro analysis refresh is only available in local LLM runtime");
+  const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+  try {
+    return ok(c, await enqueueMacroAnalysis(c.env, { reasoningEffort: typeof body.reasoningEffort === "string" ? body.reasoningEffort : null }));
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+macroRoutes.post("/macro/analysis/resume", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") return fail(c, 404, "macro analysis resume is only available in local LLM runtime");
+  try {
+    return ok(c, await resumeMacroAnalysis(c.env));
+  } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+macroRoutes.post("/macro/analysis/sync", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") return fail(c, 404, "macro analysis synchronization is only available in local LLM runtime");
+  try {
+    return ok(c, await syncMacroAnalysis(c.env));
+  } catch (error) {
+    if (isTaskdReadUnavailable(error)) return fail(c, 503, "暂时无法连接 taskd；本地任务状态未改变，请稍后再同步。");
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
 
 /** Directory only: loading selectors must never scan macro_data history. */
 macroRoutes.get("/macro/catalog", async (c) => {
@@ -101,8 +140,12 @@ macroRoutes.get("/macro/series", async (c) => {
   if (unknown.length) return fail(c, 400, `Unknown macro indicator IDs: ${unknown.join(", ")}`);
   const series = await Promise.all(ids.map(async (id) => {
     const indicator = byId.get(id)!;
-    const basePeriods = measure === "level" ? 0 : basePeriodsFor(indicator, measure as Exclude<Measure, "level">);
-    const lookupFrom = basePeriods > 0 ? shiftMacroPeriodDay(from, indicator.frequency, -basePeriods) : from;
+    // A level trend can expose its matching YoY/MoM in a tooltip without
+    // another request, but derived values still need their exact base periods.
+    const lookupFrom = (["yoy", "mom"] as const).reduce((earliest, derivedMeasure) => {
+      const basePeriods = basePeriodsFor(indicator, derivedMeasure);
+      return basePeriods > 0 ? Math.min(earliest, shiftMacroPeriodDay(from, indicator.frequency, -basePeriods)) : earliest;
+    }, from);
     const raw = await repository.getDataSeries(id, { fromPeriodDay: lookupFrom, toPeriodDay: to, asOf });
     const byPeriod = new Map(raw.map((point) => [point.periodDay, point]));
     const points = raw.filter((point) => point.periodDay >= from)
@@ -163,8 +206,17 @@ async function toOverviewEntry(repository: D1MacroRepository, indicator: MacroIn
 }
 
 function toSeriesPoint(point: MacroDataPoint, indicator: MacroIndicator, measure: Measure, byPeriod: ReadonlyMap<number, MacroDataPoint>) {
-  if (measure === "level") return { ...toRawPoint(point), method: "level", status: "available" as const, reason: null };
-  return { ...toRawPoint(point), ...derivePoint(point, indicator, measure, byPeriod) };
+  const displayed = measure === "level"
+    ? { value: point.value, method: "level", status: "available" as const, reason: null }
+    : derivePoint(point, indicator, measure, byPeriod);
+  return {
+    ...toRawPoint(point),
+    ...displayed,
+    derived: {
+      yoy: derivePoint(point, indicator, "yoy", byPeriod),
+      mom: derivePoint(point, indicator, "mom", byPeriod),
+    },
+  };
 }
 
 function derivePoint(point: MacroDataPoint, indicator: MacroIndicator, measure: Exclude<Measure, "level">, byPeriod: ReadonlyMap<number, MacroDataPoint>) {

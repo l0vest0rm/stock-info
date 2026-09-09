@@ -1,26 +1,12 @@
 -- Keep only the newest structured result for each current document. Runtime
 -- attempts and maintenance executions are transient; their latest cursor or
 -- status belongs in a fixed kv_cache JSON, not an append-only run ledger.
-create temp table _current_knowledge_results as
-select current.result_id, current.version_id, current.outcome, current.created_at
-  from knowledge_document_results current
- where not exists (
-   select 1 from knowledge_document_results newer
-    where newer.version_id = current.version_id
-      and (newer.created_at > current.created_at or (newer.created_at = current.created_at and newer.result_id > current.result_id))
- );
-
-create temp table _current_knowledge_information_records as
-select record.information_id, record.result_id, record.entity, record.information_type,
-       record.category, record.period, record.statement, record.forecast_measurement_json,
-       record.sort_order, record.created_at
-  from knowledge_information_records record
-  join _current_knowledge_results result on result.result_id = record.result_id;
-
-drop table knowledge_information_records;
-drop table knowledge_document_results;
-drop table knowledge_processing_runs;
-drop table knowledge_ingest_runs;
+--
+-- D1 does not authorize TEMP tables in a remote migration. Rename the old
+-- tables while copying instead, so the migration works remotely and preserves
+-- the newest result for every document in a non-empty environment.
+alter table knowledge_information_records rename to knowledge_information_records_pre_0128;
+alter table knowledge_document_results rename to knowledge_document_results_pre_0128;
 
 create table knowledge_document_results (
   result_id text primary key,
@@ -45,15 +31,28 @@ create table knowledge_information_records (
 );
 
 insert into knowledge_document_results (result_id, version_id, outcome, created_at)
-select result_id, version_id, outcome, created_at from _current_knowledge_results;
+select current.result_id, current.version_id, current.outcome, current.created_at
+  from knowledge_document_results_pre_0128 current
+ where not exists (
+   select 1 from knowledge_document_results_pre_0128 newer
+    where newer.version_id = current.version_id
+      and (newer.created_at > current.created_at or (newer.created_at = current.created_at and newer.result_id > current.result_id))
+ );
 
 insert into knowledge_information_records (
   information_id, result_id, entity, information_type, category, period, statement,
   forecast_measurement_json, sort_order, created_at
 )
-select information_id, result_id, entity, information_type, category, period, statement,
-       forecast_measurement_json, sort_order, created_at
-  from _current_knowledge_information_records;
+select record.information_id, record.result_id, record.entity, record.information_type,
+       record.category, record.period, record.statement, record.forecast_measurement_json,
+       record.sort_order, record.created_at
+  from knowledge_information_records_pre_0128 record
+  join knowledge_document_results result on result.result_id = record.result_id;
+
+drop table knowledge_information_records_pre_0128;
+drop table knowledge_document_results_pre_0128;
+drop table knowledge_processing_runs;
+drop table knowledge_ingest_runs;
 
 create index idx_knowledge_document_results_version on knowledge_document_results(version_id, created_at desc);
 create index idx_knowledge_information_records_result on knowledge_information_records(result_id, sort_order);

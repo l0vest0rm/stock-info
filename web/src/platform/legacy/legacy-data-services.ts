@@ -266,7 +266,7 @@ export function createLegacyDataServices(context: DataServicesContext) {
     })
   }
 
-  function fetchReportUrl(qtype: string, code: number, callback: (url: string | null) => void) {
+  function fetchReportUrl(qtype: string, code: string | number, callback: (url: string | null) => void) {
     const cacheKey = `${qtype}-${code}-ru`
     fetchRequest({
       url: `${server}/api/report/url?qtype=${qtype}&code=${code}`,

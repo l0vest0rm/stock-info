@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ResearchTestDatabase as FakeD1 } from "../infrastructure/research-test-database.mjs";
 
 import {
   buildResearchInvestmentAnalysisPrompt,
@@ -7,6 +8,7 @@ import {
   readStoredResearchInvestmentAnalysis,
   researchInvestmentAnalysisTaskName,
   resumeResearchInvestmentAnalysis,
+  syncResearchInvestmentAnalysis,
   validateResearchInvestmentAnalysisMarkdown,
   validateResearchInvestmentAnalysisTerminalEvidence,
   writeStoredResearchInvestmentAnalysis,
@@ -27,6 +29,8 @@ test("investment analysis projects only a completed WebQA result", () => {
 test("investment analysis requires the complete twelve-section report contract", () => {
   const report = Array.from({ length: 12 }, (_, index) => `# ${index + 1}. 第 ${index + 1} 章\n\n${"可核验分析内容。".repeat(50)}`).join("\n\n");
   assert.doesNotThrow(() => validateResearchInvestmentAnalysisMarkdown(report));
+  const escapedOrdinals = Array.from({ length: 12 }, (_, index) => `# ${index + 1}\\. 第 ${index + 1} 章\n\n${"可核验分析内容。".repeat(50)}`).join("\n\n");
+  assert.doesNotThrow(() => validateResearchInvestmentAnalysisMarkdown(escapedOrdinals));
   assert.throws(() => validateResearchInvestmentAnalysisMarkdown("# 1. 不完整\n\n太短"), /shorter than 800 characters/);
 });
 
@@ -67,41 +71,6 @@ test("investment analysis sends a readable research brief instead of a frozen JS
   assert.doesNotMatch(prompt, /```json|"financials"|工程|程序配置|未配置/);
 });
 
-class FakeD1 {
-  constructor() {
-    this.kvCache = new Map();
-  }
-
-  prepare(sql) {
-    const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
-    return {
-      bind: (...args) => ({
-        first: async () => {
-          if (normalized.includes("from kv_cache")) {
-            const row = this.kvCache.get(`${args[0]}|${args[1]}`) ?? null;
-            if (!row) return null;
-            if (row.expiresAt != null && row.expiresAt <= args[2]) return null;
-            return row;
-          }
-          throw new Error(`Unexpected D1 statement: ${sql}`);
-        },
-        run: async () => {
-          if (normalized.includes("insert into kv_cache")) {
-            this.kvCache.set(`${args[0]}|${args[1]}`, {
-              namespace: args[0],
-              key: args[1],
-              valueJson: args[2],
-              expiresAt: args[3],
-              updatedAt: args[4],
-            });
-            return { success: true };
-          }
-          throw new Error(`Unexpected D1 statement: ${sql}`);
-        },
-      }),
-    };
-  }
-}
 
 test("investment analysis persists and loads reports from kv_cache without the legacy results table", async () => {
   const db = new FakeD1();
@@ -287,6 +256,38 @@ test("investment-analysis resume only sends same-name recover and marks the KV r
   }
 });
 
+test("investment-analysis resumes a CEA checkpoint with a canonical provider URL without a private marker", async () => {
+  const db = new FakeD1();
+  await storeFailedInvestmentTask(db);
+  const previousFetch = globalThis.fetch;
+  const requests = [];
+  let getCount = 0;
+  const checkpoint = {
+    schema_version: "taskd.cea.workflow.v1",
+    input_sha256: "frozen-input-hash",
+    taskd_task_id: 73,
+    provider_url: "https://chatgpt.com/c/original-turn",
+    cea: { step: "prompt_submit" },
+  };
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({ url: String(url), method: init.method || "GET" });
+    return new Response(JSON.stringify(taskdTask(init.method === "POST" || getCount++ > 0 ? "queued" : "failed", checkpoint)), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const result = await resumeResearchInvestmentAnalysis({
+      DB: db, LLM_RUNTIME: "local", TASKD_BASE_URL: "https://taskd.test", TASKD_NAMESPACE: "stock-info", STOCK_INFO_TASKD_CALLER_TOKEN: "test-token",
+    }, "300308.SZ");
+    assert.equal(result.availability, "pending");
+    assert.equal(result.recovery.phase, "recovering");
+    assert.deepEqual(requests.map(({ method }) => method), ["GET", "POST", "GET"]);
+    assert.equal(requests.some(({ method, url }) => method === "POST" && /\/tasks$/.test(url)), false);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 test("investment-analysis recovery presents a verified legacy result without replaying it", async () => {
   const db = new FakeD1();
   await storeFailedInvestmentTask(db);
@@ -319,7 +320,22 @@ test("investment-analysis recovery presents a verified legacy result without rep
   }
 });
 
-test("investment-analysis resume refuses a missing marker without submitting or recovering", async () => {
+test("investment-analysis explicit sync projects a taskd result that recovered after the local failure snapshot", async (t) => {
+  const db = new FakeD1();
+  await storeFailedInvestmentTask(db);
+  t.mock.method(globalThis, "fetch", async () => Response.json(completedTask()));
+
+  const result = await syncResearchInvestmentAnalysis({
+    DB: db, LLM_RUNTIME: "local", TASKD_BASE_URL: "https://taskd.test", TASKD_NAMESPACE: "stock-info", STOCK_INFO_TASKD_CALLER_TOKEN: "test-token",
+  }, "300308.SZ");
+
+  assert.equal(result.availability, "available");
+  assert.equal(result.task?.status, "succeeded");
+  assert.equal(result.recovery.phase, "none");
+  assert.match(result.report?.markdown, /^# 1\. /);
+});
+
+test("investment-analysis resume refuses a missing recovery checkpoint without submitting or recovering", async () => {
   const db = new FakeD1();
   await storeFailedInvestmentTask(db);
   const previousFetch = globalThis.fetch;
@@ -333,7 +349,7 @@ test("investment-analysis resume refuses a missing marker without submitting or 
       DB: db, LLM_RUNTIME: "local", TASKD_BASE_URL: "https://taskd.test", TASKD_NAMESPACE: "stock-info", STOCK_INFO_TASKD_CALLER_TOKEN: "test-token",
     }, "300308.SZ");
     assert.equal(result.recovery.phase, "manual_required");
-    assert.match(result.recovery.reason, /marker/);
+    assert.match(result.recovery.reason, /checkpoint/);
     assert.deepEqual(requests.map(({ method }) => method), ["GET", "GET"]);
   } finally {
     globalThis.fetch = previousFetch;

@@ -1,3 +1,4 @@
+import type { Database } from "../platform/contracts";
 import financeMappings from "../../shared/finance-mappings.json";
 import {
   financialStatementsCacheTtlMs,
@@ -271,7 +272,7 @@ type USOptionExpirationMeta = {
 
 const EASTMONEY_SUGGEST_TOKEN = "D43BF722C8E33BDC906FB84D85E326E8";
 
-export async function fetchEastmoneySuggest(db: D1Database, q: string): Promise<SecurityRecord[]> {
+export async function fetchEastmoneySuggest(db: Database, q: string): Promise<SecurityRecord[]> {
   const url = new URL("https://searchadapter.eastmoney.com/api/suggest/get");
   url.searchParams.set("input", q);
   url.searchParams.set("type", "8");
@@ -320,7 +321,7 @@ function normalizeEastmoneySuggestCode(rawCode: string): string {
 }
 
 export async function fetchEastmoneyStockKline(
-  db: D1Database,
+  db: Database,
   code: string,
   period: string,
   fq: string,
@@ -441,7 +442,7 @@ export async function fetchEastmoneyStockKline(
 }
 
 export async function fetchEastmoneyFundNav(
-  db: D1Database,
+  db: Database,
   code: string,
   from: string,
   to: string,
@@ -503,7 +504,7 @@ export async function fetchEastmoneyFundNav(
 }
 
 export async function fetchEastmoneyFinance(
-  db: D1Database,
+  db: Database,
   code: string,
   statementType: StatementType,
   httpOptions?: ExternalHttpOptions
@@ -539,7 +540,7 @@ export async function fetchEastmoneyFinance(
 }
 
 async function fetchEastmoneyFinanceRows(
-  db: D1Database,
+  db: Database,
   normalized: string,
   statementType: StatementType,
   reportType: string,
@@ -598,7 +599,7 @@ function isEastmoneyAnnualIncomeRow(payload: unknown): boolean {
  * the Eastmoney primary path; callers must obtain HKEX verification separately.
  */
 export async function fetchEastmoneyHongKongFinance(
-  db: D1Database,
+  db: Database,
   code: string,
   statementType: StatementType,
   httpOptions?: ExternalHttpOptions,
@@ -682,7 +683,7 @@ function normalizeEastmoneyHongKongFinancePayload(row: Record<string, unknown>):
   return payload;
 }
 
-async function fetchEastmoneyHongKongIncomeSummary(db: D1Database, code: string, httpOptions?: ExternalHttpOptions): Promise<EastmoneyFinanceResponse> {
+async function fetchEastmoneyHongKongIncomeSummary(db: Database, code: string, httpOptions?: ExternalHttpOptions): Promise<EastmoneyFinanceResponse> {
   const url = new URL("https://datacenter.eastmoney.com/securities/api/data/v1/get");
   url.searchParams.set("reportName", "RPT_CUSTOM_HKF10_APPFN_INCOME_SUMMARY");
   url.searchParams.set("columns", "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,START_DATE,REPORT_DATE,FISCAL_YEAR,CURRENCY,ACCOUNT_STANDARD,REPORT_TYPE");
@@ -700,7 +701,7 @@ async function fetchEastmoneyHongKongIncomeSummary(db: D1Database, code: string,
 }
 
 export async function fetchEastmoneyPerformanceReportPage(
-  db: D1Database,
+  db: Database,
   reportDate: string,
   pageNumber: number,
   pageSize: number
@@ -717,7 +718,7 @@ export async function fetchEastmoneyPerformanceReportPage(
 }
 
 export async function fetchEastmoneyPerformanceForecastPage(
-  db: D1Database,
+  db: Database,
   reportDate: string,
   pageNumber: number,
   pageSize: number
@@ -734,7 +735,7 @@ export async function fetchEastmoneyPerformanceForecastPage(
 }
 
 export async function fetchYahooFinance(
-  db: D1Database,
+  db: Database,
   code: string,
   statementType: StatementType,
   httpOptions?: ExternalHttpOptions
@@ -815,7 +816,7 @@ export async function fetchYahooFinance(
 }
 
 export async function fetchEastmoneyDataRows(
-  db: D1Database,
+  db: Database,
   endpoint: string,
   params: Record<string, string>,
   ttlMs = 24 * 60 * 60 * 1000
@@ -831,7 +832,7 @@ export async function fetchEastmoneyDataRows(
 }
 
 export async function fetchEastmoneyDataPage(
-  db: D1Database,
+  db: Database,
   endpoint: string,
   params: Record<string, string>,
   ttlMs = 24 * 60 * 60 * 1000
@@ -886,7 +887,7 @@ function ttlForYahooFinancialResponse(text: string): number {
 }
 
 export async function fetchEastmoneyText(
-  db: D1Database,
+  db: Database,
   url: string,
   referer = "https://fundf10.eastmoney.com/",
   ttlMs = 24 * 60 * 60 * 1000
@@ -912,7 +913,7 @@ function yahooChartSymbol(code: string): string {
 }
 
 export async function fetchNasdaqUSOptionChain(
-  db: D1Database,
+  db: Database,
   rawCode: string,
   httpOptions?: ExternalHttpOptions
 ): Promise<USOptionChain> {
@@ -936,7 +937,7 @@ export async function fetchNasdaqUSOptionChain(
 }
 
 export async function fetchUSOptionChainSummary(
-  db: D1Database,
+  db: Database,
   rawCode: string,
   httpOptions?: ExternalHttpOptions
 ): Promise<USOptionChainSummary> {
@@ -998,7 +999,7 @@ export async function fetchUSOptionChainSummary(
 }
 
 export async function fetchUSOptionExpiration(
-  db: D1Database,
+  db: Database,
   rawCode: string,
   expirationDate: string,
   httpOptions?: ExternalHttpOptions
@@ -1019,7 +1020,7 @@ export async function fetchUSOptionExpiration(
 }
 
 async function fetchNasdaqUSOptionChainForAsset(
-  db: D1Database,
+  db: Database,
   code: string,
   symbol: string,
   assetClass: string,
@@ -1044,7 +1045,7 @@ async function fetchNasdaqUSOptionChainForAsset(
 }
 
 async function fetchNasdaqUSOptionChainRange(
-  db: D1Database,
+  db: Database,
   code: string,
   symbol: string,
   assetClass: string,
@@ -1091,7 +1092,7 @@ async function fetchNasdaqUSOptionChainRange(
 }
 
 async function fetchNasdaqUSOptionChainPage(
-  db: D1Database,
+  db: Database,
   code: string,
   symbol: string,
   assetClass: string,
@@ -1239,7 +1240,7 @@ function normalizeNasdaqUSOptionChain(
 }
 
 async function fetchYahooUSOptionMetadata(
-  db: D1Database,
+  db: Database,
   symbol: string,
   httpOptions?: ExternalHttpOptions
 ): Promise<{ symbol: string; currentPrice: number; expirationDates: number[] }> {
@@ -1256,7 +1257,7 @@ async function fetchYahooUSOptionMetadata(
 }
 
 async function fetchYahooUSOptionExpirationAndCache(
-  db: D1Database,
+  db: Database,
   prefix: string,
   code: string,
   symbol: string,
@@ -1276,7 +1277,7 @@ async function fetchYahooUSOptionExpirationAndCache(
 }
 
 async function fetchYahooUSOptionPage(
-  db: D1Database,
+  db: Database,
   symbol: string,
   timestamp: number | null,
   httpOptions?: ExternalHttpOptions
@@ -1422,7 +1423,7 @@ function getOptionExpiration(expirations: Map<string, USOptionExpiration>, date:
   return item;
 }
 
-async function getCachedUSOptionChain(db: D1Database, prefix: string): Promise<USOptionChain | null> {
+async function getCachedUSOptionChain(db: Database, prefix: string): Promise<USOptionChain | null> {
   const row = await getKvCacheByLegacyKey(db, prefix);
   if (row) {
     return JSON.parse(row.valueJson) as USOptionChain;
@@ -1466,7 +1467,7 @@ async function getCachedUSOptionChain(db: D1Database, prefix: string): Promise<U
   };
 }
 
-async function getCachedUSOptionChainSummary(db: D1Database, prefix: string): Promise<USOptionChainSummary | null> {
+async function getCachedUSOptionChainSummary(db: Database, prefix: string): Promise<USOptionChainSummary | null> {
   const row = await getKvCacheByLegacyKey(db, `${prefix}.summary`);
   if (!row) {
     return null;
@@ -1474,7 +1475,7 @@ async function getCachedUSOptionChainSummary(db: D1Database, prefix: string): Pr
   return JSON.parse(row.valueJson) as USOptionChainSummary;
 }
 
-async function putCachedUSOptionChainSummary(db: D1Database, prefix: string, summary: USOptionChainSummary): Promise<void> {
+async function putCachedUSOptionChainSummary(db: Database, prefix: string, summary: USOptionChainSummary): Promise<void> {
   const expiresAt = marketDataCacheExpiresAtMsForCode(summary.code, summary.updatedAt);
   const meta: USOptionChainSummaryMeta = {
     code: summary.code,
@@ -1492,7 +1493,7 @@ async function putCachedUSOptionChainSummary(db: D1Database, prefix: string, sum
   });
 }
 
-async function getCachedUSOptionExpiration(db: D1Database, prefix: string, date: string): Promise<USOptionExpiration | null> {
+async function getCachedUSOptionExpiration(db: Database, prefix: string, date: string): Promise<USOptionExpiration | null> {
   const row = await getKvCacheByLegacyKey(db, `${prefix}.expiration.${date}`);
   if (!row) {
     return null;
@@ -1501,7 +1502,7 @@ async function getCachedUSOptionExpiration(db: D1Database, prefix: string, date:
 }
 
 async function putCachedUSOptionExpiration(
-  db: D1Database,
+  db: Database,
   prefix: string,
   date: string,
   expiration: USOptionExpiration,
@@ -1516,7 +1517,7 @@ async function putCachedUSOptionExpiration(
   });
 }
 
-async function putCachedUSOptionChain(db: D1Database, prefix: string, chain: USOptionChain): Promise<void> {
+async function putCachedUSOptionChain(db: Database, prefix: string, chain: USOptionChain): Promise<void> {
   const now = Date.now();
   const expiresAt = marketDataCacheExpiresAtMsForCode(chain.code, now);
   const meta: USOptionChainMeta = {
@@ -1599,7 +1600,7 @@ function yahooFinanceHeaders(symbol: string): Record<string, string> {
   };
 }
 
-export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string): Promise<CompanyOverview> {
+export async function fetchEastmoneyCompanyOverview(db: Database, code: string): Promise<CompanyOverview> {
   const normalized = normalizeSecurityCode(code);
   const secid = eastmoneySecId(normalized);
   if (!secid) {
@@ -1644,7 +1645,7 @@ export async function fetchEastmoneyCompanyOverview(db: D1Database, code: string
 }
 
 /** Eastmoney F10 is the source of truth for the EM2016 three-level industry path. */
-async function fetchEastmoneyCompanyProfile(db: D1Database, code: string): Promise<CompanyOverview["companyProfile"]> {
+async function fetchEastmoneyCompanyProfile(db: Database, code: string): Promise<CompanyOverview["companyProfile"]> {
   const suffix = securitySuffix(code);
   if (suffix !== "SH" && suffix !== "SZ" && suffix !== "BJ") return null;
   const url = new URL("https://datacenter.eastmoney.com/securities/api/data/v1/get");
@@ -1683,7 +1684,7 @@ async function fetchEastmoneyCompanyProfile(db: D1Database, code: string): Promi
 }
 
 export async function fetchEastmoneyCompanyNotices(
-  db: D1Database,
+  db: Database,
   code: string,
   page = 1,
   pageSize = 20

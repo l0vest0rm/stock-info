@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import mappingConfig from "../../../../config/research-information-evidence-mapping.json";
 import { filterExactCompanyCodeMappedRows } from "../../knowledge/application/company-code-mappings";
 import {
@@ -82,7 +83,7 @@ export type ResearchStatutoryEvidenceCandidateProvenance = {
  * for a new research write; callers must inspect `eligibility` or use the
  * asserting variant below.
  */
-export async function loadSourceEvidenceReference(db: D1Database, evidenceReferenceId: string): Promise<SourceEvidenceReference | null> {
+export async function loadSourceEvidenceReference(db: Database, evidenceReferenceId: string): Promise<SourceEvidenceReference | null> {
   const row = await db.prepare(`select reference.evidence_reference_id as evidenceReferenceId,
       reference.candidate_id as referenceCandidateId, reference.candidate_review_id as referenceCandidateReviewId,
       reference.security_code as referenceSecurityCode, reference.target_module as referenceTargetModule,
@@ -135,7 +136,7 @@ export async function loadSourceEvidenceReference(db: D1Database, evidenceRefere
 
 /** Rejects revoked, superseded, malformed, cross-security, or wrong-target evidence. */
 export async function requireEligibleSourceEvidenceReference(
-  db: D1Database,
+  db: Database,
   evidenceReferenceId: string,
   guard: SourceEvidenceReferenceGuard = {},
 ): Promise<SourceEvidenceReference> {
@@ -160,7 +161,7 @@ export async function requireEligibleSourceEvidenceReference(
  * Materializes only configured, exact code-mapped information records.  It
  * never creates an operating/market row: the output is a review candidate.
  */
-export async function refreshResearchInformationEvidenceCandidates(db: D1Database, securityCode: string, createdAt = Date.now()): Promise<{ created: number; existing: number }> {
+export async function refreshResearchInformationEvidenceCandidates(db: Database, securityCode: string, createdAt = Date.now()): Promise<{ created: number; existing: number }> {
   const code = required(securityCode, "securityCode").toUpperCase();
   const records = await db.prepare(`select record.information_id as informationId, record.entity, record.information_type as informationType,
       record.category, record.period, record.statement, result.result_id as resultId, result.run_id as runId,
@@ -199,7 +200,7 @@ export async function refreshResearchInformationEvidenceCandidates(db: D1Databas
  * can add a second source constraint without becoming a new extraction path.
  */
 export async function materializeResearchInformationEvidenceCandidates(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   records: ResearchInformationEvidenceSourceRecord[],
   createdAt = Date.now(),
@@ -247,7 +248,7 @@ function matchesStatementGuard(mapping: Mapping, statement: string): boolean {
   return !terms?.length || terms.every((term) => statement.includes(term));
 }
 
-export async function loadResearchInformationEvidenceCandidates(db: D1Database, securityCode: string, limit = 200): Promise<Array<ResearchInformationEvidenceCandidate & { latestReview: ResearchInformationEvidenceCandidateReview | null; reusableEvidenceReference: ResearchReusableEvidenceReference | null; statutoryProvenance: ResearchStatutoryEvidenceCandidateProvenance | null }>> {
+export async function loadResearchInformationEvidenceCandidates(db: Database, securityCode: string, limit = 200): Promise<Array<ResearchInformationEvidenceCandidate & { latestReview: ResearchInformationEvidenceCandidateReview | null; reusableEvidenceReference: ResearchReusableEvidenceReference | null; statutoryProvenance: ResearchStatutoryEvidenceCandidateProvenance | null }>> {
   const rows = await db.prepare(`select candidate.*, review.candidate_review_id as reviewId, review.decision as reviewDecision,
       review.review_note as reviewNote, review.reviewed_by as reviewedBy, review.reviewed_at as reviewedAt, review.created_at as reviewCreatedAt,
       reference.evidence_reference_id as evidenceReferenceId, reference.candidate_review_id as evidenceCandidateReviewId,
@@ -280,7 +281,7 @@ export async function loadResearchInformationEvidenceCandidates(db: D1Database, 
 }
 
 /** Appends a review; accepting creates exactly one reusable research_record reference and no domain fact. */
-export async function reviewResearchInformationEvidenceCandidate(db: D1Database, input: EvidenceCandidateReviewWrite): Promise<{ review: ResearchInformationEvidenceCandidateReview; reusableEvidenceReference: ResearchReusableEvidenceReference | null }> {
+export async function reviewResearchInformationEvidenceCandidate(db: Database, input: EvidenceCandidateReviewWrite): Promise<{ review: ResearchInformationEvidenceCandidateReview; reusableEvidenceReference: ResearchReusableEvidenceReference | null }> {
   const candidate = await candidateById(db, input.candidateId);
   if (!candidate) throw new Error("research information evidence candidate not found");
   if (input.expectedSecurityCode && candidate.securityCode !== input.expectedSecurityCode.trim().toUpperCase()) {
@@ -292,7 +293,7 @@ export async function reviewResearchInformationEvidenceCandidate(db: D1Database,
     decision: input.decision, reviewNote: required(input.reviewNote, "reviewNote"), reviewedBy: required(input.reviewedBy ?? "local-user", "reviewedBy"), reviewedAt, createdAt: reviewedAt,
   };
   assertEvidenceCandidateReview(review);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_information_evidence_candidate_reviews (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_information_evidence_candidate_reviews (
       candidate_review_id, candidate_id, decision, review_note, reviewed_by, reviewed_at, created_at
     ) values (?, ?, ?, ?, ?, ?, ?)`)
     .bind(review.candidateReviewId, review.candidateId, review.decision, review.reviewNote, review.reviewedBy, review.reviewedAt, review.createdAt)];
@@ -314,7 +315,7 @@ export async function reviewResearchInformationEvidenceCandidate(db: D1Database,
   return { review, reusableEvidenceReference };
 }
 
-async function candidateById(db: D1Database, candidateId: string): Promise<ResearchInformationEvidenceCandidate | null> {
+async function candidateById(db: Database, candidateId: string): Promise<ResearchInformationEvidenceCandidate | null> {
   const row = await db.prepare("select * from research_information_evidence_candidates where candidate_id=?").bind(required(candidateId, "candidateId")).first<Row>();
   return row ? mapCandidate(row) : null;
 }

@@ -21,7 +21,7 @@ const styles = `
 .ia{--ink:#183a37;--muted:#637c78;--line:#d8e8e4;--paper:#fff;--ground:#f4f8f7;--teal:#08786c;--deep:#075d57;min-height:calc(100vh - 7rem);padding:26px 0 56px;background:var(--ground);color:var(--ink)}.ia *{box-sizing:border-box}.ia-shell{max-width:1180px}.ia-hero{padding:28px;border-radius:20px;background:linear-gradient(125deg,#143c47,#08786c);color:#fff;box-shadow:0 16px 38px #143d3926}.ia-kicker{font-size:11px;font-weight:850;letter-spacing:.12em;color:#c0e8df}.ia-hero h1{margin:9px 0 7px;font-size:30px;letter-spacing:-.025em}.ia-hero p{max-width:760px;margin:0;color:#d2ebe5;font-size:14px;line-height:1.65}.ia-document{margin-top:16px}.ia-document.has-outline{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;align-items:start}.ia-outline{position:sticky;top:16px;padding:16px 13px;border:1px solid var(--line);border-radius:15px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-outline h2{margin:0 0 9px;padding:0;border:0;color:#315b55;font-size:13px}.ia-outline button{display:block;width:100%;border:0;border-radius:6px;background:transparent;padding:6px 7px;color:#476762;font:600 12px/1.45 inherit;text-align:left;cursor:pointer}.ia-outline button:hover{background:#edf8f4;color:var(--deep)}.ia-report{padding:23px 25px;border:1px solid var(--line);border-radius:17px;background:var(--paper);box-shadow:0 5px 16px #123e360d}.ia-report-head{display:flex;align-items:start;justify-content:space-between;gap:16px}.ia-report h2{margin:0;font-size:20px;letter-spacing:-.01em}.ia-report-head p{margin:6px 0 0;color:var(--muted);font-size:12px;line-height:1.6}.ia-controls{display:flex;align-items:end;gap:9px;flex-wrap:wrap;justify-content:flex-end}.ia-controls label{display:grid;gap:4px;color:#476762;font-size:10px;font-weight:800}.ia-controls select{border:1px solid #b6dcd3;border-radius:8px;background:#fff;padding:7px 8px;color:#174b45;font:600 11px inherit}.ia-refresh{flex:none;border:1px solid #b6dcd3;border-radius:9px;background:#fff;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-refresh:disabled{opacity:.58;cursor:wait}.ia-status{display:inline-block;margin-left:8px;border-radius:999px;padding:3px 8px;background:#eff8f5;color:#076b60;font-size:11px}.ia-status.failed{background:#fff0ed;color:#a64032}.ia-meta{display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:9px;color:#738783;font-size:11px;line-height:1.5}.ia-message{margin-top:17px;border:1px dashed #c7dad5;border-radius:12px;padding:15px;color:#58716d;font-size:13px;line-height:1.65}.ia-message.error{border-style:solid;border-color:#edc8c2;background:#fff5f3;color:#983e34}.ia-markdown{margin-top:22px;color:#203d39;font-size:15px;line-height:1.8}.ia-markdown h1{scroll-margin-top:18px;margin:31px 0 11px;padding-top:21px;border-top:1px solid #dceae6;color:var(--deep);font-size:22px}.ia-markdown h1:first-child{margin-top:0;padding-top:0;border-top:0}.ia-markdown h2{margin:22px 0 8px;color:#174b45;font-size:18px}.ia-markdown h3{margin:17px 0 7px;color:#285852;font-size:15px}.ia-markdown p{margin:11px 0;white-space:pre-wrap}.ia-markdown a{color:var(--teal);text-decoration:underline;text-underline-offset:2px}.ia-markdown ul,.ia-markdown ol{margin:12px 0;padding-left:24px}.ia-markdown li+li{margin-top:6px}.ia-markdown blockquote{margin:14px 0;padding:8px 14px;border-left:4px solid #b9d9d1;background:#f6fbf9;color:#456762}.ia-markdown table{width:100%;margin:14px 0;border-collapse:collapse;font-size:14px}.ia-markdown th,.ia-markdown td{border:1px solid #dceae6;padding:8px 10px;vertical-align:top}.ia-markdown th{background:#f3faf7}.ia-markdown code{padding:1px 4px;border-radius:4px;background:#f1f6f4;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}.ia-markdown pre{margin:14px 0;padding:12px 14px;border-radius:10px;background:#f1f6f4;overflow:auto}.ia-markdown pre code{padding:0;background:transparent}.ia-prompt{margin-top:17px;border:1px solid #d5e7e2;border-radius:12px;background:#fff;padding:12px 15px}.ia-prompt summary{cursor:pointer;color:#174b45;font-size:13px;font-weight:800}.ia-prompt pre{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace}@media(max-width:800px){.ia-document.has-outline{display:block}.ia-outline{position:static;margin-bottom:16px}.ia-outline button{display:inline-block;width:auto;margin-right:3px}}@media(max-width:650px){.ia{padding:13px 0 34px}.ia-hero,.ia-report{padding:18px;border-radius:15px}.ia-hero h1{font-size:25px}.ia-report-head{display:block}.ia-controls{justify-content:flex-start;margin-top:15px}.ia-markdown{font-size:14px}}
 .ia-markdown .ia-inline-icon{display:inline-block;width:1.5em;height:1.5em;margin-right:.18em;object-fit:contain;vertical-align:middle}
 `;
-const recoveryStyles = ".ia-recover{flex:none;border:1px solid #08786c;border-radius:9px;background:#08786c;color:#fff;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-recover:disabled{opacity:.58;cursor:wait}";
+const recoveryStyles = ".ia-recover{flex:none;border:1px solid #08786c;border-radius:9px;background:#08786c;color:#fff;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-recover:disabled{opacity:.58;cursor:wait}.ia-sync{flex:none;border:1px solid #b6dcd3;border-radius:9px;background:#fff;color:#076b60;padding:8px 11px;font:800 12px inherit;cursor:pointer}.ia-sync:disabled{opacity:.58;cursor:wait}";
 
 function securityCodeFromUrl(): string {
   const code = new URLSearchParams(window.location.search).get("code")?.trim().toUpperCase() || DEFAULT_CODE;
@@ -69,7 +69,10 @@ function recoveryStatus(recovery: Recovery | null | undefined): string {
 function reportQualityIssues(markdown: string): string[] {
   const issues: string[] = [];
   if (markdown.length < 800) issues.push("正文少于 800 字");
-  const headings = new Set([...markdown.matchAll(/^# ([1-9]|1[0-2])\. /gm)].map((match) => match[1]));
+  // Keep this reader-side diagnostic aligned with the server acceptance rule:
+  // Markdown may escape an ordered-list separator as `1\\.` while rendering
+  // it as the same visible H1 heading.
+  const headings = new Set([...markdown.matchAll(/^# ([1-9]|1[0-2])(?:\\)?\. /gm)].map((match) => match[1]));
   if (headings.size !== 12) issues.push("缺少完整的 12 个一级章节");
   return issues;
 }
@@ -123,6 +126,7 @@ const App = defineComponent({
     const loading = ref(true);
     const error = ref<string | null>(null);
     const reasoningEffort = ref<ReasoningEffort>("xhigh");
+    const syncing = ref(false);
     let pollTimer: number | null = null;
     let companyInfoRequested = false;
     const load = async () => {
@@ -145,6 +149,14 @@ const App = defineComponent({
         await request(`/api/research/company/${encodeURIComponent(code)}/investment-analysis/resume`, { method: "POST" });
         await load();
       } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason); }
+    };
+    const sync = async () => {
+      error.value = null;
+      syncing.value = true;
+      try {
+        model.value = await request<InvestmentAnalysis>(`/api/research/company/${encodeURIComponent(code)}/investment-analysis/sync`, { method: "POST" });
+      } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason); }
+      finally { syncing.value = false; }
     };
     const loadCompanyInfo = async () => {
       const year = new Date().getFullYear();
@@ -216,13 +228,13 @@ const App = defineComponent({
             h("section", { class: "ia-report" }, [
               h("div", { class: "ia-report-head" }, [
                 h("div", [h("h2", ["完整投资研究", h("span", { class: `ia-status ${recovery?.phase === "manual_required" || task?.status === "failed" ? "failed" : ""}` }, recoveryStatus(recovery) || taskStatus(task))]), h("p", "一份任务完成公司、行业、竞争、风险与估值分析；刷新会以相同业务 name 提交新任务，taskd 自动替代尚未完成的旧任务。"), task ? h("div", { class: "ia-meta" }, [h("span", `任务名：${task.name || "—"}`), h("span", `创建：${date(task.createdAt)}`), task.completedAt ? h("span", `完成：${date(task.completedAt)}`) : null]) : null]),
-                h("div", { class: "ia-controls" }, [h("label", [h("span", "推理深度"), h("select", { value: reasoningEffort.value, disabled: pending || recovering, onChange: (event: Event) => { reasoningEffort.value = (event.target as HTMLSelectElement).value as ReasoningEffort; } }, reasoningEffortOptions.map((value) => h("option", { value }, value)))]), model.value?.resume?.available ? h("button", { class: "ia-recover", disabled: pending || recovering, onClick: () => { void resume(); } }, "找回已提交结果") : null, h("button", { class: "ia-refresh", disabled: pending || recovering, onClick: () => { void refresh(); } }, pending || recovering ? recoveryStatus(recovery) || taskStatus(task) : markdown ? "重新生成报告" : "生成完整研究")]),
+                h("div", { class: "ia-controls" }, [h("label", [h("span", "推理深度"), h("select", { value: reasoningEffort.value, disabled: pending || recovering || syncing.value, onChange: (event: Event) => { reasoningEffort.value = (event.target as HTMLSelectElement).value as ReasoningEffort; } }, reasoningEffortOptions.map((value) => h("option", { value }, value)))]), task ? h("button", { class: "ia-sync", disabled: syncing.value, onClick: () => { void sync(); } }, syncing.value ? "正在同步" : "同步 taskd 状态") : null, model.value?.resume?.available ? h("button", { class: "ia-recover", disabled: pending || recovering || syncing.value, onClick: () => { void resume(); } }, "找回已提交结果") : null, h("button", { class: "ia-refresh", disabled: pending || recovering || syncing.value, onClick: () => { void refresh(); } }, pending || recovering ? recoveryStatus(recovery) || taskStatus(task) : markdown ? "重新生成报告" : "生成完整研究")]),
               ]),
               error.value ? h("div", { class: "ia-message error", role: "alert" }, error.value) : null,
               recovery?.phase === "manual_required" ? h("div", { class: "ia-message error", role: "status" }, recovery.reason || "无法确认原会话，需人工处理。") : null,
               recovery?.phase === "recovering" ? h("div", { class: "ia-message", role: "status" }, recovery.reason || "正在找回已提交的 ChatGPT 结果（不会重发）。") : null,
               task?.status === "failed" && recovery?.phase !== "manual_required" ? h("div", { class: "ia-message error", role: "status" }, model.value?.resume?.available ? "检测到已提交任务；可只读找回原 ChatGPT 结果，不会重发提示词。" : task.errorMessage || "taskd 任务执行失败；可重新生成。") : null,
-              pending && !recovering ? h("div", { class: "ia-message", role: "status" }, "任务已提交给 taskd；页面每 5 秒按业务 name 查询状态，报告完成并通过质量校验后显示。") : null,
+              pending && !recovering ? h("div", { class: "ia-message", role: "status" }, "任务已提交给 taskd；页面每 5 秒读取本地状态，本地调度器周期同步 taskd，报告完成并通过质量校验后显示。") : null,
               reportVersion?.status === "legacy" ? h("div", { class: "ia-message", role: "status" }, `这份已完成报告使用 ${reportVersion.inputSchemaVersion || "旧版"} 输入；当前生成使用 ${reportVersion.currentInputSchemaVersion || "最新版"}。报告已保留供阅读，是否重新生成由你决定。`) : null,
               reportVersion?.status === "unknown" ? h("div", { class: "ia-message", role: "status" }, "这份已完成报告未记录输入版本；报告已保留供阅读，是否重新生成由你决定。") : null,
               issues.length ? h("div", { class: "ia-message error", role: "alert" }, `已拒绝不符合报告契约的结果：${issues.join("；")}`) : null,

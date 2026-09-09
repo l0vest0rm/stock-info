@@ -39,9 +39,9 @@ function requiredText(value: string, label: string) { const result = value.trim(
 function input(key: string, label: string, value: number, unit: string) { return { key, label, value, unit, epistemicType: "analysis_assumption", sourceReferences: [] }; }
 function observedInput(key: string, label: string, value: number, unit: string, url: string) { return { key, label, value, unit, epistemicType: "observed_fact", sourceReferences: [{ sourceKind: "external_url", url: requiredUrl(url), title: label }] }; }
 function requiredUrl(value: string) { const url = value.trim(); if (!/^https?:\/\//i.test(url)) throw new Error("cross-currency FX requires an http(s) source URL"); return url; }
-function externalReference(url: string, title: string) { return { sourceKind: "external_url", url: requiredUrl(url), title }; }
+function externalReference(url: string, title: string) { return { sourceKind: "external_url" as const, url: requiredUrl(url), title }; }
 function timestamp(value: string, label: string) { const result = Date.parse(value); if (!Number.isFinite(result) || result <= 0) throw new Error(`${label}必须为有效日期`); return result; }
-function optionalPercent(value: string) { return value.trim() ? percent(value) : null; }
+function optionalPercent(value: string) { return value.trim() ? percent(value) : undefined; }
 function percent(value: string) { return number(value) / 100; }
 function toForecast(row: Row): OperatingForecastYear { return { fiscalYear: Number(row.fiscalYear), revenue: number(row.revenue), ebitMargin: percent(row.ebitMargin), taxRate: percent(row.taxRate), depreciationAmortization: number(row.depreciationAmortization), capitalExpenditure: number(row.capitalExpenditure), changeInNetWorkingCapital: number(row.changeInNetWorkingCapital) }; }
 function formatted(value: number, currency: string) { return `${value.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} ${currency}`; }

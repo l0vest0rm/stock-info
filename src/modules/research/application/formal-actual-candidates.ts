@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import type { ForecastAccountingBasis, ForecastMetric, ForecastOwnershipBasis, ForecastShareBasis } from "../domain/forecast-consolidation";
 import {
   FORMAL_ACTUAL_CANDIDATE_RULE_VERSION,
@@ -34,7 +35,7 @@ export type FormalActualCandidateMaterialization = {
  * D1.  It deliberately performs no fetch and never upgrades conflict or
  * unverified rows to an actual.
  */
-export async function refreshFormalActualCandidates(db: D1Database, securityCode: string, createdAt = Date.now()): Promise<FormalActualCandidate[]> {
+export async function refreshFormalActualCandidates(db: Database, securityCode: string, createdAt = Date.now()): Promise<FormalActualCandidate[]> {
   return (await materializeFormalActualCandidates(db, [securityCode], createdAt)).created;
 }
 
@@ -52,7 +53,7 @@ export async function refreshFormalActualCandidates(db: D1Database, securityCode
  * candidates and cannot crowd out actionable human review.
  */
 export async function materializeFormalActualCandidates(
-  db: D1Database,
+  db: Database,
   securityCodes: readonly string[],
   createdAt = Date.now(),
 ): Promise<FormalActualCandidateMaterialization> {
@@ -120,7 +121,7 @@ export async function materializeFormalActualCandidates(
  * there is no operator queue or silent semantic choice.
  */
 export async function syncAutomaticFormalActuals(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   createdAt = Date.now(),
 ): Promise<{
@@ -200,7 +201,7 @@ export async function syncAutomaticFormalActuals(
 export const AUTOMATIC_FORMAL_ACTUAL_RULE_VERSION = "formal-actual-auto.v1";
 
 async function automaticBasis(
-  db: D1Database,
+  db: Database,
   candidate: FormalActualCandidate,
 ): Promise<{ basis: { accountingBasis: ForecastAccountingBasis; ownershipBasis: ForecastOwnershipBasis } | null; reason: string }> {
   if (!candidate.forecastMetric) return { basis: null, reason: "forecast_metric_dictionary_mapping_missing" };
@@ -248,7 +249,7 @@ function ownershipBasisFromControlledScope(value: unknown): ForecastOwnershipBas
   return null;
 }
 
-async function automaticCandidateCurrentnessBlock(db: D1Database, candidate: FormalActualCandidate): Promise<string | null> {
+async function automaticCandidateCurrentnessBlock(db: Database, candidate: FormalActualCandidate): Promise<string | null> {
   if (!candidate.statutoryDocumentId || !candidate.statutoryPublishedAt) return "statutory_source_binding_incomplete";
   // A later document is an objectively newer input. A same-day different
   // document has no deterministic order in the source contract, so neither
@@ -273,7 +274,7 @@ async function automaticCandidateCurrentnessBlock(db: D1Database, candidate: For
 }
 
 async function createAutomaticCalibrations(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   actualId: string,
   metric: ForecastMetric,
@@ -299,7 +300,7 @@ async function createAutomaticCalibrations(
 }
 
 /** Returns only candidates eligible for human review; blocked comparisons are source-health evidence, not queue items. */
-export async function loadFormalActualCandidates(db: D1Database, securityCode: string): Promise<FormalActualCandidate[]> {
+export async function loadFormalActualCandidates(db: Database, securityCode: string): Promise<FormalActualCandidate[]> {
   const rows = await db.prepare(`select c.*, d.fact_dictionary_entry_id, d.fact_dictionary_version
     from research_formal_actual_candidates c
     left join research_formal_actual_candidate_dictionary_bindings d on d.candidate_id=c.candidate_id
@@ -328,7 +329,7 @@ export type ReviewFormalActualCandidateInput = {
  * from the immutable candidate and retain the review link in the audit table.
  */
 export async function reviewFormalActualCandidate(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   input: ReviewFormalActualCandidateInput,
 ): Promise<{ review: FormalActualCandidateReview; actualId: string | null }> {
@@ -389,13 +390,13 @@ export async function reviewFormalActualCandidate(
   return { review: await loadCandidateReview(db, input.reviewId), actualId: actual.actualId };
 }
 
-export async function loadCandidateReviews(db: D1Database, securityCode: string): Promise<FormalActualCandidateReview[]> {
+export async function loadCandidateReviews(db: Database, securityCode: string): Promise<FormalActualCandidateReview[]> {
   const rows = await db.prepare(`select r.* from research_formal_actual_candidate_reviews r
     join research_formal_actual_candidates c on c.candidate_id=r.candidate_id where c.security_code=? order by r.reviewed_at desc`).bind(securityCode).all<Row>();
   return rows.results.map(mapReview);
 }
 
-export async function enqueueModelReviews(db: D1Database, securityCode: string, triggerKind: ResearchModelReviewItem["triggerKind"], triggerId: string, reason: string, evidence: Record<string, unknown>, createdAt = Date.now()): Promise<number> {
+export async function enqueueModelReviews(db: Database, securityCode: string, triggerKind: ResearchModelReviewItem["triggerKind"], triggerId: string, reason: string, evidence: Record<string, unknown>, createdAt = Date.now()): Promise<number> {
   const targets = await db.batch([
     db.prepare(`select model_version_id as id, 'dcf' as kind from research_valuation_model_versions where security_code=? and status<>'superseded'`).bind(securityCode),
     db.prepare(`select model_version_id as id, 'reverse_dcf' as kind from research_reverse_valuation_model_versions where security_code=? and status<>'superseded'`).bind(securityCode),
@@ -421,7 +422,7 @@ export async function enqueueModelReviews(db: D1Database, securityCode: string, 
  * silently widen its target set.
  */
 export async function enqueueSelectedModelReviews(
-  db: D1Database,
+  db: Database,
   input: {
     securityCode: string;
     triggerKind: ResearchModelReviewItem["triggerKind"];
@@ -445,7 +446,7 @@ export async function enqueueSelectedModelReviews(
   return created;
 }
 
-export async function loadModelReviewItems(db: D1Database, securityCode: string): Promise<ResearchModelReviewItem[]> {
+export async function loadModelReviewItems(db: Database, securityCode: string): Promise<ResearchModelReviewItem[]> {
   const rows = await db.prepare(`select * from research_model_review_items where security_code=? order by case state when 'open' then 0 else 1 end, created_at desc`).bind(securityCode).all<Row>();
   return rows.results.map(mapModelReview);
 }
@@ -460,7 +461,7 @@ export type ResolveModelReviewItemInput = {
   reviewedAt?: number;
 };
 
-export async function resolveModelReviewItem(db: D1Database, securityCode: string, reviewItemId: string, input: ResolveModelReviewItemInput): Promise<ResearchModelReviewItem> {
+export async function resolveModelReviewItem(db: Database, securityCode: string, reviewItemId: string, input: ResolveModelReviewItemInput): Promise<ResearchModelReviewItem> {
   if (!(["acknowledged", "resolved", "not_applicable"] as const).includes(input.state)) throw new Error("invalid model review state");
   assertText(input.actionId, "actionId"); assertText(input.resolutionNote, "resolutionNote"); assertText(input.actedBy, "actedBy");
   const followUpTargetKind = input.followUpTargetKind ?? null;
@@ -484,7 +485,7 @@ export async function resolveModelReviewItem(db: D1Database, securityCode: strin
   return item;
 }
 
-export async function loadModelReviewActions(db: D1Database, securityCode: string): Promise<ResearchModelReviewAction[]> {
+export async function loadModelReviewActions(db: Database, securityCode: string): Promise<ResearchModelReviewAction[]> {
   const rows = await db.prepare(`select a.* from research_model_review_item_actions a
     join research_model_review_items i on i.review_item_id=a.review_item_id
     where i.security_code=? order by a.acted_at desc, a.action_id desc`).bind(securityCode).all<Row>();
@@ -519,7 +520,7 @@ export function materializeFormalActualCandidate(verification: Awaited<ReturnTyp
   };
 }
 
-async function loadAllFinancialStatutoryVerifications(db: D1Database, securityCode: string) {
+async function loadAllFinancialStatutoryVerifications(db: Database, securityCode: string) {
   const all: Awaited<ReturnType<typeof loadFinancialStatutoryVerifications>> = [];
   let offset = 0;
   const pageSize = 500;
@@ -566,32 +567,32 @@ function candidateSourceBinding(
   };
 }
 
-async function loadCandidate(db: D1Database, candidateId: string, securityCode: string): Promise<FormalActualCandidate> {
+async function loadCandidate(db: Database, candidateId: string, securityCode: string): Promise<FormalActualCandidate> {
   const row = await db.prepare(`select c.*, d.fact_dictionary_entry_id, d.fact_dictionary_version
     from research_formal_actual_candidates c
     left join research_formal_actual_candidate_dictionary_bindings d on d.candidate_id=c.candidate_id
     where c.candidate_id=? and c.security_code=?`).bind(candidateId, securityCode).first<Row>();
   if (!row) throw new Error("formal actual candidate not found"); return mapCandidate(row);
 }
-async function insertReview(db: D1Database, input: ReviewFormalActualCandidateInput & { candidate: FormalActualCandidate; actualId: string | null; reviewedAt: number }) {
+async function insertReview(db: Database, input: ReviewFormalActualCandidateInput & { candidate: FormalActualCandidate; actualId: string | null; reviewedAt: number }) {
   await db.prepare(`insert into research_formal_actual_candidate_reviews (
     review_id, candidate_id, decision, reviewer, reason, accounting_basis, ownership_basis, share_basis, actual_id, reviewed_at, created_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(input.reviewId, input.candidate.candidateId, input.decision, input.reviewer, input.reason,
       input.accountingBasis ?? null, input.ownershipBasis ?? null, input.shareBasis ?? null, input.actualId, input.reviewedAt, input.reviewedAt).run();
 }
-async function loadCandidateReview(db: D1Database, reviewId: string): Promise<FormalActualCandidateReview> {
+async function loadCandidateReview(db: Database, reviewId: string): Promise<FormalActualCandidateReview> {
   const row = await db.prepare(`select * from research_formal_actual_candidate_reviews where review_id=?`).bind(reviewId).first<Row>();
   if (!row) throw new Error("formal actual candidate review not found"); return mapReview(row);
 }
-async function companyIdForSecurity(db: D1Database, securityCode: string): Promise<string | null> { const row = await db.prepare(`select company_id as companyId from research_listed_securities where security_code=?`).bind(securityCode).first<Row>(); return nullable(row?.companyId); }
-async function assertRestatementCandidateLineage(db: D1Database, securityCode: string, actualId: string): Promise<void> {
+async function companyIdForSecurity(db: Database, securityCode: string): Promise<string | null> { const row = await db.prepare(`select company_id as companyId from research_listed_securities where security_code=?`).bind(securityCode).first<Row>(); return nullable(row?.companyId); }
+async function assertRestatementCandidateLineage(db: Database, securityCode: string, actualId: string): Promise<void> {
   const prior = await db.prepare(`select r.actual_id as actualId from research_formal_actual_candidate_reviews r
     join research_formal_actual_candidates c on c.candidate_id=r.candidate_id
     where r.actual_id=? and r.decision='accepted' and c.security_code=? limit 1`).bind(actualId, securityCode).first<Row>();
   if (!prior) throw new Error("restated formal actual must supersede an accepted statutory candidate actual");
 }
-async function assertCandidateHasNoLaterStatutoryDocument(db: D1Database, candidate: FormalActualCandidate): Promise<void> {
+async function assertCandidateHasNoLaterStatutoryDocument(db: Database, candidate: FormalActualCandidate): Promise<void> {
   // Candidate acceptance already requires both values. Keep this guard
   // defensive so a malformed historical row cannot bypass it through a
   // direct API call.

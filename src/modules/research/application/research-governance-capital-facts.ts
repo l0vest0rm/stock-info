@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import {
   assertGovernanceCapitalCandidateReview,
   assertGovernanceCapitalFactVersion,
@@ -36,7 +37,7 @@ export type GovernanceCapitalFactCandidateReviewWrite = {
 
 /** Materializes configured governance/capital candidates only from an exact
  * company-code mapping. It never interprets the statement or writes a fact. */
-export async function refreshResearchGovernanceCapitalFactCandidates(db: D1Database, securityCode: string, createdAt = Date.now()): Promise<{ created: number; existing: number }> {
+export async function refreshResearchGovernanceCapitalFactCandidates(db: Database, securityCode: string, createdAt = Date.now()): Promise<{ created: number; existing: number }> {
   const code = required(securityCode, "securityCode").toUpperCase();
   const records = await db.prepare(`select record.information_id as informationId, record.entity, record.information_type as informationType,
       record.category, record.period, record.statement, result.result_id as resultId, result.run_id as runId,
@@ -74,7 +75,7 @@ export async function refreshResearchGovernanceCapitalFactCandidates(db: D1Datab
   return { created, existing };
 }
 
-export async function loadResearchGovernanceCapitalFactCandidates(db: D1Database, securityCode: string, limit = 200): Promise<Array<ResearchGovernanceCapitalFactCandidate & { latestReview: ResearchGovernanceCapitalFactCandidateReview | null; factVersion: ResearchGovernanceCapitalFactVersion | null }>> {
+export async function loadResearchGovernanceCapitalFactCandidates(db: Database, securityCode: string, limit = 200): Promise<Array<ResearchGovernanceCapitalFactCandidate & { latestReview: ResearchGovernanceCapitalFactCandidateReview | null; factVersion: ResearchGovernanceCapitalFactVersion | null }>> {
   const rows = await db.prepare(`select candidate.*, review.candidate_review_id as reviewId, review.decision as reviewDecision,
       review.review_note as reviewNote, review.reviewed_by as reviewedBy, review.reviewed_at as reviewedAt, review.created_at as reviewCreatedAt,
       fact.governance_capital_fact_version_id as factVersionId, fact.candidate_review_id as factCandidateReviewId,
@@ -98,7 +99,7 @@ export async function loadResearchGovernanceCapitalFactCandidates(db: D1Database
   });
 }
 
-export async function loadResearchGovernanceCapitalFactLedger(db: D1Database, securityCode: string) {
+export async function loadResearchGovernanceCapitalFactLedger(db: Database, securityCode: string) {
   try {
     const rows = await db.prepare(`select governance_capital_fact_version_id, candidate_review_id, supersedes_fact_version_id, company_id, security_code,
       fact_key, fact_status, value_kind, value_number, value_range_lower, value_range_upper, value_text, unit, as_of, period, source_authority,
@@ -115,14 +116,14 @@ export async function loadResearchGovernanceCapitalFactLedger(db: D1Database, se
 
 /** Appends an audit review. Only acceptance writes one immutable structured fact
  * version, and its source chain is wholly derived from the selected candidate. */
-export async function reviewResearchGovernanceCapitalFactCandidate(db: D1Database, input: GovernanceCapitalFactCandidateReviewWrite): Promise<{ review: ResearchGovernanceCapitalFactCandidateReview; factVersion: ResearchGovernanceCapitalFactVersion | null }> {
+export async function reviewResearchGovernanceCapitalFactCandidate(db: Database, input: GovernanceCapitalFactCandidateReviewWrite): Promise<{ review: ResearchGovernanceCapitalFactCandidateReview; factVersion: ResearchGovernanceCapitalFactVersion | null }> {
   const candidate = await candidateById(db, input.candidateId);
   if (!candidate) throw new Error("governance/capital candidate not found");
   if (input.expectedSecurityCode && candidate.securityCode !== input.expectedSecurityCode.trim().toUpperCase()) throw new Error("governance/capital candidate does not belong to requested security");
   const reviewedAt = input.reviewedAt ?? Date.now();
   const review: ResearchGovernanceCapitalFactCandidateReview = { candidateReviewId: required(input.candidateReviewId, "candidateReviewId"), candidateId: candidate.candidateId, decision: input.decision, reviewNote: required(input.reviewNote, "reviewNote"), reviewedBy: required(input.reviewedBy ?? "local-user", "reviewedBy"), reviewedAt, createdAt: reviewedAt };
   assertGovernanceCapitalCandidateReview(review);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_governance_capital_fact_candidate_reviews (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_governance_capital_fact_candidate_reviews (
     candidate_review_id, candidate_id, decision, review_note, reviewed_by, reviewed_at, created_at
   ) values (?, ?, ?, ?, ?, ?, ?)`)
     .bind(review.candidateReviewId, review.candidateId, review.decision, review.reviewNote, review.reviewedBy, review.reviewedAt, review.createdAt)];
@@ -157,11 +158,11 @@ export async function reviewResearchGovernanceCapitalFactCandidate(db: D1Databas
   return { review, factVersion };
 }
 
-async function candidateById(db: D1Database, candidateId: string): Promise<ResearchGovernanceCapitalFactCandidate | null> {
+async function candidateById(db: Database, candidateId: string): Promise<ResearchGovernanceCapitalFactCandidate | null> {
   const row = await db.prepare("select * from research_governance_capital_fact_candidates where candidate_id=?").bind(required(candidateId, "candidateId")).first<Row>();
   return row ? mapCandidate(row) : null;
 }
-async function latestFactVersionId(db: D1Database, companyId: string, factKey: string): Promise<string | null> {
+async function latestFactVersionId(db: Database, companyId: string, factKey: string): Promise<string | null> {
   const row = await db.prepare(`select governance_capital_fact_version_id as factVersionId from research_governance_capital_fact_versions
     where company_id=? and fact_key=? order by as_of desc, created_at desc, governance_capital_fact_version_id desc limit 1`).bind(companyId, factKey).first<{ factVersionId: string }>();
   return row?.factVersionId ?? null;

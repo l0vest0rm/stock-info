@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   assertResearchOperatingSourceFact,
   operatingSourceFactConfigVersion,
@@ -22,7 +23,7 @@ export type OperatingSourceFactSection = { availability: "available" | "empty" |
  * accepted evidence reference.  It never writes an operating model, driver
  * plan, scenario, market model, or valuation version.
  */
-export async function recordResearchOperatingSourceFact(db: D1Database, input: OperatingSourceFactWrite): Promise<{ state: "saved" | "unavailable"; operatingSourceFactId: string; reason: "storage_not_initialized" | null }> {
+export async function recordResearchOperatingSourceFact(db: Database, input: OperatingSourceFactWrite): Promise<{ state: "saved" | "unavailable"; operatingSourceFactId: string; reason: "storage_not_initialized" | null }> {
   const evidence = await acceptedEvidenceReference(db, input.evidenceReferenceId, input.expectedSecurityCode, input.operatingCompanyId);
   if (!evidence) throw new Error("accepted reusable evidence reference was not found for a confirmed security of the requested operating company");
   const fact: ResearchOperatingSourceFact = {
@@ -55,7 +56,7 @@ export async function recordResearchOperatingSourceFact(db: D1Database, input: O
 }
 
 /** Facts follow the operating company, while retaining the exact source security. */
-export async function loadResearchOperatingSourceFacts(db: D1Database, query: { operatingCompanyId: string | null; limit?: number }): Promise<OperatingSourceFactSection> {
+export async function loadResearchOperatingSourceFacts(db: Database, query: { operatingCompanyId: string | null; limit?: number }): Promise<OperatingSourceFactSection> {
   if (!query.operatingCompanyId) return { availability: "unavailable", reason: "identity_not_found", items: [] };
   try {
     const rows = await db.prepare(`select fact.*, candidate.target_module as targetModule, candidate.target_field as targetField,
@@ -71,7 +72,7 @@ export async function loadResearchOperatingSourceFacts(db: D1Database, query: { 
 }
 
 type AcceptedEvidence = { securityCode: string; candidateId: string; candidateReviewId: string; targetModule: ResearchInformationEvidenceTargetModule; targetField: string; informationType: string; statement: string };
-async function acceptedEvidenceReference(db: D1Database, evidenceReferenceId: string, expectedSecurityCode: string, operatingCompanyId: string): Promise<AcceptedEvidence | null> {
+async function acceptedEvidenceReference(db: Database, evidenceReferenceId: string, expectedSecurityCode: string, operatingCompanyId: string): Promise<AcceptedEvidence | null> {
   const row = await db.prepare(`select reference.security_code as securityCode, reference.candidate_id as candidateId,
       reference.candidate_review_id as candidateReviewId, candidate.target_module as targetModule, candidate.target_field as targetField,
       candidate.information_type as informationType, candidate.statement as statement, review.decision as decision

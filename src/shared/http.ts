@@ -1,3 +1,4 @@
+import type { Database } from "../platform/contracts";
 import type { Context } from "hono";
 import { getHttpCache, putHttpCache } from "../db/queries";
 import type { ApiFailure, ApiSuccess, Bindings } from "../types";
@@ -62,7 +63,7 @@ export async function fetchJson(url: string, init?: RequestInit): Promise<unknow
 }
 
 export async function cachedFetchJson(
-  db: D1Database,
+  db: Database,
   url: string,
   init?: RequestInit,
   ttlMs = 60 * 60 * 1000,
@@ -73,7 +74,7 @@ export async function cachedFetchJson(
 }
 
 export async function cachedFetchText(
-  db: D1Database,
+  db: Database,
   url: string,
   init?: RequestInit,
   ttlMs = 60 * 60 * 1000,

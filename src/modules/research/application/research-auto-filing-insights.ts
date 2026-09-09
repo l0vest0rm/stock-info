@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import extractionConfig from "../../../../config/research-filing-extraction.json";
 import { requestLocalDirectLlmText } from "../../../shared/local-direct-llm";
 import { isSupportedCompanyCode, normalizeSecurityCode } from "../../../shared/codes";
@@ -101,7 +102,7 @@ export async function extractResearchAutoFilingInsights(env: Bindings, securityC
   return { securityCode: code, documentId: source.documentId, sourceUrl: source.documentUrl, promptVersion: config.version, model: response.model, processedAt: now, items: items.length, materialized, version, guidance, scenarios, cached: false };
 }
 
-export async function loadResearchAutoFilingInsights(db: D1Database, securityCode: string) {
+export async function loadResearchAutoFilingInsights(db: Database, securityCode: string) {
   const rows = await db.prepare(`select registry, statutory_document_id as documentId, document_url as documentUrl, tab_id as tabId,
       coalesce(fact_type, case tab_id when 'business' then 'business_model' when 'market' then 'market_definition' when 'financial' then 'audit' when 'industry' then 'industry_kpi' when 'forecast' then 'management_guidance' when 'risk' then 'risk_exposure' end) as factType,
       fact_key as factKey, title, statement, reported_value as reportedValue,
@@ -124,7 +125,7 @@ export async function loadResearchAutoFilingInsights(db: D1Database, securityCod
  * inferred, or made eligible for valuation.  A provisional single-security
  * issuer domain is sufficient because the projection remains security-bound.
  */
-export async function materializeResearchAutoFilingFactInputs(db: D1Database, securityCode: string, documentId: string, now = Date.now()) {
+export async function materializeResearchAutoFilingFactInputs(db: Database, securityCode: string, documentId: string, now = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   const statutoryDocumentId = required(documentId, "documentId");
   const company = await db.prepare("select company_id as companyId from research_listed_securities where security_code=?").bind(code).first<{ companyId: string | null }>();
@@ -140,7 +141,7 @@ export async function materializeResearchAutoFilingFactInputs(db: D1Database, se
       prompt_version as promptVersion, model, processed_at as processedAt
     from research_auto_filing_insights where security_code=? and statutory_document_id=?`)
     .bind(code, statutoryDocumentId).all<Row>();
-  const statements: D1PreparedStatement[] = [
+  const statements: PreparedStatement[] = [
     db.prepare("delete from research_auto_filing_fact_inputs where security_code=? and statutory_document_id=?").bind(code, statutoryDocumentId),
     ...rows.results.map((row) => {
       const tabId = text(row.tabId) as TabId;
@@ -167,7 +168,7 @@ export async function materializeResearchAutoFilingFactInputs(db: D1Database, se
 /** Records official-document succession and emits automatic module rebuild signals.
  * Older filings remain readable historical evidence; only their current-input
  * role changes.  There is deliberately no human review state in this flow. */
-export async function syncResearchAutoFilingDocumentVersion(db: D1Database, securityCode: string, source: Filing, promptVersion: string, targetModules: TargetModule[], now = Date.now()) {
+export async function syncResearchAutoFilingDocumentVersion(db: Database, securityCode: string, source: Filing, promptVersion: string, targetModules: TargetModule[], now = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   const documentKind = classifyDocumentKind(source);
   const newest = await db.prepare(`select statutory_document_id as documentId, published_at as publishedAt
@@ -177,7 +178,7 @@ export async function syncResearchAutoFilingDocumentVersion(db: D1Database, secu
   const report = await db.prepare(`select max(report_period) as reportPeriod from research_auto_filing_insights where security_code=? and statutory_document_id=?`)
     .bind(code, source.documentId).first<{ reportPeriod: string | null }>();
   const versionId = `auto-filing-document-version:${code}:${source.documentId}`;
-  const statements: D1PreparedStatement[] = [];
+  const statements: PreparedStatement[] = [];
   if (isCurrent) {
     statements.push(
       db.prepare(`update research_auto_filing_document_versions set is_current=0, superseded_by_document_id=?, updated_at=?
@@ -211,7 +212,7 @@ export async function syncResearchAutoFilingDocumentVersion(db: D1Database, secu
   return { documentVersionId: versionId, documentKind, current: isCurrent, supersedesDocumentId: isCurrent ? newest?.documentId ?? null : null, recomputeEvents: targetModules.length };
 }
 
-export async function loadResearchAutoFilingDocumentVersions(db: D1Database, securityCode: string) {
+export async function loadResearchAutoFilingDocumentVersions(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const [versions, events] = await Promise.all([
@@ -233,7 +234,7 @@ export async function loadResearchAutoFilingDocumentVersions(db: D1Database, sec
  * It never changes a source fact, accepts a model conclusion, or waits for a
  * person.  Each rebuilt module is pinned to the exact current fact set that
  * was available at the time of the rebuild. */
-export async function rebuildResearchAutoFilingReadModels(db: D1Database, securityCode: string, now = Date.now()) {
+export async function rebuildResearchAutoFilingReadModels(db: Database, securityCode: string, now = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const events = await db.prepare(`select recompute_event_id as recomputeEventId, target_module as targetModule, reason
@@ -244,7 +245,7 @@ export async function rebuildResearchAutoFilingReadModels(db: D1Database, securi
       const known = grouped.get(event.targetModule) ?? { eventIds: [], reasons: [] };
       known.eventIds.push(event.recomputeEventId); known.reasons.push(event.reason); grouped.set(event.targetModule, known);
     }
-    const statements: D1PreparedStatement[] = [];
+    const statements: PreparedStatement[] = [];
     const rebuilt: Array<{ targetModule: TargetModule; sourceFactCount: number; sourceDocumentCount: number; sourceSignature: string }> = [];
     for (const [targetModule, group] of grouped) {
       const facts = await db.prepare(`select statutory_document_id as documentId, filing_fact_input_id as inputId, processed_at as processedAt
@@ -293,7 +294,7 @@ export async function rebuildResearchAutoFilingReadModels(db: D1Database, securi
  * its entity, value, definition, scope and units all pass deterministic
  * gates.  Otherwise the page receives a precise automatic block reason.
  */
-export async function syncResearchAutoFinancialSpecialtyInputs(db: D1Database, securityCode: string, now = Date.now()) {
+export async function syncResearchAutoFinancialSpecialtyInputs(db: Database, securityCode: string, now = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, operating_company_id as operatingCompanyId,
@@ -306,7 +307,7 @@ export async function syncResearchAutoFinancialSpecialtyInputs(db: D1Database, s
         and fact_type in ('financial_entity_profile', 'financial_specialty_metric')
       order by processed_at desc, filing_fact_input_id`).bind(code).all<Row>();
     const profiles = new Map<string, { profileId: string; entityType: string; asOf: string; documentId: string; companyId: string }>();
-    const profileStatements: D1PreparedStatement[] = [];
+    const profileStatements: PreparedStatement[] = [];
     const createdProfiles: Array<{ inputId: string; entityType: string; profileId: string }> = [];
     const blocked: Array<{ inputId: string; factKey: string; reason: string }> = [];
     for (const row of rows.results.filter((item) => text(item.factType) === "financial_entity_profile")) {
@@ -337,7 +338,7 @@ export async function syncResearchAutoFinancialSpecialtyInputs(db: D1Database, s
       createdProfiles.push({ inputId, entityType: parsed!, profileId });
     }
     if (profileStatements.length) await db.batch(profileStatements);
-    const specialtyStatements: D1PreparedStatement[] = [];
+    const specialtyStatements: PreparedStatement[] = [];
     const createdFacts: Array<{ inputId: string; metricKey: string; factId: string }> = [];
     for (const row of rows.results.filter((item) => text(item.factType) === "financial_specialty_metric")) {
       const inputId = text(row.inputId); const parsed = financialSpecialtyFactKey(row.factKey); const asOf = text(row.reportPeriod);
@@ -400,7 +401,7 @@ export async function syncResearchAutoFinancialSpecialtyInputs(db: D1Database, s
  * The market-structure table is append-only.  Replaying a rebuild therefore
  * first looks up the same source identity and leaves the existing fact intact.
  */
-export async function materializeResearchAutoMarketStructureFacts(db: D1Database, securityCode: string, now = Date.now()) {
+export async function materializeResearchAutoMarketStructureFacts(db: Database, securityCode: string, now = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, statutory_document_id as documentId,
@@ -452,7 +453,7 @@ export async function materializeResearchAutoMarketStructureFacts(db: D1Database
   }
 }
 
-export async function loadResearchAutoFilingModuleRebuilds(db: D1Database, securityCode: string) {
+export async function loadResearchAutoFilingModuleRebuilds(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select rebuild_id as rebuildId, target_module as targetModule, source_signature as sourceSignature,
@@ -466,7 +467,7 @@ export async function loadResearchAutoFilingModuleRebuilds(db: D1Database, secur
   }
 }
 
-export async function loadResearchAutoFilingFactInputs(db: D1Database, securityCode: string) {
+export async function loadResearchAutoFilingFactInputs(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as filingFactInputId, operating_company_id as operatingCompanyId,
@@ -492,7 +493,7 @@ export async function loadResearchAutoFilingFactInputs(db: D1Database, securityC
 /** Read-only operating-driver tree.  It does not invent volume/price splits:
  * a branch exists only when the current statutory input explicitly supplied
  * an operating subject and/or configured driver facet. */
-export async function loadResearchAutoBusinessDriverTree(db: D1Database, securityCode: string) {
+export async function loadResearchAutoBusinessDriverTree(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, statutory_document_id as documentId, document_url as documentUrl,
@@ -612,7 +613,7 @@ function sourceBoundUnitEconomics(items: Row[]) {
 
 /** Computes only the eligibility of a market-space calculation.  It never
  * fabricates TAM, SAM, SOM, market share, or a profit pool from prose. */
-export async function loadResearchAutoMarketSpaceInputs(db: D1Database, securityCode: string) {
+export async function loadResearchAutoMarketSpaceInputs(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, document_url as documentUrl, statutory_document_id as documentId,
@@ -795,7 +796,7 @@ function sourceBoundMarketScenarios(items: Row[]) {
  * separate exposure record unless the filing itself provided its transmission,
  * trigger, mitigation, speed, reversibility or risk-assessment facet;
  * unrelated risk paragraphs are never merged. */
-export async function loadResearchAutoRiskLedger(db: D1Database, securityCode: string) {
+export async function loadResearchAutoRiskLedger(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, statutory_document_id as documentId, document_url as documentUrl,
@@ -836,7 +837,7 @@ export async function loadResearchAutoRiskLedger(db: D1Database, securityCode: s
  * This reader only groups explicit, source-bound baseline, shock and formula
  * records when the extractor gave them the same disclosed scenario label.
  */
-export async function loadResearchAutoRiskQuantitativeInputGate(db: D1Database, securityCode: string) {
+export async function loadResearchAutoRiskQuantitativeInputGate(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, statutory_document_id as documentId,
@@ -910,7 +911,7 @@ export async function loadResearchAutoRiskQuantitativeInputGate(db: D1Database, 
  * The expression is deliberately tiny and deterministic; prose such as
  * "would adversely affect" never becomes a stress result.
  */
-export async function materializeResearchAutoRiskPressureScenarios(db: D1Database, securityCode: string, now = Date.now()) {
+export async function materializeResearchAutoRiskPressureScenarios(db: Database, securityCode: string, now = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   const gate = await loadResearchAutoRiskQuantitativeInputGate(db, code);
   if (gate.availability !== "available") return { availability: gate.availability, created: [], blocked: [] as Array<{ scenarioKey: string; reason: string }> };
@@ -978,7 +979,7 @@ function slug(value: string): string { return value.toLowerCase().replace(/[^a-z
 /** Freezes an automatic, source-only risk snapshot after a new current risk
  * fact set is rebuilt. It does not calculate probability, loss or residual
  * risk; its only job is to make factual changes between filings observable. */
-async function saveResearchAutoRiskSnapshot(db: D1Database, securityCode: string, sourceSignature: string, now: number) {
+async function saveResearchAutoRiskSnapshot(db: Database, securityCode: string, sourceSignature: string, now: number) {
   const rows = await db.prepare(`select statutory_document_id as documentId, fact_key as factKey, fact_type as factType,
       title, statement, subject_label as subjectLabel, exposure_key as exposureKey, evidence_locator as evidenceLocator,
       processed_at as processedAt from research_auto_filing_fact_inputs
@@ -991,7 +992,7 @@ async function saveResearchAutoRiskSnapshot(db: D1Database, securityCode: string
   ) values (?, ?, ?, ?, ?, ?, ?)`).bind(`auto-risk-snapshot:${securityCode}:${sourceSignature}`, securityCode, sourceSignature, JSON.stringify(documentIds), JSON.stringify(items), now, now).run();
 }
 
-export async function loadResearchAutoRiskSnapshotHistory(db: D1Database, securityCode: string) {
+export async function loadResearchAutoRiskSnapshotHistory(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select auto_risk_snapshot_id as snapshotId, source_signature as sourceSignature,
@@ -1027,7 +1028,7 @@ export async function loadResearchAutoRiskSnapshotHistory(db: D1Database, securi
 /** Read-only industry and competition projection.  The company filing can
  * establish its exposure to demand, supply or policy, but it cannot by itself
  * establish a peer set, market boundary, ranking or a moat duration. */
-export async function loadResearchAutoIndustryCompetitionInputs(db: D1Database, securityCode: string) {
+export async function loadResearchAutoIndustryCompetitionInputs(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, statutory_document_id as documentId, document_url as documentUrl,
@@ -1260,7 +1261,7 @@ function sourceBoundIndustryDurability(input: { industryItems: Row[]; operatingI
  * statement calculations.  This projection makes each disclosure category
  * explicit and refuses to infer debt maturities, dilution or audit outcomes
  * from an absent fact. */
-export async function loadResearchAutoGovernanceCapitalLedger(db: D1Database, securityCode: string) {
+export async function loadResearchAutoGovernanceCapitalLedger(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, statutory_document_id as documentId, document_url as documentUrl,
@@ -1318,7 +1319,7 @@ export async function loadResearchAutoGovernanceCapitalLedger(db: D1Database, se
  * issuer relationship until an automatic reconciliation job can corroborate
  * both securities with their own official records.
  */
-export async function loadResearchAutoSecurityStructureCandidates(db: D1Database, securityCode: string) {
+export async function loadResearchAutoSecurityStructureCandidates(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select filing_fact_input_id as inputId, statutory_document_id as documentId, document_url as documentUrl,
@@ -1372,7 +1373,7 @@ export async function loadResearchAutoSecurityStructureCandidates(db: D1Database
  * declares the same relationship.  A one-sided mention, a missing rights
  * profile, or an unavailable related security remains a visible block.
  */
-export async function reconcileResearchAutoSecurityStructure(db: D1Database, securityCode: string, now = Date.now()) {
+export async function reconcileResearchAutoSecurityStructure(db: Database, securityCode: string, now = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const candidates = await db.prepare(`select filing_fact_input_id as inputId, statutory_document_id as documentId,
@@ -1464,7 +1465,7 @@ export async function reconcileResearchAutoSecurityStructure(db: D1Database, sec
  * component in `factKey`; prose, ranges, unlabeled figures and incomplete
  * bases remain visible in the input gate but are never guessed into a forecast.
  */
-export async function syncResearchAutoManagementGuidance(db: D1Database, securityCode: string, createdAt = Date.now()) {
+export async function syncResearchAutoManagementGuidance(db: Database, securityCode: string, createdAt = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select input.filing_fact_input_id as inputId, input.operating_company_id as companyId,
@@ -1558,7 +1559,7 @@ function automaticGuidanceBlockReason(row: Row): string {
  * contract as an automatic management-guidance record. This does not invent
  * a downside case from a point estimate, assign probabilities, or run a DCF.
  */
-export async function syncResearchAutoForecastScenarios(db: D1Database, securityCode: string, createdAt = Date.now()) {
+export async function syncResearchAutoForecastScenarios(db: Database, securityCode: string, createdAt = Date.now()) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select input.filing_fact_input_id as inputId, input.statutory_document_id as documentId,
@@ -1637,7 +1638,7 @@ function parseAutomaticScenarioContract(row: Row): {
 /** Normalizes only company-published guidance that already has a statutory
  * source.  It deliberately does not turn report snippets into consensus, nor
  * derive a target price from a guidance statement. */
-export async function loadResearchAutoForecastInputGate(db: D1Database, securityCode: string) {
+export async function loadResearchAutoForecastInputGate(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   try {
     const rows = await db.prepare(`select input.filing_fact_input_id as inputId, input.statutory_document_id as documentId, input.document_url as documentUrl,

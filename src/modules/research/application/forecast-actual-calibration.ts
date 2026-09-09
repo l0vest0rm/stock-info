@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   evaluateForecastActualCalibration,
   normalizeFormalActual,
@@ -42,7 +43,7 @@ export type ForecastActualCalibrationRecord = ForecastActualCalibration & {
 
 /** Persists a source-bound management guidance record independently of third-party research forecasts. */
 export async function recordManagementGuidanceForecast(
-  db: D1Database,
+  db: Database,
   input: ManagementGuidanceForecastWrite,
   createdAt = Date.now(),
 ): Promise<ManagementGuidanceForecast> {
@@ -78,7 +79,7 @@ export async function recordManagementGuidanceForecast(
  * supersedes; the previous fact remains stored and is marked superseded.
  */
 export async function registerFormalActual(
-  db: D1Database,
+  db: Database,
   input: FormalActualRegistrationWrite,
   createdAt = Date.now(),
 ): Promise<FormalActual> {
@@ -136,7 +137,7 @@ export async function registerFormalActual(
 
 /** Loads a historical forecast and actual, evaluates their explicit bases, and persists either an error or a visible block. */
 export async function createForecastActualCalibration(
-  db: D1Database,
+  db: Database,
   input: ForecastActualCalibrationWrite,
 ): Promise<ForecastActualCalibrationRecord> {
   const securityCode = required(input.securityCode, "securityCode").toUpperCase();
@@ -162,7 +163,7 @@ export async function createForecastActualCalibration(
   return { ...result, calibrationId, calibratedAt };
 }
 
-export async function loadFormalActuals(db: D1Database, securityCode: string, limit = 100): Promise<FormalActual[]> {
+export async function loadFormalActuals(db: Database, securityCode: string, limit = 100): Promise<FormalActual[]> {
   const rows = await db.prepare(`select actual_id as actualId, security_code as securityCode, company_id as companyId, metric,
       fiscal_year as fiscalYear, fiscal_period as fiscalPeriod, raw_value as rawValue, raw_unit as rawUnit, currency,
       accounting_basis as accountingBasis, ownership_basis as ownershipBasis, share_basis as shareBasis,
@@ -175,7 +176,7 @@ export async function loadFormalActuals(db: D1Database, securityCode: string, li
   return rows.results.map(mapActual);
 }
 
-export async function loadManagementGuidanceForecasts(db: D1Database, securityCode: string, limit = 100): Promise<ManagementGuidanceForecast[]> {
+export async function loadManagementGuidanceForecasts(db: Database, securityCode: string, limit = 100): Promise<ManagementGuidanceForecast[]> {
   const rows = await db.prepare(`select guidance_forecast_id as forecastId, security_code as securityCode, company_id as companyId,
       guidance_date as forecastDate, metric, fiscal_year as fiscalYear, fiscal_period as fiscalPeriod, raw_value as rawValue,
       raw_unit as rawUnit, currency, accounting_basis as accountingBasis, ownership_basis as ownershipBasis,
@@ -188,7 +189,7 @@ export async function loadManagementGuidanceForecasts(db: D1Database, securityCo
   return rows.results.map(mapManagementGuidance);
 }
 
-export async function loadForecastActualCalibrationRecords(db: D1Database, securityCode: string, limit = 200): Promise<ForecastActualCalibrationRecord[]> {
+export async function loadForecastActualCalibrationRecords(db: Database, securityCode: string, limit = 200): Promise<ForecastActualCalibrationRecord[]> {
   const rows = await db.prepare(`select calibration_id as calibrationId, security_code as securityCode, company_id as companyId,
       forecast_kind as forecastKind, forecast_id as forecastId, actual_id as actualId, metric, fiscal_period as fiscalPeriod,
       currency, normalized_unit as normalizedUnit, accounting_basis as accountingBasis, ownership_basis as ownershipBasis,
@@ -200,7 +201,7 @@ export async function loadForecastActualCalibrationRecords(db: D1Database, secur
   return rows.results.map(mapCalibration);
 }
 
-async function loadForecastMeasurement(db: D1Database, kind: ForecastKind, forecastId: string, securityCode: string): Promise<ForecastMeasurement> {
+async function loadForecastMeasurement(db: Database, kind: ForecastKind, forecastId: string, securityCode: string): Promise<ForecastMeasurement> {
   if (kind === "management_guidance") {
     const row = await db.prepare(`select guidance_forecast_id as forecastId, security_code as securityCode, company_id as companyId,
         guidance_date as forecastDate, metric, fiscal_year as fiscalYear, fiscal_period as fiscalPeriod, raw_value as rawValue,
@@ -222,7 +223,7 @@ async function loadForecastMeasurement(db: D1Database, kind: ForecastKind, forec
 }
 
 /** Loads one persisted formal actual for a model/calibration boundary; callers cannot supply a raw substitute. */
-export async function loadFormalActualById(db: D1Database, actualId: string, securityCode: string): Promise<FormalActual> {
+export async function loadFormalActualById(db: Database, actualId: string, securityCode: string): Promise<FormalActual> {
   const row = await db.prepare(`select actual_id as actualId, security_code as securityCode, company_id as companyId, metric,
       fiscal_year as fiscalYear, fiscal_period as fiscalPeriod, raw_value as rawValue, raw_unit as rawUnit, currency,
       accounting_basis as accountingBasis, ownership_basis as ownershipBasis, share_basis as shareBasis,

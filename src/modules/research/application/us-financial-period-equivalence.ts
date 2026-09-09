@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import type { StandardizedResearchFinancialFact } from "../domain/research-financial-quality";
 import {
@@ -7,7 +8,7 @@ import {
 } from "../domain/us-financial-period-equivalence";
 
 export async function appendUsFinancialPeriodEquivalence(
-  db: D1Database,
+  db: Database,
   rawSecurityCode: string,
   primaryFact: StandardizedResearchFinancialFact,
   input: UsFinancialPeriodEquivalenceWrite,
@@ -38,7 +39,7 @@ export async function appendUsFinancialPeriodEquivalence(
   return record;
 }
 
-export async function loadUsFinancialPeriodEquivalences(db: D1Database, rawSecurityCode: string) {
+export async function loadUsFinancialPeriodEquivalences(db: Database, rawSecurityCode: string) {
   const securityCode = normalizeSecurityCode(rawSecurityCode);
   try {
     const rows = await db.prepare(`select period_equivalence_id as periodEquivalenceId, security_code as securityCode,
@@ -60,7 +61,7 @@ export async function loadUsFinancialPeriodEquivalences(db: D1Database, rawSecur
   }
 }
 
-export async function loadAcceptedUsFinancialPeriodEquivalences(db: D1Database, rawSecurityCode: string): Promise<UsFinancialPeriodEquivalence[]> {
+export async function loadAcceptedUsFinancialPeriodEquivalences(db: Database, rawSecurityCode: string): Promise<UsFinancialPeriodEquivalence[]> {
   const result = await loadUsFinancialPeriodEquivalences(db, rawSecurityCode);
   return result.items.filter((item) => item.reviewDecision === "accepted");
 }

@@ -11,7 +11,7 @@ type FinancialRow = Record<string, unknown>
 
 export type FinancialValuationResult = {
   status: 'rated' | 'unavailable'
-  state: InstitutionalValuationState | null
+  state: Exclude<InstitutionalValuationState, 'unavailable'> | null
   pb: number | null
   ttmProfit: number | null
   averageEquity: number | null
@@ -29,7 +29,7 @@ export type BankShareholderReturnThresholds = {
 
 export type BankShareholderReturnResult = {
   status: 'rated' | 'unavailable'
-  state: InstitutionalValuationState | null
+  state: Exclude<InstitutionalValuationState, 'unavailable'> | null
   dividendYield: number | null
   profitCagr: number | null
   pb: number | null
@@ -65,7 +65,7 @@ function equity(row: FinancialRow): number | null {
   return positiveNumber(row.totalParentEquity ?? row.totalEquity ?? row.TOTAL_PARENT_EQUITY ?? row.TOTAL_EQUITY)
 }
 
-function lowerIsBetter(value: number, thresholds: ValuationThresholds): InstitutionalValuationState {
+function lowerIsBetter(value: number, thresholds: ValuationThresholds): Exclude<InstitutionalValuationState, 'unavailable'> {
   if (value <= thresholds.strongBuy) return 'deep-value'
   if (value <= thresholds.buy) return 'value'
   if (value <= thresholds.watch) return 'fair'
@@ -73,7 +73,7 @@ function lowerIsBetter(value: number, thresholds: ValuationThresholds): Institut
   return 'overvalued'
 }
 
-function higherIsBetter(value: number, thresholds: ValuationThresholds): InstitutionalValuationState {
+function higherIsBetter(value: number, thresholds: ValuationThresholds): Exclude<InstitutionalValuationState, 'unavailable'> {
   if (value >= thresholds.strongBuy) return 'deep-value'
   if (value >= thresholds.buy) return 'value'
   if (value >= thresholds.watch) return 'fair'

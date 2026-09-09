@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { legacyEntryFileName, pagesWithoutLegacyRuntime } from './page-build-config.mjs'
+import { legacyEntryFileName, pagesWithoutLegacyRuntime, buildPages, pageManifest } from './page-build-config.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -181,11 +181,13 @@ function compilePage(fileName, baseConfig, partials) {
     ...baseConfig,
     title: basename,
     page: `${basename}.html`,
-    legacyRuntime: !pagesWithoutLegacyRuntime.has(basename),
     ...pageConfig,
+    legacyRuntime: !pagesWithoutLegacyRuntime.has(basename),
   }
   const srcPath = path.join(srcDir, fileName)
-  const template = fs.readFileSync(srcPath, 'utf8')
+  const definition = buildPages.find((page) => page.path === `/${fileName}`)
+  const moduleTag = definition.entry ? `<script type="module" src="js/${path.basename(definition.entry, '.ts')}.js"></script>` : ''
+  const template = fs.readFileSync(srcPath, 'utf8').replace(/<script(?: type="[^"]*")? src="js\/[^" ]*-page\.js"><\/script>/g, moduleTag)
   fs.writeFileSync(path.join(distDir, `${basename}.html`), renderPageTemplate(template, config, partials))
   return {
     basename,
@@ -285,7 +287,13 @@ fs.mkdirSync(distDir, { recursive: true })
 
 const baseConfig = loadBaseConfig()
 const partials = loadPartialSources()
-const pageFiles = fs.readdirSync(srcDir, { withFileTypes: true }).filter((item) => item.isFile() && path.extname(item.name) === '.html')
+const registeredPaths = new Set(pageManifest.map((page) => page.path))
+for (const item of fs.readdirSync(srcDir, { withFileTypes: true })) {
+  if (item.isFile() && item.name.endsWith('.html') && !registeredPaths.has(`/${item.name}`)) {
+    throw new Error(`Page must be registered in config/page-manifest.json: ${item.name}`)
+  }
+}
+const pageFiles = buildPages.map((page) => ({ name: page.path.slice(1) }))
 const expectedPages = new Set(pageFiles.map((item) => path.basename(item.name, '.html')))
 
 cleanupRemovedPages(expectedPages)

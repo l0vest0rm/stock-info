@@ -1,9 +1,10 @@
+import type { Database } from "../../../platform/contracts";
 import { assertResearchCatalystReview, type ResearchCatalystReview } from "../domain/research-catalyst-review";
 
 type CatalystSubject = { catalyst_id: string; company_id: string | null; security_code: string | null; event_at: number | null; status: string };
 
 /** Append a source-bound result to a prior event without changing its original expectation. */
-export async function insertResearchCatalystReview(db: D1Database, input: ResearchCatalystReview) {
+export async function insertResearchCatalystReview(db: Database, input: ResearchCatalystReview) {
   assertResearchCatalystReview(input);
   const catalyst = await db.prepare(`select catalyst_id, company_id, security_code, event_at, status from research_catalysts where catalyst_id=?`)
     .bind(input.catalystId).first<CatalystSubject>();
@@ -21,7 +22,7 @@ export async function insertResearchCatalystReview(db: D1Database, input: Resear
   return { catalystReviewId: input.catalystReviewId, catalystId: input.catalystId };
 }
 
-export async function loadResearchCatalystReviews(db: D1Database, input: { catalystIds: string[]; asOf: number }): Promise<Map<string, ResearchCatalystReview[]>> {
+export async function loadResearchCatalystReviews(db: Database, input: { catalystIds: string[]; asOf: number }): Promise<Map<string, ResearchCatalystReview[]>> {
   const result = new Map<string, ResearchCatalystReview[]>();
   if (!input.catalystIds.length) return result;
   const placeholders = input.catalystIds.map(() => "?").join(", ");

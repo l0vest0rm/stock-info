@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import { cachedFetchJson, type ExternalHttpOptions } from "../../../shared/http";
 import type { FinancialStatutoryDisclosure } from "../domain/financial-statutory-verification";
@@ -130,7 +131,7 @@ const SEC_CONCEPTS: Partial<Record<ResearchFinancialMetric, MetricConcept[]>> = 
 
 /** Loads exactly the SEC ticker registry, company facts, and filing index. */
 export async function loadSecRegistrantXbrl(
-  db: D1Database,
+  db: Database,
   rawSecurityCode: string,
   httpOptions?: ExternalHttpOptions,
 ): Promise<SecRegistrantXbrl> {
@@ -329,7 +330,7 @@ export function collectSecXbrlDisclosure(
 }
 
 export async function fetchSecXbrlDisclosure(
-  db: D1Database,
+  db: Database,
   rawSecurityCode: string,
   normalizedFact: StandardizedResearchFinancialFact,
   httpOptions?: ExternalHttpOptions,
@@ -391,7 +392,7 @@ function unavailable(
 }
 
 async function resolveSecRegistrant(
-  db: D1Database,
+  db: Database,
   ticker: string,
   httpOptions?: ExternalHttpOptions,
 ): Promise<{ ticker: string; cik: string | number; title?: string }> {

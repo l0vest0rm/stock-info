@@ -1,3 +1,4 @@
+import type { CompanyReportStatePatch, CompanyReportRow } from './company-report-contract'
 import { createKnowledgeDocModalController } from '../../knowledge/runtime/knowledge-doc-modal'
 
 type FetchRequest = (request: {
@@ -474,7 +475,7 @@ function formatForecastProfitMargin(report: any, year: number, actualFinancialMa
   return `净利率：${((profit / revenue) * 100).toFixed(2)}%`
 }
 
-export function createCompanyFinanceInitializer(context: CompanyPagesRuntimeContext) {
+export function createCompanyFinanceInitializer(context: Pick<CompanyPagesRuntimeContext, 'financeCharTableOnChange' | 'onFinanceCodeSelectChange' | 'codeSelectInit' | 'bsRadioButtons' | 'genFinanceChart' | 'getSelectedCodes' | 'coreKeys' | 'incomeKeys' | 'balanceKeys' | 'cashflowKeys'>) {
   const {
     financeCharTableOnChange,
     onFinanceCodeSelectChange,
@@ -511,7 +512,9 @@ export function createCompanyFinanceInitializer(context: CompanyPagesRuntimeCont
   }
 }
 
-export function createCompanyReportInitializer(context: CompanyPagesRuntimeContext) {
+export type CompanyReportContext = Pick<CompanyPagesRuntimeContext, 'server' | 'fetchCodeNames' | 'fetchFinanceIncome' | 'fetchReportUrl' | 'toDateString' | 'getCode' | 'getCache' | 'getCodeNameMap' | 'echarts' | 'fetchRequest'>
+
+export function createCompanyReportController(context: CompanyReportContext, onState: (patch: CompanyReportStatePatch) => void) {
   const {
     server,
     fetchCodeNames,
@@ -531,7 +534,10 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   })
 
   let companyReportCurrentPage = 1
-  let companyReportEventsBound = false
+  let disposed = false
+  let started = false
+  let requestGeneration = 0
+  const resizeValuationChart = () => valuationChart?.resize()
   let companyReportActualFinancialMap: Map<number, AnnualFinancial> | null = null
   let companyReportStream: EventSource | null = null
   let valuationChart: any | null = null
@@ -549,8 +555,9 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   let companyReportDiscoveryModel: string | null = null
   let companyReportDiscoveryReasoningEffort: string | null = null
 
-  function emitCompanyReportState(patch: any): boolean {
-    window.dispatchEvent(new CustomEvent('licai:company-report-state', { detail: patch || {} }))
+  function emitCompanyReportState(patch: CompanyReportStatePatch): boolean {
+    if (disposed) return false
+    onState(patch)
     return true
   }
 
@@ -687,7 +694,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   }
 
   function scheduleCompanyReportDiscoveryPoll(code: string, name: string): void {
-    if (!companyReportDiscoveryEnabled || !name) {
+    if (disposed || !companyReportDiscoveryEnabled || !name) {
       return
     }
     if (companyReportDiscoveryPollTimer !== null) {
@@ -770,7 +777,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
   }
 
   async function triggerCompanyReportDiscovery(code: string, requestedReasoningEffort: CompanyReportDiscoveryReasoningEffort = 'xhigh'): Promise<void> {
-    if (!companyReportDiscoveryEnabled || companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running') {
+    if (disposed || !companyReportDiscoveryEnabled || companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running') {
       return
     }
     const force = ['completed', 'failed', 'blocked'].includes(companyReportDiscoveryStatus)
@@ -824,7 +831,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     link.remove()
   }
 
-  function mapCompanyReportRows(items: any[], actualFinancialMap: Map<number, AnnualFinancial>): any[] {
+  function mapCompanyReportRows(items: any[], actualFinancialMap: Map<number, AnnualFinancial>): CompanyReportRow[] {
     if (!Array.isArray(items)) {
       return []
     }
@@ -940,24 +947,6 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     return fallback === undefined ? '' : String(fallback)
   }
 
-  function bindCompanyReportActionLinks(): void {
-    const qtype = 'dataeye'
-    document.querySelectorAll("a[name='infoCode']").forEach((elem) => {
-      const link = elem as HTMLAnchorElement
-      if (link.dataset.bound === '1') {
-        return
-      }
-      link.dataset.bound = '1'
-      link.addEventListener('click', () => {
-        fetchReportUrl(qtype, link.dataset.code || '', (url: string | null) => {
-          if (url) {
-            openExternalUrlWithoutReferrer(url)
-          }
-        })
-      })
-    })
-  }
-
   function renderCompanyReportRows(items: any[], actualFinancialMap: Map<number, AnnualFinancial>): void {
     const pageSize = 10
     emitCompanyReportState({
@@ -966,9 +955,6 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       hasNext: items.length >= pageSize,
       status: companyReportLoadedStatus(companyReportCurrentPage, items.length),
       error: false,
-    })
-    requestAnimationFrame(() => {
-      bindCompanyReportActionLinks()
     })
   }
 
@@ -980,12 +966,11 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       hasNext: items.length >= pageSize,
       error: false,
     })
-    requestAnimationFrame(() => {
-      bindCompanyReportActionLinks()
-    })
   }
 
   function genCompanyReportTable(code: string, actualFinancialMap: Map<number, AnnualFinancial>) {
+    if (disposed) return
+    const generation = ++requestGeneration
     closeCompanyReportStream()
     emitCompanyReportState({
       rows: [],
@@ -1000,6 +985,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       let forecastFailures: any[] = []
       companyReportStream = new EventSource(streamURL)
       companyReportStream.onmessage = (event) => {
+        if (disposed || generation !== requestGeneration) return
         let payload: any = null
         try {
           payload = JSON.parse(event.data)
@@ -1054,6 +1040,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
         }
       }
       companyReportStream.onerror = () => {
+        if (disposed || generation !== requestGeneration) return
         if (finished) {
           closeCompanyReportStream()
           return
@@ -1070,6 +1057,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       return
     }
     void fetchRequest(companyReportRequestUrl(code, companyReportCurrentPage)).then((data: any) => {
+      if (disposed || generation !== requestGeneration) return
       if (data && typeof data === 'object' && 'error' in data) {
         const message = typeof data.error === 'string' && data.error.trim() ? data.error : '公司研报加载失败'
         emitCompanyReportState({
@@ -1098,6 +1086,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       const response = Array.isArray(prefetchedReports)
         ? prefetchedReports
         : await fetchRequest(companyReportRequestUrl(code, 1)) as any[]
+      if (disposed) return
       if (!response || response.length === 0) {
         valuationChart?.clear()
         chartDom.hidden = true
@@ -1193,16 +1182,16 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       }, true)
       if (!valuationChartResizeBound) {
         valuationChartResizeBound = true
-        window.addEventListener('resize', () => {
-          valuationChart?.resize()
-        })
+        window.addEventListener('resize', resizeValuationChart)
       }
     } catch (error) {
       console.error('Failed to draw valuation trend chart:', error)
     }
   }
 
-  return async function initCompanyReport() {
+  async function start() {
+    if (started || disposed) return
+    started = true
     const code = getCode()
     companyReportCurrentPage = 1
     if (!getCodeNameMap()[code]) {
@@ -1213,6 +1202,7 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
     await new Promise((resolve) => {
       fetchFinanceIncome(code, () => resolve(undefined))
     })
+    if (disposed) return
     const actualFinancialMap = getActualAnnualFinancialMap(getCache(), code)
     companyReportActualFinancialMap = actualFinancialMap
     emitCompanyReportState({
@@ -1222,35 +1212,45 @@ export function createCompanyReportInitializer(context: CompanyPagesRuntimeConte
       status: companyReportLoadingStatus(companyReportCurrentPage),
       error: false,
     })
-    if (!companyReportEventsBound) {
-      companyReportEventsBound = true
-      window.addEventListener('licai:company-report-page-change', ((event: CustomEvent<{ page?: number }>) => {
-        const page = Number(event.detail?.page || 1)
-        if (!Number.isFinite(page) || page < 1 || !companyReportActualFinancialMap) {
-          return
-        }
-        companyReportCurrentPage = page
-        genCompanyReportTable(code, companyReportActualFinancialMap)
-      }) as EventListener)
-      window.addEventListener('licai:company-report-open-doc', ((event: CustomEvent<{ docId?: string }>) => {
-        const docId = String(event.detail?.docId || '').trim()
-        if (docId) {
-          void knowledgeDocModal.openByDocId(docId)
-        }
-      }) as EventListener)
-      window.addEventListener('licai:company-report-discover', ((event: CustomEvent<{ reasoningEffort?: unknown }>) => {
-        const requestedReasoningEffort = ['low', 'medium', 'high', 'xhigh', 'pro'].includes(String(event.detail?.reasoningEffort || ''))
-          ? String(event.detail?.reasoningEffort) as CompanyReportDiscoveryReasoningEffort
-          : 'xhigh'
-        void triggerCompanyReportDiscovery(code, requestedReasoningEffort)
-      }) as EventListener)
-    }
     knowledgeDocModal.bindLifecycle()
     genCompanyReportTable(code, actualFinancialMap)
     // This is a read-only local capability/status check. It never starts a
-    // discovery task; only the page button dispatches the trigger event above.
+    // discovery task; only the controller discover command starts one.
     void loadCompanyReportDiscoveryCapability(code)
   }
+
+  return {
+    start,
+    changePage(page: number) {
+      if (disposed || !Number.isInteger(page) || page < 1 || !companyReportActualFinancialMap) return
+      companyReportCurrentPage = page
+      genCompanyReportTable(getCode(), companyReportActualFinancialMap)
+    },
+    openDoc(docId: string) {
+      if (!disposed && docId.trim()) void knowledgeDocModal.openByDocId(docId.trim())
+    },
+    openReport(infoCode: string) {
+      if (disposed || !infoCode) return
+      fetchReportUrl('dataeye', infoCode, (url) => {
+        if (!disposed && url) openExternalUrlWithoutReferrer(url)
+      })
+    },
+    discover(reasoningEffort: CompanyReportDiscoveryReasoningEffort = 'xhigh') {
+      return triggerCompanyReportDiscovery(getCode(), reasoningEffort)
+    },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      requestGeneration += 1
+      stopCompanyReportDiscoveryPolling()
+      closeCompanyReportStream()
+      window.removeEventListener('resize', resizeValuationChart)
+      valuationChart?.dispose()
+      valuationChart = null
+      knowledgeDocModal.dispose()
+    },
+  }
+
 }
 
 export function createCompanyNewsInitializer(context: CompanyPagesRuntimeContext) {

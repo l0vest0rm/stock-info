@@ -41,6 +41,21 @@ test("taskd caller remains unavailable outside the local LLM runtime", () => {
   );
 });
 
+test("taskd caller retries one transient task-state read without retrying a write", async (t) => {
+  let attempts = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    attempts += 1;
+    if (attempts === 1) throw new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND task.example.test") });
+    return Response.json(task);
+  });
+  const client = taskdCallerClient({
+    LLM_RUNTIME: "local", TASKD_BASE_URL: "https://task.example.test", TASKD_NAMESPACE: "stock-info", TASKD_CALLER_TOKEN: "token",
+  });
+  const received = await client.get(task.client_task_name);
+  assert.equal(received?.taskId, task.task_id);
+  assert.equal(attempts, 2);
+});
+
 test("taskd result projection is retry-safe at the business boundary", async () => {
   const completed = {
     ...task,

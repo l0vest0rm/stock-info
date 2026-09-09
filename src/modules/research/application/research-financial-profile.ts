@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   assertResearchFinancialProfileRecord,
   resolveResearchFinancialProfile,
@@ -21,7 +22,7 @@ export type ResearchFinancialProfileWrite = {
   recordedAt?: number;
 };
 
-export async function appendResearchFinancialProfile(db: D1Database, input: ResearchFinancialProfileWrite): Promise<ResearchFinancialProfileRecord> {
+export async function appendResearchFinancialProfile(db: Database, input: ResearchFinancialProfileWrite): Promise<ResearchFinancialProfileRecord> {
   const scope = await requireConfirmedSecurityCompanyScope(db, input.securityCode, "financial profile");
   const now = input.recordedAt ?? Date.now();
   const record: ResearchFinancialProfileRecord = {
@@ -38,7 +39,7 @@ export async function appendResearchFinancialProfile(db: D1Database, input: Rese
   return record;
 }
 
-export async function loadResearchFinancialProfile(db: D1Database, securityCode: string) {
+export async function loadResearchFinancialProfile(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   let historical: Row[] = [];
   let automatic: Row[] = [];

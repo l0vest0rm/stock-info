@@ -5,80 +5,84 @@ import {
   RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_VERSION,
   RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES,
   getResearchOperatingAnalysisWorkPackage,
+  normalizeFinalReportMarkdown,
   parseWorkPackageEnvelopeJson,
   projectWorkPackageStages,
+  researchOperatingAnalysisGenerativeWorkPackages,
   researchOperatingAnalysisWorkPackageWaves,
   workPackageForStage,
 } from "./research-operating-analysis-work-packages.mjs";
 
-function stageValue(stageKey, output = `# ${stageKey}`) {
-  return { status: "complete", markdown: output, lineage: { upstreamArtifactIds: [], sourceIds: [], claimIds: [], evidenceIds: [], unknownIds: [] } };
-}
-
-function envelope(packageKey, overrides = {}) {
-  const definition = getResearchOperatingAnalysisWorkPackage(packageKey);
+const lineage = () => ({ upstreamArtifactIds: [], sourceIds: [], claimIds: [], evidenceIds: [], unknownIds: [] });
+const stageValue = (stageKey) => ({ status: "complete", output: { stageKey }, lineage: lineage() });
+function foundation(overrides = {}) {
   return {
     schemaVersion: RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_ENVELOPE_VERSION,
-    packageKey,
+    packageKey: "foundation",
     packageVersion: RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGE_VERSION,
     status: "complete",
-    stages: Object.fromEntries(definition.stageKeys.map((stageKey) => [stageKey, stageValue(stageKey)])),
-    packageLineage: { upstreamArtifactIds: [], sourceIds: [], claimIds: [], evidenceIds: [], unknownIds: [] },
+    stages: {
+      engineering_baseline: stageValue("engineering_baseline"),
+      local_routing_match: stageValue("local_routing_match"),
+    },
+    packageLineage: lineage(),
     ...overrides,
   };
 }
 
-test("work packages have three generative requests plus deterministic boundaries", () => {
+// Registry v3 consolidated the three former generative packages into a final
+// Markdown report. The envelope parser still owns deterministic stage output.
+test("registry gives final_report the generative stages and keeps deterministic valuation bypassed", () => {
   assert.deepEqual(RESEARCH_OPERATING_ANALYSIS_WORK_PACKAGES.map((item) => item.key), [
-    "foundation", "external_evidence", "quantitative_facts", "investment_synthesis", "deterministic_valuation", "report_assembly",
+    "foundation", "final_report", "deterministic_valuation",
   ]);
   assert.deepEqual(researchOperatingAnalysisWorkPackageWaves().map((wave) => wave.map((item) => item.key)), [
-    ["foundation"], ["external_evidence", "quantitative_facts"], ["investment_synthesis"], ["deterministic_valuation"], ["report_assembly"],
+    ["foundation", "deterministic_valuation"], ["final_report"],
   ]);
-  assert.equal(workPackageForStage("company_facts")?.key, "external_evidence");
-  assert.equal(workPackageForStage("financial_quality")?.key, "quantitative_facts");
-  assert.equal(workPackageForStage("investment_conclusion")?.key, "investment_synthesis");
-  assert.equal(workPackageForStage("report_assembly")?.key, "report_assembly");
+  assert.deepEqual(researchOperatingAnalysisGenerativeWorkPackages().map((item) => item.key), ["final_report"]);
+  for (const key of ["company_facts", "financial_quality", "investment_conclusion", "report_assembly"]) {
+    assert.equal(workPackageForStage(key)?.key, "final_report");
+  }
+  assert.equal(workPackageForStage("engineering_baseline")?.key, "foundation");
+  assert.equal(getResearchOperatingAnalysisWorkPackage("deterministic_valuation").bypassed, true);
+  assert.throws(() => getResearchOperatingAnalysisWorkPackage("quantitative_facts"), /unsupported/);
 });
 
-test("strict envelope parser requires every declared stage and projects legacy artifacts", () => {
-  const parsed = parseWorkPackageEnvelopeJson(JSON.stringify(envelope("quantitative_facts")), "quantitative_facts");
-  assert.deepEqual(Object.keys(parsed.stages), ["financial_quality", "market_valuation_facts"]);
-  const projection = projectWorkPackageStages(parsed, "quantitative_facts");
-  assert.equal(projection.financial_quality.output, "# financial_quality");
-  assert.equal(projection.market_valuation_facts.status, "complete");
+test("final report accepts nonempty human-readable Markdown without a machine envelope", () => {
+  assert.equal(normalizeFinalReportMarkdown("  # 投资分析\n\n报告正文  ", "final_report"), "# 投资分析\n\n报告正文");
+  assert.throws(() => normalizeFinalReportMarkdown(" ", "final_report"), /empty/);
+  assert.throws(() => normalizeFinalReportMarkdown("# report", "foundation"), /not a final-report/);
+});
+
+test("strict envelope parser requires declared foundation stages and projects their objects", () => {
+  const parsed = parseWorkPackageEnvelopeJson(JSON.stringify(foundation()), "foundation");
+  assert.deepEqual(Object.keys(parsed.stages), ["engineering_baseline", "local_routing_match"]);
+  const projection = projectWorkPackageStages(parsed, "foundation");
+  assert.deepEqual(projection.engineering_baseline.output, { stageKey: "engineering_baseline" });
+  assert.equal(projection.local_routing_match.status, "complete");
+  const invalid = foundation();
+  invalid.stages.engineering_baseline = { status: "complete", markdown: "wrong output type" };
+  assert.throws(() => parseWorkPackageEnvelopeJson(JSON.stringify(invalid), "foundation"), /must provide object output/);
 });
 
 test("strict envelope parser rejects missing, unknown, and duplicate stages", () => {
-  const complete = envelope("quantitative_facts");
-  const missing = envelope("quantitative_facts", { stages: { financial_quality: stageValue("financial_quality") } });
-  assert.throws(() => parseWorkPackageEnvelopeJson(JSON.stringify(missing), "quantitative_facts"), /missing stages.*market_valuation_facts/);
-
-  const unknown = envelope("quantitative_facts", { stages: { ...complete.stages, unexpected: stageValue("unexpected") } });
-  assert.throws(() => parseWorkPackageEnvelopeJson(JSON.stringify(unknown), "quantitative_facts"), /unknown stages.*unexpected/);
-
-  const duplicate = JSON.stringify(complete).replace(
-    '"market_valuation_facts":{"status":"complete"',
-    '"financial_quality":{"status":"complete"',
-  );
-  // The replacement above is intentionally malformed as a semantic object;
-  // use a small raw payload to exercise duplicate-key detection directly.
-  const duplicateRaw = '{"schemaVersion":"research-operating-analysis.work-package-envelope.v1","packageKey":"quantitative_facts","packageVersion":"investment-analysis.work-packages.v1","status":"complete","stages":{"financial_quality":{"status":"complete","markdown":"x"},"financial_quality":{"status":"complete","markdown":"y"}}}';
-  assert.equal(typeof duplicate, "string");
-  assert.throws(() => parseWorkPackageEnvelopeJson(duplicateRaw, "quantitative_facts"), /duplicate JSON object key: financial_quality/);
+  const complete = foundation();
+  const missing = foundation({ stages: { engineering_baseline: stageValue("engineering_baseline") } });
+  assert.throws(() => parseWorkPackageEnvelopeJson(JSON.stringify(missing), "foundation"), /missing stages.*local_routing_match/);
+  const unknown = foundation({ stages: { ...complete.stages, unexpected: stageValue("unexpected") } });
+  assert.throws(() => parseWorkPackageEnvelopeJson(JSON.stringify(unknown), "foundation"), /unknown stages.*unexpected/);
+  const duplicateRaw = JSON.stringify(complete).replace('"local_routing_match":{', '"engineering_baseline":{');
+  assert.throws(() => parseWorkPackageEnvelopeJson(duplicateRaw, "foundation"), /duplicate JSON object key: engineering_baseline/);
 });
 
 test("partial stage cannot be projected as success", () => {
-  const partial = envelope("quantitative_facts", {
-    status: "partial",
-    stages: {
-      financial_quality: { ...stageValue("financial_quality"), status: "partial" },
-      market_valuation_facts: stageValue("market_valuation_facts"),
-    },
-  });
-  const parsed = parseWorkPackageEnvelopeJson(JSON.stringify(partial), "quantitative_facts");
+  const partial = foundation();
+  partial.status = "partial";
+  partial.stages.engineering_baseline.status = "partial";
+  const parsed = parseWorkPackageEnvelopeJson(JSON.stringify(partial), "foundation");
   assert.equal(parsed.status, "partial");
-  assert.equal(projectWorkPackageStages(parsed, "quantitative_facts").financial_quality.status, "partial");
-  assert.notEqual(projectWorkPackageStages(parsed, "quantitative_facts").financial_quality.status, "complete");
-  assert.throws(() => parseWorkPackageEnvelopeJson(JSON.stringify({ ...partial, status: "complete" }), "quantitative_facts"), /complete status requires every stage/);
+  const projection = projectWorkPackageStages(parsed, "foundation");
+  assert.equal(projection.engineering_baseline.status, "partial");
+  assert.equal(projection.local_routing_match.status, "complete");
+  assert.throws(() => parseWorkPackageEnvelopeJson(JSON.stringify({ ...partial, status: "complete" }), "foundation"), /complete status requires every stage/);
 });

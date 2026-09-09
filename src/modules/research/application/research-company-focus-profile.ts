@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   assertFocusProfileInput,
   type ResearchCompanyFocusMembership,
@@ -19,7 +20,7 @@ export type ResearchCompanyFocusProfileView = {
 
 /** The public graph resolves only typed ledger targets.  This is intentionally
  * server-side: D1 cannot enforce polymorphic ownership with a foreign key. */
-export async function loadResearchCompanyFocusProfile(db: D1Database, query: { companyId: string | null; securityCode: string; asOf: number; ownerKey?: string }): Promise<ResearchCompanyFocusProfileView> {
+export async function loadResearchCompanyFocusProfile(db: Database, query: { companyId: string | null; securityCode: string; asOf: number; ownerKey?: string }): Promise<ResearchCompanyFocusProfileView> {
   if (!query.companyId) return { availability: "unavailable", reason: "identity_not_found", profile: null, ...(query.ownerKey ? { membership: null } : {}) };
   try {
     const row = await db.prepare(`select * from research_company_focus_profile_versions
@@ -36,7 +37,7 @@ export async function loadResearchCompanyFocusProfile(db: D1Database, query: { c
   }
 }
 
-export async function appendResearchCompanyFocusMembership(db: D1Database, input: { membershipId?: string; ownerKey: string; companyId: string; status: "active" | "removed"; createdAt?: number }) {
+export async function appendResearchCompanyFocusMembership(db: Database, input: { membershipId?: string; ownerKey: string; companyId: string; status: "active" | "removed"; createdAt?: number }) {
   const ownerKey = required(input.ownerKey, "ownerKey"); const companyId = required(input.companyId, "companyId"); const now = input.createdAt ?? Date.now();
   const prior = await loadMembershipRaw(db, companyId, ownerKey);
   const membership: ResearchCompanyFocusMembership = { membershipId: input.membershipId ?? `focus-membership:${crypto.randomUUID()}`, ownerKey, companyId, status: input.status, supersedesMembershipId: prior?.membershipId ?? null, createdAt: now };
@@ -46,7 +47,7 @@ export async function appendResearchCompanyFocusMembership(db: D1Database, input
   return { state: "saved" as const, membership: publicMembership };
 }
 
-export async function createResearchCompanyFocusProfile(db: D1Database, input: FocusProfileWrite) {
+export async function createResearchCompanyFocusProfile(db: Database, input: FocusProfileWrite) {
   const now = input.createdAt ?? Date.now(); const status = input.status ?? "draft"; const asOf = input.asOf ?? now;
   assertFocusProfileInput({ companyId: input.companyId, asOf, status, title: input.title, reviewBy: input.reviewBy, items: input.items });
   const company = await db.prepare(`select company_id as companyId from research_operating_companies where company_id=?`).bind(input.companyId).first<Row>();
@@ -64,13 +65,13 @@ export async function createResearchCompanyFocusProfile(db: D1Database, input: F
   return { state: "saved" as const, focusProfileId: profileId, version, supersedesFocusProfileId: prior?.focusProfileId ?? null };
 }
 
-async function resolveStoredItem(db: D1Database, companyId: string, securityCode: string, row: Row): Promise<ResearchCompanyFocusProfileItem> {
+async function resolveStoredItem(db: Database, companyId: string, securityCode: string, row: Row): Promise<ResearchCompanyFocusProfileItem> {
   const item = { role: text(row.role), targetKind: text(row.target_kind), targetId: text(row.target_id), securityCode: optional(row.security_code), sortOrder: number(row.sort_order), focusItemId: text(row.focus_item_id), createdAt: number(row.created_at) };
   try { const target = await resolveFocusTarget(db, companyId, item); return { ...item, target: target.target, unavailableReason: null } as ResearchCompanyFocusProfileItem; }
   catch (error) { return { ...item, target: null, unavailableReason: error instanceof Error ? error.message : String(error) } as ResearchCompanyFocusProfileItem; }
 }
 
-async function resolveFocusTarget(db: D1Database, companyId: string, item: FocusItemWrite): Promise<{ item: FocusItemWrite; target: Record<string, unknown> }> {
+async function resolveFocusTarget(db: Database, companyId: string, item: FocusItemWrite): Promise<{ item: FocusItemWrite; target: Record<string, unknown> }> {
   const kind = item.targetKind as ResearchFocusTargetKind; const targetId = required(item.targetId, "focus targetId");
   const sql: Record<ResearchFocusTargetKind, { query: string; fields: string[]; security?: boolean }> = {
     operating_model: { query: `select operating_model_id as id, as_of as asOf, status, primary_earning_driver as title, summary from research_operating_models_typed model where operating_model_id=? and company_id=? and epistemic_type in ('observed_fact','management_guidance','system_judgment') and exists (select 1 from research_operating_market_evidence_refs evidence where evidence.subject_type='operating_model' and evidence.subject_id=model.operating_model_id)`, fields: ["id", "asOf", "status", "title", "summary"] },
@@ -94,7 +95,7 @@ async function resolveFocusTarget(db: D1Database, companyId: string, item: Focus
   return { item: { ...item, securityCode: targetSecurity ?? null }, target: Object.fromEntries(statement.fields.map((field) => [field, row[field]])) };
 }
 
-async function loadMembership(db: D1Database, companyId: string, ownerKey: string) { const row = await loadMembershipRaw(db, companyId, ownerKey); return row ? { membershipId: row.membershipId, companyId: row.companyId, status: row.status, supersedesMembershipId: row.supersedesMembershipId, createdAt: row.createdAt } : null; }
-async function loadMembershipRaw(db: D1Database, companyId: string, ownerKey: string): Promise<ResearchCompanyFocusMembership | null> { const row = await db.prepare(`select * from research_company_focus_memberships where company_id=? and owner_key=? order by created_at desc, membership_id desc limit 1`).bind(companyId, ownerKey).first<Row>(); return row ? { membershipId: text(row.membership_id), ownerKey: text(row.owner_key), companyId: text(row.company_id), status: text(row.status) as ResearchCompanyFocusMembership["status"], supersedesMembershipId: optional(row.supersedes_membership_id), createdAt: number(row.created_at) } : null; }
+async function loadMembership(db: Database, companyId: string, ownerKey: string) { const row = await loadMembershipRaw(db, companyId, ownerKey); return row ? { membershipId: row.membershipId, companyId: row.companyId, status: row.status, supersedesMembershipId: row.supersedesMembershipId, createdAt: row.createdAt } : null; }
+async function loadMembershipRaw(db: Database, companyId: string, ownerKey: string): Promise<ResearchCompanyFocusMembership | null> { const row = await db.prepare(`select * from research_company_focus_memberships where company_id=? and owner_key=? order by created_at desc, membership_id desc limit 1`).bind(companyId, ownerKey).first<Row>(); return row ? { membershipId: text(row.membership_id), ownerKey: text(row.owner_key), companyId: text(row.company_id), status: text(row.status) as ResearchCompanyFocusMembership["status"], supersedesMembershipId: optional(row.supersedes_membership_id), createdAt: number(row.created_at) } : null; }
 function mapProfile(row: Row): ResearchCompanyFocusProfile { return { focusProfileId: text(row.focus_profile_id), companyId: text(row.company_id), version: number(row.version), supersedesFocusProfileId: optional(row.supersedes_focus_profile_id), asOf: number(row.as_of), status: text(row.status) as ResearchCompanyFocusProfile["status"], title: text(row.title), reviewBy: nullableNumber(row.review_by), epistemicType: "system_judgment", createdAt: number(row.created_at), items: [] }; }
 function required(value: unknown, label: string) { const result = String(value ?? "").trim(); if (!result) throw new Error(`${label} is required`); return result; } function text(value: unknown) { return required(value, "stored focus profile field"); } function optional(value: unknown) { const result = String(value ?? "").trim(); return result || null; } function number(value: unknown) { const result = Number(value); if (!Number.isFinite(result)) throw new Error("stored focus profile number is invalid"); return result; } function nullableNumber(value: unknown) { return value === null || value === undefined || value === "" ? null : number(value); } function missing(error: unknown, table: string) { return String(error).includes(`no such table: ${table}`); }

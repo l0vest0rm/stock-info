@@ -1,6 +1,6 @@
 import { runPageInit } from './legacy-runtime'
 
-export function runLegacyPageInit(page) {
+export function runLegacyPageInit(page: string) {
   const run = () => {
     Promise.resolve(runPageInit(page)).catch((error) => {
       console.error('Failed to initialize page:', error)

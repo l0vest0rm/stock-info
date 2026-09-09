@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import {
   assertResearchRiskPressureScenario,
   assertResearchRiskRelationship,
@@ -115,7 +116,7 @@ export function planPublicRiskSnapshotDifferences(input: {
   };
 }
 
-export async function loadResearchRiskReview(db: D1Database, input: { securityCode: string; asOf: number }): Promise<ResearchRiskReview> {
+export async function loadResearchRiskReview(db: Database, input: { securityCode: string; asOf: number }): Promise<ResearchRiskReview> {
   const securityCode = input.securityCode.trim().toUpperCase();
   if (!securityCode) throw new Error("research risk review securityCode is required");
   try {
@@ -146,7 +147,7 @@ export async function loadResearchRiskReview(db: D1Database, input: { securityCo
  * relationship record is substituted for a missing frozen module.
  */
 export async function loadPublicRiskReviewSnapshotHistory(
-  db: D1Database,
+  db: Database,
   input: { securityCode: string; asOf: number; limit?: number },
 ): Promise<PublicRiskReviewSnapshotHistory> {
   const securityCode = input.securityCode.trim().toUpperCase();
@@ -195,7 +196,7 @@ export async function loadPublicRiskReviewSnapshotHistory(
   }
 }
 
-export async function insertResearchRiskPressureScenario(db: D1Database, input: ResearchRiskPressureScenario) {
+export async function insertResearchRiskPressureScenario(db: Database, input: ResearchRiskPressureScenario) {
   assertResearchRiskPressureScenario(input);
   return runInsert(db, "research_risk_pressure_scenarios", input.scenarioId, db.prepare(`insert into research_risk_pressure_scenarios (
     scenario_id, company_id, security_code, as_of, scenario_key, version, supersedes_scenario_id, status, scope,
@@ -206,7 +207,7 @@ export async function insertResearchRiskPressureScenario(db: D1Database, input: 
       JSON.stringify(input.inputs), JSON.stringify(input.results), JSON.stringify(input.sourceReferences), input.createdAt, input.updatedAt));
 }
 
-export async function loadResearchRiskPressureScenario(db: D1Database, input: { securityCode: string; scenarioId: string }) {
+export async function loadResearchRiskPressureScenario(db: Database, input: { securityCode: string; scenarioId: string }) {
   try {
     const row = await db.prepare(`select * from research_risk_pressure_scenarios where security_code=? and scenario_id=?`)
       .bind(input.securityCode.trim().toUpperCase(), input.scenarioId).first<Row>();
@@ -217,7 +218,7 @@ export async function loadResearchRiskPressureScenario(db: D1Database, input: { 
   }
 }
 
-export async function insertResearchRiskRelationship(db: D1Database, input: ResearchRiskRelationship) {
+export async function insertResearchRiskRelationship(db: Database, input: ResearchRiskRelationship) {
   assertResearchRiskRelationship(input);
   return runInsert(db, "research_risk_relationships", input.relationshipId, db.prepare(`insert into research_risk_relationships (
     relationship_id, company_id, security_code, as_of, scope, relationship_type, counterparty_name, description,
@@ -228,7 +229,7 @@ export async function insertResearchRiskRelationship(db: D1Database, input: Rese
       input.concentrationBasis, input.status, input.epistemicType, JSON.stringify(input.sourceReferences), input.createdAt, input.updatedAt));
 }
 
-export async function insertResearchRiskThesisLink(db: D1Database, input: ResearchRiskThesisLinkRecord) {
+export async function insertResearchRiskThesisLink(db: Database, input: ResearchRiskThesisLinkRecord) {
   assertResearchRiskThesisLink(input);
   if (!input.riskThesisLinkId.trim()) throw new Error("risk thesis link id is required");
   if (!Number.isInteger(input.createdAt) || input.createdAt <= 0) throw new Error("risk thesis link createdAt must be a positive integer");
@@ -239,7 +240,7 @@ export async function insertResearchRiskThesisLink(db: D1Database, input: Resear
       JSON.stringify(input.sourceReferences), input.createdAt));
 }
 
-export async function validateRiskThesisLinkOwnership(db: D1Database, input: { securityCode: string; companyId: string; riskId: string; thesisId: string }): Promise<boolean> {
+export async function validateRiskThesisLinkOwnership(db: Database, input: { securityCode: string; companyId: string; riskId: string; thesisId: string }): Promise<boolean> {
   const row = await db.prepare(`select 1 as matched from research_risk_entries r join research_theses t on t.thesis_id=?
     where r.risk_id=? and r.security_code=? and t.company_id=? and r.scope in ('operating_company', 'listed_security') limit 1`)
     .bind(input.thesisId, input.riskId, input.securityCode.trim().toUpperCase(), input.companyId).first<{ matched: number }>();
@@ -247,7 +248,7 @@ export async function validateRiskThesisLinkOwnership(db: D1Database, input: { s
 }
 
 /** Saves a dated, public-only snapshot plus reconstructible module state and differences in one D1 batch. */
-export async function savePublicRiskReviewSnapshot(db: D1Database, input: PublicRiskReviewSnapshotWrite) {
+export async function savePublicRiskReviewSnapshot(db: Database, input: PublicRiskReviewSnapshotWrite) {
   assertPublicRiskSnapshotWrite(input);
   try {
     // `research_analysis_snapshots` also stores the older generic dossier
@@ -287,7 +288,7 @@ export async function savePublicRiskReviewSnapshot(db: D1Database, input: Public
       changedModuleCount: plan.differences.length,
       privateDataIncluded: false,
     };
-    const statements: D1PreparedStatement[] = [db.prepare(`insert into research_analysis_snapshots (
+    const statements: PreparedStatement[] = [db.prepare(`insert into research_analysis_snapshots (
       analysis_snapshot_id, company_id, security_code, as_of, completion_level, state, summary_json, module_status_json, created_at
     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
       input.analysisSnapshotId, input.companyId, input.securityCode, input.asOf, input.completionLevel, input.state,
@@ -317,7 +318,7 @@ export async function savePublicRiskReviewSnapshot(db: D1Database, input: Public
   }
 }
 
-export async function loadResearchSnapshotModules(db: D1Database, analysisSnapshotId: string): Promise<ResearchSnapshotModule[]> {
+export async function loadResearchSnapshotModules(db: Database, analysisSnapshotId: string): Promise<ResearchSnapshotModule[]> {
   const rows = await db.prepare(`select module_id as moduleId, availability, version_id as versionId, module_as_of as asOf, payload_json as payloadJson
     from research_analysis_snapshot_modules where analysis_snapshot_id=? order by module_id`).bind(analysisSnapshotId).all<Row>();
   return rows.results.map((row) => ({
@@ -326,7 +327,7 @@ export async function loadResearchSnapshotModules(db: D1Database, analysisSnapsh
   }));
 }
 
-export async function insertResearchSnapshotModuleDifferences(db: D1Database, inputs: ResearchSnapshotModuleDifference[]) {
+export async function insertResearchSnapshotModuleDifferences(db: Database, inputs: ResearchSnapshotModuleDifference[]) {
   for (const input of inputs) assertResearchSnapshotModuleDifference(input);
   if (!inputs.length) return { state: "saved" as const, recordIds: [] as string[], reason: null };
   try {
@@ -346,7 +347,7 @@ export async function insertResearchSnapshotModuleDifferences(db: D1Database, in
   }
 }
 
-async function runInsert(db: D1Database, table: string, recordId: string, statement: D1PreparedStatement) {
+async function runInsert(db: Database, table: string, recordId: string, statement: PreparedStatement) {
   try {
     await db.batch([statement]);
     return { state: "saved" as const, recordId, reason: null };
@@ -435,7 +436,7 @@ function parseObject(value: unknown, label: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-function snapshotDifferenceStatement(db: D1Database, input: ResearchSnapshotModuleDifference): D1PreparedStatement {
+function snapshotDifferenceStatement(db: Database, input: ResearchSnapshotModuleDifference): PreparedStatement {
   assertResearchSnapshotModuleDifference(input);
   return db.prepare(`insert into research_snapshot_module_differences (
     difference_id, company_id, security_code, baseline_snapshot_id, current_snapshot_id, module_id, diff_version,

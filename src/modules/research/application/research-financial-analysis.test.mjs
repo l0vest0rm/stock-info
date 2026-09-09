@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ResearchTestDatabase as FakeD1 } from "../infrastructure/research-test-database.mjs";
 
 import {
   loadResearchFinancialAnalysis,
@@ -76,24 +77,6 @@ test("financial analysis requires the complete eight-section report contract", (
   assert.throws(() => validateFinancialMarkdown("# 1. 不完整\n\n太短"), /shorter than 800 characters/);
 });
 
-class FakeD1 {
-  constructor() { this.kvCache = new Map(); }
-  prepare(sql) {
-    const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
-    return { bind: (...args) => ({
-      first: async () => {
-        if (!normalized.includes("from kv_cache")) throw new Error(`Unexpected D1 statement: ${sql}`);
-        const row = this.kvCache.get(`${args[0]}|${args[1]}`) ?? null;
-        return !row || (row.expiresAt != null && row.expiresAt <= args[2]) ? null : row;
-      },
-      run: async () => {
-        if (!normalized.includes("insert into kv_cache")) throw new Error(`Unexpected D1 statement: ${sql}`);
-        this.kvCache.set(`${args[0]}|${args[1]}`, { namespace: args[0], key: args[1], valueJson: args[2], expiresAt: args[3], updatedAt: args[4] });
-        return { success: true };
-      },
-    }) };
-  }
-}
 
 test("financial analysis persists frozen input, task state, and result in one kv_cache record", async () => {
   const db = new FakeD1();

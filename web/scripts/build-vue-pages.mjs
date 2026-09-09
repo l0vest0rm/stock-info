@@ -1,212 +1,62 @@
 import fs from 'node:fs'
-import { resolve } from 'node:path'
+import { resolve, basename, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { build, defineConfig } from 'vite'
+import { buildPages } from './page-build-config.mjs'
 
-const pageEntries = [
-  {
-    entry: 'src/modules/macro/pages/macro-page.ts',
-    globalName: 'LicaiMacroPage',
-    fileName: 'js/macro-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-option-theta-page.ts',
-    globalName: 'LicaiCompanyOptionThetaPage',
-    fileName: 'js/company-option-theta-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-option-page.ts',
-    globalName: 'LicaiCompanyOptionPage',
-    fileName: 'js/company-option-page.js',
-  },
-  {
-    entry: 'src/modules/options/pages/option-strategy-page.ts',
-    globalName: 'LicaiOptionStrategyPage',
-    fileName: 'js/option-strategy-page.js',
-  },
-  {
-    entry: 'src/modules/home/pages/home-page.ts',
-    globalName: 'LicaiHomePage',
-    fileName: 'js/home-page.js',
-  },
-  {
-    entry: 'src/modules/index/pages/index-page.ts',
-    globalName: 'LicaiIndexPage',
-    fileName: 'js/index-page.js',
-  },
-  {
-    entry: 'src/modules/index/pages/index-position-page.ts',
-    globalName: 'LicaiIndexPositionPage',
-    fileName: 'js/index-position-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-page.ts',
-    globalName: 'LicaiCompanyPage',
-    fileName: 'js/company-page.js',
-  },
-  {
-    entry: 'src/modules/research/pages/investment-analysis-page.ts',
-    globalName: 'LicaiInvestmentAnalysisPage',
-    fileName: 'js/investment-analysis-page.js',
-  },
-  {
-    entry: 'src/modules/research/pages/fund-compare-page.ts',
-    globalName: 'LicaiFundComparePage',
-    fileName: 'js/fund-compare-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-trade-page.ts',
-    globalName: 'LicaiCompanyTradePage',
-    fileName: 'js/company-trade-page.js',
-  },
-  {
-    entry: 'src/modules/knowledge/pages/knowledge-news-page.ts',
-    globalName: 'LicaiKnowledgeNewsPage',
-    fileName: 'js/knowledge-news-page.js',
-  },
-  {
-    entry: 'src/modules/knowledge/pages/knowledge-config-page.ts',
-    globalName: 'LicaiKnowledgeConfigPage',
-    fileName: 'js/knowledge-config-page.js',
-  },
-  {
-    entry: 'src/modules/knowledge/pages/information-processing-page.ts',
-    globalName: 'LicaiInformationProcessingPage',
-    fileName: 'js/information-processing-page.js',
-  },
-  {
-    entry: 'src/modules/companies/pages/companies-follow-page.ts',
-    globalName: 'LicaiCompaniesFollowPage',
-    fileName: 'js/companies-follow-page.js',
-  },
-  {
-    entry: 'src/modules/companies/pages/companies-holding-page.ts',
-    globalName: 'LicaiCompaniesHoldingPage',
-    fileName: 'js/companies-holding-page.js',
-  },
-  {
-    entry: 'src/modules/companies/pages/companies-filter-page.ts',
-    globalName: 'LicaiCompaniesFilterPage',
-    fileName: 'js/companies-filter-page.js',
-  },
-  {
-    entry: 'src/modules/companies/pages/institutional-tracks-page.ts',
-    globalName: 'LicaiInstitutionalTracksPage',
-    fileName: 'js/institutional-tracks-page.js',
-  },
-  {
-    entry: 'src/modules/companies/pages/companies-change-page.ts',
-    globalName: 'LicaiCompaniesChangePage',
-    fileName: 'js/companies-change-page.js',
-  },
-  {
-    entry: 'src/modules/market/pages/sector-flow-page.ts',
-    globalName: 'LicaiSectorFlowPage',
-    fileName: 'js/sector-flow-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-holders-page.ts',
-    globalName: 'LicaiCompanyHoldersPage',
-    fileName: 'js/company-holders-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-dividend-page.ts',
-    globalName: 'LicaiCompanyDividendPage',
-    fileName: 'js/company-dividend-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-notice-page.ts',
-    globalName: 'LicaiCompanyNoticePage',
-    fileName: 'js/company-notice-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-shares-page.ts',
-    globalName: 'LicaiCompanySharesPage',
-    fileName: 'js/company-shares-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-report-page.ts',
-    globalName: 'LicaiCompanyReportPage',
-    fileName: 'js/company-report-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-news-page.ts',
-    globalName: 'LicaiCompanyNewsPage',
-    fileName: 'js/company-news-page.js',
-  },
-  {
-    entry: 'src/modules/company/pages/company-finance-page.ts',
-    globalName: 'LicaiCompanyFinancePage',
-    fileName: 'js/company-finance-page.js',
-  },
-  {
-    entry: 'src/modules/fund/pages/fund-position-page.ts',
-    globalName: 'LicaiFundPositionPage',
-    fileName: 'js/fund-position-page.js',
-  },
-  {
-    entry: 'src/modules/fund/pages/fund-notice-page.ts',
-    globalName: 'LicaiFundNoticePage',
-    fileName: 'js/fund-notice-page.js',
-  },
-  {
-    entry: 'src/modules/fund/pages/fund-page.ts',
-    globalName: 'LicaiFundPage',
-    fileName: 'js/fund-page.js',
-  },
-  {
-    entry: 'src/modules/fund/pages/funds-page.ts',
-    globalName: 'LicaiFundsPage',
-    fileName: 'js/funds-page.js',
-  },
-  {
-    entry: 'src/modules/thirteenf/pages/thirteenf-page.ts',
-    globalName: 'LicaiThirteenFPage',
-    fileName: 'js/thirteenf-page.js',
-  },
-  {
-    entry: 'src/modules/thirteenf/pages/thirteenf-position-page.ts',
-    globalName: 'LicaiThirteenFPositionPage',
-    fileName: 'js/thirteenf-position-page.js',
-  },
-]
-
-const expectedFiles = new Set()
-for (const page of pageEntries) {
-  expectedFiles.add(page.fileName)
-  expectedFiles.add(`${page.fileName}.map`)
+// One graph for layout, Vue pages and transitional legacy adapters means every
+// browser page loads one Vue instance and one instance of shared services.
+const webRoot = fileURLToPath(new URL('..', import.meta.url))
+const dist = resolve(webRoot, 'dist')
+const temporary = resolve(webRoot, '.vite-page-entries')
+const jsDir = resolve(dist, 'js')
+for (const directory of ['page-shared', 'legacy-shared', 'legacy-pages']) {
+  fs.rmSync(resolve(jsDir, directory), { recursive: true, force: true })
 }
-
-const distJsDir = resolve('dist/js')
-if (fs.existsSync(distJsDir)) {
-  for (const item of fs.readdirSync(distJsDir, { withFileTypes: true })) {
-    if (!item.isFile() || !item.name.includes('-page.js')) {
-      continue
-    }
-    const relativeName = `js/${item.name}`
-    if (!expectedFiles.has(relativeName)) {
-      fs.rmSync(resolve(distJsDir, item.name), { force: true })
-    }
+if (fs.existsSync(jsDir)) {
+  for (const item of fs.readdirSync(jsDir)) {
+    if (/-page\.js(?:\.map)?$/.test(item) || /^layout\.js(?:\.map)?$/.test(item)) fs.rmSync(resolve(jsDir, item))
   }
 }
-
-for (const page of pageEntries) {
+fs.rmSync(temporary, { recursive: true, force: true })
+fs.mkdirSync(temporary, { recursive: true })
+function importPath(source) {
+  return JSON.stringify('../' + relative(webRoot, resolve(webRoot, source)).split(sep).join('/'))
+}
+const input = { layout: resolve(webRoot, 'src/app/layout/index.ts') }
+for (const page of buildPages) {
+  const name = basename(page.path, '.html')
+  if (page.entry) {
+    const entryName = basename(page.entry, '.ts')
+    const file = resolve(temporary, `${entryName}.ts`)
+    fs.writeFileSync(file, `import ${importPath('src/app/layout/index.ts')}\nimport ${importPath(page.entry)}\n`)
+    input[entryName] = file
+  }
+  if (page.legacy) {
+    const entryName = `${name}-legacy`
+    const file = resolve(temporary, `${entryName}.ts`)
+    fs.writeFileSync(file, `import ${importPath('src/app/layout/index.ts')}\nimport { runLegacyPageInit } from ${importPath('src/legacy-page-init.ts')}\nrunLegacyPageInit(${JSON.stringify(page.path.slice(1))})\n`)
+    input[entryName] = file
+  }
+}
+try {
   await build(defineConfig({
     configFile: false,
-    define: {
-      'process.env.NODE_ENV': JSON.stringify('production'),
-    },
+    define: { 'process.env.NODE_ENV': JSON.stringify('production') },
     publicDir: false,
     build: {
       emptyOutDir: false,
-      lib: {
-        entry: resolve(page.entry),
-        formats: ['iife'],
-        name: page.globalName,
-        fileName: () => page.fileName,
+      outDir: dist, sourcemap: true, target: 'es2017',
+      rollupOptions: {
+        input,
+        output: {
+          format: 'es',
+          entryFileNames: (chunk) => chunk.name.endsWith('-legacy') ? 'js/legacy-pages/[name].js' : 'js/[name].js',
+          chunkFileNames: 'js/page-shared/[name]-[hash].js',
+        },
       },
-      outDir: 'dist',
-      sourcemap: true,
-      target: 'es2017',
     },
   }))
+} finally {
+  fs.rmSync(temporary, { recursive: true, force: true })
 }

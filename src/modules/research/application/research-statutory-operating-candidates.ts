@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   materializeResearchInformationEvidenceCandidates,
   type ResearchInformationEvidenceSourceRecord,
@@ -34,7 +35,7 @@ type StatutoryInformationRecord = ResearchInformationEvidenceSourceRecord & Stat
  * call an LLM itself, accept a candidate, or create a typed analysis record.
  */
 export async function produceResearchStatutoryOperatingEvidenceCandidates(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   createdAt = Date.now(),
 ): Promise<StatutoryOperatingCandidateProduction> {

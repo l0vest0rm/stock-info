@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { loadResearchFinancialProfile } from "./research-financial-profile";
 import { requireConfirmedSecurityCompanyScope } from "./research-company-scope";
 import {
@@ -33,7 +34,7 @@ export type ResearchFinancialSpecialtyFactWrite = {
  * chain is copied only from an accepted information-preprocessing reference;
  * callers cannot supply a free-form URL, statement, company, entity type, or
  * source type.  It cannot write a model, scenario, valuation, or decision. */
-export async function recordResearchFinancialSpecialtyFact(db: D1Database, input: ResearchFinancialSpecialtyFactWrite): Promise<ResearchFinancialSpecialtyFactVersion> {
+export async function recordResearchFinancialSpecialtyFact(db: Database, input: ResearchFinancialSpecialtyFactWrite): Promise<ResearchFinancialSpecialtyFactVersion> {
   const code = required(input.expectedSecurityCode, "expectedSecurityCode").toUpperCase();
   const scope = await requireConfirmedSecurityCompanyScope(db, code, "financial specialty fact");
   const evidence = await acceptedEvidenceReference(db, input.evidenceReferenceId, code);
@@ -73,7 +74,7 @@ export async function recordResearchFinancialSpecialtyFact(db: D1Database, input
   return fact;
 }
 
-export async function loadResearchFinancialSpecialtyLedger(db: D1Database, securityCode: string) {
+export async function loadResearchFinancialSpecialtyLedger(db: Database, securityCode: string) {
   const code = required(securityCode, "securityCode").toUpperCase();
   const profile = await loadResearchFinancialProfile(db, code);
   let historical: Row[] = [];
@@ -116,7 +117,7 @@ type AcceptedEvidence = {
   targetModule: ResearchInformationEvidenceTargetModule; targetField: string;
   sourceUrl: string | null; contentUrl: string | null; sourceTitle: string | null; sourceName: string | null; publishedAt: string | null; sourceLocator: string;
 };
-async function acceptedEvidenceReference(db: D1Database, evidenceReferenceId: string, expectedSecurityCode: string): Promise<AcceptedEvidence | null> {
+async function acceptedEvidenceReference(db: Database, evidenceReferenceId: string, expectedSecurityCode: string): Promise<AcceptedEvidence | null> {
   const row = await db.prepare(`select reference.evidence_reference_id as evidenceReferenceId, reference.candidate_id as candidateId,
       reference.candidate_review_id as candidateReviewId, reference.security_code as securityCode, candidate.statement,
       candidate.target_module as targetModule, candidate.target_field as targetField,

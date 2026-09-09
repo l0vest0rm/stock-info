@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   fetchStatutoryDisclosureIndex,
   type StatutoryDisclosureIndex,
@@ -5,7 +6,7 @@ import {
 } from "../../../adapters/statutory-disclosures";
 
 export async function refreshResearchStatutoryDisclosureIndex(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   options: StatutoryDisclosureIndexOptions = {},
 ): Promise<StatutoryDisclosureIndex> {
@@ -19,7 +20,7 @@ export async function refreshResearchStatutoryDisclosureIndex(
   return index;
 }
 
-export async function loadResearchStatutoryDisclosureDocuments(db: D1Database, securityCode: string): Promise<{ availability: "available" | "empty" | "unavailable"; reason: string | null; items: Array<Record<string, unknown>> }> {
+export async function loadResearchStatutoryDisclosureDocuments(db: Database, securityCode: string): Promise<{ availability: "available" | "empty" | "unavailable"; reason: string | null; items: Array<Record<string, unknown>> }> {
   try {
     const rows = await db.prepare(`select registry, security_code as securityCode, document_id as documentId, title, published_at as publishedAt, document_url as documentUrl, document_type as documentType, source_locator as sourceLocator, indexed_at as indexedAt from research_statutory_disclosure_documents where security_code=? order by published_at desc, indexed_at desc limit 200`).bind(securityCode).all();
     return { availability: rows.results.length ? "available" : "empty", reason: rows.results.length ? null : "no_records", items: rows.results as Array<Record<string, unknown>> };

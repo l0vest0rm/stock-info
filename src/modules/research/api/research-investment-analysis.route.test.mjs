@@ -14,6 +14,17 @@ test("investment-analysis resume remains unavailable outside the local LLM runti
   assert.match(body.msg, /resume is only available in local research runtime/);
 });
 
+test("investment-analysis synchronization remains unavailable outside the local LLM runtime", async () => {
+  const response = await researchRoutes.request(
+    "http://example.test/research/company/300308.SZ/investment-analysis/sync",
+    { method: "POST" },
+    { LLM_RUNTIME: "production" },
+  );
+  const body = await response.json();
+  assert.equal(response.status, 404);
+  assert.match(body.msg, /synchronization is only available in local research runtime/);
+});
+
 test("retired research workbench routes are not registered", async () => {
   for (const [path, init] of [
     ["/research/company/300308.SZ/forecasts", {}],

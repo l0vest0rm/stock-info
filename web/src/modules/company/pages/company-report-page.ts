@@ -1,4 +1,7 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { prepareCompanyReportContext } from '../../../platform/legacy/legacy-runtime'
+import { createCompanyReportController } from '../runtime/company-pages-runtime'
+import type { CompanyReportRow, CompanyReportStatePatch, CompanyReportDiscoveryReasoningEffort } from '../runtime/company-report-contract'
 import { knowledgeDocModalStyles } from '../../knowledge/runtime/knowledge-doc-modal'
 
 const companyReportStyles = `
@@ -18,48 +21,6 @@ ${knowledgeDocModalStyles}
 }
 `
 
-type CompanyReportRow = {
-  rank: number
-  publishDate: string
-  title: string
-  provenance: string
-  reportHref: string
-  reportInfoCode: string
-  docId: string
-  revenue2025: string
-  revenueGrowth2025: string
-  profit2025: string
-  profitMargin2025: string
-  growth2025: string
-  profitEstimated2025: boolean
-  pe2025: string
-  revenue2026: string
-  revenueGrowth2026: string
-  profit2026: string
-  profitMargin2026: string
-  growth2026: string
-  profitEstimated2026: boolean
-  pe2026: string
-  revenue2027: string
-  revenueGrowth2027: string
-  profit2027: string
-  profitMargin2027: string
-  growth2027: string
-  profitEstimated2027: boolean
-  pe2027: string
-  revenue2028: string
-  revenueGrowth2028: string
-  profit2028: string
-  profitMargin2028: string
-  growth2028: string
-  profitEstimated2028: boolean
-  pe2028: string
-  valuation: string
-  targetPrice: string
-  orgName: string
-  pages: string
-  llmRawResponse?: unknown | null
-}
 
 function companyReportProvenanceLabel(value: unknown): string {
   return String(value || '').trim().toLowerCase() === 'web_search' ? '搜索发现' : '既有来源'
@@ -81,40 +42,6 @@ function companyReportRawResponseTitle(value: unknown): string | undefined {
   return `模型原始返回：\n${rendered || '（空）'}`
 }
 
-type CompanyReportStateEvent = CustomEvent<{
-  rows?: CompanyReportRow[]
-  currentPage?: number
-  hasNext?: boolean
-  status?: string
-  error?: boolean
-  discoveryEnabled?: boolean
-  discoveryTaskName?: string | null
-  discoveryStatus?: string
-  discoveryMessage?: string
-  discoveryBusy?: boolean
-  discoveryCreatedAt?: number | null
-  discoveryStartedAt?: number | null
-  discoveryCompletedAt?: number | null
-  discoveryUpdatedAt?: number | null
-  discoveryLastSuccessfulAt?: number | null
-  discoveryModel?: string | null
-  discoveryReasoningEffort?: string | null
-}>
-
-function emitCompanyReportPageChange(page: number) {
-  window.dispatchEvent(new CustomEvent('licai:company-report-page-change', {
-    detail: { page },
-  }))
-}
-
-function emitCompanyReportOpenDoc(docId: string) {
-  window.dispatchEvent(new CustomEvent('licai:company-report-open-doc', {
-    detail: { docId },
-  }))
-}
-
-type CompanyReportDiscoveryReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'pro'
-
 const companyReportDiscoveryReasoningOptions: Array<{ value: CompanyReportDiscoveryReasoningEffort, label: string }> = [
   { value: 'low', label: '低' },
   { value: 'medium', label: '中' },
@@ -122,12 +49,6 @@ const companyReportDiscoveryReasoningOptions: Array<{ value: CompanyReportDiscov
   { value: 'xhigh', label: '超高' },
   { value: 'pro', label: '专业' },
 ]
-
-function emitCompanyReportDiscovery(reasoningEffort: CompanyReportDiscoveryReasoningEffort = 'xhigh') {
-  window.dispatchEvent(new CustomEvent('licai:company-report-discover', {
-    detail: { reasoningEffort },
-  }))
-}
 
 function formatCompanyReportElapsedSeconds(value: number): string {
   const totalSeconds = Math.max(0, Math.floor(Number.isFinite(value) ? value : 0))
@@ -149,7 +70,7 @@ function formatCompanyReportDiscoveryExecution(model: unknown, reasoningEffort: 
 }
 
 function formatCompanyReportDiscoveryTimestamp(value: number | null): string {
-  if (!Number.isFinite(value)) {
+  if (value === null || !Number.isFinite(value)) {
     return ''
   }
   const parts = new Intl.DateTimeFormat('zh-CN', {
@@ -264,7 +185,7 @@ const CompanyReportPage = defineComponent({
 
     const updateDiscoveryElapsed = () => {
       const startAt = discoveryElapsedStartAt.value
-      if (!Number.isFinite(startAt)) {
+      if (startAt === null || !Number.isFinite(startAt)) {
         discoveryElapsedSeconds.value = 0
         return
       }
@@ -292,8 +213,7 @@ const CompanyReportPage = defineComponent({
       return Number.isFinite(parsed) ? parsed : null
     }
 
-    const onState = (event: Event) => {
-      const detail = (event as CompanyReportStateEvent).detail
+    const onState = (detail: CompanyReportStatePatch) => {
       if (!detail) {
         return
       }
@@ -381,13 +301,29 @@ const CompanyReportPage = defineComponent({
       syncDiscoveryElapsedTimer()
     }
 
-    onMounted(() => {
-      window.addEventListener('licai:company-report-state', onState)
+    let controller: ReturnType<typeof createCompanyReportController> | null = null
+    let disposed = false
+    onMounted(async () => {
+      try {
+        const context = await prepareCompanyReportContext()
+        if (disposed) return
+        controller = createCompanyReportController(context, onState)
+        await controller.start()
+      } catch (error) {
+        if (!disposed) onState({ status: error instanceof Error ? error.message : String(error), error: true })
+      }
     })
 
-    onBeforeUnmount(() => {
-      window.removeEventListener('licai:company-report-state', onState)
+    const dispose = () => {
+      disposed = true
+      controller?.dispose()
       clearDiscoveryElapsedTimer()
+    }
+    // Full-page navigation and component unmount share the same owner/cleanup.
+    window.addEventListener('pagehide', dispose, { once: true })
+    onBeforeUnmount(() => {
+      window.removeEventListener('pagehide', dispose)
+      dispose()
     })
 
     const pagination = () => {
@@ -409,7 +345,7 @@ const CompanyReportPage = defineComponent({
                 if (item.disabled || item.active) {
                   return
                 }
-                emitCompanyReportPageChange(item.page)
+                controller?.changePage(item.page)
               },
             }, item.label),
           ])
@@ -431,7 +367,7 @@ const CompanyReportPage = defineComponent({
                 type: 'button',
                 class: 'btn btn-sm btn-outline-primary company-report-discovery-trigger',
                 disabled: discoveryBusy.value,
-                onClick: () => emitCompanyReportDiscovery(selectedDiscoveryReasoningEffort.value),
+                onClick: () => controller?.discover(selectedDiscoveryReasoningEffort.value),
               }, discoveryBusy.value
                 ? '正在搜索近期研报…'
                 : discoveryStatus.value === 'completed' ? '再次搜索研报' : '搜索近期研报'),
@@ -507,6 +443,7 @@ const CompanyReportPage = defineComponent({
                     href: `#${row.reportInfoCode}`,
                     name: 'infoCode',
                     'data-code': row.reportInfoCode,
+                    onClick: (event: Event) => { event.preventDefault(); controller?.openReport(row.reportInfoCode) },
                   }, row.title)
                   : row.reportHref
                     ? h('a', {
@@ -519,7 +456,7 @@ const CompanyReportPage = defineComponent({
                         href: `#knowledge:${row.docId}`,
                         onClick: (event: Event) => {
                           event.preventDefault()
-                          emitCompanyReportOpenDoc(row.docId)
+                          controller?.openDoc(row.docId)
                         },
                       }, row.title)
                       : h('span', row.title)),

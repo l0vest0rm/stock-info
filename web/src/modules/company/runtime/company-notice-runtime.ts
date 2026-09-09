@@ -1,5 +1,7 @@
 import noticeTypeOptions from '../../../config/company-notice-categories.json'
 
+const COMPANY_RESEARCH_CATEGORY = '__company_research__'
+
 type CompanyNoticeFetchRequest = (request: {
   url?: string
   params?: Record<string, unknown>
@@ -36,7 +38,9 @@ export function createCompanyNoticeInitializer(context: CompanyNoticeRuntimeCont
     }
     const rows: any[] = []
     const selectedLabel = selectedNoticeType
-      ? noticeTypeOptions.find((option) => option.value === selectedNoticeType)?.label
+      ? (selectedNoticeType === COMPANY_RESEARCH_CATEGORY
+        ? '公司调研'
+        : noticeTypeOptions.find((option) => option.value === selectedNoticeType)?.label)
       : ''
     for (const item of data) {
       rows.push({
@@ -56,7 +60,8 @@ export function createCompanyNoticeInitializer(context: CompanyNoticeRuntimeCont
     const params = {
       stock: as[0] || '',
       type: as[1] || '',
-      category: noticeTypeValue,
+      contentKind: noticeTypeValue === COMPANY_RESEARCH_CATEGORY ? 'research' : 'notice',
+      category: noticeTypeValue === COMPANY_RESEARCH_CATEGORY ? '' : noticeTypeValue,
       page,
       pageSize: 30,
     }

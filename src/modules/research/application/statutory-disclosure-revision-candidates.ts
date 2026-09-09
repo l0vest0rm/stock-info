@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import revisionSignals from "../../../../config/research-statutory-disclosure-revision-signals.v1.json";
 
 type Registry = "cninfo" | "hkex";
@@ -22,7 +23,7 @@ export function classifyStatutoryDisclosureRevisionCandidate(input: { registry: 
 }
 
 /** Materializes only documents already indexed from the official registry. */
-export async function refreshStatutoryDisclosureRevisionCandidates(db: D1Database, securityCode: string, discoveredAt = Date.now()) {
+export async function refreshStatutoryDisclosureRevisionCandidates(db: Database, securityCode: string, discoveredAt = Date.now()) {
   const documents = await db.prepare(`select registry, security_code as securityCode, document_id as documentId, title, published_at as publishedAt, document_url as documentUrl, source_locator as sourceLocator from research_statutory_disclosure_documents where security_code=? and registry in ('cninfo','hkex') order by published_at desc, document_id`).bind(securityCode).all<Row>();
   const candidates = documents.results.flatMap((row) => {
     const registry = String(row.registry) as Registry;
@@ -40,7 +41,7 @@ export async function refreshStatutoryDisclosureRevisionCandidates(db: D1Databas
   return { scannedDocumentCount: documents.results.length, matchedCount: candidates.length, createdCount, ruleVersion: config.version };
 }
 
-export async function loadStatutoryDisclosureRevisionCandidates(db: D1Database, securityCode: string): Promise<{ availability: "available" | "empty" | "unavailable"; reason: string | null; items: StatutoryDisclosureRevisionCandidate[] }> {
+export async function loadStatutoryDisclosureRevisionCandidates(db: Database, securityCode: string): Promise<{ availability: "available" | "empty" | "unavailable"; reason: string | null; items: StatutoryDisclosureRevisionCandidate[] }> {
   try {
     const rows = await db.prepare(`select c.*, r.review_id as reviewId, r.decision, r.original_document_id as originalDocumentId, r.affected_scope as affectedScope, r.reviewer, r.reason as reviewReason, r.reviewed_at as reviewedAt, r.created_at as reviewCreatedAt
       from research_statutory_disclosure_revision_candidates c left join research_statutory_disclosure_revision_reviews r on r.review_id=(select review_id from research_statutory_disclosure_revision_reviews where candidate_id=c.candidate_id order by reviewed_at desc, created_at desc, review_id desc limit 1)
@@ -49,7 +50,7 @@ export async function loadStatutoryDisclosureRevisionCandidates(db: D1Database, 
   } catch (error) { if (/no such table|does not exist|not found/i.test(String(error))) return { availability: "unavailable", reason: "storage_not_initialized", items: [] }; throw error; }
 }
 
-export async function reviewStatutoryDisclosureRevisionCandidate(db: D1Database, securityCode: string, input: { reviewId: string; candidateId: string; decision: Decision; originalDocumentId?: string | null; affectedScope?: string | null; reviewer: string; reason: string; reviewedAt?: number }) {
+export async function reviewStatutoryDisclosureRevisionCandidate(db: Database, securityCode: string, input: { reviewId: string; candidateId: string; decision: Decision; originalDocumentId?: string | null; affectedScope?: string | null; reviewer: string; reason: string; reviewedAt?: number }) {
   const candidate = await db.prepare(`select * from research_statutory_disclosure_revision_candidates where candidate_id=? and security_code=?`).bind(input.candidateId, securityCode).first<Row>();
   if (!candidate) throw new Error("statutory revision candidate was not found for this security");
   const now = input.reviewedAt ?? Date.now(); const decision = input.decision;
@@ -68,7 +69,7 @@ export async function reviewStatutoryDisclosureRevisionCandidate(db: D1Database,
 }
 
 /** Acceptance of a primary/statutory matching actual stops until potentially relevant official corrections are reviewed. */
-export async function assertNoUnreviewedStatutoryRevisionCandidate(db: D1Database, securityCode: string, fiscalPeriod: string): Promise<void> {
+export async function assertNoUnreviewedStatutoryRevisionCandidate(db: Database, securityCode: string, fiscalPeriod: string): Promise<void> {
   try {
     const year = /^([0-9]{4})/.exec(fiscalPeriod)?.[1] ?? null;
     if (!year) return;

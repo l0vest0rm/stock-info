@@ -276,7 +276,7 @@ export function createFundPositionInitializer(context: FundPagesRuntimeContext) 
   function refreshFundPositionTrendChart() {
     const code = getCode()
     const cache = getCache()
-    const data = cache[`${code}-fp`] as Array<{ updateDate: string, data: any[] }> | undefined
+    const data = cache[`${code}-fp`] as Array<{ updateDate: string, data: any[], sourceCode?: string, sourceName?: string, sourceKind?: string }> | undefined
     if (!data || data.length === 0) {
       return
     }
@@ -307,7 +307,7 @@ export function createFundPositionInitializer(context: FundPagesRuntimeContext) 
   }
 
   function genFundPositionPie(code: string, index: number) {
-    const data = getCache()[`${code}-fp`] as Array<{ updateDate: string, data: any[] }>
+    const data = getCache()[`${code}-fp`] as Array<{ updateDate: string, data: any[], sourceCode?: string, sourceName?: string, sourceKind?: string }>
     if (!data || data.length === 0 || index >= data.length || !data[index] || !Array.isArray(data[index].data)) {
       return
     }
@@ -336,7 +336,7 @@ export function createFundPositionInitializer(context: FundPagesRuntimeContext) 
       p2 = 1
     }
     fetchFundPosition(code, 12, (resolvedCode: string) => {
-      const data = getCache()[`${resolvedCode}-fp`] as Array<{ updateDate: string, data: any[] }>
+      const data = getCache()[`${resolvedCode}-fp`] as Array<{ updateDate: string, data: any[], sourceCode?: string, sourceName?: string, sourceKind?: string }>
       if (!data || data.length === 0) {
         emitFundPositionState({
           currentDateLabel: '',

@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { Hono } from "hono";
 import { marketDataCacheTtlMsForRegion } from "../../../shared/cache-policy";
 import { cachedFetchText, ok, parseJsonOrJsonp } from "../../../shared/http";
@@ -107,7 +108,7 @@ function parseReportCountDays(value: string | undefined): number {
   return Number.isInteger(days) && days >= 1 && days <= 3650 ? days : 90;
 }
 
-async function fetchJson(db: D1Database, url: URL, referer: string, ttlMs: number): Promise<unknown> {
+async function fetchJson(db: Database, url: URL, referer: string, ttlMs: number): Promise<unknown> {
   const text = await cachedFetchText(
     db,
     url.toString(),

@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   GUIDANCE_EVENT_IMPACT_REVIEW_RULE_VERSION,
   assertGuidanceEventImpactReviewTargetActionWrite,
@@ -25,7 +26,7 @@ type BoundSource = {
  * it cannot change any target's status, text, inputs or result.
  */
 export async function createGuidanceEventImpactReview(
-  db: D1Database,
+  db: Database,
   input: GuidanceEventImpactReviewWrite,
 ): Promise<GuidanceEventImpactReview & { modelReviewItemsCreated: number }> {
   assertGuidanceEventImpactReviewWrite(input);
@@ -86,7 +87,7 @@ export async function createGuidanceEventImpactReview(
  * linked thesis/risk itself is deliberately never updated here.
  */
 export async function resolveGuidanceEventImpactReviewTarget(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   impactReviewTargetId: string,
   input: GuidanceEventImpactReviewTargetActionWrite,
@@ -120,7 +121,7 @@ export async function resolveGuidanceEventImpactReviewTarget(
   return action;
 }
 
-export async function loadGuidanceEventImpactReviews(db: D1Database, securityCode: string): Promise<GuidanceEventImpactReview[]> {
+export async function loadGuidanceEventImpactReviews(db: Database, securityCode: string): Promise<GuidanceEventImpactReview[]> {
   const rows = await db.prepare(`select * from research_guidance_event_impact_reviews where security_code=? order by created_at desc, impact_review_id desc`)
     .bind(securityCode).all<Row>();
   if (!rows.results.length) return [];
@@ -153,7 +154,7 @@ export async function loadGuidanceEventImpactReviews(db: D1Database, securityCod
   }));
 }
 
-async function loadBoundSource(db: D1Database, securityCode: string, kind: GuidanceEventImpactReviewWrite["sourceKind"], sourceId: string): Promise<BoundSource> {
+async function loadBoundSource(db: Database, securityCode: string, kind: GuidanceEventImpactReviewWrite["sourceKind"], sourceId: string): Promise<BoundSource> {
   if (kind === "management_guidance") {
     const row = await db.prepare(`select guidance_forecast_id, company_id, guidance_date, source_statement, source_refs_json
       from research_management_guidance_forecasts where guidance_forecast_id=? and security_code=?`).bind(sourceId, securityCode).first<Row>();
@@ -177,7 +178,7 @@ async function loadBoundSource(db: D1Database, securityCode: string, kind: Guida
   return { companyId: nullable(row.company_id), observedAt: String(number(row.as_of)), binding: { epistemicType: "observed_fact", statement: text(row.outcome_summary), sourceReferences } };
 }
 
-async function assertTargetOwnership(db: D1Database, securityCode: string, companyId: string | null, targets: GuidanceEventImpactReview["targets"]): Promise<void> {
+async function assertTargetOwnership(db: Database, securityCode: string, companyId: string | null, targets: GuidanceEventImpactReview["targets"]): Promise<void> {
   for (const target of targets) {
     if (target.targetKind === "thesis") {
       if (!companyId) throw new Error("an operating-company mapping is required before mapping this source to a thesis");
@@ -200,7 +201,7 @@ async function assertTargetOwnership(db: D1Database, securityCode: string, compa
 }
 
 async function assertImpactTargetStillOwned(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   companyId: string | null,
   kind: "thesis" | "risk",

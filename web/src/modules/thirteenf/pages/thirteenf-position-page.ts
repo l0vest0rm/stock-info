@@ -89,8 +89,8 @@ function compareThirteenFPositionRows(
   key: ThirteenFPositionSortKey,
   direction: SortDirection,
 ): number {
-  const leftValue = parseSortableValue(left[key])
-  const rightValue = parseSortableValue(right[key])
+  const leftValue = parseSortableValue(String(left[key]))
+  const rightValue = parseSortableValue(String(right[key]))
   let result = 0
   if (typeof leftValue === 'number' && typeof rightValue === 'number') {
     result = leftValue - rightValue

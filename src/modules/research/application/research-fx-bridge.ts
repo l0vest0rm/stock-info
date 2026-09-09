@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { cachedFetchJson, cachedFetchText } from "../../../shared/http";
 
 type Currency = "CNY" | "HKD" | "USD";
@@ -26,7 +27,7 @@ export type ResearchFxBridge = {
 };
 
 export type ResearchFxSourceLoader = (
-  db: D1Database,
+  db: Database,
   source: "DEXCHUS" | "HKMA_USD_HKD",
 ) => Promise<ResearchFxSource | null>;
 
@@ -50,7 +51,7 @@ const OFFICIAL_FX_CACHE_TTL_MS = 60 * 60 * 1000;
  * every bridge retains its official source URL and observation date.
  */
 export async function loadResearchFxBridge(
-  db: D1Database,
+  db: Database,
   input: { fromCurrency: string | null | undefined; toCurrency: string | null | undefined; asOf?: number },
   options: ResearchFxBridgeOptions = {},
 ): Promise<ResearchFxBridge> {
@@ -98,7 +99,7 @@ export async function loadResearchFxBridge(
  * the selected security's trading currency.  Multiple currencies remain
  * separate: the reader must select a model currency explicitly and cannot
  * silently mix an annual report with a market quote. */
-export async function loadResearchFxBridgesForSecurity(db: D1Database, input: { securityCode: string; securityCurrency: string | null | undefined; asOf?: number }) {
+export async function loadResearchFxBridgesForSecurity(db: Database, input: { securityCode: string; securityCurrency: string | null | undefined; asOf?: number }) {
   const securityCode = String(input.securityCode || "").trim().toUpperCase();
   const securityCurrency = normalizeCurrency(input.securityCurrency);
   const processedAt = input.asOf ?? Date.now();
@@ -124,7 +125,7 @@ export async function loadResearchFxBridgesForSecurity(db: D1Database, input: { 
 }
 
 async function loadOfficialFxSource(
-  db: D1Database,
+  db: Database,
   source: "DEXCHUS" | "HKMA_USD_HKD",
 ): Promise<ResearchFxSource | null> {
   if (source === "DEXCHUS") {

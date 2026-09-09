@@ -12,8 +12,7 @@ import {
 } from "./research-scope-industry-routing.mjs";
 import eastmoneyMappings from "../../config/research-eastmoney-em2016-template-mappings.json" with { type: "json" };
 import eastmoneyTop300 from "../../config/research-eastmoney-em2016-top300.json" with { type: "json" };
-import { getResearchOperatingAnalysisStage } from "./research-operating-analysis-stage-registry.mjs";
-import { lowDependencyPromptForStage } from "../research-operating-analysis-low-dependency-runner.mjs";
+import { getResearchOperatingAnalysisStage, workPackageForStage } from "./research-operating-analysis-stage-registry.mjs";
 
 const reference = (id, quote = "原文明确披露主营、产品、下游和行业边界") => ({ sourceId: id, url: `https://example.test/${id}`, title: "公开原文", publishedAt: "2026-08-01", quote, locator: "正文" });
 const baseline = (overrides = {}) => normalizeEngineeringBaseline({
@@ -35,8 +34,15 @@ test("S0.1/S0.2 are deterministic and have no model/Web Search prompt", () => {
   assert.equal(getResearchOperatingAnalysisStage("engineering_baseline").webSearch, false);
   assert.equal(getResearchOperatingAnalysisStage("local_routing_match").execution, "deterministic");
   assert.equal(getResearchOperatingAnalysisStage("local_routing_match").webSearch, false);
-  assert.equal(lowDependencyPromptForStage("engineering_baseline"), null);
-  assert.equal(lowDependencyPromptForStage("local_routing_match"), null);
+  // The old runner was retired when investment analysis moved to taskd.
+  // The surviving registry owns the deterministic/no-prompt contract.
+  for (const stageKey of ["engineering_baseline", "local_routing_match"]) {
+    const owner = workPackageForStage(stageKey);
+    assert.equal(owner.key, "foundation");
+    assert.equal(owner.execution, "deterministic");
+    assert.equal(owner.webSearch, false);
+    assert.equal(owner.promptVersion, null);
+  }
 });
 
 test("local rules produce one confirmed template from sufficient explicit evidence", () => {

@@ -391,7 +391,10 @@ npm run deploy
 - `wrangler deploy`
 - `curl https://tinfo.cc/api/health`
 
-`XUEQIU_COOKIE` 作为 Worker 变量随标准 `wrangler deploy` 发布。local-scheduler 在上次成功刷新超过 6 小时时启动受控 CDP 子进程；候选 Cookie 必须先通过真实雪球 K 线请求，才会原子更新本地 credential store。local-http 会在下一个请求读取新值，PID 不变。验证失败不会推进成功时间，并在 5 分钟后重试（可通过 `XUEQIU_COOKIE_REFRESH_RETRY_SECONDS` 调整）。自动刷新不会写入生产变量或自动部署；需要暂存 `.dev.vars` 或 `wrangler.jsonc` 时，显式运行 `npm run refresh:xueqiu-cookie -- --write-dev-vars --write-wrangler-vars`，再按需 `npm run deploy`。
+`XUEQIU_COOKIE` 作为 Worker secret 管理，不写入版本化 `wrangler.jsonc`。执行 `npm run refresh:xueqiu-cookie` 从 CDP 刷新并验证后写入忽略的 `.dev.vars` 和本地 credential store；本地调度器默认每 3 小时刷新，失败 5 分钟后重试，不改生产。标准发布在部署前重新通过雪球 K 线验证本地凭据，并经 stdin 上传 Worker secret；不要把 Cookie 放到命令行参数或日志。
+
+发布前执行 `npm run verify:architecture`，覆盖前后端类型、schema/运行边界和单元测试。页面入口与环境策略统一定义在 `config/page-manifest.json`；本地构建默认 `WEB_RUNTIME=local`，生产构建使用 `npm run build:web:production`。相邻共享包的 Git revision 和实际 dist 内容由 `config/release-inputs.lock.json` 锁定，升级共享包时先构建并审查，再执行 `node scripts/check-release-inputs.mjs --update` 更新锁文件。发布不允许未审查的共享包漂移。
+
 
 只做打包检查但不真正上线：
 

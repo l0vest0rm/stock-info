@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { isSupportedCompanyCode, normalizeSupportedCompanyCode } from "../../../shared/codes";
 import { searchSecurities } from "../../security/application/search-securities";
 import bundledMappingFile from "../../../../config/knowledge-company-code-mappings.json";
@@ -33,7 +34,7 @@ let writeQueue = Promise.resolve();
 
 /** Local exact company-name-to-security mappings, persisted only by Node. */
 export async function resolveKnowledgeCompanyCodeMappings(
-  db: D1Database,
+  db: Database,
   companyNames: string[],
   options: ResolveOptions = {},
 ): Promise<KnowledgeCompanyCodeMapping[]> {
@@ -61,7 +62,7 @@ export async function resolveKnowledgeCompanyCodeMappings(
 }
 
 export async function refreshKnowledgeCompanyCodeMappings(
-  db: D1Database,
+  db: Database,
   maxCompanies: number,
 ): Promise<MappingRefreshResult> {
   const candidates = await listInformationEntities(db, maxCompanies);
@@ -86,7 +87,7 @@ export function hasExactKnowledgeCompanyCodeMapping(
 }
 
 export async function filterExactCompanyCodeMappedRows<T extends { entity: string }>(
-  db: D1Database,
+  db: Database,
   rows: T[],
   code: string,
 ): Promise<T[]> {
@@ -94,7 +95,7 @@ export async function filterExactCompanyCodeMappedRows<T extends { entity: strin
   return rows.filter((row) => hasExactKnowledgeCompanyCodeMapping(mappings, row.entity, code));
 }
 
-async function listInformationEntities(db: D1Database, maxCompanies: number): Promise<string[]> {
+async function listInformationEntities(db: Database, maxCompanies: number): Promise<string[]> {
   const rows = await db.prepare(
     `with current_results as (
       select v.doc_id, r.result_id
@@ -121,7 +122,7 @@ async function listInformationEntities(db: D1Database, maxCompanies: number): Pr
   return uniqueCompanyNames((rows.results ?? []).map((row) => row.company_name));
 }
 
-async function searchExactCompanyMappings(db: D1Database, companyName: string): Promise<KnowledgeCompanyCodeMapping[]> {
+async function searchExactCompanyMappings(db: Database, companyName: string): Promise<KnowledgeCompanyCodeMapping[]> {
   const matches = (await searchSecurities(db, companyName))
     .filter((item) => normalizeComparableName(item.name) === normalizeComparableName(companyName))
     .map((item) => ({

@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   fetchEastmoneyPerformanceForecastPage,
   fetchEastmoneyPerformanceReportPage,
@@ -32,7 +33,7 @@ type SourceConfig = {
   rowKey: (row: Record<string, unknown>) => string;
   acceptRow: (row: Record<string, unknown>) => boolean;
   fetchPage: (
-    db: D1Database,
+    db: Database,
     reportDate: string,
     pageNumber: number,
     pageSize: number
@@ -114,7 +115,7 @@ export type ProvisionalSyncOptions = {
   /** Test seam; production uses the source config's Eastmoney adapter. */
   fetchPage?: (
     source: ProvisionalSource,
-    db: D1Database,
+    db: Database,
     reportDate: string,
     pageNumber: number,
     pageSize: number
@@ -400,7 +401,7 @@ function recordBootstrapPageProcessed(stats: SyncStats, sourceStats: SourceStats
 }
 
 function fetchSourcePage(
-  db: D1Database,
+  db: Database,
   config: SourceConfig,
   reportDate: string,
   pageNumber: number,
@@ -507,7 +508,7 @@ function financialDataSource(row: FinancialStatement | undefined): unknown {
 }
 
 async function readSyncCheckpoint(
-  db: D1Database,
+  db: Database,
   source: ProvisionalSource,
   reportDate: string
 ): Promise<SyncCheckpoint> {
@@ -516,7 +517,7 @@ async function readSyncCheckpoint(
 }
 
 async function writeSyncCheckpoint(
-  db: D1Database,
+  db: Database,
   source: ProvisionalSource,
   reportDate: string,
   checkpoint: SyncCheckpoint
@@ -556,7 +557,7 @@ function normalizeCheckpoint(value: unknown, reportDate: string): SyncCheckpoint
   };
 }
 
-async function readFinancialSyncState(db: D1Database): Promise<FinancialSyncState> {
+async function readFinancialSyncState(db: Database): Promise<FinancialSyncState> {
   const record = await getKvCache(db, SYNC_STATE_NAMESPACE, FINANCIAL_PROVISIONAL_SYNC_STATE_KEY);
   if (!record) return emptyFinancialSyncState();
   try {
@@ -589,7 +590,7 @@ function finiteNumberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-async function putFinancialSyncState(db: D1Database, state: FinancialSyncState, updatedAt: number): Promise<void> {
+async function putFinancialSyncState(db: Database, state: FinancialSyncState, updatedAt: number): Promise<void> {
   await putKvCache(db, {
     namespace: SYNC_STATE_NAMESPACE,
     key: FINANCIAL_PROVISIONAL_SYNC_STATE_KEY,
@@ -600,7 +601,7 @@ async function putFinancialSyncState(db: D1Database, state: FinancialSyncState, 
 }
 
 async function writeSyncState(
-  db: D1Database,
+  db: Database,
   status: "running" | "succeeded" | "failed",
   startedAt: number,
   finishedAt: number | null,

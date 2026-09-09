@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import type { SecurityRecord } from "../../../types";
 import {
   buildFinancialCoverage,
@@ -119,7 +120,7 @@ export type SecurityRightsLinkWrite = {
   now?: number;
 };
 
-export async function upsertOperatingCompany(db: D1Database, input: OperatingCompanyWrite): Promise<void> {
+export async function upsertOperatingCompany(db: Database, input: OperatingCompanyWrite): Promise<void> {
   const companyId = required(input.companyId, "companyId");
   const canonicalName = required(input.canonicalName, "canonicalName");
   const now = input.now ?? Date.now();
@@ -133,7 +134,7 @@ export async function upsertOperatingCompany(db: D1Database, input: OperatingCom
       JSON.stringify(input.metadata ?? {}), now, now).run();
 }
 
-export async function upsertListedSecurity(db: D1Database, input: ListedSecurityWrite): Promise<void> {
+export async function upsertListedSecurity(db: Database, input: ListedSecurityWrite): Promise<void> {
   const classified = classifyResearchSecurity({
     code: input.security.code,
     name: input.security.name,
@@ -159,7 +160,7 @@ export async function upsertListedSecurity(db: D1Database, input: ListedSecurity
 }
 
 export async function upsertCompanySecurityRelationship(
-  db: D1Database,
+  db: Database,
   input: CompanySecurityRelationshipWrite,
 ): Promise<void> {
   const classified = classifyResearchSecurity({ code: input.securityCode, instrumentType: "stock" });
@@ -188,7 +189,7 @@ export async function upsertCompanySecurityRelationship(
   }
 }
 
-export async function upsertProviderIdentifier(db: D1Database, input: ProviderIdentifierWrite): Promise<void> {
+export async function upsertProviderIdentifier(db: Database, input: ProviderIdentifierWrite): Promise<void> {
   const companyId = nullable(input.companyId);
   const securityCode = input.securityCode
     ? classifyResearchSecurity({ code: input.securityCode, instrumentType: "stock" }).code
@@ -217,7 +218,7 @@ export async function upsertProviderIdentifier(db: D1Database, input: ProviderId
 }
 
 export async function putFinancialAvailabilityObservation(
-  db: D1Database,
+  db: Database,
   input: FinancialAvailabilityWrite,
 ): Promise<void> {
   const code = classifyResearchSecurity({ code: input.securityCode, instrumentType: "stock" }).code;
@@ -242,7 +243,7 @@ export async function putFinancialAvailabilityObservation(
 }
 
 /** Append a dated, source-bound description of one security's holder rights. */
-export async function insertSecurityRightsProfile(db: D1Database, input: SecurityRightsProfileWrite): Promise<void> {
+export async function insertSecurityRightsProfile(db: Database, input: SecurityRightsProfileWrite): Promise<void> {
   const securityCode = classifyResearchSecurity({ code: input.securityCode, instrumentType: "stock" }).code;
   const evidence = validateSecurityRightsEvidence(input);
   const now = input.now ?? Date.now();
@@ -265,7 +266,7 @@ export async function insertSecurityRightsProfile(db: D1Database, input: Securit
  * only after both legs are independently mapped to the same confirmed operating
  * company; names and ticker patterns are never consulted.
  */
-export async function insertSecurityRightsLink(db: D1Database, input: SecurityRightsLinkWrite): Promise<void> {
+export async function insertSecurityRightsLink(db: Database, input: SecurityRightsLinkWrite): Promise<void> {
   const securityCode = classifyResearchSecurity({ code: input.securityCode, instrumentType: "stock" }).code;
   const relatedSecurityCode = classifyResearchSecurity({ code: input.relatedSecurityCode, instrumentType: "stock" }).code;
   if (securityCode === relatedSecurityCode) throw new Error("security rights link requires two distinct securities");
@@ -302,7 +303,7 @@ export async function insertSecurityRightsLink(db: D1Database, input: SecurityRi
 }
 
 export async function loadResearchIdentityFinancials(
-  db: D1Database,
+  db: Database,
   security: SecurityRecord,
 ) {
   const classified = classifyResearchSecurity({
@@ -447,7 +448,7 @@ function mapRelationship(row: Record<string, unknown>) {
   };
 }
 
-async function loadLegacyCompany(db: D1Database, companyId: string) {
+async function loadLegacyCompany(db: Database, companyId: string) {
   const row = await db.prepare(`select company_id as companyId, canonical_name as canonicalName,
       reporting_currency as reportingCurrency, fiscal_year_end as fiscalYearEnd,
       identity_status as identityStatus, metadata_json as metadataJson

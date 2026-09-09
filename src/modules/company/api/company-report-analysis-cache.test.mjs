@@ -1,14 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  calculateCurrentForecastNetProfit,
-  calculateCurrentForecastPe,
-  isLikelyCompanyNewsReport,
-  parseCompanyReportAnalysis,
-  parseCompanyReportForecasts,
-  parseCompanyReportTargetPrice,
-} from "./company.routes.ts";
+import { calculateCurrentForecastNetProfit, calculateCurrentForecastPe } from "../domain/report-valuation.ts";
+import { isLikelyCompanyNewsReport, parseCompanyReportAnalysis, parseCompanyReportForecasts, parseCompanyReportTargetPrice } from "../domain/report-analysis.ts";
 import { isReusableReportAnalysisCache } from "../application/report-analysis-cache.ts";
 
 test("retries legacy empty analysis caches while preserving successful caches", () => {

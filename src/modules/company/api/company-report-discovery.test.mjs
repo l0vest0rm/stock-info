@@ -1,23 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  canonicalCompanyReportUrl,
-  companyReportDedupKeys,
-  companyRoutes,
-  COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS,
-  companyReportDiscoveryTaskName,
-  findCompanyReportDiscoveryRawReport,
-  mergeCompanyReportsPreferPrimary,
-  normalizeCompanyReportDiscoveryReasoningEffort,
-  normalizeCompanyReportLlmRawResponse,
-  parseCompanyReportDiscovery,
-  prepareCompanyReportDiscoveryExecution,
-  readStoredCompanyReportDiscovery,
-  validateCompanyReportDiscoveryTerminalEvidence,
-  validateCompanyReportDiscoveryWebSearch,
-  writeStoredCompanyReportDiscovery,
-} from "./company.routes.ts";
+import { canonicalCompanyReportUrl, companyReportDedupKeys, findCompanyReportDiscoveryRawReport, mergeCompanyReportsPreferPrimary } from "../domain/report-identity.ts";
+import { companyRoutes } from "./company.routes.ts";
+import { COMPANY_REPORT_DISCOVERY_JOB_TIMEOUT_MS } from "../domain/report-policy.ts";
+import { companyReportDiscoveryTaskName, normalizeCompanyReportDiscoveryReasoningEffort, parseCompanyReportDiscovery, validateCompanyReportDiscoveryTerminalEvidence, validateCompanyReportDiscoveryWebSearch } from "../domain/report-discovery.ts";
+import { normalizeCompanyReportRawResponseText } from "../domain/report-analysis.ts";
+import { prepareCompanyReportDiscoveryExecution } from "../application/company-reports.ts";
+import { readStoredCompanyReportDiscovery, writeStoredCompanyReportDiscovery } from "../adapters/report-storage.ts";
 
 const citations = [
   { title: "公开研报", url: "https://reports.example.com/acme.pdf?utm_source=search#page=1" },
@@ -98,15 +88,13 @@ test("keeps only the exact discovery-model report object for a matching source U
   assert.equal(findCompanyReportDiscoveryRawReport(artifactOutput, { code: "300476.SZ", url: "https://reports.example.com/missing.pdf" }), null);
 });
 
-test("normalizes a raw forecast artifact without discarding model fields", () => {
-  assert.deepEqual(normalizeCompanyReportLlmRawResponse({
-    text: '{"forecasts":[],"revenue_forecast":[327.97],"rating":"买入"}',
-  }), {
+test("normalizes raw forecast response text without discarding model fields", () => {
+  assert.deepEqual(normalizeCompanyReportRawResponseText('{"forecasts":[],"revenue_forecast":[327.97],"rating":"买入"}'), {
     forecasts: [],
     revenue_forecast: [327.97],
     rating: "买入",
   });
-  assert.equal(normalizeCompanyReportLlmRawResponse({ text: "" }), null);
+  assert.equal(normalizeCompanyReportRawResponseText(""), null);
 });
 
 test("hides the discovery capability endpoint outside the local LLM runtime", async () => {

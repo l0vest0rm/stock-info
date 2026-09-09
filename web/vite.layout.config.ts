@@ -1,21 +1,13 @@
-import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 
-export default defineConfig({
-  define: {
-    'process.env.NODE_ENV': JSON.stringify('production'),
-  },
-  publicDir: false,
-  build: {
-    emptyOutDir: false,
-    lib: {
-      entry: resolve(__dirname, 'src/app/layout/index.ts'),
-      formats: ['iife'],
-      name: 'LicaiLayout',
-      fileName: () => 'js/layout.js',
-    },
-    outDir: 'dist',
-    sourcemap: true,
-    target: 'es2017',
-  },
+// Kept for the dev:web command. Production/local artifacts share one graph in
+// scripts/build-vue-pages.mjs, rather than an independently built layout bundle.
+export default defineConfig(({ command }) => {
+  if (command === 'build') {
+    throw new Error('Use npm run build:web to build layout and page entries together')
+  }
+  return {
+    define: { 'process.env.NODE_ENV': JSON.stringify('development') },
+    publicDir: false,
+  }
 })

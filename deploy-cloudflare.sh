@@ -58,11 +58,12 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Deploying commit: ${CURRENT_COMMIT}"
 fi
 
-echo "Type checking..."
-npm run typecheck
+echo "Checking release inputs, architecture, types and tests..."
+npm run verify:architecture
 
-echo "Building frontend..."
-npm run build
+echo "Building production frontend..."
+npm run build:web:production
+node scripts/verify-page-artifacts.mjs --production
 
 echo "Packaging Worker with dry-run..."
 npx wrangler deploy --name "$WORKER_NAME" --dry-run
@@ -124,20 +125,25 @@ fi
 
 if [[ "$SKIP_MIGRATE" -eq 0 ]]; then
   echo "Applying remote D1 migrations for ${DATABASE_NAME}..."
-  CI=1 npx wrangler d1 migrations apply "$DATABASE_NAME" --remote
+  node scripts/apply-remote-migrations.mjs "$DATABASE_NAME"
 else
   echo "Skipping remote D1 migrations."
 fi
 
-echo "Deploying Worker ${WORKER_NAME}..."
-npx wrangler deploy --name "$WORKER_NAME"
+RELEASE_VERSION="${CURRENT_COMMIT:-source}-$(date -u +%Y%m%dT%H%M%SZ)"
+echo "Deploying Worker ${WORKER_NAME} (${RELEASE_VERSION})..."
+npx wrangler deploy --name "$WORKER_NAME" --var "APP_VERSION:${RELEASE_VERSION}"
+
+echo "Validating and uploading Xueqiu Worker secret..."
+# The first deploy removes any legacy versioned Cookie variable. Cloudflare
+# cannot replace that binding with a same-named secret in a single `secret put`.
+CF_WORKER_NAME="$WORKER_NAME" npm run sync:xueqiu-secret
 
 echo "Recent deployments:"
 npx wrangler deployments list --name "$WORKER_NAME"
 
-echo "Verifying https://${PRODUCTION_DOMAIN}/api/health ..."
-HEALTH_RESPONSE=$(curl -fsS --max-time 20 "https://${PRODUCTION_DOMAIN}/api/health")
-echo "$HEALTH_RESPONSE"
+echo "Verifying deployed version and production page policy..."
+SMOKE_BASE_URL="https://${PRODUCTION_DOMAIN}" EXPECTED_APP_VERSION="$RELEASE_VERSION" node scripts/smoke-release.mjs
 
 echo "Cloudflare deploy finished."
 echo "Production URL: https://${PRODUCTION_DOMAIN}"

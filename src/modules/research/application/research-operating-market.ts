@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import {
   assertResearchMarketSpaceAssessment, assertResearchOperatingDriverPlan, assertResearchOperatingModel,
   type ResearchContractDriver, type ResearchGrowthConstraint, type ResearchMarketProfitPool, type ResearchMarketShareBridge,
@@ -11,7 +12,7 @@ type Subject = "operating_model" | "operating_segment" | "contract_driver" | "un
 export type ResearchOperatingMarketWriteResult = { state: "saved" | "unavailable"; recordId: string; reason: "storage_not_initialized" | null };
 export type ResearchOperatingMarketSection<T> = { availability: "available" | "empty" | "unavailable"; reason: "identity_not_found" | "no_records" | "storage_not_initialized" | null; items: T[] };
 
-export async function loadResearchOperatingModels(db: D1Database, query: { companyId: string | null; asOf: number }): Promise<ResearchOperatingMarketSection<ResearchOperatingModel>> {
+export async function loadResearchOperatingModels(db: Database, query: { companyId: string | null; asOf: number }): Promise<ResearchOperatingMarketSection<ResearchOperatingModel>> {
   if (!query.companyId) return unavailable("identity_not_found");
   try {
     const rows = await db.prepare(`select * from research_operating_models_typed where company_id=? and as_of<=? and status<>'superseded' order by as_of desc, version desc, created_at desc, operating_model_id`).bind(query.companyId, query.asOf).all<Row>();
@@ -19,7 +20,7 @@ export async function loadResearchOperatingModels(db: D1Database, query: { compa
   } catch (error) { if (missing(error, "research_operating_models_typed")) return unavailable("storage_not_initialized"); throw error; }
 }
 
-export async function loadResearchOperatingDriverPlans(db: D1Database, query: { companyId: string | null; operatingModelId?: string; asOf: number }): Promise<ResearchOperatingMarketSection<ResearchOperatingDriverPlan>> {
+export async function loadResearchOperatingDriverPlans(db: Database, query: { companyId: string | null; operatingModelId?: string; asOf: number }): Promise<ResearchOperatingMarketSection<ResearchOperatingDriverPlan>> {
   if (!query.companyId) return unavailable("identity_not_found");
   try {
     const rows = await db.prepare(`select p.* from research_operating_driver_plans p join research_operating_models_typed m on m.operating_model_id=p.operating_model_id where m.company_id=? and p.as_of<=? and p.status<>'superseded' and (? is null or p.operating_model_id=?) order by p.as_of desc, p.version desc, p.created_at desc, p.operating_driver_plan_id`).bind(query.companyId, query.asOf, query.operatingModelId ?? null, query.operatingModelId ?? null).all<Row>();
@@ -27,7 +28,7 @@ export async function loadResearchOperatingDriverPlans(db: D1Database, query: { 
   } catch (error) { if (missing(error, "research_operating_driver_plans")) return unavailable("storage_not_initialized"); throw error; }
 }
 
-export async function loadResearchMarketSpaceAssessments(db: D1Database, query: { companyId: string | null; asOf: number }): Promise<ResearchOperatingMarketSection<ResearchMarketSpaceAssessment>> {
+export async function loadResearchMarketSpaceAssessments(db: Database, query: { companyId: string | null; asOf: number }): Promise<ResearchOperatingMarketSection<ResearchMarketSpaceAssessment>> {
   if (!query.companyId) return unavailable("identity_not_found");
   try {
     const rows = await db.prepare(`select * from research_market_space_assessments_typed where company_id=? and as_of<=? and status<>'superseded' order by as_of desc, version desc, created_at desc, market_space_assessment_id`).bind(query.companyId, query.asOf).all<Row>();
@@ -35,9 +36,9 @@ export async function loadResearchMarketSpaceAssessments(db: D1Database, query: 
   } catch (error) { if (missing(error, "research_market_space_assessments_typed")) return unavailable("storage_not_initialized"); throw error; }
 }
 
-export async function insertResearchOperatingModel(db: D1Database, input: ResearchOperatingModel): Promise<ResearchOperatingMarketWriteResult> {
+export async function insertResearchOperatingModel(db: Database, input: ResearchOperatingModel): Promise<ResearchOperatingMarketWriteResult> {
   assertResearchOperatingModel(input);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_operating_models_typed (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_operating_models_typed (
     operating_model_id, company_id, as_of, version, status, model_type, primary_earning_driver, revenue_recognition, summary, epistemic_type, created_at, updated_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(input.operatingModelId, input.companyId, input.asOf, input.version, input.status, input.modelType, input.primaryEarningDriver, input.revenueRecognition, input.summary, input.epistemicType, input.createdAt, input.updatedAt), ...evidence(db, "operating_model", input.operatingModelId, input.sourceReferences, input.createdAt)];
@@ -62,9 +63,9 @@ export async function insertResearchOperatingModel(db: D1Database, input: Resear
   return runInsert(db, "research_operating_models_typed", input.operatingModelId, statements);
 }
 
-export async function insertResearchOperatingDriverPlan(db: D1Database, input: ResearchOperatingDriverPlan): Promise<ResearchOperatingMarketWriteResult> {
+export async function insertResearchOperatingDriverPlan(db: Database, input: ResearchOperatingDriverPlan): Promise<ResearchOperatingMarketWriteResult> {
   assertResearchOperatingDriverPlan(input);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_operating_driver_plans (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_operating_driver_plans (
     operating_driver_plan_id, operating_model_id, scenario_name, as_of, version, status, valuation_currency, amount_scale, opening_revenue, opening_net_working_capital, epistemic_type, created_at, updated_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(input.operatingDriverPlanId, input.operatingModelId, input.scenarioName, input.asOf, input.version, input.status, input.valuationCurrency, input.amountScale, input.openingRevenue, input.openingNetWorkingCapital, input.epistemicType, input.createdAt, input.updatedAt), ...evidence(db, "driver_plan", input.operatingDriverPlanId, input.sourceReferences, input.createdAt)];
@@ -79,9 +80,9 @@ export async function insertResearchOperatingDriverPlan(db: D1Database, input: R
   return runInsert(db, "research_operating_driver_plans", input.operatingDriverPlanId, statements);
 }
 
-export async function insertResearchMarketSpaceAssessment(db: D1Database, input: ResearchMarketSpaceAssessment): Promise<ResearchOperatingMarketWriteResult> {
+export async function insertResearchMarketSpaceAssessment(db: Database, input: ResearchMarketSpaceAssessment): Promise<ResearchOperatingMarketWriteResult> {
   assertResearchMarketSpaceAssessment(input);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_market_space_assessments_typed (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_market_space_assessments_typed (
     market_space_assessment_id, company_id, operating_model_id, as_of, version, status, market_definition, product_boundary, geographic_boundary, customer_boundary, measurement_definition, epistemic_type, created_at, updated_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(input.marketSpaceAssessmentId, input.companyId, input.operatingModelId, input.asOf, input.version, input.status, input.marketDefinition, input.productBoundary, input.geographicBoundary, input.customerBoundary, input.measurementDefinition, input.epistemicType, input.createdAt, input.updatedAt), ...evidence(db, "market_space_assessment", input.marketSpaceAssessmentId, input.sourceReferences, input.createdAt)];
@@ -101,7 +102,7 @@ export async function insertResearchMarketSpaceAssessment(db: D1Database, input:
 }
 
 type Row = Record<string, unknown>;
-async function hydrateOperatingModels(db: D1Database, rows: Row[]): Promise<ResearchOperatingModel[]> {
+async function hydrateOperatingModels(db: Database, rows: Row[]): Promise<ResearchOperatingModel[]> {
   if (!rows.length) return [];
   const modelIds = rows.map((row) => text(row.operating_model_id));
   const [segments, constraints] = await Promise.all([byIds(db, "research_operating_model_segments_typed", "operating_model_id", modelIds), byIds(db, "research_operating_model_growth_constraints_typed", "operating_model_id", modelIds)]);
@@ -112,13 +113,13 @@ async function hydrateOperatingModels(db: D1Database, rows: Row[]): Promise<Rese
   const segmentByModel = group(segments, "operating_model_id", (row) => segment(row, refs, contractBySegment, unitBySegment)); const constraintsByModel = group(constraints, "operating_model_id", (row) => constraint(row, refs));
   return rows.map((row) => ({ operatingModelId: text(row.operating_model_id), companyId: text(row.company_id), asOf: num(row.as_of), version: num(row.version), status: text(row.status) as ResearchOperatingModel["status"], modelType: text(row.model_type) as ResearchOperatingModel["modelType"], primaryEarningDriver: text(row.primary_earning_driver), revenueRecognition: text(row.revenue_recognition), summary: text(row.summary), epistemicType: text(row.epistemic_type) as ResearchOperatingModel["epistemicType"], sourceReferences: refs.get(key("operating_model", text(row.operating_model_id))) ?? [], segments: segmentByModel.get(text(row.operating_model_id)) ?? [], growthConstraints: constraintsByModel.get(text(row.operating_model_id)) ?? [], createdAt: num(row.created_at), updatedAt: num(row.updated_at) }));
 }
-async function hydrateDriverPlans(db: D1Database, rows: Row[]): Promise<ResearchOperatingDriverPlan[]> {
+async function hydrateDriverPlans(db: Database, rows: Row[]): Promise<ResearchOperatingDriverPlan[]> {
   if (!rows.length) return [];
   const ids = rows.map((row) => text(row.operating_driver_plan_id)); const years = await byIds(db, "research_operating_driver_plan_years", "operating_driver_plan_id", ids); const yearIds = years.map((row) => text(row.operating_driver_plan_year_id)); const segments = await byIds(db, "research_operating_driver_segment_years", "operating_driver_plan_year_id", yearIds);
   const refs = await references(db, ["driver_plan", "driver_plan_year", "driver_segment_year"], [...ids, ...yearIds, ...segments.map((row) => text(row.operating_driver_segment_year_id))]); const segmentsByYear = group(segments, "operating_driver_plan_year_id", (row) => driverSegment(row, refs)); const yearsByPlan = group(years, "operating_driver_plan_id", (row) => driverYear(row, refs, segmentsByYear));
   return rows.map((row) => ({ operatingDriverPlanId: text(row.operating_driver_plan_id), operatingModelId: text(row.operating_model_id), scenarioName: text(row.scenario_name) as ResearchOperatingDriverPlan["scenarioName"], asOf: num(row.as_of), version: num(row.version), status: text(row.status) as ResearchOperatingDriverPlan["status"], valuationCurrency: text(row.valuation_currency), amountScale: text(row.amount_scale), openingRevenue: num(row.opening_revenue), openingNetWorkingCapital: num(row.opening_net_working_capital), epistemicType: text(row.epistemic_type) as ResearchOperatingDriverPlan["epistemicType"], sourceReferences: refs.get(key("driver_plan", text(row.operating_driver_plan_id))) ?? [], years: yearsByPlan.get(text(row.operating_driver_plan_id)) ?? [], createdAt: num(row.created_at), updatedAt: num(row.updated_at) }));
 }
-async function hydrateMarketSpaces(db: D1Database, rows: Row[]): Promise<ResearchMarketSpaceAssessment[]> {
+async function hydrateMarketSpaces(db: Database, rows: Row[]): Promise<ResearchMarketSpaceAssessment[]> {
   if (!rows.length) return [];
   const ids = rows.map((row) => text(row.market_space_assessment_id)); const [estimates, bridges, pools] = await Promise.all([byIds(db, "research_market_space_estimates_typed", "market_space_assessment_id", ids), byIds(db, "research_market_share_bridges_typed", "market_space_assessment_id", ids, "created_at, market_share_bridge_id"), byIds(db, "research_market_profit_pools_typed", "market_space_assessment_id", ids, "created_at, market_profit_pool_id")]); const bridgeIds = bridges.map((row) => text(row.market_share_bridge_id)); const steps = await byIds(db, "research_market_share_bridge_steps_typed", "market_share_bridge_id", bridgeIds);
   const refs = await references(db, ["market_space_assessment", "market_space_estimate", "share_bridge", "share_bridge_step", "profit_pool"], [...ids, ...estimates.map((row) => text(row.market_space_estimate_id)), ...bridgeIds, ...steps.map((row) => text(row.market_share_bridge_step_id)), ...pools.map((row) => text(row.market_profit_pool_id))]); const stepsByBridge = group(steps, "market_share_bridge_id", (row) => shareStep(row, refs)); const bridgesByAssessment = group(bridges, "market_space_assessment_id", (row) => shareBridge(row, refs, stepsByBridge)); const estimatesByAssessment = group(estimates, "market_space_assessment_id", (row) => estimate(row, refs)); const poolsByAssessment = group(pools, "market_space_assessment_id", (row) => pool(row, refs));
@@ -138,8 +139,8 @@ function pool(row: Row, refs: Map<string, ResearchSourceReference[]>): ResearchM
 /** The typed tables mostly expose an explicit sort order; bridges and profit pools
  * deliberately use append/version timestamps instead. Callers select the only
  * schema-valid deterministic ordering rather than querying a fictional column. */
-async function byIds(db: D1Database, table: string, column: string, ids: string[], orderBy = "sort_order, rowid"): Promise<Row[]> { if (!ids.length) return []; const rows = await db.prepare(`select * from ${table} where ${column} in (${ids.map(() => "?").join(",")}) order by ${orderBy}`).bind(...ids).all<Row>(); return rows.results; }
-async function references(db: D1Database, types: Subject[], ids: string[]): Promise<Map<string, ResearchSourceReference[]>> { if (!ids.length) return new Map(); const rows = await db.prepare(`select * from research_operating_market_evidence_refs where subject_type in (${types.map(() => "?").join(",")}) and subject_id in (${ids.map(() => "?").join(",")}) order by created_at, evidence_ref_id`).bind(...types, ...ids).all<Row>(); const output = new Map<string, ResearchSourceReference[]>(); for (const row of rows.results) { const ref: ResearchSourceReference = { sourceKind: text(row.source_kind) as ResearchSourceReference["sourceKind"], sourceId: optional(row.source_id) ?? undefined, informationId: optional(row.information_id) ?? undefined, versionId: optional(row.version_id) ?? undefined, documentId: optional(row.document_id) ?? undefined, url: optional(row.url) ?? undefined, title: optional(row.title) ?? undefined, publishedAt: optional(row.published_at) ?? undefined, locator: optional(row.locator) ?? undefined }; const mapKey = key(text(row.subject_type) as Subject, text(row.subject_id)); const items = output.get(mapKey) ?? []; items.push(ref); output.set(mapKey, items); } return output; }
+async function byIds(db: Database, table: string, column: string, ids: string[], orderBy = "sort_order, rowid"): Promise<Row[]> { if (!ids.length) return []; const rows = await db.prepare(`select * from ${table} where ${column} in (${ids.map(() => "?").join(",")}) order by ${orderBy}`).bind(...ids).all<Row>(); return rows.results; }
+async function references(db: Database, types: Subject[], ids: string[]): Promise<Map<string, ResearchSourceReference[]>> { if (!ids.length) return new Map(); const rows = await db.prepare(`select * from research_operating_market_evidence_refs where subject_type in (${types.map(() => "?").join(",")}) and subject_id in (${ids.map(() => "?").join(",")}) order by created_at, evidence_ref_id`).bind(...types, ...ids).all<Row>(); const output = new Map<string, ResearchSourceReference[]>(); for (const row of rows.results) { const ref: ResearchSourceReference = { sourceKind: text(row.source_kind) as ResearchSourceReference["sourceKind"], sourceId: optional(row.source_id) ?? undefined, informationId: optional(row.information_id) ?? undefined, versionId: optional(row.version_id) ?? undefined, documentId: optional(row.document_id) ?? undefined, url: optional(row.url) ?? undefined, title: optional(row.title) ?? undefined, publishedAt: optional(row.published_at) ?? undefined, locator: optional(row.locator) ?? undefined }; const mapKey = key(text(row.subject_type) as Subject, text(row.subject_id)); const items = output.get(mapKey) ?? []; items.push(ref); output.set(mapKey, items); } return output; }
 function group<T>(rows: Row[], column: string, mapper: (row: Row) => T): Map<string, T[]> { const output = new Map<string, T[]>(); for (const row of rows) { const id = text(row[column]); const items = output.get(id) ?? []; items.push(mapper(row)); output.set(id, items); } return output; }
 function key(subject: Subject, id: string) { return `${subject}:${id}`; }
 function section<T>(items: T[]): ResearchOperatingMarketSection<T> { return items.length ? { availability: "available", reason: null, items } : { availability: "empty", reason: "no_records", items: [] }; }
@@ -149,6 +150,6 @@ function text(value: unknown): string { const result = String(value ?? "").trim(
 function optional(value: unknown): string | null { const result = String(value ?? "").trim(); return result || null; }
 function num(value: unknown): number { const result = Number(value); if (!Number.isFinite(result)) throw new Error("operating market record contains a non-numeric field"); return result; }
 function nullableNumber(value: unknown): number | null { return value === null || value === undefined || value === "" ? null : num(value); }
-function evidence(db: D1Database, subjectType: Subject, subjectId: string, refs: ResearchSourceReference[], createdAt: number): D1PreparedStatement[] { return refs.map((ref, index) => db.prepare(`insert into research_operating_market_evidence_refs (evidence_ref_id, subject_type, subject_id, source_kind, source_id, information_id, version_id, document_id, url, title, published_at, locator, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+function evidence(db: Database, subjectType: Subject, subjectId: string, refs: ResearchSourceReference[], createdAt: number): PreparedStatement[] { return refs.map((ref, index) => db.prepare(`insert into research_operating_market_evidence_refs (evidence_ref_id, subject_type, subject_id, source_kind, source_id, information_id, version_id, document_id, url, title, published_at, locator, created_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
   .bind(`${subjectId}:evidence:${index + 1}`, subjectType, subjectId, ref.sourceKind, ref.sourceId ?? null, ref.informationId ?? null, ref.versionId ?? null, ref.documentId ?? null, ref.url ?? null, ref.title ?? null, ref.publishedAt === undefined ? null : String(ref.publishedAt), ref.locator ?? null, createdAt)); }
-async function runInsert(db: D1Database, table: string, recordId: string, statements: D1PreparedStatement[]): Promise<ResearchOperatingMarketWriteResult> { try { await db.batch(statements); return { state: "saved", recordId, reason: null }; } catch (error) { if (missing(error, table)) return { state: "unavailable", recordId, reason: "storage_not_initialized" }; throw error; } }
+async function runInsert(db: Database, table: string, recordId: string, statements: PreparedStatement[]): Promise<ResearchOperatingMarketWriteResult> { try { await db.batch(statements); return { state: "saved", recordId, reason: null }; } catch (error) { if (missing(error, table)) return { state: "unavailable", recordId, reason: "storage_not_initialized" }; throw error; } }

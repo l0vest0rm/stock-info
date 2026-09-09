@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "name": "@m2ai/shared-llm-client",
+      "specifier": "file:../shared-ts/packages/llm-client",
+      "version": "0.1.0",
+      "revision": "f86828f4e3ec96ff56fd98b3ddb95fd7a8677bdd",
+      "sha256": "1cdaca66c2217784ffc5c71d31fa1b3e3c32d107ee14c03c510590d78d92bb83"
+    },
+    {
+      "name": "@m2ai/shared-taskd-client",
+      "specifier": "file:../shared-ts/packages/taskd-client",
+      "version": "0.1.0",
+      "revision": "f86828f4e3ec96ff56fd98b3ddb95fd7a8677bdd",
+      "sha256": "7b34390a027ac91b24327ec870c59bb656a489773667ea2efcf41d7779f966f6"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import type { Database } from "../platform/contracts";
 import {
   normalizeSecurityCode,
 } from "../shared/codes";
@@ -25,7 +26,7 @@ const XUEQIU_ACCEPT =
 const XUEQIU_ACCEPT_LANGUAGE = "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7";
 
 export async function fetchXueqiuStockKline(
-  db: D1Database,
+  db: Database,
   code: string,
   period: string,
   fq: string,

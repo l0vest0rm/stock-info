@@ -44,6 +44,10 @@ const promptEntries = [
     exportName: "RESEARCH_OPERATING_ANALYSIS_PROMPT",
     source: "prompts/research/operating-analysis.md",
   },
+  {
+    exportName: "MACRO_ANALYSIS_PROMPT",
+    source: "prompts/macro.md",
+  },
 ];
 
 const generatedTsPath = resolve(PROJECT_ROOT, "src/generated/prompt-text.ts");

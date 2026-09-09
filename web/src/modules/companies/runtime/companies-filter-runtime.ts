@@ -195,7 +195,7 @@ export function createCompaniesFilterInitializer(context: CompaniesFilterRuntime
     const sty = keys.join(',')
     void fetchRequest({
       url: '/api/companies/filter',
-      cacheKey: hash(`fetchCompaniesFilter-${companiesFilterSortBy}-${sr}-${sty}-${page}-${filter}`),
+      cacheKey: String(hash(`fetchCompaniesFilter-${companiesFilterSortBy}-${sr}-${sty}-${page}-${filter}`)),
       cacheTtl: 3600,
       params: {
         st: companiesFilterSortBy,

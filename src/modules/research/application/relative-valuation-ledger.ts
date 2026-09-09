@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import {
   buildRelativeValuationLedger,
   type BuildRelativeValuationLedgerInput,
@@ -18,11 +19,11 @@ export type RelativeValuationLedgerWriteResult = { state: "saved" | "unavailable
 
 /** Writes one complete immutable record. No quote, forecast or peer data is fetched here. */
 export async function createResearchRelativeValuationLedger(
-  db: D1Database,
+  db: Database,
   input: BuildRelativeValuationLedgerInput,
 ): Promise<RelativeValuationLedgerWriteResult> {
   const ledger = buildRelativeValuationLedger(input);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_relative_valuation_ledgers (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_relative_valuation_ledgers (
     relative_valuation_ledger_id, company_id, security_code, as_of, status, valuation_role, valuation_archetype, method,
     peer_universe_id, valuation_currency, security_currency, applicability_rationale, rationale_source_refs_json,
     supersedes_ledger_id, created_at
@@ -57,7 +58,7 @@ export async function createResearchRelativeValuationLedger(
 
 /** Loads records as frozen input/metric/gate trees and revalidates each one. */
 export async function loadResearchRelativeValuationLedgers(
-  db: D1Database,
+  db: Database,
   query: { securityCode: string; asOf: number },
 ): Promise<RelativeValuationLedgerSection> {
   const securityCode = required(query.securityCode, "securityCode");
@@ -110,7 +111,7 @@ function mapMetric(row: Row): Omit<RelativeValuationMetric, "value"> {
 function mapGate(row: Row): RelativeValuationComparabilityGate {
   return { gateId: required(row.relative_valuation_gate_id, "relative_valuation_gate_id"), gateKind: required(row.gate_kind, "gate_kind") as RelativeValuationComparabilityGate["gateKind"], status: required(row.status, "status") as RelativeValuationComparabilityGate["status"], rationale: required(row.rationale, "rationale"), sourceReferences: references(row.source_refs_json, "source_refs_json") };
 }
-async function rowsFor(db: D1Database, table: string, column: string, values: string[], orderBy: string): Promise<Row[]> {
+async function rowsFor(db: Database, table: string, column: string, values: string[], orderBy: string): Promise<Row[]> {
   const placeholders = values.map(() => "?").join(", ");
   const rows = await db.prepare(`select * from ${table} where ${column} in (${placeholders}) order by ${column}, ${orderBy}`).bind(...values).all<Row>();
   return rows.results;

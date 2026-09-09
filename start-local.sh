@@ -66,6 +66,7 @@ print "Stopping any previous local supervisor owned by this repository..."
 node scripts/local-supervisor.mjs --stop-previous
 
 print "Building prompts, web assets, and Node runtime once..."
+npm run typecheck
 npm run build:local
 
 print "Applying migrations to the explicit local Node SQLite database..."

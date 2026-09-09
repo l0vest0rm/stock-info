@@ -1,3 +1,4 @@
+import type { Database } from "../platform/contracts";
 import { fetchCninfoCompanyNotices } from "./cninfo";
 import { bareCode, normalizeSecurityCode, securitySuffix } from "../shared/codes";
 import { cachedFetchJson, type ExternalHttpOptions } from "../shared/http";
@@ -82,7 +83,7 @@ export function statutoryRegistryForSecurity(code: string): StatutoryDisclosureR
 }
 
 export async function fetchStatutoryDisclosureIndex(
-  db: D1Database,
+  db: Database,
   code: string,
   options: StatutoryDisclosureIndexOptions = {},
 ): Promise<StatutoryDisclosureIndex> {
@@ -95,7 +96,7 @@ export async function fetchStatutoryDisclosureIndex(
 }
 
 export async function fetchCninfoStatutoryDisclosureIndex(
-  db: D1Database,
+  db: Database,
   code: string,
   options: Pick<StatutoryDisclosureIndexOptions, "page" | "pageSize"> = {},
 ): Promise<StatutoryDisclosureIndex> {
@@ -116,7 +117,7 @@ export async function fetchCninfoStatutoryDisclosureIndex(
 }
 
 export async function fetchHkexStatutoryDisclosureIndex(
-  db: D1Database,
+  db: Database,
   code: string,
   options: Pick<StatutoryDisclosureIndexOptions, "pageSize" | "fromDate" | "toDate" | "httpOptions"> = {},
 ): Promise<StatutoryDisclosureIndex> {

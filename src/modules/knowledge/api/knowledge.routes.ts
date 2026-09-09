@@ -1,3 +1,4 @@
+import type { Assets } from "../../../platform/contracts";
 import { Hono } from "hono";
 import { fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { deleteKvCache, getKvCache, getKvCacheByLegacyKey, putKvCache, putKvCacheByLegacyKey } from "../../../db/queries";
@@ -5,7 +6,8 @@ import { fail, ok } from '../../../shared/http';
 import { externalHttpOptions } from '../../../shared/http';
 import { normalizeSupportedCompanyCode } from "../../../shared/codes";
 import { isLocalDevelopmentRuntime } from "../../../shared/request";
-import { extractCompanyReportAnalysisByLlm, type CompanyReportForecast } from "../../company/api/company.routes";
+import { extractCompanyReportAnalysisByLlm } from "../../company/application/analyze-company-report";
+import type { CompanyReportForecast } from "../../company/domain/report-types";
 import {
   eastmoneyReportInfoCode,
   isReusableReportAnalysisCache,
@@ -478,7 +480,7 @@ knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {
             if (!content) {
               throw new Error("knowledge report has no converted content and the converter is unavailable");
             }
-            const extracted = await extractCompanyReportAnalysisByLlm(c, row.title, content, {
+            const extracted = await extractCompanyReportAnalysisByLlm(c.env, row.title, content, {
               targetId: id,
               idempotencyKey: `knowledge-report-forecast:${id}`,
             });
@@ -1745,7 +1747,7 @@ function getProcessCwd(): string {
   return processObject?.cwd?.() || ".";
 }
 
-async function loadLocalFilteredReviewRowsFromAsset(assets: Fetcher, requestUrl: string): Promise<LocalFilteredReviewRow[]> {
+async function loadLocalFilteredReviewRowsFromAsset(assets: Assets, requestUrl: string): Promise<LocalFilteredReviewRow[]> {
   const assetUrl = new URL("/knowledge-review/topic-filter-latest.jsonl", requestUrl);
   const response = await assets.fetch(new Request(assetUrl.toString(), { method: "GET" }));
   if (!response.ok) {

@@ -354,7 +354,7 @@ export function createThirteenFPositionInitializer(context: ThirteenFPositionRun
       await componentChanageAndKlineChart(code, positionData)
       bsTable('componentChangeTable', {
         data: rows,
-        cell(cell, columnIdx) {
+        cell(cell: any, columnIdx: number) {
           let clss = ''
           if ([5, 7].includes(columnIdx)) {
             if (cell > 0) {

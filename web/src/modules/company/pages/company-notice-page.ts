@@ -4,6 +4,11 @@ import noticeTypeOptions from '../../../config/company-notice-categories.json'
 const query = new URLSearchParams(window.location.search)
 const pageCode = query.get('code') || `${query.get('stock') || ''}.${query.get('type') || ''}`
 const categoryFilterSupported = /^\d{6}(?:\.(SH|SZ|BJ))?$/i.test(pageCode)
+const companyResearchSupported = /^\d{6}(?:\.SZ)?$/i.test(pageCode)
+const companyResearchOption = { value: '__company_research__', label: '公司调研' }
+const companyNoticeTypeOptions = companyResearchSupported
+  ? [noticeTypeOptions[0], companyResearchOption, ...noticeTypeOptions.slice(1)]
+  : noticeTypeOptions
 
 type CompanyNoticeRow = {
   noticeDate: string
@@ -155,7 +160,7 @@ const CompanyNoticePage = defineComponent({
                 selectedNoticeType.value = value
                 emitNoticeTypeChange(value)
               },
-            }, noticeTypeOptions.map((option) => h('option', { value: option.value }, option.label))),
+            }, companyNoticeTypeOptions.map((option) => h('option', { value: option.value }, option.label))),
           ]),
         ]),
         h('div', { class: 'col-2' }),

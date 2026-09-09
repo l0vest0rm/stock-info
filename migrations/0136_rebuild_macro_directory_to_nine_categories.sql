@@ -8,19 +8,13 @@
 -- are unscheduled and disabled.  They receive a retired identity rather than
 -- being repurposed as a new raw series.
 
-create temp table macro_directory_0136 (
-  metric_id integer primary key,
-  category_id integer not null,
-  category_code text not null,
-  category_name text not null,
-  category_sort integer not null,
-  metric_code text not null,
-  metric_name text not null,
-  metric_description text not null,
-  metric_sort integer not null
-);
-
-insert into macro_directory_0136 values
+-- D1 remote migrations reject TEMP tables. These values are migration-local
+-- metadata, so use disposable views rather than persisted staging tables.
+create view macro_directory_0136 (
+  metric_id, category_id, category_code, category_name, category_sort,
+  metric_code, metric_name, metric_description, metric_sort
+) as
+select * from (values
   (1, 1, 'A', '增长、需求与领先调查', 1, 'A01', '实际 GDP', '总产出；本国季度口径与年度 WEO 口径是不同统计定义。', 1),
   (2, 1, 'A', '增长、需求与领先调查', 1, 'A02', '名义 GDP', '名义收入、税基和债务承受能力的基础。', 2),
   (3, 1, 'A', '增长、需求与领先调查', 1, 'A03', '工业产出', '制造、采矿和公用事业实体活动。', 3),
@@ -80,22 +74,18 @@ insert into macro_directory_0136 values
   (57, 9, 'I', '全球商品与供给冲击', 9, 'I03', '工业金属价格指数', '制造、基建和全球需求敏感指标。', 3),
   (58, 9, 'I', '全球商品与供给冲击', 9, 'I04', '农产品价格指数', '食品通胀、天气和供给扰动。', 4),
   (59, 9, 'I', '全球商品与供给冲击', 9, 'I05', '黄金价格', '避险、美元和实际利率敏感资产。', 5),
-  (60, 9, 'I', '全球商品与供给冲击', 9, 'I06', '全球航运运价', '全球贸易和物流瓶颈。', 6);
+  (60, 9, 'I', '全球商品与供给冲击', 9, 'I06', '全球航运运价', '全球贸易和物流瓶颈。', 6));
 
 -- These are the only legacy rows whose existing raw observation identity is
 -- sufficiently specific to retain as an enabled definition-0 series.  All
 -- other legacy rows are kept as retired audit records below.
-create temp table macro_legacy_remap_0136 (
-  legacy_metric_id integer primary key,
-  metric_id integer not null
-);
-
-insert into macro_legacy_remap_0136 values
+create view macro_legacy_remap_0136 (legacy_metric_id, metric_id) as
+select * from (values
   (1, 1), (2, 2), (10, 11), (11, 13), (12, 14), (13, 15),
   (18, 20), (20, 23), (24, 25), (25, 27), (27, 28), (28, 29),
   (33, 32), (34, 33), (35, 34), (36, 35), (37, 36), (40, 39),
   (43, 42), (48, 48), (49, 49), (50, 50), (52, 12), (54, 53),
-  (55, 54), (57, 56), (58, 57), (59, 58);
+  (55, 54), (57, 56), (58, 57), (59, 58));
 
 -- Move the old numeric identities out of the unique key first.  The exact
 -- id/metric relationship identifies the original two-region bootstrap rows
@@ -242,5 +232,5 @@ set
 where id in (10001, 10002)
   and definition_id = 1;
 
-drop table macro_legacy_remap_0136;
-drop table macro_directory_0136;
+drop view macro_legacy_remap_0136;
+drop view macro_directory_0136;

@@ -1,3 +1,4 @@
+import type { Database } from "../platform/contracts";
 export type HttpCacheRecord = {
   status: number;
   headersJson: string | null;
@@ -31,7 +32,7 @@ const LEGACY_KV_CACHE_NAMESPACE_RULES: Array<{ prefix: string; namespace: string
   { prefix: "us.options.chain.v2.", namespace: "us_option_chain" },
 ];
 
-export async function getHttpCache(db: D1Database, cacheKey: string, now = Date.now()): Promise<HttpCacheRecord | null> {
+export async function getHttpCache(db: Database, cacheKey: string, now = Date.now()): Promise<HttpCacheRecord | null> {
   const row = await db
     .prepare(
       `select status, headers_json as headersJson, body_text as bodyText,
@@ -45,7 +46,7 @@ export async function getHttpCache(db: D1Database, cacheKey: string, now = Date.
 }
 
 export async function putHttpCache(
-  db: D1Database,
+  db: Database,
   record: {
     cacheKey: string;
     url: string;
@@ -85,7 +86,7 @@ export async function putHttpCache(
 }
 
 export async function getKvCache(
-  db: D1Database,
+  db: Database,
   namespace: string,
   key: string,
   now = Date.now()
@@ -102,7 +103,7 @@ export async function getKvCache(
 }
 
 export async function putKvCache(
-  db: D1Database,
+  db: Database,
   record: {
     namespace: string;
     key: string;
@@ -124,7 +125,7 @@ export async function putKvCache(
     .run();
 }
 
-export async function deleteKvCache(db: D1Database, namespace: string, key: string): Promise<void> {
+export async function deleteKvCache(db: Database, namespace: string, key: string): Promise<void> {
   await db
     .prepare(
       `delete from kv_cache
@@ -135,7 +136,7 @@ export async function deleteKvCache(db: D1Database, namespace: string, key: stri
 }
 
 export async function listKvCacheByNamespace(
-  db: D1Database,
+  db: Database,
   namespace: string,
   now = Date.now()
 ): Promise<KvCacheRecord[]> {
@@ -160,7 +161,7 @@ export function resolveLegacyKvCacheLocation(key: string): { namespace: string; 
 }
 
 export async function getKvCacheByLegacyKey(
-  db: D1Database,
+  db: Database,
   key: string,
   now = Date.now()
 ): Promise<KvCacheValueRecord | null> {
@@ -170,7 +171,7 @@ export async function getKvCacheByLegacyKey(
 }
 
 export async function putKvCacheByLegacyKey(
-  db: D1Database,
+  db: Database,
   record: {
     key: string;
     valueJson: string;
@@ -191,7 +192,7 @@ export async function putKvCacheByLegacyKey(
 const DAILY_LLM_QUOTA_CACHE_NAMESPACE = "daily_llm_quota";
 
 export async function consumeDailyLlmQuota(
-  db: D1Database,
+  db: Database,
   key: string,
   limit: number,
   expiresAt: number,
@@ -229,7 +230,7 @@ export async function consumeDailyLlmQuota(
 }
 
 export async function releaseDailyLlmQuota(
-  db: D1Database,
+  db: Database,
   key: string,
   updatedAt: number
 ): Promise<void> {

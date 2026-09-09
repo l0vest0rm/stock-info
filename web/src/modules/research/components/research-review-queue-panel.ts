@@ -1,4 +1,4 @@
-import { defineComponent, h } from "vue";
+import { type PropType, defineComponent, h } from "vue";
 
 type QueueItem = {
   queueItemId: string;
@@ -45,7 +45,7 @@ export const ResearchReviewQueuePanel = defineComponent({
   name: "ResearchReviewQueuePanel",
   props: {
     queue: { type: Object as () => Queue, default: () => ({}) },
-    onNavigate: { type: Function as () => ((target: ReviewTarget) => void) | undefined, default: undefined },
+    onNavigate: { type: Function as PropType<(target: ReviewTarget) => void>, default: undefined },
   },
   setup(props) {
     return () => {

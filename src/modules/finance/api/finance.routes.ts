@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { Hono } from "hono";
 import financeMappings from "../../../../shared/finance-mappings.json";
 import { fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
@@ -144,7 +145,7 @@ function trimDate(value: unknown): string {
   return typeof value === "string" ? value.slice(0, 10) : "";
 }
 
-async function fetchShareChange(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
+async function fetchShareChange(db: Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
   if (!isCnExchangeCode(normalized)) {
     return [];
@@ -192,7 +193,7 @@ async function fetchShareChange(db: D1Database, code: string): Promise<Record<st
   });
 }
 
-async function fetchShareBonus(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
+async function fetchShareBonus(db: Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
   const [rows, shareChanges] = await Promise.all([
     fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
@@ -232,7 +233,7 @@ async function fetchShareBonus(db: D1Database, code: string): Promise<Record<str
   return items;
 }
 
-async function fetchShareAdditional(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
+async function fetchShareAdditional(db: Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
   return fetchEastmoneyDataRows(db, "https://datacenter.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_DIVIDEND_SEO",
@@ -249,7 +250,7 @@ async function fetchShareAdditional(db: D1Database, code: string): Promise<Recor
   });
 }
 
-async function fetchFreeHolders(db: D1Database, code: string): Promise<Record<string, unknown>[]> {
+async function fetchFreeHolders(db: Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
   return fetchEastmoneyDataRows(db, "https://datacenter-web.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_F10_EH_FREEHOLDERS",
@@ -266,7 +267,7 @@ async function fetchFreeHolders(db: D1Database, code: string): Promise<Record<st
   });
 }
 
-async function fetchOrgHolders(db: D1Database, code: string, reportDate: string): Promise<Record<string, unknown>[]> {
+async function fetchOrgHolders(db: Database, code: string, reportDate: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
   return fetchEastmoneyDataRows(db, "https://datacenter-web.eastmoney.com/securities/api/data/v1/get", {
     reportName: "RPT_MAIN_ORGHOLDDETAIL",

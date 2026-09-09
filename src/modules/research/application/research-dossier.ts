@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import {
   assertAsOf,
   assertSourceReferences,
@@ -41,7 +42,7 @@ export type ResearchDossierWriteResult = {
 
 type Row = Record<string, unknown>;
 
-export async function loadResearchDossier(db: D1Database, query: ResearchDossierQuery): Promise<ResearchDossier> {
+export async function loadResearchDossier(db: Database, query: ResearchDossierQuery): Promise<ResearchDossier> {
   const securityCode = query.securityCode.trim().toUpperCase();
   if (!securityCode) throw new Error("research dossier securityCode is required");
   const asOf = query.asOf ?? Date.now();
@@ -93,7 +94,7 @@ export async function loadResearchDossier(db: D1Database, query: ResearchDossier
   };
 }
 
-export async function insertResearchBusinessModel(db: D1Database, input: ResearchBusinessModel): Promise<ResearchDossierWriteResult> {
+export async function insertResearchBusinessModel(db: Database, input: ResearchBusinessModel): Promise<ResearchDossierWriteResult> {
   assertAsOf(input.asOf);
   assertSourceReferences(input.epistemicType, input.sourceReferences);
   const statements = [db.prepare(`insert into research_business_models (
@@ -117,7 +118,7 @@ export async function insertResearchBusinessModel(db: D1Database, input: Researc
   return runInsert(db, "research_business_models", input.businessModelId, statements);
 }
 
-export async function insertResearchMarketSpaceModel(db: D1Database, input: ResearchMarketSpaceModel): Promise<ResearchDossierWriteResult> {
+export async function insertResearchMarketSpaceModel(db: Database, input: ResearchMarketSpaceModel): Promise<ResearchDossierWriteResult> {
   assertAsOf(input.asOf);
   assertSourceReferences(input.epistemicType, input.sourceReferences);
   return runInsert(db, "research_market_space_models", input.marketSpaceId, [db.prepare(`insert into research_market_space_models (
@@ -132,7 +133,7 @@ export async function insertResearchMarketSpaceModel(db: D1Database, input: Rese
   )]);
 }
 
-export async function insertResearchCompetitiveMarket(db: D1Database, input: ResearchCompetitiveMarket): Promise<ResearchDossierWriteResult> {
+export async function insertResearchCompetitiveMarket(db: Database, input: ResearchCompetitiveMarket): Promise<ResearchDossierWriteResult> {
   assertAsOf(input.asOf);
   assertSourceReferences(input.epistemicType, input.sourceReferences);
   const statements = [db.prepare(`insert into research_competitive_markets (
@@ -158,7 +159,7 @@ export async function insertResearchCompetitiveMarket(db: D1Database, input: Res
   return runInsert(db, "research_competitive_markets", input.competitiveMarketId, statements);
 }
 
-export async function insertResearchThesis(db: D1Database, input: ResearchThesis): Promise<ResearchDossierWriteResult> {
+export async function insertResearchThesis(db: Database, input: ResearchThesis): Promise<ResearchDossierWriteResult> {
   assertAsOf(input.asOf);
   for (const evidence of input.evidence) assertSourceReferences(evidence.epistemicType, evidence.sourceReferences);
   const statements = [db.prepare(`insert into research_theses (
@@ -183,7 +184,7 @@ export async function insertResearchThesis(db: D1Database, input: ResearchThesis
   return runInsert(db, "research_theses", input.thesisId, statements);
 }
 
-export async function insertResearchValuationCase(db: D1Database, input: ResearchValuationCase): Promise<ResearchDossierWriteResult> {
+export async function insertResearchValuationCase(db: Database, input: ResearchValuationCase): Promise<ResearchDossierWriteResult> {
   assertAsOf(input.asOf);
   assertTypedValues(input.assumptions, "valuation assumptions");
   assertTypedValues([input.result], "valuation result");
@@ -198,7 +199,7 @@ export async function insertResearchValuationCase(db: D1Database, input: Researc
   )]);
 }
 
-export async function insertResearchRiskEntry(db: D1Database, input: ResearchRiskEntry): Promise<ResearchDossierWriteResult> {
+export async function insertResearchRiskEntry(db: Database, input: ResearchRiskEntry): Promise<ResearchDossierWriteResult> {
   assertAsOf(input.asOf);
   if (input.scope !== "operating_company" && input.scope !== "listed_security") {
     throw new Error("public research risk scope cannot be user_portfolio");
@@ -215,7 +216,7 @@ export async function insertResearchRiskEntry(db: D1Database, input: ResearchRis
   )]);
 }
 
-export async function insertResearchCatalyst(db: D1Database, input: ResearchCatalyst): Promise<ResearchDossierWriteResult> {
+export async function insertResearchCatalyst(db: Database, input: ResearchCatalyst): Promise<ResearchDossierWriteResult> {
   assertSourceReferences(input.epistemicType, input.sourceReferences);
   if (input.epistemicType !== epistemicTypeForCatalystStatus(input.status)) {
     throw new Error("catalyst epistemic type does not match its status");
@@ -230,7 +231,7 @@ export async function insertResearchCatalyst(db: D1Database, input: ResearchCata
   )]);
 }
 
-export async function insertResearchAnalysisSnapshot(db: D1Database, input: ResearchAnalysisSnapshot): Promise<ResearchDossierWriteResult> {
+export async function insertResearchAnalysisSnapshot(db: Database, input: ResearchAnalysisSnapshot): Promise<ResearchDossierWriteResult> {
   assertAsOf(input.asOf);
   // This legacy snapshot series is still returned by the public company
   // dossier for backwards-compatible history.  It therefore cannot be used
@@ -247,7 +248,7 @@ export async function insertResearchAnalysisSnapshot(db: D1Database, input: Rese
   )]);
 }
 
-export async function insertResearchUserNote(db: D1Database, input: ResearchUserNote): Promise<ResearchDossierWriteResult> {
+export async function insertResearchUserNote(db: Database, input: ResearchUserNote): Promise<ResearchDossierWriteResult> {
   if (!input.ownerKey.trim()) throw new Error("research user note ownerKey is required");
   return runInsert(db, "research_user_notes", input.noteId, [db.prepare(`insert into research_user_notes (
     note_id, owner_key, company_id, security_code, note_type, content, references_json, created_at, updated_at
@@ -258,7 +259,7 @@ export async function insertResearchUserNote(db: D1Database, input: ResearchUser
 }
 
 async function loadIdentity(
-  db: D1Database,
+  db: Database,
   securityCode: string,
 ): Promise<{ operatingCompany: ResearchOperatingCompanyIdentity | null; listedSecurity: ResearchListedSecurityIdentity } | null> {
   const row = await db.prepare(`select s.security_code, s.company_id, s.venue, s.trading_currency,
@@ -290,7 +291,7 @@ async function loadIdentity(
   };
 }
 
-async function loadBusinessModels(db: D1Database, companyId: string, asOf: number): Promise<ResearchBusinessModel[]> {
+async function loadBusinessModels(db: Database, companyId: string, asOf: number): Promise<ResearchBusinessModel[]> {
   const rows = await db.prepare(`select * from research_business_models
     where company_id = ? and as_of <= ? and status <> 'superseded'
     order by as_of desc, created_at desc, business_model_id`).bind(companyId, asOf).all<Row>();
@@ -302,14 +303,14 @@ async function loadBusinessModels(db: D1Database, companyId: string, asOf: numbe
   return items.map((item) => ({ ...item, segments: byModel.get(item.businessModelId) ?? [] }));
 }
 
-async function loadMarketSpaceModels(db: D1Database, companyId: string, asOf: number): Promise<ResearchMarketSpaceModel[]> {
+async function loadMarketSpaceModels(db: Database, companyId: string, asOf: number): Promise<ResearchMarketSpaceModel[]> {
   const rows = await db.prepare(`select * from research_market_space_models
     where company_id = ? and as_of <= ? and status <> 'superseded'
     order by as_of desc, created_at desc, market_space_id`).bind(companyId, asOf).all<Row>();
   return rows.results.map(mapMarketSpaceModel);
 }
 
-async function loadCompetitiveMarkets(db: D1Database, companyId: string, asOf: number): Promise<ResearchCompetitiveMarket[]> {
+async function loadCompetitiveMarkets(db: Database, companyId: string, asOf: number): Promise<ResearchCompetitiveMarket[]> {
   const rows = await db.prepare(`select * from research_competitive_markets
     where company_id = ? and as_of <= ? and status <> 'superseded'
     order by as_of desc, created_at desc, competitive_market_id`).bind(companyId, asOf).all<Row>();
@@ -321,7 +322,7 @@ async function loadCompetitiveMarkets(db: D1Database, companyId: string, asOf: n
   return items.map((item) => ({ ...item, competitors: byMarket.get(item.competitiveMarketId) ?? [] }));
 }
 
-async function loadTheses(db: D1Database, companyId: string, asOf: number): Promise<ResearchThesis[]> {
+async function loadTheses(db: Database, companyId: string, asOf: number): Promise<ResearchThesis[]> {
   const rows = await db.prepare(`select * from research_theses
     where company_id = ? and as_of <= ? and status <> 'superseded'
     order by as_of desc, created_at desc, thesis_id`).bind(companyId, asOf).all<Row>();
@@ -334,7 +335,7 @@ async function loadTheses(db: D1Database, companyId: string, asOf: number): Prom
   return items.map((item) => ({ ...item, evidence: byThesis.get(item.thesisId) ?? [] }));
 }
 
-async function loadValuationCases(db: D1Database, securityCode: string, companyId: string | null, asOf: number): Promise<ResearchValuationCase[]> {
+async function loadValuationCases(db: Database, securityCode: string, companyId: string | null, asOf: number): Promise<ResearchValuationCase[]> {
   const rows = await db.prepare(`select * from research_valuation_cases
     where security_code = ? and as_of <= ? and status <> 'superseded'
       and (? is null or company_id is null or company_id = ?)
@@ -342,7 +343,7 @@ async function loadValuationCases(db: D1Database, securityCode: string, companyI
   return rows.results.map(mapValuationCase);
 }
 
-async function loadRisks(db: D1Database, securityCode: string, companyId: string | null, asOf: number): Promise<ResearchRiskEntry[]> {
+async function loadRisks(db: Database, securityCode: string, companyId: string | null, asOf: number): Promise<ResearchRiskEntry[]> {
   const rows = await db.prepare(`select * from research_risk_entries
     where as_of <= ? and scope in ('operating_company', 'listed_security') and ((security_code = ?) or (? is not null and company_id = ?))
     order by case status when 'upgraded' then 0 when 'active' then 1 when 'new' then 2 else 3 end,
@@ -350,7 +351,7 @@ async function loadRisks(db: D1Database, securityCode: string, companyId: string
   return rows.results.map(mapRisk);
 }
 
-async function loadCatalysts(db: D1Database, securityCode: string, companyId: string | null, asOf: number): Promise<ResearchCatalyst[]> {
+async function loadCatalysts(db: Database, securityCode: string, companyId: string | null, asOf: number): Promise<ResearchCatalyst[]> {
   const rows = await db.prepare(`select * from research_catalysts
     where created_at <= ? and ((security_code = ?) or (? is not null and company_id = ?))
     order by case when event_at is null then 1 else 0 end, event_at, created_at desc, catalyst_id`)
@@ -362,7 +363,7 @@ async function loadCatalysts(db: D1Database, securityCode: string, companyId: st
   return catalysts.map((item) => ({ ...item, reviews: reviewsByCatalyst.get(item.catalystId) ?? [] }));
 }
 
-async function loadSnapshots(db: D1Database, securityCode: string, companyId: string | null, asOf: number): Promise<ResearchAnalysisSnapshot[]> {
+async function loadSnapshots(db: Database, securityCode: string, companyId: string | null, asOf: number): Promise<ResearchAnalysisSnapshot[]> {
   const rows = await db.prepare(`select * from research_analysis_snapshots
     where security_code = ? and as_of <= ? and (? is null or company_id is null or company_id = ?)
     order by as_of desc, created_at desc, analysis_snapshot_id`).bind(securityCode, asOf, companyId, companyId).all<Row>();
@@ -373,7 +374,7 @@ async function loadSnapshots(db: D1Database, securityCode: string, companyId: st
   return rows.results.filter((row) => isPublicSnapshotRow(row)).map(mapSnapshot);
 }
 
-async function loadUserNotes(db: D1Database, securityCode: string, companyId: string | null, ownerKey: string, asOf: number): Promise<ResearchUserNote[]> {
+async function loadUserNotes(db: Database, securityCode: string, companyId: string | null, ownerKey: string, asOf: number): Promise<ResearchUserNote[]> {
   const rows = await db.prepare(`select * from research_user_notes
     where owner_key = ? and security_code = ? and created_at <= ?
       and (? is null or company_id is null or company_id = ?)
@@ -391,10 +392,10 @@ async function loadSection<T>(loader: () => Promise<T[]>): Promise<ResearchDossi
 }
 
 async function runInsert(
-  db: D1Database,
+  db: Database,
   table: string,
   recordId: string,
-  statements: D1PreparedStatement[],
+  statements: PreparedStatement[],
 ): Promise<ResearchDossierWriteResult> {
   try {
     await db.batch(statements);

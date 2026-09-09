@@ -116,7 +116,7 @@ export function createFundsInitializer(context: FundsRuntimeContext) {
   }
 
   function normalizeFundCompanyOptions(data: unknown): FundCompanyOption[] {
-    const source = Array.isArray(data)
+    const source: unknown[] = Array.isArray(data)
       ? data
       : Array.isArray((data as any)?.data?.data)
         ? (data as any).data.data
@@ -124,7 +124,7 @@ export function createFundsInitializer(context: FundsRuntimeContext) {
           ? (data as any).data
           : []
     const options = source
-      .filter((item) => Array.isArray(item) && item.length >= 2)
+      .filter((item): item is unknown[] => Array.isArray(item) && item.length >= 2)
       .map((item) => ({
         value: String(item[0] || '0'),
         label: String(item[1] || ''),

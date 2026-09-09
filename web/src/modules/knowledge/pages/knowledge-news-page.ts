@@ -319,7 +319,7 @@ function knowledgeNewsTargetCell(row: KnowledgeNewsTableRow) {
   return h('td', { class: 'knowledge-news-target-cell' }, [
     resolvedLinks.length > 0
       ? h('span', { class: 'knowledge-news-target-text', title: row.target }, resolvedLinks.flatMap((item, index) => {
-        const parts = [
+        const parts: Array<ReturnType<typeof h> | string> = [
           h('a', {
             href: `company.html?code=${encodeURIComponent(item.code)}`,
             class: 'knowledge-news-target-link',

@@ -69,7 +69,6 @@ const {
 })
 const {
   emitCompanyPageState,
-  emitStockTableState,
   genratePerformanceTable,
   genrateRegressTable,
   generateMarketDataMap,
@@ -1784,19 +1783,8 @@ export function onKlineCodeSelectChange() {
   })*/
 }
 
-function getUrlParam(sParam: string) {
-  const sPageURL = window.location.search.substring(1)
-  const sURLVariables = sPageURL.split('&')
-  let sParameterName: string[]
-
-  for (let i = 0; i < sURLVariables.length; i++) {
-    sParameterName = sURLVariables[i].split('=')
-
-    if (sParameterName[0] === sParam) {
-      return typeof sParameterName[1] === undefined ? true : decodeURIComponent(sParameterName[1])
-    }
-  }
-  return undefined
+function getUrlParam(key: string): string {
+  return new URLSearchParams(window.location.search).get(key) || ''
 }
 
 const legacyDataServices = createLegacyDataServices({
@@ -3242,4 +3230,23 @@ export async function runPageInit(page: string = currentPage()): Promise<void> {
     return
   }
   await initPage()
+}
+
+
+// Compatibility adapter for common security header services. The report page
+// owns the controller and its lifetime; it is no longer a legacy registry page.
+export async function prepareCompanyReportContext() {
+  await commonInit()
+  return {
+    server, fetchCodeNames,
+    fetchFinanceIncome: (code: string, callback: (data: unknown) => void) => {
+      // Income is optional context. Always settle, including an upstream error,
+      // so an unavailable financial source cannot leave the page loading forever.
+      void fetchRequest({ url: `${server}/api/finance/income`, params: { code }, silent: true })
+        .then((data) => { cache[`${code}-fsi`] = data; callback(data) })
+        .catch(() => callback(undefined))
+    },
+    fetchReportUrl, toDateString, getCode: getCurrentCode,
+    getCache: () => cache, getCodeNameMap: () => codeNameMap, echarts, fetchRequest,
+  }
 }

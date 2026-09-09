@@ -1,8 +1,9 @@
+import type { Database } from "../../../platform/contracts";
 import { buildReverseDcfValuationModelVersion, type BuildReverseDcfValuationModelInput, type ReverseDcfValuationModelVersion } from "../domain/reverse-valuation-model-version";
 
 type Row = Record<string, unknown>;
 
-export async function createReverseDcfValuationModelVersion(db: D1Database, input: BuildReverseDcfValuationModelInput): Promise<ReverseDcfValuationModelVersion> {
+export async function createReverseDcfValuationModelVersion(db: Database, input: BuildReverseDcfValuationModelInput): Promise<ReverseDcfValuationModelVersion> {
   const model = buildReverseDcfValuationModelVersion(input);
   await db.prepare(`insert into research_reverse_valuation_model_versions (
     model_version_id, company_id, security_code, as_of, status, algorithm_version, valuation_currency, amount_scale, security_currency,
@@ -19,7 +20,7 @@ export async function createReverseDcfValuationModelVersion(db: D1Database, inpu
   return model;
 }
 
-export async function loadReverseDcfValuationModelVersions(db: D1Database, securityCode: string, asOf: number): Promise<{ availability: "available" | "empty" | "unavailable"; reason: string | null; items: ReverseDcfValuationModelVersion[] }> {
+export async function loadReverseDcfValuationModelVersions(db: Database, securityCode: string, asOf: number): Promise<{ availability: "available" | "empty" | "unavailable"; reason: string | null; items: ReverseDcfValuationModelVersion[] }> {
   try {
     const rows = await db.prepare(`select * from research_reverse_valuation_model_versions where security_code=? and as_of<=? and status<>'superseded' order by as_of desc, created_at desc`).bind(securityCode, asOf).all<Row>();
     return { availability: rows.results.length ? "available" : "empty", reason: rows.results.length ? null : "no_records", items: rows.results.map(map) };

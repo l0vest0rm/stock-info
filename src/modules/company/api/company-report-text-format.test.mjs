@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatCompanyReportTextForLlm } from "./company.routes.ts";
+import { formatCompanyReportTextForLlm } from "../domain/report-analysis.ts";
 
 test("formats PDF spacing artifacts without extracting forecast fields", () => {
   assert.equal(

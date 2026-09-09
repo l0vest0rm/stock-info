@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { isSupportedCompanyCode, normalizeSecurityCode } from "../../../shared/codes";
 import { fail, ok } from "../../../shared/http";
+import { isTaskdReadUnavailable } from "../../../shared/taskd-client";
 import type { AppEnv } from "../../../types";
 import {
   enqueueResearchFinancialAnalysis,
@@ -11,6 +12,7 @@ import {
   enqueueResearchInvestmentAnalysis,
   loadResearchInvestmentAnalysis,
   resumeResearchInvestmentAnalysis,
+  syncResearchInvestmentAnalysis,
 } from "../application/research-investment-analysis";
 import { canWriteResearchLocally } from "../domain/research-capabilities";
 
@@ -90,6 +92,20 @@ researchRoutes.post("/research/company/:code/investment-analysis/resume", async 
   try {
     return ok(c, await resumeResearchInvestmentAnalysis(c.env, code));
   } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+researchRoutes.post("/research/company/:code/investment-analysis/sync", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "investment analysis synchronization is only available in local research runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    return ok(c, await syncResearchInvestmentAnalysis(c.env, code));
+  } catch (error) {
+    if (isTaskdReadUnavailable(error)) {
+      return fail(c, 503, "暂时无法连接 taskd；本地任务状态未改变，请稍后再同步。");
+    }
     return fail(c, 400, error instanceof Error ? error.message : String(error));
   }
 });

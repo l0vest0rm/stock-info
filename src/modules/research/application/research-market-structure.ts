@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { classifyResearchSecurity, type ClassifiedResearchSecurity } from "../domain/research-identity";
 import {
   assertMarketStructureFact,
@@ -10,7 +11,7 @@ export type MarketStructureFactWrite = Omit<ResearchMarketStructureFact, "create
 
 /** Appends one sourced security-market observation. This never modifies a
  * security-rights profile or writes a valuation input on the caller's behalf. */
-export async function insertResearchMarketStructureFact(db: D1Database, input: MarketStructureFactWrite): Promise<ResearchMarketStructureFact> {
+export async function insertResearchMarketStructureFact(db: Database, input: MarketStructureFactWrite): Promise<ResearchMarketStructureFact> {
   const securityCode = classifyResearchSecurity({ code: input.securityCode, instrumentType: "stock" }).code;
   const createdAt = input.createdAt ?? Date.now();
   const fact = { ...input, securityCode, createdAt };
@@ -27,7 +28,7 @@ export async function insertResearchMarketStructureFact(db: D1Database, input: M
   return fact;
 }
 
-export async function loadResearchMarketStructure(db: D1Database, security: ClassifiedResearchSecurity | { code: string; market: ClassifiedResearchSecurity["market"]; instrumentKind: ClassifiedResearchSecurity["instrumentKind"] }) {
+export async function loadResearchMarketStructure(db: Database, security: ClassifiedResearchSecurity | { code: string; market: ClassifiedResearchSecurity["market"]; instrumentKind: ClassifiedResearchSecurity["instrumentKind"] }) {
   try {
     const rows = await db.prepare(`select market_structure_fact_id as marketStructureFactId, security_code as securityCode,
         fact_key as factKey, fact_status as factStatus, value_kind as valueKind, value_number as valueNumber,
@@ -43,7 +44,7 @@ export async function loadResearchMarketStructure(db: D1Database, security: Clas
   }
 }
 
-export async function requirePerShareMarketStructure(db: D1Database, security: Pick<ClassifiedResearchSecurity, "code" | "market" | "instrumentKind">): Promise<void> {
+export async function requirePerShareMarketStructure(db: Database, security: Pick<ClassifiedResearchSecurity, "code" | "market" | "instrumentKind">): Promise<void> {
   const structure = await loadResearchMarketStructure(db, security);
   if (structure.availability !== "available") throw new Error("per-share valuation is blocked: market structure storage is unavailable");
   if (structure.perShareValuation.status !== "ready") throw new Error(`per-share valuation is blocked: ${structure.perShareValuation.reason}`);

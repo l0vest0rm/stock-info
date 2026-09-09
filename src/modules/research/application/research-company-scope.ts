@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 /**
  * Shared write-side scope guard for company-level research records. A code
  * alone is not enough: provisional, unresolved, and conflicting mappings may
@@ -6,7 +7,7 @@
 export type ConfirmedSecurityCompanyScope = { securityCode: string; companyId: string };
 
 export async function requireConfirmedSecurityCompanyScope(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   subject = "company-level research write",
 ): Promise<ConfirmedSecurityCompanyScope> {

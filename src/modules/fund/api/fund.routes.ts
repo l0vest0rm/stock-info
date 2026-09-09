@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { Hono } from "hono";
 import { fetchEastmoneyText } from "../../../adapters/eastmoney";
 import { bareCode, normalizeSecurityCode } from "../../../shared/codes";
@@ -75,7 +76,7 @@ fundRoutes.get("/fund/compare", async (c) => {
   return ok(c, { rows, limitation: "比较只呈现公开数据；收益未统一为同一风险基准，不能直接推导配置建议。" });
 });
 
-export async function fetchFundInfo(db: D1Database, code: string): Promise<Record<string, string>> {
+export async function fetchFundInfo(db: Database, code: string): Promise<Record<string, string>> {
   const fundCode = bareFundCode(code);
   const html = await fetchEastmoneyText(db, `https://fundf10.eastmoney.com/jbgk_${fundCode}.html`);
   const allText = normalizeText(stripTags(html));
@@ -115,7 +116,7 @@ export async function fetchFundInfo(db: D1Database, code: string): Promise<Recor
   return info;
 }
 
-export async function fetchFundPosition(db: D1Database, code: string, num: number): Promise<Array<Record<string, unknown>>> {
+export async function fetchFundPosition(db: Database, code: string, num: number): Promise<Array<Record<string, unknown>>> {
   const fundCode = bareFundCode(code);
   const now = new Date();
   const startYear = now.getMonth() + 1 < 4 ? now.getFullYear() - 1 : now.getFullYear();
@@ -144,7 +145,7 @@ type FundAssetAllocationRow = {
   netAssetsBillion: number | null;
 };
 
-export async function fetchFundAssetAllocation(db: D1Database, code: string): Promise<{
+export async function fetchFundAssetAllocation(db: Database, code: string): Promise<{
   code: string;
   source: "eastmoney";
   rows: FundAssetAllocationRow[];
@@ -180,7 +181,7 @@ export function parseFundAssetAllocation(html: string): FundAssetAllocationRow[]
     .sort((left, right) => right.reportDate.localeCompare(left.reportDate));
 }
 
-async function fetchFundPositionYear(db: D1Database, fundCode: string, year: number): Promise<Array<Record<string, unknown>>> {
+async function fetchFundPositionYear(db: Database, fundCode: string, year: number): Promise<Array<Record<string, unknown>>> {
   const url = new URL("https://fundf10.eastmoney.com/FundArchivesDatas.aspx");
   url.searchParams.set("type", "jjcc");
   url.searchParams.set("code", fundCode);
@@ -211,7 +212,7 @@ async function fetchFundPositionYear(db: D1Database, fundCode: string, year: num
   return rows;
 }
 
-async function fetchFundShareChange(db: D1Database, code: string): Promise<Array<Record<string, unknown>>> {
+async function fetchFundShareChange(db: Database, code: string): Promise<Array<Record<string, unknown>>> {
   const fundCode = bareFundCode(code);
   const url = new URL("https://fundf10.eastmoney.com/FundArchivesDatas.aspx");
   url.searchParams.set("type", "gmbd");
@@ -255,7 +256,7 @@ type EastmoneyFundNoticeResponse = {
 };
 
 async function fetchFundNotices(
-  db: D1Database,
+  db: Database,
   code: string,
   page: number,
   pageSize: number,
@@ -291,7 +292,7 @@ async function fetchFundNotices(
   };
 }
 
-async function fetchFundConstituents(db: D1Database, code: string): Promise<Record<string, unknown>> {
+async function fetchFundConstituents(db: Database, code: string): Promise<Record<string, unknown>> {
   const fundCode = bareFundCode(code);
   try {
     const overview = await fetchSseOverview(db, fundCode);
@@ -325,7 +326,7 @@ async function fetchFundConstituents(db: D1Database, code: string): Promise<Reco
   }
 }
 
-async function fetchSseOverview(db: D1Database, fundCode: string): Promise<Record<string, unknown>> {
+async function fetchSseOverview(db: Database, fundCode: string): Promise<Record<string, unknown>> {
   const url = new URL("https://query.sse.com.cn/commonQuery.do");
   url.searchParams.set("jsonCallBack", "jsonpCallbackLicaiFundOverview");
   url.searchParams.set("isPagination", "false");
@@ -337,7 +338,7 @@ async function fetchSseOverview(db: D1Database, fundCode: string): Promise<Recor
   return body.result?.[0] ?? {};
 }
 
-async function fetchSseConstituents(db: D1Database, fundCode: string): Promise<Record<string, unknown>[]> {
+async function fetchSseConstituents(db: Database, fundCode: string): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
   let pageNo = 1;
   let pageCount = 1;
@@ -363,7 +364,7 @@ async function fetchSseConstituents(db: D1Database, fundCode: string): Promise<R
   return rows;
 }
 
-async function fetchFundRank(db: D1Database, query: Record<string, string>): Promise<Record<string, unknown>> {
+async function fetchFundRank(db: Database, query: Record<string, string>): Promise<Record<string, unknown>> {
   const url = new URL("https://fund.eastmoney.com/data/rankhandler.aspx");
   const endDate = query.ed || new Date().toISOString().slice(0, 10);
   const startDate = query.sd || `${new Date().getFullYear() - 1}-${endDate.slice(5)}`;
@@ -426,7 +427,7 @@ async function fetchFundRank(db: D1Database, query: Record<string, string>): Pro
   };
 }
 
-async function fetchFundCompanies(db: D1Database): Promise<unknown> {
+async function fetchFundCompanies(db: Database): Promise<unknown> {
   const text = await fetchEastmoneyText(db, "https://fund.eastmoney.com/js/jjjz_gs.js?v=0.1", "https://fund.eastmoney.com/");
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");

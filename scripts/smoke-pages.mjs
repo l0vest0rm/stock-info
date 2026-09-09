@@ -95,6 +95,8 @@ await check("macro windowed series and retired API removal", async () => {
     const series = await fetchApi(`/api/macro/series?ids=${current.definition.id}&measure=level&from=${current.current.period}&to=${current.current.period}`);
     assert(Array.isArray(series.data?.series) && series.data.series.length === 1, "macro windowed series response is invalid");
     assert(series.data.series[0].measure === "level" && Array.isArray(series.data.series[0].points), "macro series measure contract is invalid");
+    const point = series.data.series[0].points[0];
+    assert(point?.derived && ["available", "unavailable"].includes(point.derived.yoy?.status) && ["available", "unavailable"].includes(point.derived.mom?.status), "macro level points do not expose hover YoY/MoM measures");
   }
   for (const path of ["/api/macro/dashboard", "/api/macro/events", "/api/macro/status", "/api/macro/signals", "/api/macro/watch", "/api/macro/alerts/history", "/api/macro/provenance", "/api/macro/research/backtest"]) {
     const response = await fetchWithTimeout(`${baseUrl}${path}`);

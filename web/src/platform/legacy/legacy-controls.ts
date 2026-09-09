@@ -373,7 +373,7 @@ export function createLegacyControls(context: LegacyControlsContext) {
 
     addDropdownItemClickEvent()
     if (config.urlParam) {
-      const paramStr: string | null = getUrlParam(config.urlParam)
+      const paramStr = getUrlParam(config.urlParam)
       if (paramStr) {
         const ids = paramStr.split(',')
         for (const itemId of ids) {

@@ -7,6 +7,15 @@ import { LocalD1Database } from "../../../platform/node/local-bindings.ts";
 import { D1MacroRepository } from "../application/macro-repository.ts";
 import { macroRoutes } from "./macro.routes.ts";
 
+test("macro taskd analysis writes stay unavailable outside the local LLM runtime", async () => {
+  for (const path of ["/macro/analysis/refresh", "/macro/analysis/resume", "/macro/analysis/sync"]) {
+    const response = await macroRoutes.request(`http://macro.test${path}`, { method: "POST" }, { LLM_RUNTIME: "production" });
+    const body = await response.json();
+    assert.equal(response.status, 404, path);
+    assert.match(body.msg, /only available in local LLM runtime/);
+  }
+});
+
 test("macro API is catalog driven and applies asOf before derived measurements", async () => {
   const directory = await mkdtemp(join(tmpdir(), "stock-info-macro-api-"));
   try {
@@ -66,6 +75,11 @@ test("macro API is catalog driven and applies asOf before derived measurements",
     const overviewAfterRevision = await request(db, "/macro/overview?regions=SG&asOf=4000");
     assert.equal(byId(overviewAfterRevision.data.series, 101).current.value, 125, "later revision becomes visible only after its publication");
     assert.equal(byId(overviewAfterRevision.data.series, 101).yoy.value, 25);
+
+    const levelSeries = await request(db, "/macro/series?ids=101&measure=level&from=2026-01-01&to=2026-01-01&asOf=2500");
+    assert.equal(levelSeries.data.series[0].points[0].value, 120, "the plotted level honors asOf before deriving tooltip measures");
+    assertMetric(levelSeries.data.series[0].points[0].derived.yoy, 20, "2025-01-01", "percent_change");
+    assertMetric(levelSeries.data.series[0].points[0].derived.mom, 9.09090909090909, "2025-12-01", "percent_change");
 
     const series = await request(db, "/macro/series?ids=101&measure=yoy&from=2026-01-01&to=2026-01-01&asOf=2500");
     assertMetric(series.data.series[0].points[0], 20, "2025-01-01", "percent_change");

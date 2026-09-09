@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import {
   assertResearchCompanyTrackExposure,
   assertResearchIndustryTrackProfile,
@@ -22,9 +23,9 @@ type Row = Record<string, unknown>;
 type EvidenceSubject = "track_profile" | "demand_driver" | "supply_constraint" | "value_chain_node" | "industry_kpi" | "company_exposure" | "exposure_share" | "peer_comparison_set" | "peer_member" | "comparison_dimension";
 export type ResearchIndustryWriteResult = { state: "saved" | "unavailable"; recordId: string; reason: "storage_not_initialized" | null };
 
-export async function insertResearchIndustryTrackProfile(db: D1Database, input: ResearchIndustryTrackProfile): Promise<ResearchIndustryWriteResult> {
+export async function insertResearchIndustryTrackProfile(db: Database, input: ResearchIndustryTrackProfile): Promise<ResearchIndustryWriteResult> {
   assertResearchIndustryTrackProfile(input);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_industry_track_profiles (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_industry_track_profiles (
     track_profile_id, industry_key, taxonomy, taxonomy_version, industry_name, parent_industry_key, as_of, version, status,
     boundary_included, boundary_excluded, demand_equation, supply_equation, cycle_position, valuation_primary_method,
     valuation_limitations, epistemic_type, created_at, updated_at
@@ -65,9 +66,9 @@ export async function insertResearchIndustryTrackProfile(db: D1Database, input: 
   return runInsert(db, "research_industry_track_profiles", input.trackProfileId, statements);
 }
 
-export async function insertResearchCompanyTrackExposure(db: D1Database, input: ResearchCompanyTrackExposure): Promise<ResearchIndustryWriteResult> {
+export async function insertResearchCompanyTrackExposure(db: Database, input: ResearchCompanyTrackExposure): Promise<ResearchIndustryWriteResult> {
   assertResearchCompanyTrackExposure(input);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_company_track_exposures (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_company_track_exposures (
     company_track_exposure_id, company_id, track_profile_id, as_of, version, status, selection_basis, business_segment,
     product_scope, geographic_scope, customer_scope, exposure_description, epistemic_type, created_at, updated_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -86,9 +87,9 @@ export async function insertResearchCompanyTrackExposure(db: D1Database, input: 
   return runInsert(db, "research_company_track_exposures", input.companyTrackExposureId, statements);
 }
 
-export async function insertResearchPeerComparisonSet(db: D1Database, input: ResearchPeerComparisonSet): Promise<ResearchIndustryWriteResult> {
+export async function insertResearchPeerComparisonSet(db: Database, input: ResearchPeerComparisonSet): Promise<ResearchIndustryWriteResult> {
   assertResearchPeerComparisonSet(input);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_peer_comparison_sets (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_peer_comparison_sets (
     peer_comparison_set_id, company_id, track_profile_id, as_of, version, status, comparison_purpose, selection_criteria,
     epistemic_type, created_at, updated_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -116,7 +117,7 @@ export async function insertResearchPeerComparisonSet(db: D1Database, input: Res
   return runInsert(db, "research_peer_comparison_sets", input.peerComparisonSetId, statements);
 }
 
-export async function loadResearchIndustryTrackProfiles(db: D1Database, query: { industryKey: string; taxonomy?: string; asOf?: number }): Promise<ResearchIndustrySection<ResearchIndustryTrackProfile>> {
+export async function loadResearchIndustryTrackProfiles(db: Database, query: { industryKey: string; taxonomy?: string; asOf?: number }): Promise<ResearchIndustrySection<ResearchIndustryTrackProfile>> {
   const industryKey = required(query.industryKey, "industryKey"); const asOf = query.asOf ?? Date.now();
   try {
     const rows = await db.prepare(`select * from research_industry_track_profiles where industry_key=? and as_of<=? and status<>'superseded'
@@ -126,7 +127,7 @@ export async function loadResearchIndustryTrackProfiles(db: D1Database, query: {
   } catch (error) { if (isMissingTable(error, "research_industry_track_profiles")) return unavailableIndustrySection("storage_not_initialized"); throw error; }
 }
 
-export async function loadResearchCompanyTrackExposures(db: D1Database, query: { companyId: string | null; asOf: number }): Promise<ResearchIndustrySection<ResearchCompanyTrackExposure>> {
+export async function loadResearchCompanyTrackExposures(db: Database, query: { companyId: string | null; asOf: number }): Promise<ResearchIndustrySection<ResearchCompanyTrackExposure>> {
   if (!query.companyId) return unavailableIndustrySection("identity_not_found");
   try {
     const rows = await db.prepare(`select * from research_company_track_exposures where company_id=? and as_of<=? and status<>'superseded'
@@ -135,7 +136,7 @@ export async function loadResearchCompanyTrackExposures(db: D1Database, query: {
   } catch (error) { if (isMissingTable(error, "research_company_track_exposures")) return unavailableIndustrySection("storage_not_initialized"); throw error; }
 }
 
-export async function loadResearchPeerComparisonSets(db: D1Database, query: { companyId: string | null; trackProfileId?: string; asOf: number }): Promise<ResearchIndustrySection<ResearchPeerComparisonSet>> {
+export async function loadResearchPeerComparisonSets(db: Database, query: { companyId: string | null; trackProfileId?: string; asOf: number }): Promise<ResearchIndustrySection<ResearchPeerComparisonSet>> {
   if (!query.companyId) return unavailableIndustrySection("identity_not_found");
   try {
     const rows = await db.prepare(`select * from research_peer_comparison_sets where company_id=? and as_of<=? and status<>'superseded'
@@ -145,7 +146,7 @@ export async function loadResearchPeerComparisonSets(db: D1Database, query: { co
   } catch (error) { if (isMissingTable(error, "research_peer_comparison_sets")) return unavailableIndustrySection("storage_not_initialized"); throw error; }
 }
 
-async function hydrateProfiles(db: D1Database, rows: Row[]): Promise<ResearchIndustryTrackProfile[]> {
+async function hydrateProfiles(db: Database, rows: Row[]): Promise<ResearchIndustryTrackProfile[]> {
   if (!rows.length) return [];
   const ids = rows.map((row) => required(row.track_profile_id, "track_profile_id"));
   const [drivers, constraints, nodes, kpis] = await Promise.all([
@@ -164,7 +165,7 @@ async function hydrateProfiles(db: D1Database, rows: Row[]): Promise<ResearchInd
   return rows.map((row) => ({ trackProfileId: required(row.track_profile_id, "track_profile_id"), industryKey: required(row.industry_key, "industry_key"), taxonomy: required(row.taxonomy, "taxonomy"), taxonomyVersion: required(row.taxonomy_version, "taxonomy_version"), industryName: required(row.industry_name, "industry_name"), parentIndustryKey: nullable(row.parent_industry_key), asOf: number(row.as_of, "as_of"), version: number(row.version, "version"), status: required(row.status, "status") as ResearchIndustryTrackProfile["status"], boundaryIncluded: required(row.boundary_included, "boundary_included"), boundaryExcluded: required(row.boundary_excluded, "boundary_excluded"), demandEquation: nullable(row.demand_equation), supplyEquation: nullable(row.supply_equation), cyclePosition: required(row.cycle_position, "cycle_position") as ResearchIndustryTrackProfile["cyclePosition"], valuationPrimaryMethod: nullable(row.valuation_primary_method), valuationLimitations: nullable(row.valuation_limitations), epistemicType: required(row.epistemic_type, "epistemic_type") as ResearchIndustryTrackProfile["epistemicType"], sourceReferences: refs.get(key("track_profile", required(row.track_profile_id, "track_profile_id"))) ?? [], demandDrivers: driversBy.get(required(row.track_profile_id, "track_profile_id")) ?? [], supplyConstraints: constraintsBy.get(required(row.track_profile_id, "track_profile_id")) ?? [], valueChainNodes: nodesBy.get(required(row.track_profile_id, "track_profile_id")) ?? [], kpis: kpisBy.get(required(row.track_profile_id, "track_profile_id")) ?? [], createdAt: number(row.created_at, "created_at"), updatedAt: number(row.updated_at, "updated_at") }));
 }
 
-async function hydrateExposures(db: D1Database, rows: Row[]): Promise<ResearchCompanyTrackExposure[]> {
+async function hydrateExposures(db: Database, rows: Row[]): Promise<ResearchCompanyTrackExposure[]> {
   if (!rows.length) return [];
   const ids = rows.map((row) => required(row.company_track_exposure_id, "company_track_exposure_id"));
   const shares = await listBy(db, "research_company_track_exposure_shares", "company_track_exposure_id", ids);
@@ -173,7 +174,7 @@ async function hydrateExposures(db: D1Database, rows: Row[]): Promise<ResearchCo
   return rows.map((row) => ({ companyTrackExposureId: required(row.company_track_exposure_id, "company_track_exposure_id"), companyId: required(row.company_id, "company_id"), trackProfileId: required(row.track_profile_id, "track_profile_id"), asOf: number(row.as_of, "as_of"), version: number(row.version, "version"), status: required(row.status, "status") as ResearchCompanyTrackExposure["status"], selectionBasis: required(row.selection_basis, "selection_basis") as ResearchCompanyTrackExposure["selectionBasis"], businessSegment: required(row.business_segment, "business_segment"), productScope: required(row.product_scope, "product_scope"), geographicScope: required(row.geographic_scope, "geographic_scope"), customerScope: required(row.customer_scope, "customer_scope"), exposureDescription: required(row.exposure_description, "exposure_description"), epistemicType: required(row.epistemic_type, "epistemic_type") as ResearchCompanyTrackExposure["epistemicType"], sourceReferences: refs.get(key("company_exposure", required(row.company_track_exposure_id, "company_track_exposure_id"))) ?? [], shares: sharesBy.get(required(row.company_track_exposure_id, "company_track_exposure_id")) ?? [], createdAt: number(row.created_at, "created_at"), updatedAt: number(row.updated_at, "updated_at") }));
 }
 
-async function hydratePeerSets(db: D1Database, rows: Row[]): Promise<ResearchPeerComparisonSet[]> {
+async function hydratePeerSets(db: Database, rows: Row[]): Promise<ResearchPeerComparisonSet[]> {
   if (!rows.length) return [];
   const setIds = rows.map((row) => required(row.peer_comparison_set_id, "peer_comparison_set_id")); const members = await listBy(db, "research_peer_comparison_members", "peer_comparison_set_id", setIds);
   const memberIds = members.map((row) => required(row.peer_comparison_member_id, "peer_comparison_member_id"));
@@ -192,15 +193,15 @@ function mapShare(row: Row, refs: Map<string, ResearchSourceReference[]>): Resea
 function mapDimension(row: Row, refs: Map<string, ResearchSourceReference[]>): ResearchPeerComparisonDimension { const id = required(row.comparison_dimension_id, "comparison_dimension_id"); return { comparisonDimensionId: id, dimension: required(row.dimension, "dimension") as ResearchPeerComparisonDimension["dimension"], status: required(row.status, "status") as ResearchPeerComparisonDimension["status"], targetValue: nullable(row.target_value), peerValue: nullable(row.peer_value), adjustmentNote: nullable(row.adjustment_note), sortOrder: number(row.sort_order, "sort_order"), sourceReferences: refs.get(key("comparison_dimension", id)) ?? [] }; }
 function mapMember(row: Row, refs: Map<string, ResearchSourceReference[]>, dimensionsBy: Map<string, ResearchPeerComparisonDimension[]>): ResearchPeerComparisonMember { const id = required(row.peer_comparison_member_id, "peer_comparison_member_id"); return { peerComparisonMemberId: id, companyId: nullable(row.company_id), securityCode: nullable(row.security_code), peerName: required(row.peer_name, "peer_name"), relationshipType: required(row.relationship_type, "relationship_type") as ResearchPeerComparisonMember["relationshipType"], membershipStatus: required(row.membership_status, "membership_status") as ResearchPeerComparisonMember["membershipStatus"], comparabilityStatus: required(row.comparability_status, "comparability_status") as ResearchPeerComparisonMember["comparabilityStatus"], exclusionReason: nullable(row.exclusion_reason), sortOrder: number(row.sort_order, "sort_order"), sourceReferences: refs.get(key("peer_member", id)) ?? [], dimensions: dimensionsBy.get(id) ?? [] }; }
 
-function evidenceStatements(db: D1Database, subjectType: EvidenceSubject, subjectId: string, refs: ResearchSourceReference[], createdAt: number): D1PreparedStatement[] { return refs.map((ref, index) => db.prepare(`insert into research_industry_comparability_evidence_refs (
+function evidenceStatements(db: Database, subjectType: EvidenceSubject, subjectId: string, refs: ResearchSourceReference[], createdAt: number): PreparedStatement[] { return refs.map((ref, index) => db.prepare(`insert into research_industry_comparability_evidence_refs (
   evidence_ref_id, subject_type, subject_id, source_kind, source_id, information_id, version_id, document_id, url, title, published_at, locator, created_at
 ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
   .bind(`${subjectId}:evidence:${index + 1}`, subjectType, subjectId, ref.sourceKind, nullable(ref.sourceId), nullable(ref.informationId), nullable(ref.versionId), nullable(ref.documentId), nullable(ref.url), nullable(ref.title), ref.publishedAt === undefined ? null : String(ref.publishedAt), nullable(ref.locator), createdAt)); }
-async function evidenceFor(db: D1Database, subjectTypes: EvidenceSubject[], subjectIds: string[]): Promise<Row[]> { if (!subjectIds.length) return []; const types = placeholders(subjectTypes.length); const ids = placeholders(subjectIds.length); const rows = await db.prepare(`select * from research_industry_comparability_evidence_refs where subject_type in (${types}) and subject_id in (${ids}) order by created_at, evidence_ref_id`).bind(...subjectTypes, ...subjectIds).all<Row>(); return rows.results; }
+async function evidenceFor(db: Database, subjectTypes: EvidenceSubject[], subjectIds: string[]): Promise<Row[]> { if (!subjectIds.length) return []; const types = placeholders(subjectTypes.length); const ids = placeholders(subjectIds.length); const rows = await db.prepare(`select * from research_industry_comparability_evidence_refs where subject_type in (${types}) and subject_id in (${ids}) order by created_at, evidence_ref_id`).bind(...subjectTypes, ...subjectIds).all<Row>(); return rows.results; }
 function groupEvidence(rows: Row[]): Map<string, ResearchSourceReference[]> { const result = new Map<string, ResearchSourceReference[]>(); for (const row of rows) { const item: ResearchSourceReference = { sourceKind: required(row.source_kind, "source_kind") as ResearchSourceReference["sourceKind"], sourceId: nullable(row.source_id) ?? undefined, informationId: nullable(row.information_id) ?? undefined, versionId: nullable(row.version_id) ?? undefined, documentId: nullable(row.document_id) ?? undefined, url: nullable(row.url) ?? undefined, title: nullable(row.title) ?? undefined, publishedAt: nullable(row.published_at) ?? undefined, locator: nullable(row.locator) ?? undefined }; const group = result.get(key(required(row.subject_type, "subject_type") as EvidenceSubject, required(row.subject_id, "subject_id"))) ?? []; group.push(item); result.set(key(required(row.subject_type, "subject_type") as EvidenceSubject, required(row.subject_id, "subject_id")), group); } return result; }
-async function listBy(db: D1Database, table: string, column: string, ids: string[]): Promise<Row[]> { if (!ids.length) return []; const rows = await db.prepare(`select * from ${table} where ${column} in (${placeholders(ids.length)}) order by sort_order, rowid`).bind(...ids).all<Row>(); return rows.results; }
+async function listBy(db: Database, table: string, column: string, ids: string[]): Promise<Row[]> { if (!ids.length) return []; const rows = await db.prepare(`select * from ${table} where ${column} in (${placeholders(ids.length)}) order by sort_order, rowid`).bind(...ids).all<Row>(); return rows.results; }
 function groupBy<T>(rows: Row[], field: string, mapper: (row: Row) => T): Map<string, T[]> { const result = new Map<string, T[]>(); for (const row of rows) { const id = required(row[field], field); const items = result.get(id) ?? []; items.push(mapper(row)); result.set(id, items); } return result; }
-async function runInsert(db: D1Database, table: string, recordId: string, statements: D1PreparedStatement[]): Promise<ResearchIndustryWriteResult> { try { await db.batch(statements); return { state: "saved", recordId, reason: null }; } catch (error) { if (isMissingTable(error, table)) return { state: "unavailable", recordId, reason: "storage_not_initialized" }; throw error; } }
+async function runInsert(db: Database, table: string, recordId: string, statements: PreparedStatement[]): Promise<ResearchIndustryWriteResult> { try { await db.batch(statements); return { state: "saved", recordId, reason: null }; } catch (error) { if (isMissingTable(error, table)) return { state: "unavailable", recordId, reason: "storage_not_initialized" }; throw error; } }
 function key(subjectType: EvidenceSubject, subjectId: string): string { return `${subjectType}:${subjectId}`; }
 function placeholders(count: number): string { return Array.from({ length: count }, () => "?").join(", "); }
 function required(value: unknown, label: string): string { const result = String(value ?? "").trim(); if (!result) throw new Error(`research industry comparability ${label} is required`); return result; }

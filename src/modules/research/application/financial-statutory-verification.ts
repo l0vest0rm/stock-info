@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   evaluateFinancialStatutoryVerification,
   type FinancialStatutoryVerification,
@@ -28,7 +29,7 @@ export type FinancialStatutoryVerificationRecord = FinancialStatutoryVerificatio
  * intentionally retained rather than silently updated.
  */
 export async function recordFinancialStatutoryVerification(
-  db: D1Database,
+  db: Database,
   input: PersistFinancialStatutoryVerificationInput,
 ): Promise<FinancialStatutoryVerificationRecord> {
   const verificationId = required(input.verificationId, "verificationId");
@@ -66,7 +67,7 @@ export async function recordFinancialStatutoryVerification(
 }
 
 export async function loadFinancialStatutoryVerifications(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   options: { normalizedFactId?: string; outcome?: FinancialStatutoryVerificationOutcome; limit?: number; offset?: number } = {},
 ): Promise<FinancialStatutoryVerificationRecord[]> {

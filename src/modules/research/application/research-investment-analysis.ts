@@ -1,8 +1,9 @@
+import type { Database } from "../../../platform/contracts";
 import type { AppEnv, KlineBar } from "../../../types";
-import { getKvCache, putKvCache } from "../../../db/queries";
+import { readResearchResult, saveResearchResult, isObservedResearchTask } from "../infrastructure/research-result-repository";
 import { RESEARCH_OPERATING_ANALYSIS_PROMPT } from "../../../generated/prompt-text";
 import { taskdWebQaInput } from "../../../shared/llm-client";
-import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
+import { isTaskdReadUnavailable, taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
 import { loadKline } from "../../market/application/load-kline";
@@ -51,6 +52,8 @@ type InvestmentAnalysisInput = {
   analysisFramework: AnalysisFramework | null;
 };
 type ResultRow = {
+  pendingProjection?: boolean;
+  pendingInputJson?: string | null;
   securityCode: string;
   inputJson: string | null;
   markdown: string | null;
@@ -62,6 +65,7 @@ type ResultRow = {
   recovery: RecoveryState;
 };
 type StoredTaskValue = {
+  taskId?: number | null;
   name: string;
   status: TaskdTask["status"];
   errorMessage: string | null;
@@ -89,6 +93,7 @@ export async function enqueueResearchInvestmentAnalysis(
   securityCode: string,
   options: { reasoningEffort?: string | null } = {},
 ) {
+  if (env.LLM_RUNTIME !== "local") throw new Error("investment analysis submission is only available in local LLM runtime");
   const prepared = await prepareResearchInvestmentAnalysis(env, securityCode);
   const current = await loadResult(env.DB, prepared.securityCode);
   const name = researchInvestmentAnalysisTaskName(prepared.securityCode);
@@ -116,73 +121,72 @@ export async function enqueueResearchInvestmentAnalysis(
     },
   });
   await storeResult(env.DB, prepared.securityCode, mergeStoredResult(current, {
-    inputJson: JSON.stringify(prepared.input),
+    pendingProjection: true,
+    pendingInputJson: JSON.stringify(prepared.input),
+    inputJson: current?.markdown ? current.inputJson : JSON.stringify(prepared.input),
     task: taskView(task),
     recovery: noRecovery(),
   }));
   return { accepted: true, task: taskView(task), input: prepared.input };
 }
 
+/** Read model only: opening a page never calls taskd or market providers. */
 export async function loadResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string) {
-  const code = securityCode.trim().toUpperCase();
-  let result = await loadResult(env.DB, code);
-  if (result?.markdown && !isPendingTask(result.task)) return responseFromStoredResult(result);
-  const cachedInput = jsonObject(result?.inputJson);
-  const shouldQueryTaskd = env.LLM_RUNTIME === "local" && (!result?.markdown || isPendingTask(result.task));
-  let prepared: Awaited<ReturnType<typeof prepareResearchInvestmentAnalysis>> | null = null;
-  const ensurePrepared = async () => {
-    if (!prepared) prepared = await prepareResearchInvestmentAnalysis(env, code);
-    return prepared;
-  };
-  let task: StoredTaskValue | null = result?.task ?? null;
-  if (shouldQueryTaskd) {
-    const state = await reconcileTaskdResult(taskdCallerClient(env), {
-      name: researchInvestmentAnalysisTaskName(code),
-      project: async (currentTask) => projectResearchInvestmentAnalysis(env, taskBusinessInput(currentTask) || cachedInput || (await ensurePrepared()).input, currentTask),
-    });
-    switch (state.state) {
-      case "projected":
-        result = state.value;
-        task = state.value.task;
-        break;
-      case "pending":
-      case "failed":
-      case "interrupted":
-      case "superseded":
-        task = taskView(state.task);
-        result = await persistTaskSnapshot(
-          env.DB,
-          code,
-          result,
-          taskBusinessInput(state.task) || cachedInput || (await ensurePrepared()).input,
-          state.task,
-          recoveryAfterTask(result?.recovery ?? noRecovery(), state.task),
-        );
-        break;
-      case "missing":
-        task = null;
-        if (result?.task) result = await persistTaskSnapshot(env.DB, code, result, cachedInput, null, {
-          phase: "manual_required",
-          reason: "taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。",
-        });
-        break;
-    }
-  }
-  if (result) return responseFromStoredResult(result);
-  const fallbackInput = cachedInput || (await ensurePrepared()).input;
-  return {
-    availability: task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
-    task: task ? taskView(task) : null,
-    recovery: noRecovery(),
-    input: fallbackInput,
-    report: null,
-    resume: { available: task?.status === "failed", reason: task?.status === "failed" ? "submit_new_task" : "not_failed" },
+  const result = await loadResult(env.DB, securityCode.trim().toUpperCase());
+  return result ? responseFromStoredResult(result) : {
+    availability: "empty" as const, task: null, recovery: noRecovery(), input: null, report: null,
+    resume: { available: false, reason: "not_failed" },
   };
 }
 
+export async function reconcileResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string): Promise<void> {
+  if (env.LLM_RUNTIME !== "local") return;
+  const code = securityCode.trim().toUpperCase();
+  const result = await loadResult(env.DB, code);
+  if (!result?.task || (result.markdown && !result.pendingProjection && !isPendingTask(result.task))) return;
+  try {
+    const state = await reconcileTaskdResult(taskdCallerClient(env), {
+      name: result.task.name,
+      project: async (task) => {
+        if (!isObservedResearchTask(result.task, task)) throw new Error("recorded research task was superseded; refusing a different run");
+        const input = taskBusinessInput(task) ?? jsonObject(result.pendingInputJson ?? (result.pendingProjection && result.markdown ? null : result.inputJson));
+        if (!input) throw new Error("investment analysis task has no frozen input snapshot");
+        if (text(object(input.security)?.code).toUpperCase() !== code) throw new Error("investment analysis frozen input security mismatch");
+        await projectResearchInvestmentAnalysis(env, input, task, result);
+      },
+    });
+    if (state.state === "missing") {
+      await persistTaskSnapshot(env.DB, code, result, jsonObject(result.inputJson), null, {
+        phase: "manual_required", reason: "taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。",
+      });
+    } else if (state.state !== "projected" && isObservedResearchTask(result.task, state.task)) {
+      await persistTaskSnapshot(env.DB, code, result, taskBusinessInput(state.task) ?? jsonObject(result.inputJson), state.task,
+        recoveryAfterTask(result.recovery, state.task));
+    } else if (state.state !== "projected") {
+      throw new Error("recorded research task was superseded; refusing a different run");
+    }
+  } catch (error) {
+    // A state read can fail while the existing task remains valid. Do not turn
+    // a temporary DNS/network outage into a manual-recovery requirement.
+    if (isTaskdReadUnavailable(error)) throw error;
+    await storeResult(env.DB, code, mergeStoredResult(result, { recovery: {
+      phase: "manual_required", reason: error instanceof Error ? error.message : String(error),
+    } }), result);
+    throw error;
+  }
+}
+
+/** Explicit observation only: refresh the local projection without replaying provider work. */
+export async function syncResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string) {
+  if (env.LLM_RUNTIME !== "local") throw new Error("investment analysis synchronization is only available in local LLM runtime");
+  const code = securityCode.trim().toUpperCase();
+  await reconcileResearchInvestmentAnalysis(env, code);
+  return loadResearchInvestmentAnalysis(env, code);
+}
+
 /**
- * Requeue the same taskd task only after taskd recorded the private provider
- * submission marker. This path never submits another browser prompt.
+ * Requeue the same taskd task only after taskd recorded a recoverable provider
+ * checkpoint. This path never submits another browser prompt.
  */
 export async function resumeResearchInvestmentAnalysis(env: AppEnv["Bindings"], securityCode: string) {
   const code = securityCode.trim().toUpperCase();
@@ -198,8 +202,10 @@ export async function resumeResearchInvestmentAnalysis(env: AppEnv["Bindings"], 
       phase: "manual_required",
       reason: "taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。",
     };
+  } else if (!isObservedResearchTask(stored.task, remote)) {
+    throw new Error("recorded investment task was superseded; refusing to recover another run");
   } else if (remote.status === "failed") {
-    if (hasProviderSubmissionMarker(remote.checkpoint)) {
+    if (hasRecoverableProviderCheckpoint(remote.checkpoint)) {
       // `recover` preserves the same task name/id and is the only permitted
       // follow-up after a potentially side-effecting provider submission.
       remote = await client.recover(stored.task.name);
@@ -213,7 +219,7 @@ export async function resumeResearchInvestmentAnalysis(env: AppEnv["Bindings"], 
     } else {
       recovery = {
         phase: "manual_required",
-        reason: "任务缺少可验证的 provider submission marker，无法安全找回，也不会重发提示词。",
+        reason: "任务缺少可验证的原会话 checkpoint，无法安全找回，也不会重发提示词。",
       };
     }
   }
@@ -225,6 +231,7 @@ export async function resumeResearchInvestmentAnalysis(env: AppEnv["Bindings"], 
     remote,
     recovery,
   );
+  await reconcileResearchInvestmentAnalysis(env, code);
   return loadResearchInvestmentAnalysis(env, code);
 }
 
@@ -327,7 +334,7 @@ function displayBasis(value: FinancialValuationBasis | null): string {
   return value ? `${value.source}；报告期 ${value.reportDate}；公告日 ${value.noticeDate ?? "未提供"}` : "未提供";
 }
 
-async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input: Record<string, unknown>, task: TaskdTask) {
+async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input: Record<string, unknown>, task: TaskdTask, expected: ResultRow) {
   const result = extractTaskdWebQaResult(task.result);
   validateResearchInvestmentAnalysisTerminalEvidence(result.terminalEvidence);
   const markdown = text(result.content.markdown);
@@ -336,6 +343,8 @@ async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input:
   if (!securityCode) throw new Error("investment analysis input has no security code");
   const projectedAt = Date.now();
   const stored = {
+    pendingProjection: false,
+    pendingInputJson: null,
     inputJson: JSON.stringify(input),
     markdown,
     citationsJson: JSON.stringify(result.citations),
@@ -345,17 +354,17 @@ async function projectResearchInvestmentAnalysis(env: AppEnv["Bindings"], input:
     task: taskView(task),
     recovery: noRecovery(),
   } satisfies StoredResultValue;
-  await storeResult(env.DB, securityCode, stored);
+  await storeResult(env.DB, securityCode, stored, expected);
   return { securityCode, ...stored };
 }
 
-async function loadResult(db: D1Database, securityCode: string): Promise<ResultRow | null> {
+async function loadResult(db: Database, securityCode: string): Promise<ResultRow | null> {
   const row = await readStoredResearchInvestmentAnalysis(db, securityCode);
   return row ? { securityCode, ...row } : null;
 }
 
 export async function writeStoredResearchInvestmentAnalysis(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   value: StoredResultValue,
 ): Promise<void> {
@@ -363,10 +372,10 @@ export async function writeStoredResearchInvestmentAnalysis(
 }
 
 export async function readStoredResearchInvestmentAnalysis(
-  db: D1Database,
+  db: Database,
   securityCode: string,
 ): Promise<StoredResultValue | null> {
-  const row = await getKvCache(db, INVESTMENT_ANALYSIS_NAMESPACE, securityCode);
+  const row = await readResearchResult(db, INVESTMENT_ANALYSIS_NAMESPACE, securityCode);
   if (!row) return null;
   const parsed = object(parseJson(row.valueJson));
   if (!parsed) return null;
@@ -377,6 +386,8 @@ export async function readStoredResearchInvestmentAnalysis(
   const recovery = parseRecovery(parsed.recovery);
   if (!markdown && !task && recovery.phase === "none") return null;
   return {
+    ...(parsed.pendingInputJson === undefined ? {} : { pendingInputJson: typeof parsed.pendingInputJson === "string" ? parsed.pendingInputJson : null }),
+    ...(parsed.pendingProjection === undefined ? {} : { pendingProjection: parsed.pendingProjection === true }),
     inputJson,
     markdown,
     citationsJson: jsonString(parsed.citationsJson, "[]"),
@@ -399,7 +410,10 @@ export function validateResearchInvestmentAnalysisTerminalEvidence(evidence: Rec
 
 export function validateResearchInvestmentAnalysisMarkdown(markdown: string): void {
   if (markdown.length < 800) throw new Error("investment analysis result is shorter than 800 characters");
-  const headings = new Set([...markdown.matchAll(/^# ([1-9]|1[0-2])\. /gm)].map((match) => match[1]));
+  // Markdown producers commonly escape the ordinal separator (`1\\.`) even
+  // though it has the same visible H1 meaning as `1.`. Validate the twelve
+  // semantic section ordinals, not that harmless serialization difference.
+  const headings = new Set([...markdown.matchAll(/^# ([1-9]|1[0-2])(?:\\)?\. /gm)].map((match) => match[1]));
   if (headings.size !== 12) throw new Error("investment analysis result must contain all twelve numbered H1 headings");
 }
 
@@ -413,7 +427,7 @@ function normalizeReasoningEffort(value: string | null | undefined): "low" | "me
   return normalized as "low" | "medium" | "high" | "xhigh";
 }
 
-function taskView(task: Pick<TaskdTask, "name" | "status" | "errorMessage" | "createdAt" | "updatedAt" | "completedAt">) { return { name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
+function taskView(task: Pick<TaskdTask, "name" | "status" | "errorMessage" | "createdAt" | "updatedAt" | "completedAt"> & { taskId?: number | null }) { return { taskId: task.taskId ?? null, name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
 function responseFromStoredResult(result: ResultRow) {
   const task = result.task;
   const recovery = result.recovery;
@@ -424,7 +438,7 @@ function responseFromStoredResult(result: ResultRow) {
   const markdown = result.markdown;
   const reportVersion = markdown ? reportVersionFromInput(result.inputJson) : null;
   return {
-    availability: markdown ? "available" as const : task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
+    availability: markdown ? "available" as const : recovery.phase === "manual_required" || task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const,
     task,
     recovery,
     input: parseJson(result.inputJson),
@@ -451,7 +465,7 @@ function reportVersionFromInput(inputJson: string | null): ReportVersion {
   };
 }
 async function persistTaskSnapshot(
-  db: D1Database,
+  db: Database,
   securityCode: string,
   current: ResultRow | null,
   input: Record<string, unknown> | null,
@@ -459,23 +473,19 @@ async function persistTaskSnapshot(
   recovery: RecoveryState = current?.recovery ?? noRecovery(),
 ): Promise<ResultRow> {
   const stored = mergeStoredResult(current, {
-    inputJson: input ? JSON.stringify(input) : undefined,
+    inputJson: current?.markdown ? undefined : input ? JSON.stringify(input) : undefined,
     task: task ? taskView(task) : null,
     recovery,
   });
-  await storeResult(db, securityCode, stored);
+  await storeResult(db, securityCode, stored, current ?? undefined);
   return { securityCode, ...stored };
 }
-async function storeResult(db: D1Database, securityCode: string, value: StoredResultValue): Promise<void> {
-  await putKvCache(db, {
-    namespace: INVESTMENT_ANALYSIS_NAMESPACE,
-    key: securityCode,
-    valueJson: JSON.stringify(value),
-    expiresAt: null,
-    updatedAt: value.projectedAt ?? value.task?.updatedAt ?? Date.now(),
-  });
+async function storeResult(db: Database, securityCode: string, value: StoredResultValue, expected?: StoredResultValue): Promise<void> {
+  await saveResearchResult(db, INVESTMENT_ANALYSIS_NAMESPACE, securityCode, value, expected);
 }
 function mergeStoredResult(current: ResultRow | StoredResultValue | null, patch: {
+  pendingProjection?: boolean;
+  pendingInputJson?: string | null;
   inputJson?: string | null;
   markdown?: string | null;
   citationsJson?: string;
@@ -486,6 +496,8 @@ function mergeStoredResult(current: ResultRow | StoredResultValue | null, patch:
   recovery?: RecoveryState;
 }): StoredResultValue {
   return {
+    pendingInputJson: patch.pendingInputJson !== undefined ? patch.pendingInputJson : current?.pendingInputJson ?? null,
+    pendingProjection: patch.pendingProjection ?? current?.pendingProjection ?? false,
     inputJson: patch.inputJson !== undefined ? patch.inputJson : current?.inputJson ?? null,
     markdown: patch.markdown !== undefined ? patch.markdown : current?.markdown ?? null,
     citationsJson: patch.citationsJson ?? current?.citationsJson ?? "[]",
@@ -505,8 +517,12 @@ function parseRecovery(value: unknown): RecoveryState {
   }
   return noRecovery();
 }
-function hasProviderSubmissionMarker(value: unknown): boolean {
+function hasRecoverableProviderCheckpoint(value: unknown): boolean {
   const checkpoint = object(value);
+  // taskd treats a canonical provider URL as sufficient to reopen the exact
+  // turn. Older CEA executions publish that URL plus their CEA resume state,
+  // but predate the private provider_submission.v1 marker.
+  if (Boolean(text(checkpoint?.provider_url))) return true;
   const submission = object(checkpoint?.submission);
   const state = text(submission?.state) || text(checkpoint?.submission_state);
   return text(submission?.schema_version) === "provider_submission.v1"
@@ -520,12 +536,12 @@ function recoveryAfterTask(current: RecoveryState, task: TaskdTask): RecoverySta
       reason: task.errorMessage || "找回后的任务没有产生可验证的完成结果。",
     };
   }
-  if (task.status === "failed" && !hasProviderSubmissionMarker(task.checkpoint)) {
+  if (task.status === "failed" && !hasRecoverableProviderCheckpoint(task.checkpoint)) {
     return {
       phase: "manual_required",
       reason: isOutcomeUnknown(task.errorMessage)
-        ? "无法确认原会话，且任务没有可验证的 provider submission marker。"
-        : "任务没有可验证的 provider submission marker，不能执行无重放找回。",
+        ? "无法确认原会话，且任务没有可验证的原会话 checkpoint。"
+        : "任务没有可验证的原会话 checkpoint，不能执行无重放找回。",
     };
   }
   return current;
@@ -540,6 +556,7 @@ function parseStoredTask(value: unknown): StoredTaskValue | null {
   if (!name || !isTaskStatus(status) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt)) return null;
   const completedAt = row?.completedAt === null || row?.completedAt === undefined ? null : Number(row?.completedAt);
   return {
+    ...(row?.taskId == null ? {} : { taskId: Number(row.taskId) }),
     name,
     status,
     errorMessage: text(row?.errorMessage) || null,

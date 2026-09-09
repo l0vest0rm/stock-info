@@ -4,7 +4,7 @@ function createInfoBar(name: string, kind: "company" | "fund") {
   return defineComponent({
     name,
     setup() {
-      const metricItem = (label: string | null, content: unknown) =>
+      const metricItem = (label: string | null, content: ReturnType<typeof h>) =>
         h(
         "div",
         {

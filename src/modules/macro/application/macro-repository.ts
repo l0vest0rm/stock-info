@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import type {
   MacroDataPoint,
   MacroDataWrite,
@@ -7,7 +8,7 @@ import type {
 
 /** The only persistence boundary for the redesigned two-table macro module. */
 export class D1MacroRepository {
-  constructor(private readonly db: D1Database) {}
+  constructor(private readonly db: Database) {}
 
   /** Upserts the static catalog/source contract without resetting scheduler state. */
   async upsertIndicator(indicator: MacroIndicator): Promise<void> {

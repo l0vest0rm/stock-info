@@ -1,11 +1,12 @@
+import type { Database, ObjectBucket, Assets } from "./platform/contracts";
 export type Bindings = {
   /** Explicit platform identity. Never infer the local runtime from nodejs_compat. */
   APP_RUNTIME?: "node" | "cloudflare";
-  ASSETS: Fetcher;
-  DB: D1Database;
-  MARKET_DATA_BUCKET: R2Bucket;
-  RAW_BUCKET?: R2Bucket;
-  KNOWLEDGE_CONTENT_BUCKET?: R2Bucket;
+  ASSETS: Assets;
+  DB: Database;
+  MARKET_DATA_BUCKET: ObjectBucket;
+  RAW_BUCKET?: ObjectBucket;
+  KNOWLEDGE_CONTENT_BUCKET?: ObjectBucket;
   APP_VERSION?: string;
   MARKET_DATA_PUBLIC_BASE_URL?: string;
   KNOWLEDGE_CONTENT_PUBLIC_BASE_URL?: string;

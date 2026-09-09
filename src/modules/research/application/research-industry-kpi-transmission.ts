@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import {
   assertResearchIndustryKpiDriverBinding,
   findResearchIndustryKpiTransmissionRule,
@@ -10,7 +11,7 @@ import type { ResearchSourceReference } from "../domain/research-dossier";
 type Row = Record<string, unknown>;
 
 /** Writes only an explicit researcher mapping; it cannot modify a driver plan. */
-export async function insertResearchIndustryKpiDriverBinding(db: D1Database, input: IndustryKpiDriverBindingWrite): Promise<ResearchIndustryKpiDriverBinding> {
+export async function insertResearchIndustryKpiDriverBinding(db: Database, input: IndustryKpiDriverBindingWrite): Promise<ResearchIndustryKpiDriverBinding> {
   const source = await loadBindingScope(db, input);
   assertResearchIndustryKpiDriverBinding(input, { targetModule: text(source.targetModule), targetField: text(source.targetField) });
   const rule = findResearchIndustryKpiTransmissionRule(input.transmissionRuleId);
@@ -26,7 +27,7 @@ export async function insertResearchIndustryKpiDriverBinding(db: D1Database, inp
   return mapBinding({ ...source, industryKpiDriverBindingId: input.industryKpiDriverBindingId, securityCode: input.securityCode.toUpperCase(), evidenceReferenceId: input.evidenceReferenceId, companyTrackExposureId: input.companyTrackExposureId, industryKpiId: input.industryKpiId, operatingDriverPlanId: input.operatingDriverPlanId, operatingDriverSegmentYearId: input.operatingDriverSegmentYearId, transmissionRuleId: rule.ruleId, mappingConfigVersion: researchIndustryKpiTransmissionConfigVersion(), inputValue: input.inputValue, inputUnit: input.inputUnit, mappingNote: input.mappingNote, mappedBy: input.mappedBy, mappedAt: input.mappedAt, createdAt });
 }
 
-export async function loadResearchIndustryKpiDriverBindings(db: D1Database, securityCode: string, operatingDriverPlanId?: string): Promise<ResearchIndustryKpiDriverBinding[]> {
+export async function loadResearchIndustryKpiDriverBindings(db: Database, securityCode: string, operatingDriverPlanId?: string): Promise<ResearchIndustryKpiDriverBinding[]> {
   const rows = await db.prepare(`select binding.industry_kpi_driver_binding_id as industryKpiDriverBindingId, binding.security_code as securityCode,
       binding.evidence_reference_id as evidenceReferenceId, binding.company_track_exposure_id as companyTrackExposureId,
       binding.industry_kpi_id as industryKpiId, kpi.name as industryKpiName, binding.operating_driver_plan_id as operatingDriverPlanId,
@@ -44,7 +45,7 @@ export async function loadResearchIndustryKpiDriverBindings(db: D1Database, secu
   return rows.results.map(mapBinding);
 }
 
-async function loadBindingScope(db: D1Database, input: IndustryKpiDriverBindingWrite): Promise<Row> {
+async function loadBindingScope(db: Database, input: IndustryKpiDriverBindingWrite): Promise<Row> {
   const row = await db.prepare(`select candidate.target_module as targetModule, candidate.target_field as targetField, kpi.name as industryKpiName,
       evidence.information_id as informationId, evidence.version_id as versionId, evidence.doc_id as documentId,
       evidence.source_url as sourceUrl, evidence.content_url as contentUrl, evidence.title, evidence.source_name as sourceName,

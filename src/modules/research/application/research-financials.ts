@@ -1,3 +1,4 @@
+import type { Database } from "../../../platform/contracts";
 import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
 import { externalHttpOptions } from "../../../shared/http";
 import type { Bindings, FinancialStatement, StatementType } from "../../../types";
@@ -100,7 +101,7 @@ function latestReportDate(rows: FinancialStatement[]): string | null {
 }
 
 export async function loadStatutoryGate(
-  db: D1Database,
+  db: Database,
   market: ReturnType<typeof classifyResearchSecurity>["market"],
   facts: StandardizedResearchFinancialFact[],
 ): Promise<{ status: "verified" | "partial"; requiredMetrics: typeof REQUIRED_FORMAL_DISCLOSURE_METRICS[number][]; verifiedMetrics: string[]; reason: string }> {

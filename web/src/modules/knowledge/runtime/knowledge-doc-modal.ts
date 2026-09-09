@@ -265,6 +265,7 @@ function renderKnowledgeDocContent(content: string) {
 export function createKnowledgeDocModalController(context: KnowledgeDocModalContext) {
   const { server, fetchRequest, onKeepFilteredDocument } = context
   let modalInstance: any = null
+  let disposed = false
   let currentDocId = ''
   let currentFiltered = false
 
@@ -294,18 +295,27 @@ export function createKnowledgeDocModalController(context: KnowledgeDocModalCont
     currentFiltered = false
   }
 
+  let boundModal: HTMLElement | null = null
   function bindLifecycle() {
     const { modal } = getModalElements()
-    if (!modal || (modal as any).__knowledgeDocModalBound) {
-      return
-    }
-    ;(modal as any).__knowledgeDocModalBound = true
-    modal.addEventListener('hidden.bs.modal', () => {
-      clearCurrent()
-    })
+    if (!modal || boundModal === modal) return
+    boundModal?.removeEventListener('hidden.bs.modal', clearCurrent)
+    boundModal = modal
+    modal.addEventListener('hidden.bs.modal', clearCurrent)
+  }
+
+  function dispose() {
+    disposed = true
+    boundModal?.removeEventListener('hidden.bs.modal', clearCurrent)
+    boundModal = null
+    modalInstance?.hide()
+    modalInstance?.dispose()
+    modalInstance = null
+    clearCurrent()
   }
 
   async function renderDocument(data: KnowledgeDocModalData, filtered: boolean = false) {
+    if (disposed) return
     const trimmedDocId = String(data?.doc_id || '').trim()
     if (!trimmedDocId) {
       return
@@ -339,13 +349,13 @@ export function createKnowledgeDocModalController(context: KnowledgeDocModalCont
     ensureModal().show()
     try {
       const loadedContent = await fetchKnowledgeDocumentContent(data)
-      if (currentDocId !== trimmedDocId || currentFiltered !== filtered) {
+      if (disposed || currentDocId !== trimmedDocId || currentFiltered !== filtered) {
         return
       }
       content.innerHTML = renderKnowledgeDocContent(loadedContent)
       linkStockReferences(content, data.stock_links || [])
     } catch (error) {
-      if (currentDocId !== trimmedDocId || currentFiltered !== filtered) {
+      if (disposed || currentDocId !== trimmedDocId || currentFiltered !== filtered) {
         return
       }
       const message = error instanceof Error ? error.message : String(error)
@@ -382,6 +392,7 @@ export function createKnowledgeDocModalController(context: KnowledgeDocModalCont
 
   return {
     bindLifecycle,
+    dispose,
     hide,
     keepFiltered,
     openDocument,

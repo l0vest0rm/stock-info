@@ -1,7 +1,8 @@
+import type { Database } from "../../../platform/contracts";
 import type { AppEnv } from "../../../types";
-import { getKvCache, putKvCache } from "../../../db/queries";
+import { readResearchResult, saveResearchResult, isObservedResearchTask } from "../infrastructure/research-result-repository";
 import { taskdWebQaInput } from "../../../shared/llm-client";
-import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
+import { isTaskdReadUnavailable, taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
 import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
 import { loadResearchFinancialFactSet } from "./research-financials";
@@ -22,7 +23,7 @@ const FINANCIAL_ANALYSIS_NAMESPACE = "research_financial_analysis";
 
 type Row = Record<string, unknown>;
 type StoredTaskValue = { taskId: number | null; name: string; status: TaskdTask["status"]; errorMessage: string | null; createdAt: number; updatedAt: number; completedAt: number | null };
-type StoredResultValue = { snapshotJson: string | null; markdown: string | null; citationsJson: string; sourcesJson: string; terminalEvidenceJson: string | null; projectedAt: number | null; projectionError: string | null; task: StoredTaskValue | null };
+type StoredResultValue = { pendingProjection?: boolean; pendingSnapshotJson?: string | null; snapshotJson: string | null; markdown: string | null; citationsJson: string; sourcesJson: string; terminalEvidenceJson: string | null; projectedAt: number | null; projectionError: string | null; task: StoredTaskValue | null };
 type ResultRow = StoredResultValue & { securityCode: string };
 type FinancialReportVersion = {
   status: "current" | "legacy" | "unknown";
@@ -39,6 +40,7 @@ export function researchFinancialAnalysisTaskName(securityCode: string): string 
 }
 
 export async function enqueueResearchFinancialAnalysis(env: AppEnv["Bindings"], securityCode: string, options: { force?: boolean; reasoningEffort?: string | null } = {}) {
+  if (env.LLM_RUNTIME !== "local") throw new Error("financial analysis submission is only available in local LLM runtime");
   const prepared = await prepareResearchFinancialAnalysis(env, securityCode);
   const current = await loadResult(env.DB, prepared.snapshot.securityCode);
   const reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
@@ -53,54 +55,51 @@ export async function enqueueResearchFinancialAnalysis(env: AppEnv["Bindings"], 
     },
     diagnostics: { securityCode: prepared.snapshot.securityCode, model: MODEL, reasoningEffort, promptVersion: prepared.snapshot.codeVersion, schemaVersion: prepared.snapshot.schemaVersion },
   });
-  await storeResult(env.DB, prepared.snapshot.securityCode, mergeStoredResult(current, { snapshotJson: JSON.stringify(prepared.snapshot), task: taskView(task) }));
+  await storeResult(env.DB, prepared.snapshot.securityCode, mergeStoredResult(current, { pendingProjection: true, pendingSnapshotJson: JSON.stringify(prepared.snapshot), snapshotJson: current?.markdown ? current.snapshotJson : JSON.stringify(prepared.snapshot), task: taskView(task) }));
   return { accepted: true, task: taskView(task), snapshot: prepared.snapshot, force: options.force === true };
 }
 
+/** Read model only. Background reconciliation owns taskd result projection. */
 export async function loadResearchFinancialAnalysis(env: AppEnv["Bindings"], securityCode: string) {
-  const code = securityCode.trim().toUpperCase();
-  let result = await loadResult(env.DB, code);
-  if (result?.markdown && !isPendingTask(result.task)) return responseFromStoredResult(result);
+  const result = await loadResult(env.DB, securityCode.trim().toUpperCase());
+  return result ? responseFromStoredResult(result) : {
+    availability: "empty" as const, task: null, snapshot: null, report: null,
+    resume: { available: false, reason: "not_failed" },
+  };
+}
 
-  let task: StoredTaskValue | null = result?.task ?? null;
-  // The cache is the local read model. Only a locally recorded in-flight task
-  // is reconciled with taskd; an untouched page must not probe taskd or fetch
-  // prompt inputs until the user explicitly starts a run.
-  if (env.LLM_RUNTIME === "local" && result && task && !result.markdown) {
+export async function reconcileResearchFinancialAnalysis(env: AppEnv["Bindings"], securityCode: string): Promise<void> {
+  if (env.LLM_RUNTIME !== "local") return;
+  const code = securityCode.trim().toUpperCase();
+  const result = await loadResult(env.DB, code);
+  if (!result?.task || (result.markdown && !result.pendingProjection && !isPendingTask(result.task))) return;
+  try {
     const state = await reconcileTaskdResult(taskdCallerClient(env), {
-      name: task.name,
-      project: async (currentTask) => {
-        const snapshot = taskBusinessSnapshot(currentTask) ?? snapshotFromJson(result?.snapshotJson);
+      name: result.task.name,
+      project: async (task) => {
+        if (!isObservedResearchTask(result.task, task)) throw new Error("recorded research task was superseded; refusing a different run");
+        const snapshot = taskBusinessSnapshot(task) ?? snapshotFromJson(result.pendingSnapshotJson ?? (result.pendingProjection && result.markdown ? null : result.snapshotJson));
         if (!snapshot) throw new Error("financial analysis task has no frozen input snapshot");
-        return projectResearchFinancialAnalysis(env, snapshot, currentTask);
+        if (snapshot.securityCode.toUpperCase() !== code) throw new Error("financial analysis frozen input security mismatch");
+        await projectResearchFinancialAnalysis(env, snapshot, task, result);
       },
     });
-    try {
-      switch (state.state) {
-        case "projected": result = state.value; task = state.value.task; break;
-        case "pending":
-        case "failed":
-        case "interrupted":
-        case "superseded":
-          task = taskView(state.task);
-          result = await persistTaskSnapshot(env.DB, code, result, taskBusinessSnapshot(state.task) ?? snapshotFromJson(result?.snapshotJson), state.task, null);
-          break;
-        case "missing":
-          task = null;
-          if (result?.task) result = await persistTaskSnapshot(env.DB, code, result, snapshotFromJson(result.snapshotJson), null, "taskd no longer has the recorded financial-analysis task");
-          break;
-      }
-    } catch (error) {
-      // A provider-side success is not a report success until the frozen
-      // artifact passes validation. Persist that projection failure so the UI
-      // never lies by showing an eternal in-progress state, and a later
-      // recovery can retry projection without submitting the prompt again.
-      const message = error instanceof Error ? error.message : String(error);
-      result = await persistTaskSnapshot(env.DB, code, result, snapshotFromJson(result.snapshotJson), task, message);
+    if (state.state === "missing") {
+      await persistTaskSnapshot(env.DB, code, result, snapshotFromJson(result.snapshotJson), null,
+        "taskd no longer has the recorded financial-analysis task");
+    } else if (state.state !== "projected" && isObservedResearchTask(result.task, state.task)) {
+      await persistTaskSnapshot(env.DB, code, result, taskBusinessSnapshot(state.task) ?? snapshotFromJson(result.snapshotJson), state.task, null);
+    } else if (state.state !== "projected") {
+      throw new Error("recorded research task was superseded; refusing a different run");
     }
+  } catch (error) {
+    // Keep the recorded task recoverable when taskd itself is temporarily
+    // unreachable; this is not evidence that the provider task failed.
+    if (isTaskdReadUnavailable(error)) throw error;
+    await persistTaskSnapshot(env.DB, code, result, snapshotFromJson(result.snapshotJson), result.task,
+      error instanceof Error ? error.message : String(error));
+    throw error;
   }
-  if (result) return responseFromStoredResult(result);
-  return { availability: task?.status === "failed" ? "failed" as const : task ? "pending" as const : "empty" as const, task, snapshot: null, report: null, resume: { available: task?.status === "failed", reason: task?.status === "failed" ? "submit_new_task" : "not_failed" } };
 }
 
 export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], securityCode: string) {
@@ -115,6 +114,7 @@ export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], s
   // and lets the executor re-open the original provider turn.
   const client = taskdCallerClient(env);
   let remote = await client.get(stored.task.name);
+  if (remote && !isObservedResearchTask(stored.task, remote)) throw new Error("recorded financial task was superseded; refusing to recover another run");
   if (remote && isTerminalTask(remote) && hasRecoverableProviderSubmission(remote.checkpoint)) {
     remote = await client.recover(stored.task.name);
   }
@@ -123,6 +123,7 @@ export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], s
   } else {
     await persistTaskSnapshot(env.DB, code, stored, taskBusinessSnapshot(remote) ?? snapshotFromJson(stored.snapshotJson), remote, null);
   }
+  await reconcileResearchFinancialAnalysis(env, code);
   return loadResearchFinancialAnalysis(env, code);
 }
 
@@ -154,25 +155,25 @@ function financialAnalysisSourcePolicy(market: string): string {
       : "Eastmoney 主财报（无自动回退）";
 }
 
-async function projectResearchFinancialAnalysis(env: AppEnv["Bindings"], snapshot: FinancialAnalysisSnapshot, task: TaskdTask): Promise<ResultRow> {
+async function projectResearchFinancialAnalysis(env: AppEnv["Bindings"], snapshot: FinancialAnalysisSnapshot, task: TaskdTask, expected: ResultRow): Promise<ResultRow> {
   const result = extractTaskdWebQaResult(task.result);
   const markdown = text(result.content.markdown);
   validateFinancialMarkdown(markdown);
   const stored: StoredResultValue = {
-    snapshotJson: JSON.stringify(snapshot), markdown, citationsJson: JSON.stringify(result.citations), sourcesJson: JSON.stringify(result.sources),
+    pendingProjection: false, pendingSnapshotJson: null, snapshotJson: JSON.stringify(snapshot), markdown, citationsJson: JSON.stringify(result.citations), sourcesJson: JSON.stringify(result.sources),
     terminalEvidenceJson: JSON.stringify(result.terminalEvidence), projectedAt: Date.now(), projectionError: null, task: taskView(task),
   };
-  await storeResult(env.DB, snapshot.securityCode, stored);
+  await storeResult(env.DB, snapshot.securityCode, stored, expected);
   return { securityCode: snapshot.securityCode, ...stored };
 }
 
-async function loadResult(db: D1Database, securityCode: string): Promise<ResultRow | null> {
+async function loadResult(db: Database, securityCode: string): Promise<ResultRow | null> {
   const value = await readStoredResearchFinancialAnalysis(db, securityCode);
   return value ? { securityCode, ...value } : null;
 }
 
-export async function readStoredResearchFinancialAnalysis(db: D1Database, securityCode: string): Promise<StoredResultValue | null> {
-  const row = await getKvCache(db, FINANCIAL_ANALYSIS_NAMESPACE, securityCode.trim().toUpperCase());
+export async function readStoredResearchFinancialAnalysis(db: Database, securityCode: string): Promise<StoredResultValue | null> {
+  const row = await readResearchResult(db, FINANCIAL_ANALYSIS_NAMESPACE, securityCode);
   const parsed = object(parseJson(row?.valueJson ?? null));
   if (!parsed) return null;
   const task = parseStoredTask(parsed.task);
@@ -180,21 +181,21 @@ export async function readStoredResearchFinancialAnalysis(db: D1Database, securi
   const markdown = text(parsed.markdown) || null;
   const projectedAt = parsed.projectedAt === null || parsed.projectedAt === undefined ? null : Number(parsed.projectedAt);
   if (!snapshotJson && !markdown && !task) return null;
-  return { snapshotJson, markdown, citationsJson: jsonString(parsed.citationsJson, "[]"), sourcesJson: jsonString(parsed.sourcesJson, "[]"), terminalEvidenceJson: nullableJsonString(parsed.terminalEvidenceJson), projectedAt: Number.isFinite(projectedAt) ? projectedAt : null, projectionError: text(parsed.projectionError) || null, task };
+  return { ...(parsed.pendingSnapshotJson === undefined ? {} : { pendingSnapshotJson: typeof parsed.pendingSnapshotJson === "string" ? parsed.pendingSnapshotJson : null }), ...(parsed.pendingProjection === undefined ? {} : { pendingProjection: parsed.pendingProjection === true }), snapshotJson, markdown, citationsJson: jsonString(parsed.citationsJson, "[]"), sourcesJson: jsonString(parsed.sourcesJson, "[]"), terminalEvidenceJson: nullableJsonString(parsed.terminalEvidenceJson), projectedAt: Number.isFinite(projectedAt) ? projectedAt : null, projectionError: text(parsed.projectionError) || null, task };
 }
 
-export async function writeStoredResearchFinancialAnalysis(db: D1Database, securityCode: string, value: StoredResultValue): Promise<void> {
+export async function writeStoredResearchFinancialAnalysis(db: Database, securityCode: string, value: StoredResultValue): Promise<void> {
   await storeResult(db, securityCode, value);
 }
 
-async function persistTaskSnapshot(db: D1Database, securityCode: string, current: ResultRow | StoredResultValue | null, snapshot: FinancialAnalysisSnapshot | null, task: TaskdTask | StoredTaskValue | null, projectionError: string | null | undefined): Promise<ResultRow> {
-  const stored = mergeStoredResult(current, { snapshotJson: snapshot ? JSON.stringify(snapshot) : undefined, task: task ? taskView(task) : null, projectionError });
-  await storeResult(db, securityCode, stored);
+async function persistTaskSnapshot(db: Database, securityCode: string, current: ResultRow | StoredResultValue | null, snapshot: FinancialAnalysisSnapshot | null, task: TaskdTask | StoredTaskValue | null, projectionError: string | null | undefined): Promise<ResultRow> {
+  const stored = mergeStoredResult(current, { pendingProjection: true, snapshotJson: current?.markdown ? undefined : snapshot ? JSON.stringify(snapshot) : undefined, task: task ? taskView(task) : null, projectionError });
+  await storeResult(db, securityCode, stored, current ?? undefined);
   return { securityCode, ...stored };
 }
 
-async function storeResult(db: D1Database, securityCode: string, value: StoredResultValue): Promise<void> {
-  await putKvCache(db, { namespace: FINANCIAL_ANALYSIS_NAMESPACE, key: securityCode.trim().toUpperCase(), valueJson: JSON.stringify(value), expiresAt: null, updatedAt: value.projectedAt ?? value.task?.updatedAt ?? Date.now() });
+async function storeResult(db: Database, securityCode: string, value: StoredResultValue, expected?: StoredResultValue): Promise<void> {
+  await saveResearchResult(db, FINANCIAL_ANALYSIS_NAMESPACE, securityCode, value, expected);
 }
 
 function responseFromStoredResult(result: ResultRow) {
@@ -225,6 +226,8 @@ function financialReportVersion(snapshot: FinancialAnalysisSnapshot | null): Fin
 
 function mergeStoredResult(current: ResultRow | StoredResultValue | null, patch: Partial<StoredResultValue>): StoredResultValue {
   return {
+    pendingSnapshotJson: patch.pendingSnapshotJson !== undefined ? patch.pendingSnapshotJson : current?.pendingSnapshotJson ?? null,
+    pendingProjection: patch.pendingProjection ?? current?.pendingProjection ?? false,
     snapshotJson: patch.snapshotJson !== undefined ? patch.snapshotJson : current?.snapshotJson ?? null,
     markdown: patch.markdown !== undefined ? patch.markdown : current?.markdown ?? null,
     citationsJson: patch.citationsJson ?? current?.citationsJson ?? "[]",

@@ -1,3 +1,4 @@
+import type { Database, PreparedStatement } from "../../../platform/contracts";
 import {
   assertPeerMember,
   assertResearchIndustryRecord,
@@ -19,7 +20,7 @@ export type LoadCompanyIndustryExposureQuery = { companyId: string | null; asOf:
 export type LoadPeerUniversesQuery = { companyId: string | null; industryProfileId?: string; asOf: number };
 
 export async function loadResearchIndustryProfiles(
-  db: D1Database,
+  db: Database,
   query: LoadIndustryProfilesQuery,
 ): Promise<ResearchIndustrySection<ResearchIndustryProfile>> {
   const industryKey = query.industryKey.trim();
@@ -38,7 +39,7 @@ export async function loadResearchIndustryProfiles(
 }
 
 export async function loadResearchCompanyIndustryExposures(
-  db: D1Database,
+  db: Database,
   query: LoadCompanyIndustryExposureQuery,
 ): Promise<ResearchIndustrySection<ResearchCompanyIndustryExposure>> {
   if (!query.companyId) return unavailableIndustrySection("identity_not_found");
@@ -54,7 +55,7 @@ export async function loadResearchCompanyIndustryExposures(
 }
 
 export async function loadResearchPeerUniverses(
-  db: D1Database,
+  db: Database,
   query: LoadPeerUniversesQuery,
 ): Promise<ResearchIndustrySection<ResearchPeerUniverse>> {
   if (!query.companyId) return unavailableIndustrySection("identity_not_found");
@@ -80,7 +81,7 @@ export async function loadResearchPeerUniverses(
   }
 }
 
-export async function insertResearchIndustryProfile(db: D1Database, input: ResearchIndustryProfile): Promise<ResearchIndustryWriteResult> {
+export async function insertResearchIndustryProfile(db: Database, input: ResearchIndustryProfile): Promise<ResearchIndustryWriteResult> {
   assertResearchIndustryRecord(input, "industry profile");
   return runInsert(db, "research_industry_profiles", input.industryProfileId, [db.prepare(`insert into research_industry_profiles (
     industry_profile_id, industry_key, taxonomy, taxonomy_version, industry_name, parent_industry_key,
@@ -94,7 +95,7 @@ export async function insertResearchIndustryProfile(db: D1Database, input: Resea
   )]);
 }
 
-export async function insertResearchCompanyIndustryExposure(db: D1Database, input: ResearchCompanyIndustryExposure): Promise<ResearchIndustryWriteResult> {
+export async function insertResearchCompanyIndustryExposure(db: Database, input: ResearchCompanyIndustryExposure): Promise<ResearchIndustryWriteResult> {
   assertResearchIndustryRecord(input, "company industry exposure");
   if (input.selectionBasis !== "primary_business") throw new Error("company industry exposure must be selected from primary_business");
   if (!input.primaryBusinessDescription.trim()) throw new Error("company industry exposure requires a primary business description");
@@ -108,11 +109,11 @@ export async function insertResearchCompanyIndustryExposure(db: D1Database, inpu
   )]);
 }
 
-export async function insertResearchPeerUniverse(db: D1Database, input: ResearchPeerUniverse): Promise<ResearchIndustryWriteResult> {
+export async function insertResearchPeerUniverse(db: Database, input: ResearchPeerUniverse): Promise<ResearchIndustryWriteResult> {
   assertResearchIndustryRecord(input, "peer universe");
   if (!input.selectionCriteria.trim()) throw new Error("peer universe requires selection criteria");
   for (const member of input.members) assertPeerMember(member);
-  const statements: D1PreparedStatement[] = [db.prepare(`insert into research_peer_universes (
+  const statements: PreparedStatement[] = [db.prepare(`insert into research_peer_universes (
     peer_universe_id, company_id, industry_profile_id, as_of, version, status, comparison_purpose, selection_criteria,
     cross_market_policy_json, epistemic_type, source_refs_json, created_at, updated_at
   ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
@@ -133,7 +134,7 @@ export async function insertResearchPeerUniverse(db: D1Database, input: Research
   return runInsert(db, "research_peer_universes", input.peerUniverseId, statements);
 }
 
-async function runInsert(db: D1Database, table: string, recordId: string, statements: D1PreparedStatement[]): Promise<ResearchIndustryWriteResult> {
+async function runInsert(db: Database, table: string, recordId: string, statements: PreparedStatement[]): Promise<ResearchIndustryWriteResult> {
   try {
     await db.batch(statements);
     return { state: "saved", recordId, reason: null };
