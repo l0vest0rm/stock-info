@@ -42,6 +42,19 @@ export async function loadMacroAnalysis(env: AppEnv["Bindings"]) {
   return result ? response(result) : emptyResponse();
 }
 
+/**
+ * Local lifecycle observer for the one global macro task. It performs the
+ * same read-only taskd reconciliation as the research report surfaces; it
+ * never submits or recovers provider work.
+ */
+export async function reconcileMacroAnalysis(env: AppEnv["Bindings"]): Promise<boolean> {
+  if (env.LLM_RUNTIME !== "local") return false;
+  const stored = await loadStored(env.DB);
+  if (!stored?.task || (!stored.pendingProjection && !isPending(stored.task))) return false;
+  await syncMacroAnalysis(env);
+  return true;
+}
+
 /** A user action is the only way to submit a new global macro report. */
 export async function enqueueMacroAnalysis(env: AppEnv["Bindings"], options: { reasoningEffort?: string | null } = {}) {
   if (env.LLM_RUNTIME !== "local") throw new Error("macro analysis submission is only available in local LLM runtime");
@@ -80,15 +93,20 @@ export async function syncMacroAnalysis(env: AppEnv["Bindings"]) {
         if (!isObservedTaskdReportTask(stored.task, task)) throw new Error("recorded macro task was superseded; refusing a different run");
         const input = taskInput(task) ?? inputFromJson(stored.pendingInputJson ?? stored.inputJson);
         if (!input) throw new Error("macro analysis task has no frozen input snapshot");
+        // Persist the terminal task observation before validating its report.
+        // A malformed completed result is terminal, not a perpetually
+        // "running" task that the local scheduler should retry forever.
+        const observedTerminal = merge(stored, { task: taskView(task), recovery: noRecovery() });
+        await saveStored(env.DB, observedTerminal, stored);
         const result = extractTaskdWebQaResult(task.result);
         validateMacroAnalysisTerminalEvidence(result.terminalEvidence);
         const markdown = text(result.content.markdown);
         validateMacroAnalysisMarkdown(markdown);
-        await saveStored(env.DB, merge(stored, {
+        await saveStored(env.DB, merge(observedTerminal, {
           pendingProjection: false, pendingInputJson: null, inputJson: JSON.stringify(input), markdown,
           citationsJson: JSON.stringify(result.citations), sourcesJson: JSON.stringify(result.sources),
           terminalEvidenceJson: JSON.stringify(result.terminalEvidence), projectedAt: Date.now(), task: taskView(task), recovery: noRecovery(),
-        }), stored);
+        }), observedTerminal);
       },
     });
     if (state.state === "missing") {
@@ -100,7 +118,14 @@ export async function syncMacroAnalysis(env: AppEnv["Bindings"]) {
     }
   } catch (error) {
     if (isTaskdReadUnavailable(error)) throw error;
-    await saveStored(env.DB, merge(stored, { recovery: { phase: "manual_required", reason: error instanceof Error ? error.message : String(error) } }), stored);
+    const latest = await loadStored(env.DB) ?? stored;
+    await saveStored(env.DB, merge(latest, {
+      // If taskd supplied a terminal result that fails this application's
+      // evidence/content contract, retain that terminal observation and stop
+      // background retries. It cannot be repaired by rereading taskd.
+      pendingProjection: isTerminal(latest.task) ? false : undefined,
+      recovery: { phase: "manual_required", reason: error instanceof Error ? error.message : String(error) },
+    }), latest);
     throw error;
   }
   return loadMacroAnalysis(env);
@@ -141,8 +166,12 @@ export function validateMacroAnalysisTerminalEvidence(evidence: Record<string, u
 export function validateMacroAnalysisMarkdown(markdown: string): void {
   if (markdown.length < 4_000) throw new Error("macro analysis result is shorter than 4000 characters");
   const expected = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十", "二十一", "二十二", "二十三", "二十四", "二十五", "二十六", "二十七", "二十八", "二十九", "三十", "三十一"];
-  const headings = new Set([...markdown.matchAll(/^# ([一二三四五六七八九十]+)、/gm)].map((match) => match[1]));
-  if (!expected.every((heading) => headings.has(heading))) throw new Error("macro analysis result must contain all thirty-one numbered H1 headings");
+  // Models commonly add a report title before the numbered structure, which
+  // can make the first numbered section an H2 while retaining all required
+  // sections. The numbered topology is the delivery contract; its Markdown
+  // nesting level is not evidence of missing analysis.
+  const headings = new Set([...markdown.matchAll(/^#{1,6} ([一二三四五六七八九十]+)、/gm)].map((match) => match[1]));
+  if (!expected.every((heading) => headings.has(heading))) throw new Error("macro analysis result must contain all thirty-one numbered sections");
   if (!/^# 一句话结论\s*$/m.test(markdown)) throw new Error("macro analysis result must contain the one-sentence conclusion H1 heading");
 }
 
@@ -185,6 +214,7 @@ function isTaskStatus(value: string): value is TaskdTask["status"] { return new 
 function recoveryAfterTask(current: Recovery, task: TaskdTask): Recovery { if (current.phase === "recovering" && isTerminal(task)) return { phase: "manual_required", reason: task.errorMessage || "找回后的任务没有产生可验证的完成结果。" }; if (task.status === "failed" && !hasRecoverableProviderCheckpoint(task.checkpoint)) return { phase: "manual_required", reason: "任务没有可验证的原会话 checkpoint，不能执行无重放找回。" }; return current; }
 function hasRecoverableProviderCheckpoint(value: unknown): boolean { const checkpoint = object(value); if (Boolean(text(checkpoint?.provider_url))) return true; const submission = object(checkpoint?.submission); const state = text(submission?.state) || text(checkpoint?.submission_state); return text(submission?.schema_version) === "provider_submission.v1" && Boolean(text(submission?.marker)) && (state === "click_issued" || state === "url_bound"); }
 function isTerminal(task: StoredTask | TaskdTask | null): boolean { return task?.status === "succeeded" || task?.status === "failed" || task?.status === "interrupted" || task?.status === "superseded"; }
+function isPending(task: StoredTask | TaskdTask | null): boolean { return task?.status === "queued" || task?.status === "leased" || task?.status === "running" || task?.status === "interrupt_requested"; }
 function normalizeReasoningEffort(value: string | null | undefined): "low" | "medium" | "high" | "xhigh" { const normalized = text(value) || DEFAULT_REASONING_EFFORT; if (!new Set(["low", "medium", "high", "xhigh"]).has(normalized)) throw new Error("unsupported macro-analysis reasoning effort"); return normalized as "low" | "medium" | "high" | "xhigh"; }
 function noRecovery(): Recovery { return { phase: "none", reason: null }; }
 function parseRecovery(value: unknown): Recovery { const recovery = object(value); const phase = text(recovery?.phase); return phase === "none" || phase === "recovering" || phase === "manual_required" ? { phase, reason: text(recovery?.reason) || null } : noRecovery(); }

@@ -171,7 +171,7 @@ const MacroPage = defineComponent({
       h("section", { class: "macro-hero" }, [h("div", { class: "macro-eyebrow" }, "DATA-DRIVEN MACRO DIRECTORY"), h("h1", "宏观指标浏览器"), h("p", "按目录元数据浏览各地区、分类和统计口径。当前值、同比、环比和趋势均保留数据期、发布时间与不可用原因。"), catalog.value ? h("div", { class: "macro-updated" }, `目录更新于 ${formatTimestamp(catalog.value.generatedAt)}`) : null]),
       h("section", { class: "macro-analysis", "data-macro-analysis": "taskd" }, [
         h("div", { class: "macro-analysis-head" }, [
-          h("div", [h("h2", ["全球宏观投资分析", h("span", { class: `macro-analysis-status ${macroAnalysisStatusClass(analysis.value)}` }, macroAnalysisStatus(analysis.value))]), h("p", "手动提交 taskd 任务，按指定研究框架用 Web Search 核验中美与全球美元流动性。页面不会自动提交或重放提示词；完成后请点击“同步 taskd 状态”投影已校验报告。")]),
+          h("div", [h("h2", ["全球宏观投资分析", h("span", { class: `macro-analysis-status ${macroAnalysisStatusClass(analysis.value)}` }, macroAnalysisStatus(analysis.value))]), h("p", "手动提交 taskd 任务，按指定研究框架用 Web Search 核验中美与全球美元流动性。本地运行期会每 15 秒只读同步状态并投影已校验报告；页面不会自动提交或重放提示词。")]),
           h("div", { class: "macro-analysis-controls" }, [
             h("label", ["推理深度", h("select", { value: reasoningEffort.value, disabled: analysisBusy.value, onChange: (event: Event) => { reasoningEffort.value = (event.target as HTMLSelectElement).value as ReasoningEffort; } }, ["low", "medium", "high", "xhigh"].map((value) => h("option", { value }, value)))]),
             analysis.value?.task ? h("button", { disabled: analysisBusy.value, onClick: () => void syncAnalysis() }, analysisBusy.value ? "正在同步" : "同步 taskd 状态") : null,
@@ -185,7 +185,7 @@ const MacroPage = defineComponent({
           analysis.value?.recovery?.phase === "manual_required" ? h("div", { class: "macro-analysis-message error" }, analysis.value.recovery.reason || "无法确认原会话，需人工处理。") : null,
           analysis.value?.recovery?.phase === "recovering" ? h("div", { class: "macro-analysis-message" }, analysis.value.recovery.reason || "正在只读找回已提交结果，不会重发提示词。") : null,
           analysis.value?.task?.status === "failed" && analysis.value.recovery?.phase === "none" ? h("div", { class: "macro-analysis-message error" }, analysis.value.resume?.available ? "检测到可找回的已提交任务；可只读找回原 ChatGPT 结果，不会重发提示词。" : analysis.value.task.errorMessage || "taskd 任务失败。") : null,
-          macroAnalysisPending(analysis.value) ? h("div", { class: "macro-analysis-message" }, "任务已提交给 taskd。状态与报告只会在你点击“同步 taskd 状态”后更新。") : null,
+          macroAnalysisPending(analysis.value) ? h("div", { class: "macro-analysis-message" }, "任务已提交给 taskd。本地运行期会周期性只读同步状态与已校验报告；也可立即手动同步。") : null,
           analysis.value?.report?.markdown ? [h("div", { class: "macro-analysis-meta" }, `报告投影时间：${formatTimestamp(String(analysis.value.report.projectedAt ?? ""))}`), h("article", { class: "macro-analysis-report", innerHTML: renderMacroMarkdown(analysis.value.report.markdown) })] : !analysisLoading.value && !analysisError.value && !macroAnalysisPending(analysis.value) ? h("div", { class: "macro-analysis-message" }, "尚无已完成的全球宏观投资分析。点击“生成宏观分析”手动提交任务。") : null,
         ]),
       ]),

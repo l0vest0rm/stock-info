@@ -5,6 +5,7 @@ import { readTaskdReportResult, saveTaskdReportResult } from "../../research/inf
 import {
   loadMacroAnalysis,
   macroAnalysisTaskName,
+  reconcileMacroAnalysis,
   syncMacroAnalysis,
   validateMacroAnalysisMarkdown,
   validateMacroAnalysisTerminalEvidence,
@@ -50,6 +51,10 @@ test("macro analysis accepts only the complete report and a terminal WebQA resul
   assert.throws(() => validateMacroAnalysisMarkdown("# 一、短报告"), /shorter than 4000 characters/);
 });
 
+test("macro analysis accepts a numbered first section nested below a report title", () => {
+  assert.doesNotThrow(() => validateMacroAnalysisMarkdown(report.replace("# 一、分析章节", "## 一、分析章节")));
+});
+
 test("macro analysis is read-only until explicit synchronization projects the completed taskd result", async (t) => {
   const db = new ResearchTestDatabase();
   await saveTaskdReportResult(db, namespace, key, record());
@@ -66,6 +71,46 @@ test("macro analysis is read-only until explicit synchronization projects the co
   assert.equal(stored.task.status, "succeeded");
   assert.equal(stored.pendingProjection, false);
   assert.equal(stored.retention, "durable");
+});
+
+test("local macro reconciler observes an active taskd run and is idempotent after projection", async (t) => {
+  const db = new ResearchTestDatabase();
+  await saveTaskdReportResult(db, namespace, key, record());
+  const methods = [];
+  t.mock.method(globalThis, "fetch", async (_url, init = {}) => {
+    methods.push(init.method || "GET");
+    return Response.json(completedTask());
+  });
+
+  assert.equal(await reconcileMacroAnalysis(envFor(db)), true);
+  assert.equal((await loadMacroAnalysis(envFor(db))).availability, "available");
+  assert.equal(await reconcileMacroAnalysis(envFor(db)), false);
+  assert.deepEqual(methods, ["GET"]);
+});
+
+test("production macro reconciler never contacts taskd", async (t) => {
+  const db = new ResearchTestDatabase();
+  await saveTaskdReportResult(db, namespace, key, record());
+  t.mock.method(globalThis, "fetch", () => { throw new Error("unexpected network access"); });
+  assert.equal(await reconcileMacroAnalysis({ ...envFor(db), LLM_RUNTIME: "production" }), false);
+});
+
+test("a malformed terminal macro report stays terminal and is not retried by the local reconciler", async (t) => {
+  const db = new ResearchTestDatabase();
+  await saveTaskdReportResult(db, namespace, key, record());
+  let requests = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    requests += 1;
+    return Response.json({ ...completedTask(), result: { ...completedTask().result, content: { ...completedTask().result.content, markdown: "# 一、短报告" } } });
+  });
+
+  await assert.rejects(() => reconcileMacroAnalysis(envFor(db)), /shorter than 4000 characters/);
+  const stored = JSON.parse((await readTaskdReportResult(db, namespace, key)).valueJson);
+  assert.equal(stored.task.status, "succeeded");
+  assert.equal(stored.pendingProjection, false);
+  assert.equal(stored.recovery.phase, "manual_required");
+  assert.equal(await reconcileMacroAnalysis(envFor(db)), false);
+  assert.equal(requests, 1);
 });
 
 test("an interrupted macro task remains terminal rather than appearing pending", async () => {

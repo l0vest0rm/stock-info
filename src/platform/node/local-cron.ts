@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { Cron } from "croner";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js";
 import { dispatchScheduledTask } from "../../app/scheduled";
+import { reconcileMacroAnalysis } from "../../modules/macro/application/macro-analysis";
 import { reconcileResearchResults } from "../../modules/research/application/reconcile-research-results";
 import { createLocalBindings } from "./local-bindings";
 
@@ -25,7 +26,7 @@ export async function startLocalCronScheduler(options: { configPath?: string; ru
       await dispatchScheduledTask({ cron, scheduledTime: startedAt } as ScheduledEvent, bindings);
       event("completed", { cron, duration_ms: Date.now() - startedAt });
     }));
-    await reconcileResearchResults(bindings, (code, error) => event("research-reconcile-failed", { code, error: String(error) }));
+    await reconcileTaskdReports(event);
     return { expressions, stop() {} };
   }
   const jobs = expressions.map((cron) => new Cron(cron, {
@@ -46,16 +47,27 @@ export async function startLocalCronScheduler(options: { configPath?: string; ru
     if (stopped || reconciling || bindings.LLM_RUNTIME !== "local") return;
     reconciling = true;
     try {
-      const result = await reconcileResearchResults(bindings, (code, error) => event("research-reconcile-failed", { code, error: String(error) }));
-      if (result.inspected) event("research-reconciled", result);
+      await reconcileTaskdReports(event);
     } catch (error) {
-      event("research-reconcile-failed", { error: String(error) });
+      event("taskd-reconcile-failed", { error: String(error) });
     } finally { reconciling = false; }
   };
   const timer = setInterval(() => { void reconcile(); }, 15_000);
   timer.unref();
   void reconcile();
   return { expressions, stop() { stopped = true; clearInterval(timer); for (const job of jobs) job.stop(); } };
+}
+
+async function reconcileTaskdReports(event: (event: string, details: Record<string, unknown>) => void): Promise<void> {
+  const [research, macro] = await Promise.all([
+    reconcileResearchResults(bindings, (code, error) => event("research-reconcile-failed", { code, error: String(error) })),
+    reconcileMacroAnalysis(bindings).catch((error) => {
+      event("macro-reconcile-failed", { error: String(error) });
+      return false;
+    }),
+  ]);
+  if (research.inspected) event("research-reconciled", research);
+  if (macro) event("macro-reconciled", { inspected: 1 });
 }
 
 async function main(): Promise<void> {
