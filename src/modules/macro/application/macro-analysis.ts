@@ -1,10 +1,9 @@
 import type { Database } from "../../../platform/contracts";
 import type { AppEnv } from "../../../types";
 import { MACRO_ANALYSIS_PROMPT } from "../../../generated/prompt-text";
-import { taskdWebQaInput } from "../../../shared/llm-client";
 import { isTaskdReadUnavailable, taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
-import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
+import { hasRecoverableTaskdReportCheckpoint, isPendingTaskdReportTask, isTerminalTaskdReportTask, observeTaskdReport, recoverTaskdReport, submitTaskdReport, taskdReportTaskView } from "../../../shared/taskd-report-workflow";
 import { isObservedTaskdReportTask, readTaskdReportResult, saveTaskdReportResult } from "../../research/infrastructure/research-result-repository";
 
 const REPORT_KEY = "GLOBAL";
@@ -60,15 +59,8 @@ export async function enqueueMacroAnalysis(env: AppEnv["Bindings"], options: { r
   if (env.LLM_RUNTIME !== "local") throw new Error("macro analysis submission is only available in local LLM runtime");
   const input: MacroInput = { schemaVersion: INPUT_SCHEMA_VERSION, promptVersion: PROMPT_VERSION, preparedAt: new Date().toISOString() };
   const reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
-  const task = await taskdCallerClient(env).submit({
-    name: TASK_NAME,
-    taskType: TASK_TYPE,
-    payload: {
-      ...taskdWebQaInput(env, { model: MODEL, reasoningEffort, waitTimeoutMs: 2 * 60 * 60_000, messages: [{ role: "user", content: MACRO_ANALYSIS_PROMPT }] }, TASK_NAME),
-      business_input: input,
-    },
-    diagnostics: { model: MODEL, reasoningEffort, promptVersion: PROMPT_VERSION, schemaVersion: INPUT_SCHEMA_VERSION, scope: "global_macro" },
-  });
+  const task = await submitTaskdReport(env, { name: TASK_NAME, taskType: TASK_TYPE, model: MODEL, reasoningEffort, waitTimeoutMs: 2 * 60 * 60_000, prompt: MACRO_ANALYSIS_PROMPT, businessInput: input,
+    diagnostics: { model: MODEL, reasoningEffort, promptVersion: PROMPT_VERSION, schemaVersion: INPUT_SCHEMA_VERSION, scope: "global_macro" } });
   const current = await loadStored(env.DB);
   const stored = merge(current, {
     pendingProjection: true,
@@ -87,10 +79,9 @@ export async function syncMacroAnalysis(env: AppEnv["Bindings"]) {
   const stored = await loadStored(env.DB);
   if (!stored?.task) return emptyResponse();
   try {
-    const state = await reconcileTaskdResult(taskdCallerClient(env), {
-      name: stored.task.name,
+    const state = await observeTaskdReport({
+      client: taskdCallerClient(env), expected: stored.task,
       project: async (task) => {
-        if (!isObservedTaskdReportTask(stored.task, task)) throw new Error("recorded macro task was superseded; refusing a different run");
         const input = taskInput(task) ?? inputFromJson(stored.pendingInputJson ?? stored.inputJson);
         if (!input) throw new Error("macro analysis task has no frozen input snapshot");
         // Persist the terminal task observation before validating its report.
@@ -136,21 +127,18 @@ export async function resumeMacroAnalysis(env: AppEnv["Bindings"]) {
   if (env.LLM_RUNTIME !== "local") throw new Error("macro analysis recovery is only available in local LLM runtime");
   const stored = await loadStored(env.DB);
   if (!stored?.task) throw new Error("macro analysis has no recorded task to recover");
-  const client = taskdCallerClient(env);
-  let remote = await client.get(stored.task.name);
+  const recovered = await recoverTaskdReport(taskdCallerClient(env), stored.task);
+  let remote = recovered.task;
   let recovery = stored.recovery;
   if (!remote) {
     recovery = { phase: "manual_required", reason: "taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。" };
-  } else if (!isObservedTaskdReportTask(stored.task, remote)) {
-    throw new Error("recorded macro task was superseded; refusing to recover another run");
+  } else if (recovered.recoverable) {
+    recovery = { phase: "recovering", reason: "正在只读找回已提交的 ChatGPT 结果；不会重发提示词。" };
   } else if (remote.status === "failed") {
     if (!hasRecoverableProviderCheckpoint(remote.checkpoint)) {
       recovery = { phase: "manual_required", reason: "任务缺少可验证的原会话 checkpoint，无法安全找回，也不会重发提示词。" };
     } else {
-      remote = await client.recover(stored.task.name);
-      recovery = remote
-        ? { phase: "recovering", reason: "正在只读找回已提交的 ChatGPT 结果；不会重发提示词。" }
-        : { phase: "manual_required", reason: "taskd 未能重新排队原任务，无法确认已提交的 ChatGPT 会话。" };
+      recovery = { phase: "manual_required", reason: "taskd 未能重新排队原任务，无法确认已提交的 ChatGPT 会话。" };
     }
   }
   await saveStored(env.DB, merge(stored, { task: remote ? taskView(remote) : null, recovery }), stored);
@@ -208,13 +196,13 @@ function merge(current: StoredResult | null, patch: Partial<StoredResult>): Stor
 function taskInput(task: TaskdTask): MacroInput | null { return inputFromValue(object(task.input)?.business_input); }
 function inputFromJson(value: string | null): MacroInput | null { return inputFromValue(parseJson(value)); }
 function inputFromValue(value: unknown): MacroInput | null { const input = object(value); return text(input?.schemaVersion) === INPUT_SCHEMA_VERSION && text(input?.promptVersion) === PROMPT_VERSION && text(input?.preparedAt) ? input as MacroInput : null; }
-function taskView(task: Pick<TaskdTask, "taskId" | "name" | "status" | "errorMessage" | "createdAt" | "updatedAt" | "completedAt">): StoredTask { return { taskId: task.taskId ?? null, name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
+function taskView(task: Pick<TaskdTask, "taskId" | "name" | "status" | "errorMessage" | "createdAt" | "updatedAt" | "completedAt">): StoredTask { return taskdReportTaskView(task); }
 function parseTask(value: unknown): StoredTask | null { const task = object(value); const name = text(task?.name); const status = text(task?.status) as TaskdTask["status"]; const createdAt = Number(task?.createdAt); const updatedAt = Number(task?.updatedAt); if (!name || !isTaskStatus(status) || !Number.isFinite(createdAt) || !Number.isFinite(updatedAt)) return null; return { taskId: Number.isInteger(Number(task?.taskId)) && Number(task?.taskId) > 0 ? Number(task?.taskId) : null, name, status, errorMessage: text(task?.errorMessage) || null, createdAt, updatedAt, completedAt: finiteOrNull(task?.completedAt) }; }
 function isTaskStatus(value: string): value is TaskdTask["status"] { return new Set<TaskdTask["status"]>(["queued", "leased", "running", "interrupt_requested", "succeeded", "failed", "interrupted", "superseded"]).has(value as TaskdTask["status"]); }
 function recoveryAfterTask(current: Recovery, task: TaskdTask): Recovery { if (current.phase === "recovering" && isTerminal(task)) return { phase: "manual_required", reason: task.errorMessage || "找回后的任务没有产生可验证的完成结果。" }; if (task.status === "failed" && !hasRecoverableProviderCheckpoint(task.checkpoint)) return { phase: "manual_required", reason: "任务没有可验证的原会话 checkpoint，不能执行无重放找回。" }; return current; }
-function hasRecoverableProviderCheckpoint(value: unknown): boolean { const checkpoint = object(value); if (Boolean(text(checkpoint?.provider_url))) return true; const submission = object(checkpoint?.submission); const state = text(submission?.state) || text(checkpoint?.submission_state); return text(submission?.schema_version) === "provider_submission.v1" && Boolean(text(submission?.marker)) && (state === "click_issued" || state === "url_bound"); }
-function isTerminal(task: StoredTask | TaskdTask | null): boolean { return task?.status === "succeeded" || task?.status === "failed" || task?.status === "interrupted" || task?.status === "superseded"; }
-function isPending(task: StoredTask | TaskdTask | null): boolean { return task?.status === "queued" || task?.status === "leased" || task?.status === "running" || task?.status === "interrupt_requested"; }
+function hasRecoverableProviderCheckpoint(value: unknown): boolean { return hasRecoverableTaskdReportCheckpoint(value); }
+function isTerminal(task: StoredTask | TaskdTask | null): boolean { return isTerminalTaskdReportTask(task); }
+function isPending(task: StoredTask | TaskdTask | null): boolean { return isPendingTaskdReportTask(task); }
 function normalizeReasoningEffort(value: string | null | undefined): "low" | "medium" | "high" | "xhigh" { const normalized = text(value) || DEFAULT_REASONING_EFFORT; if (!new Set(["low", "medium", "high", "xhigh"]).has(normalized)) throw new Error("unsupported macro-analysis reasoning effort"); return normalized as "low" | "medium" | "high" | "xhigh"; }
 function noRecovery(): Recovery { return { phase: "none", reason: null }; }
 function parseRecovery(value: unknown): Recovery { const recovery = object(value); const phase = text(recovery?.phase); return phase === "none" || phase === "recovering" || phase === "manual_required" ? { phase, reason: text(recovery?.reason) || null } : noRecovery(); }

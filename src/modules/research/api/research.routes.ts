@@ -7,6 +7,7 @@ import {
   enqueueResearchFinancialAnalysis,
   loadResearchFinancialAnalysis,
   resumeResearchFinancialAnalysis,
+  syncResearchFinancialAnalysis,
 } from "../application/research-financial-analysis";
 import {
   enqueueResearchInvestmentAnalysis,
@@ -67,6 +68,18 @@ researchRoutes.post("/research/company/:code/financial-analysis/resume", async (
   try {
     return ok(c, await resumeResearchFinancialAnalysis(c.env, code));
   } catch (error) {
+    return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+researchRoutes.post("/research/company/:code/financial-analysis/sync", async (c) => {
+  if (!canWriteResearchLocally(c.env)) return fail(c, 404, "financial analysis synchronization is only available in local LLM runtime");
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  try {
+    return ok(c, await syncResearchFinancialAnalysis(c.env, code));
+  } catch (error) {
+    if (isTaskdReadUnavailable(error)) return fail(c, 503, "暂时无法连接 taskd；本地任务状态未改变，请稍后再同步。");
     return fail(c, 400, error instanceof Error ? error.message : String(error));
   }
 });

@@ -20,16 +20,13 @@ type AnnualFinancial = {
 }
 
 type CompanyReportDiscoveryStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'blocked'
-type CompanyReportDiscoveryReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'pro'
 
 type CompanyReportDiscoveryTask = {
   name: string
   status: CompanyReportDiscoveryStatus
   requestedModel?: string | null
-  requestedReasoningEffort?: string | null
   execution?: {
     model?: string | null
-    reasoningEffort?: string | null
   } | null
   errorMessage?: string | null
   createdAt?: number | null
@@ -553,7 +550,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
   let companyReportDiscoveryUpdatedAt: number | null = null
   let companyReportDiscoveryLastSuccessfulAt: number | null = null
   let companyReportDiscoveryModel: string | null = null
-  let companyReportDiscoveryReasoningEffort: string | null = null
 
   function emitCompanyReportState(patch: CompanyReportStatePatch): boolean {
     if (disposed) return false
@@ -648,7 +644,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
       discoveryUpdatedAt: companyReportDiscoveryUpdatedAt,
       discoveryLastSuccessfulAt: companyReportDiscoveryLastSuccessfulAt,
       discoveryModel: companyReportDiscoveryModel,
-      discoveryReasoningEffort: companyReportDiscoveryReasoningEffort,
     })
   }
 
@@ -661,7 +656,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
       companyReportDiscoveryCompletedAt = null
       companyReportDiscoveryUpdatedAt = null
       companyReportDiscoveryModel = null
-      companyReportDiscoveryReasoningEffort = null
       stopCompanyReportDiscoveryPolling()
       emitCompanyReportDiscoveryState('')
       return
@@ -673,12 +667,8 @@ export function createCompanyReportController(context: CompanyReportContext, onS
     companyReportDiscoveryCompletedAt = optionalCompanyReportTimestamp(task.completedAt)
     companyReportDiscoveryUpdatedAt = optionalCompanyReportTimestamp(task.updatedAt)
     const executionModel = task.execution?.model ?? task.requestedModel
-    const executionReasoningEffort = task.execution?.reasoningEffort ?? task.requestedReasoningEffort
     companyReportDiscoveryModel = typeof executionModel === 'string' && executionModel.trim()
       ? executionModel.trim()
-      : null
-    companyReportDiscoveryReasoningEffort = typeof executionReasoningEffort === 'string' && executionReasoningEffort.trim()
-      ? executionReasoningEffort.trim()
       : null
     emitCompanyReportDiscoveryState(companyReportDiscoveryMessage(companyReportDiscoveryStatus, task.errorMessage))
   }
@@ -712,8 +702,9 @@ export function createCompanyReportController(context: CompanyReportContext, onS
       return
     }
     const data = await fetchRequest({
-      url: `${server}/api/company/reports/discovery-capability`,
+      url: `${server}/api/company/reports/discover/sync?code=${encodeURIComponent(code)}`,
       params: { code },
+      data: {},
       silent: true,
     }) as any
     if (generation !== companyReportDiscoveryPollGeneration || name !== companyReportDiscoveryTaskName) {
@@ -763,7 +754,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
       companyReportDiscoveryUpdatedAt = null
       companyReportDiscoveryLastSuccessfulAt = null
       companyReportDiscoveryModel = null
-      companyReportDiscoveryReasoningEffort = null
       stopCompanyReportDiscoveryPolling()
       emitCompanyReportDiscoveryState('')
       return
@@ -776,7 +766,7 @@ export function createCompanyReportController(context: CompanyReportContext, onS
     }
   }
 
-  async function triggerCompanyReportDiscovery(code: string, requestedReasoningEffort: CompanyReportDiscoveryReasoningEffort = 'xhigh'): Promise<void> {
+  async function triggerCompanyReportDiscovery(code: string): Promise<void> {
     if (disposed || !companyReportDiscoveryEnabled || companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running') {
       return
     }
@@ -788,11 +778,10 @@ export function createCompanyReportController(context: CompanyReportContext, onS
     companyReportDiscoveryCompletedAt = null
     companyReportDiscoveryUpdatedAt = null
     companyReportDiscoveryModel = null
-    companyReportDiscoveryReasoningEffort = null
     emitCompanyReportDiscoveryState('正在提交本地搜索任务…')
     const data = await fetchRequest({
       url: `${server}/api/company/reports/discover?code=${encodeURIComponent(code)}`,
-      data: { force, reasoningEffort: requestedReasoningEffort },
+      data: { force },
       silent: true,
     }) as any
     if (isCompanyReportDiscoveryError(data)) {
@@ -814,6 +803,30 @@ export function createCompanyReportController(context: CompanyReportContext, onS
       if (companyReportActualFinancialMap) {
         genCompanyReportTable(code, companyReportActualFinancialMap)
       }
+    }
+  }
+
+  /** Explicit observation for the visible control; it never creates a task. */
+  async function syncCompanyReportDiscovery(): Promise<void> {
+    if (disposed || !companyReportDiscoveryEnabled || !companyReportDiscoveryTaskName) return
+    const code = getCode()
+    const data = await fetchRequest({
+      url: `${server}/api/company/reports/discover/sync?code=${encodeURIComponent(code)}`,
+      params: { code },
+      data: {},
+      silent: true,
+    }) as any
+    if (isCompanyReportDiscoveryError(data)) {
+      companyReportDiscoveryStatus = 'failed'
+      stopCompanyReportDiscoveryPolling()
+      emitCompanyReportDiscoveryState(`本地搜索状态读取失败：${data.error}`)
+      return
+    }
+    applyCompanyReportDiscoveryCapability(data)
+    if (companyReportDiscoveryStatus === 'completed' && companyReportActualFinancialMap) {
+      genCompanyReportTable(code, companyReportActualFinancialMap)
+    } else if ((companyReportDiscoveryStatus === 'queued' || companyReportDiscoveryStatus === 'running') && companyReportDiscoveryTaskName) {
+      scheduleCompanyReportDiscoveryPoll(code, companyReportDiscoveryTaskName)
     }
   }
 
@@ -1235,8 +1248,11 @@ export function createCompanyReportController(context: CompanyReportContext, onS
         if (!disposed && url) openExternalUrlWithoutReferrer(url)
       })
     },
-    discover(reasoningEffort: CompanyReportDiscoveryReasoningEffort = 'xhigh') {
-      return triggerCompanyReportDiscovery(getCode(), reasoningEffort)
+    discover() {
+      return triggerCompanyReportDiscovery(getCode())
+    },
+    syncDiscovery() {
+      return syncCompanyReportDiscovery()
     },
     dispose() {
       if (disposed) return

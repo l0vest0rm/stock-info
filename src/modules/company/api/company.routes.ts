@@ -14,6 +14,7 @@ import {
   getCompanyReportsWithProgress,
   loadCompanyReportDiscoverySnapshot,
   enqueueCompanyReportDiscovery,
+  syncCompanyReportDiscovery,
 } from "../application/company-reports";
 import { isCnCode } from "../domain/report-identity";
 import { aggregateForecastsForCode } from "../domain/report-valuation";
@@ -180,6 +181,19 @@ companyRoutes.post("/company/reports/discover", async (c) => {
     return ok(c, await enqueueCompanyReportDiscovery(c.env, code, body.reasoningEffort));
   } catch (error) {
     return fail(c, 400, error instanceof Error ? error.message : String(error));
+  }
+});
+
+companyRoutes.post("/company/reports/discover/sync", async (c) => {
+  if (c.env.LLM_RUNTIME !== "local") return fail(c, 404, "company report discovery synchronization is only available in local LLM runtime");
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  try {
+    const normalized = normalizeSecurityCode(code);
+    const stored = await syncCompanyReportDiscovery(c.env, normalized);
+    return ok(c, { enabled: isCnCode(normalized), code: normalized, task: stored?.task ?? null, lastSuccessfulCompletedAt: stored?.lastSuccessfulCompletedAt ?? null });
+  } catch (error) {
+    return fail(c, 503, error instanceof Error ? error.message : String(error));
   }
 });
 

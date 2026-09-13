@@ -4,6 +4,7 @@ import { Cron } from "croner";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js";
 import { dispatchScheduledTask } from "../../app/scheduled";
 import { reconcileMacroAnalysis } from "../../modules/macro/application/macro-analysis";
+import { reconcileCompanyReportDiscoveries } from "../../modules/company/application/company-reports";
 import { reconcileResearchResults } from "../../modules/research/application/reconcile-research-results";
 import { createLocalBindings } from "./local-bindings";
 
@@ -59,15 +60,17 @@ export async function startLocalCronScheduler(options: { configPath?: string; ru
 }
 
 async function reconcileTaskdReports(event: (event: string, details: Record<string, unknown>) => void): Promise<void> {
-  const [research, macro] = await Promise.all([
+  const [research, macro, reportDiscovery] = await Promise.all([
     reconcileResearchResults(bindings, (code, error) => event("research-reconcile-failed", { code, error: String(error) })),
     reconcileMacroAnalysis(bindings).catch((error) => {
       event("macro-reconcile-failed", { error: String(error) });
       return false;
     }),
+    reconcileCompanyReportDiscoveries(bindings, (code, error) => event("company-report-discovery-reconcile-failed", { code, error: String(error) })),
   ]);
   if (research.inspected) event("research-reconciled", research);
   if (macro) event("macro-reconciled", { inspected: 1 });
+  if (reportDiscovery.inspected) event("company-report-discovery-reconciled", reportDiscovery);
 }
 
 async function main(): Promise<void> {

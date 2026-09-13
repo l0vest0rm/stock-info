@@ -1,4 +1,5 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { renderTaskdMarkdown, renderTaskdReportActions, renderTaskdReportIdentity, renderTaskdReportMessage, taskdReportStatus } from '../../../shared/taskd/taskd-report-ui'
 
 type FinanceTableCell = {
   valueText: string
@@ -47,7 +48,7 @@ type FinanceTabKey = 'analysis' | 'core' | 'income' | 'balance' | 'cashflow'
 
 type FinancialAnalysisState = {
   availability: 'empty' | 'pending' | 'available' | 'failed'
-  task: { taskId?: number; name?: string; status?: string; requestedReasoningEffort?: string | null; lastErrorMessage?: string | null; completedAt?: number | null; updatedAt?: number | null } | null
+  task: { taskId?: number; name?: string; status?: string; lastErrorMessage?: string | null; completedAt?: number | null; updatedAt?: number | null } | null
   reportVersion?: { status?: 'current' | 'legacy' | 'unknown'; inputSchemaVersion?: string | null; codeVersion?: string | null; currentInputSchemaVersion?: string | null; currentCodeVersion?: string | null } | null
   snapshot: {
     asOf?: string | null
@@ -71,119 +72,36 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 /** Persisted model output is rendered as VNodes, never injected as HTML. */
-function inlineMarkdown(source: string): Array<string | ReturnType<typeof h>> {
-  const nodes: Array<string | ReturnType<typeof h>> = []
-  const pattern = /(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\[[^\]]+\]\((?:https?:\/\/)[^)\s]+\))/g
-  let offset = 0
-  for (const match of source.matchAll(pattern)) {
-    const start = match.index ?? 0
-    if (start > offset) nodes.push(source.slice(offset, start))
-    const token = match[0]
-    if (token.startsWith('**') || token.startsWith('__')) nodes.push(h('strong', token.slice(2, -2)))
-    else if (token.startsWith('`')) nodes.push(h('code', token.slice(1, -1)))
-    else {
-      const link = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(token)
-      nodes.push(link ? h('a', { href: link[2], target: '_blank', rel: 'noreferrer' }, link[1]) : token)
-    }
-    offset = start + token.length
-  }
-  if (offset < source.length) nodes.push(source.slice(offset))
-  return nodes
-}
-
-function renderFinancialAnalysisMarkdown(markdown: string) {
-  const lines = markdown.replace(/\r\n?/g, '\n').split('\n').map((line) => line.trim())
-  const blocks: Array<string | ReturnType<typeof h>> = []
-  for (let index = 0; index < lines.length;) {
-    const line = lines[index]
-    if (!line) { index += 1; continue }
-    const heading = /^(#{1,6})\s+(.+)$/.exec(line)
-    if (heading) {
-      blocks.push(h(`h${Math.min(heading[1].length, 4)}`, { key: `heading-${index}` }, inlineMarkdown(heading[2])))
-      index += 1
-      continue
-    }
-    const list = /^([-*+] |\d+\. )(.+)$/.exec(line)
-    if (list) {
-      const ordered = /^\d+\. /.test(line)
-      const matcher = ordered ? /^\d+\.\s+(.+)$/ : /^[-*+]\s+(.+)$/
-      const items: string[] = []
-      while (index < lines.length) {
-        const item = matcher.exec(lines[index])
-        if (!item) break
-        items.push(item[1])
-        index += 1
-      }
-      blocks.push(h(ordered ? 'ol' : 'ul', { key: `list-${index}` }, items.map((item, itemIndex) => h('li', { key: itemIndex }, inlineMarkdown(item)))))
-      continue
-    }
-    const paragraph = [line]
-    index += 1
-    while (index < lines.length && lines[index] && !/^#{1,6}\s+|^[-*+]\s+|^\d+\.\s+/.test(lines[index])) paragraph.push(lines[index++])
-    blocks.push(h('p', { key: `paragraph-${index}` }, inlineMarkdown(paragraph.join(' '))))
-  }
-  return blocks
-}
-
-function formatFinancialAnalysisTimestamp(value: number | null | undefined): string {
-  if (!Number.isFinite(value)) return ''
-  const parts = new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date(Number(value)))
-  const pick = (type: string) => parts.find((part) => part.type === type)?.value || ''
-  return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`
-}
 
 function formatFinancialRiskFlagValue(flag: { value: number; unit: string }): string {
   return flag.unit === 'percent' ? `${flag.value.toFixed(2)}%` : `${flag.value}${flag.unit}`
 }
 
-function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: { generating: boolean; error: string | null; generate: () => Promise<void>; resume: () => Promise<void> }) {
+function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: { generating: boolean; error: string | null; generate: () => Promise<void>; resume: () => Promise<void>; sync: () => Promise<void> }) {
   const code = codeFromUrl()
   if (!code) return h('section', { class: 'card border-info mb-3' }, [h('div', { class: 'card-body text-muted' }, '请选择单只股票后生成深入财务分析；多股票对比仍使用下方图表和三表。')])
   const snapshot = state?.snapshot
   const quality = snapshot?.dataQuality
   const flags = snapshot?.deterministicFlags || []
   const reportVersion = state?.reportVersion
-  const status = state?.availability === 'available' ? '已完成' : state?.availability === 'failed' ? '失败' : state?.availability === 'pending' ? '生成中' : '尚未生成'
-  const reportGeneratedAt = formatFinancialAnalysisTimestamp(state?.task?.completedAt)
-  const lastUpdatedAt = formatFinancialAnalysisTimestamp(state?.task?.updatedAt)
-  const taskName = typeof state?.task?.name === 'string' && state.task.name.trim() ? state.task.name.trim() : ''
+  const status = state?.availability === 'available' ? '已完成' : state?.availability === 'failed' ? '失败' : state?.availability === 'pending' ? taskdReportStatus(state) : '尚未生成'
   const dataAsOf = typeof snapshot?.asOf === 'string' && snapshot.asOf.trim() ? snapshot.asOf.trim() : snapshot?.periodCoverage?.ttmEndDate || ''
-  const statusSummary = [
-    `单证券 · ${code} · ${status}`,
-    reportGeneratedAt ? `${state?.availability === 'available' ? '报告生成' : '任务结束'}于 ${reportGeneratedAt}` : '',
-  ].filter(Boolean).join(' · ')
-  const timingSummary = [
-    reportGeneratedAt ? `报告生成：${reportGeneratedAt}` : '',
-    dataAsOf ? `数据截至：${dataAsOf}` : '',
-    !reportGeneratedAt && lastUpdatedAt ? `最近更新：${lastUpdatedAt}` : '',
-  ].filter(Boolean).join('；')
+  const statusSummary = `单证券 · ${code} · ${status}`
   return h('section', { class: 'card border-primary mb-3', id: 'financial-analysis' }, [
     h('div', { class: 'card-header d-flex align-items-center justify-content-between gap-2 flex-wrap' }, [
       h('div', [h('strong', '深入财务分析'), h('small', { class: 'text-muted ms-2' }, statusSummary)]),
-      h('div', { class: 'd-flex gap-2' }, [
-        h('button', { class: 'btn btn-sm btn-primary', disabled: options.generating, onClick: options.generate }, options.generating ? '正在提交…' : '生成/刷新'),
-        state?.resume?.available ? h('button', { class: 'btn btn-sm btn-outline-primary', disabled: options.generating, onClick: options.resume }, '恢复失败任务') : null,
-      ]),
+      renderTaskdReportActions({ state, busy: options.generating, className: 'd-flex gap-2', buttonClass: 'btn btn-sm btn-primary', submitLabel: '生成财务分析', resubmitLabel: '生成/刷新', onSubmit: () => { void options.generate() }, onResume: () => { void options.resume() }, onSync: () => { void options.sync() } }),
     ]),
     h('div', { class: 'card-body' }, [
-      timingSummary ? h('p', { class: 'small text-muted mb-2' }, timingSummary) : null,
-      taskName ? h('p', { class: 'small text-muted mb-2' }, ['taskd 任务名：', h('code', { class: 'font-monospace text-break' }, taskName)]) : null,
+      renderTaskdReportIdentity(state, 'small text-muted mb-2 d-flex flex-wrap gap-2'),
+      dataAsOf ? h('p', { class: 'small text-muted mb-2' }, `数据截至：${dataAsOf}`) : null,
       quality ? h('p', { class: 'small text-muted mb-2' }, `数据：${quality.status || 'unknown'}；${quality.sourcePolicy || '来源待载入'}；法定核验：${quality.statutoryVerification?.status || 'unknown'}。${quality.statutoryVerification?.reason || ''}`) : h('p', { class: 'small text-muted' }, '尚无冻结的财务分析输入。'),
       snapshot?.periodCoverage ? h('p', { class: 'small text-muted' }, `覆盖：年度 ${snapshot.periodCoverage.annual?.join('、') || '—'}；季度 ${snapshot.periodCoverage.quarterly?.join('、') || '—'}；TTM 截至 ${snapshot.periodCoverage.ttmEndDate || '—'}。`) : null,
-      options.error ? h('p', { class: 'alert alert-danger py-2 small' }, options.error) : null,
+      ...renderTaskdReportMessage(state, options.error, '任务已提交给 taskd；页面会读取本地状态，本地调度器周期同步 taskd。', 'alert py-2 small'),
       reportVersion?.status === 'legacy' ? h('p', { class: 'alert alert-info py-2 small' }, `这份已完成报告使用 ${reportVersion.inputSchemaVersion || '旧版'} / ${reportVersion.codeVersion || '旧版'} 输入；当前生成使用 ${reportVersion.currentInputSchemaVersion || '最新版'} / ${reportVersion.currentCodeVersion || '最新版'}。报告已保留供阅读，是否重新生成由你决定。`) : null,
       reportVersion?.status === 'unknown' ? h('p', { class: 'alert alert-info py-2 small' }, '这份已完成报告未记录输入版本；报告已保留供阅读，是否重新生成由你决定。') : null,
       flags.length ? h('div', { class: 'mb-3' }, [h('strong', { class: 'small' }, '工程触发的财务风险信号'), h('ul', { class: 'small mb-0 mt-1' }, flags.map((flag) => h('li', { key: flag.ruleId }, `[${flag.severity}] ${flag.title}（${flag.period}，${formatFinancialRiskFlagValue(flag)}）`)))]) : null,
-      state?.report?.markdown ? h('article', { class: 'company-finance-analysis-markdown' }, renderFinancialAnalysisMarkdown(state.report.markdown)) : h('p', { class: 'text-muted mb-0' }, '报告生成后会在此展示；模型只解释工程冻结的三表指标、缺口和风险信号。'),
+      state?.report?.markdown ? h('article', { class: 'company-finance-analysis-markdown' }, renderTaskdMarkdown(state.report.markdown)) : h('p', { class: 'text-muted mb-0' }, '报告生成后会在此展示；模型只解释工程冻结的三表指标、缺口和风险信号。'),
       state?.report?.citations?.length ? h('div', { class: 'mt-3 small' }, [h('strong', '引用：'), ...state.report.citations.map((citation, index) => citation.url ? h('a', { class: 'ms-2', key: `${citation.url}-${index}`, href: citation.url, target: '_blank', rel: 'noreferrer' }, citation.title || citation.url) : null)]) : null,
     ]),
   ])
@@ -272,7 +190,7 @@ const CompanyFinancePage = defineComponent({
       if (!code) return
       financialAnalysisGenerating.value = true
       try {
-        await request(`/api/research/company/${encodeURIComponent(code)}/financial-analysis/refresh`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ force: true, reasoningEffort: 'xhigh' }) })
+        await request(`/api/research/company/${encodeURIComponent(code)}/financial-analysis/refresh`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ force: true }) })
         await loadFinancialAnalysis()
       } catch (error) { financialAnalysisError.value = error instanceof Error ? error.message : String(error) }
       finally { financialAnalysisGenerating.value = false }
@@ -285,6 +203,14 @@ const CompanyFinancePage = defineComponent({
         await request(`/api/research/company/${encodeURIComponent(code)}/financial-analysis/resume`, { method: 'POST' })
         await loadFinancialAnalysis()
       } catch (error) { financialAnalysisError.value = error instanceof Error ? error.message : String(error) }
+      finally { financialAnalysisGenerating.value = false }
+    }
+    const syncFinancialAnalysis = async () => {
+      const code = codeFromUrl()
+      if (!code) return
+      financialAnalysisGenerating.value = true
+      try { financialAnalysis.value = await request<FinancialAnalysisState>(`/api/research/company/${encodeURIComponent(code)}/financial-analysis/sync`, { method: 'POST' }); financialAnalysisError.value = null }
+      catch (error) { financialAnalysisError.value = error instanceof Error ? error.message : String(error) }
       finally { financialAnalysisGenerating.value = false }
     }
 
@@ -359,7 +285,7 @@ const CompanyFinancePage = defineComponent({
         h('div', { class: 'col-4' }),
       ]),
       h('div', { class: 'tab-content' }, [
-        h('div', { class: ['tab-pane', 'fade', activeTab.value === 'analysis' ? 'show active' : ''].filter(Boolean).join(' '), id: 'pills-financialAnalysis', role: 'tabpanel', tabindex: '0' }, [renderFinancialAnalysis(financialAnalysis.value, { generating: financialAnalysisGenerating.value, error: financialAnalysisError.value, generate: refreshFinancialAnalysis, resume: resumeFinancialAnalysis })]),
+        h('div', { class: ['tab-pane', 'fade', activeTab.value === 'analysis' ? 'show active' : ''].filter(Boolean).join(' '), id: 'pills-financialAnalysis', role: 'tabpanel', tabindex: '0' }, [renderFinancialAnalysis(financialAnalysis.value, { generating: financialAnalysisGenerating.value, error: financialAnalysisError.value, generate: refreshFinancialAnalysis, resume: resumeFinancialAnalysis, sync: syncFinancialAnalysis })]),
         tabPane('core', 'pills-coreTable', coreTable.value),
         tabPane('income', 'pills-incomeTable', incomeTable.value),
         tabPane('balance', 'pills-balanceTable', balanceTable.value),

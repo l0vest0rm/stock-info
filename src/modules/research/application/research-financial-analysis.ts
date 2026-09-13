@@ -1,10 +1,9 @@
 import type { Database } from "../../../platform/contracts";
 import type { AppEnv } from "../../../types";
-import { readResearchResult, saveResearchResult, isObservedResearchTask } from "../infrastructure/research-result-repository";
-import { taskdWebQaInput } from "../../../shared/llm-client";
+import { readResearchResult, saveResearchResult } from "../infrastructure/research-result-repository";
 import { isTaskdReadUnavailable, taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
-import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
+import { hasRecoverableTaskdReportCheckpoint, isObservedTaskdReportTask, isPendingTaskdReportTask, isTerminalTaskdReportTask, observeTaskdReport, recoverTaskdReport, submitTaskdReport, taskdReportTaskView } from "../../../shared/taskd-report-workflow";
 import { loadResearchFinancialFactSet } from "./research-financials";
 import { buildResearchFinancialQuality } from "../domain/research-financial-quality";
 import {
@@ -45,16 +44,8 @@ export async function enqueueResearchFinancialAnalysis(env: AppEnv["Bindings"], 
   const current = await loadResult(env.DB, prepared.snapshot.securityCode);
   const reasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
   const name = researchFinancialAnalysisTaskName(prepared.snapshot.securityCode);
-  const task = await taskdCallerClient(env).submit({
-    name,
-    taskType: TASK_TYPE,
-    payload: {
-      ...taskdWebQaInput(env, { model: MODEL, reasoningEffort, waitTimeoutMs: 60 * 60_000, messages: [{ role: "user", content: prepared.prompt }] }, name),
-      // taskd retains this exact input; the executor intentionally ignores it.
-      business_input: prepared.snapshot,
-    },
-    diagnostics: { securityCode: prepared.snapshot.securityCode, model: MODEL, reasoningEffort, promptVersion: prepared.snapshot.codeVersion, schemaVersion: prepared.snapshot.schemaVersion },
-  });
+  const task = await submitTaskdReport(env, { name, taskType: TASK_TYPE, model: MODEL, reasoningEffort, waitTimeoutMs: 60 * 60_000, prompt: prepared.prompt, businessInput: prepared.snapshot,
+    diagnostics: { securityCode: prepared.snapshot.securityCode, model: MODEL, reasoningEffort, promptVersion: prepared.snapshot.codeVersion, schemaVersion: prepared.snapshot.schemaVersion } });
   await storeResult(env.DB, prepared.snapshot.securityCode, mergeStoredResult(current, { pendingProjection: true, pendingSnapshotJson: JSON.stringify(prepared.snapshot), snapshotJson: current?.markdown ? current.snapshotJson : JSON.stringify(prepared.snapshot), task: taskView(task) }));
   return { accepted: true, task: taskView(task), snapshot: prepared.snapshot, force: options.force === true };
 }
@@ -74,10 +65,9 @@ export async function reconcileResearchFinancialAnalysis(env: AppEnv["Bindings"]
   const result = await loadResult(env.DB, code);
   if (!result?.task || (result.markdown && !result.pendingProjection && !isPendingTask(result.task))) return;
   try {
-    const state = await reconcileTaskdResult(taskdCallerClient(env), {
-      name: result.task.name,
+    const state = await observeTaskdReport({
+      client: taskdCallerClient(env), expected: result.task,
       project: async (task) => {
-        if (!isObservedResearchTask(result.task, task)) throw new Error("recorded research task was superseded; refusing a different run");
         const snapshot = taskBusinessSnapshot(task) ?? snapshotFromJson(result.pendingSnapshotJson ?? (result.pendingProjection && result.markdown ? null : result.snapshotJson));
         if (!snapshot) throw new Error("financial analysis task has no frozen input snapshot");
         if (snapshot.securityCode.toUpperCase() !== code) throw new Error("financial analysis frozen input security mismatch");
@@ -87,7 +77,7 @@ export async function reconcileResearchFinancialAnalysis(env: AppEnv["Bindings"]
     if (state.state === "missing") {
       await persistTaskSnapshot(env.DB, code, result, snapshotFromJson(result.snapshotJson), null,
         "taskd no longer has the recorded financial-analysis task");
-    } else if (state.state !== "projected" && isObservedResearchTask(result.task, state.task)) {
+    } else if (state.state !== "projected" && isObservedTaskdReportTask(result.task, state.task)) {
       await persistTaskSnapshot(env.DB, code, result, taskBusinessSnapshot(state.task) ?? snapshotFromJson(result.snapshotJson), state.task, null);
     } else if (state.state !== "projected") {
       throw new Error("recorded research task was superseded; refusing a different run");
@@ -112,17 +102,20 @@ export async function resumeResearchFinancialAnalysis(env: AppEnv["Bindings"], s
   // prompt. A saved provider_submission.v1 checkpoint authorizes only the
   // dedicated in-place recovery route, which retains the same task id/name
   // and lets the executor re-open the original provider turn.
-  const client = taskdCallerClient(env);
-  let remote = await client.get(stored.task.name);
-  if (remote && !isObservedResearchTask(stored.task, remote)) throw new Error("recorded financial task was superseded; refusing to recover another run");
-  if (remote && isTerminalTask(remote) && hasRecoverableProviderSubmission(remote.checkpoint)) {
-    remote = await client.recover(stored.task.name);
-  }
+  const { task: remote } = await recoverTaskdReport(taskdCallerClient(env), stored.task, ["succeeded", "failed", "interrupted", "superseded"]);
   if (!remote) {
     await persistTaskSnapshot(env.DB, code, stored, snapshotFromJson(stored.snapshotJson), null, "taskd no longer has the recorded financial-analysis task");
   } else {
     await persistTaskSnapshot(env.DB, code, stored, taskBusinessSnapshot(remote) ?? snapshotFromJson(stored.snapshotJson), remote, null);
   }
+  await reconcileResearchFinancialAnalysis(env, code);
+  return loadResearchFinancialAnalysis(env, code);
+}
+
+/** Explicit observation/projection; submitting work remains a separate action. */
+export async function syncResearchFinancialAnalysis(env: AppEnv["Bindings"], securityCode: string) {
+  if (env.LLM_RUNTIME !== "local") throw new Error("financial analysis synchronization is only available in local LLM runtime");
+  const code = securityCode.trim().toUpperCase();
   await reconcileResearchFinancialAnalysis(env, code);
   return loadResearchFinancialAnalysis(env, code);
 }
@@ -240,13 +233,7 @@ function mergeStoredResult(current: ResultRow | StoredResultValue | null, patch:
 }
 
 function taskBusinessSnapshot(task: TaskdTask): FinancialAnalysisSnapshot | null { return snapshotFromValue(object(task.input)?.business_input); }
-function hasRecoverableProviderSubmission(value: unknown): boolean {
-  const checkpoint = object(value);
-  if (text(checkpoint?.provider_url)) return true;
-  const submission = object(checkpoint?.submission);
-  if (text(submission?.schema_version) !== "provider_submission.v1") return false;
-  return Boolean(text(submission?.marker));
-}
+function hasRecoverableProviderSubmission(value: unknown): boolean { return hasRecoverableTaskdReportCheckpoint(value); }
 function snapshotFromJson(value: string | null | undefined): FinancialAnalysisSnapshot | null { return snapshotFromValue(parseJson(value ?? null)); }
 function snapshotFromValue(value: unknown): FinancialAnalysisSnapshot | null { const row = object(value); return row && text(row.securityCode) ? row as FinancialAnalysisSnapshot : null; }
 function parseStoredTask(value: unknown): StoredTaskValue | null {
@@ -256,9 +243,9 @@ function parseStoredTask(value: unknown): StoredTaskValue | null {
   const taskId = row?.taskId === null || row?.taskId === undefined ? null : Number(row.taskId);
   return { taskId: taskId !== null && Number.isInteger(taskId) && taskId > 0 ? taskId : null, name, status, errorMessage: text(row?.errorMessage) || null, createdAt, updatedAt, completedAt: Number.isFinite(completedAt) ? completedAt : null };
 }
-function taskView(task: Pick<TaskdTask, "taskId" | "name" | "status" | "errorMessage" | "createdAt" | "updatedAt" | "completedAt"> | StoredTaskValue): StoredTaskValue { return { taskId: task.taskId ?? null, name: task.name, status: task.status, errorMessage: task.errorMessage, createdAt: task.createdAt, updatedAt: task.updatedAt, completedAt: task.completedAt }; }
-function isPendingTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean { return task?.status === "queued" || task?.status === "leased" || task?.status === "running" || task?.status === "interrupt_requested"; }
-function isTerminalTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean { return task?.status === "succeeded" || task?.status === "failed" || task?.status === "interrupted" || task?.status === "superseded"; }
+function taskView(task: Pick<TaskdTask, "taskId" | "name" | "status" | "errorMessage" | "createdAt" | "updatedAt" | "completedAt"> | StoredTaskValue): StoredTaskValue { return taskdReportTaskView(task); }
+function isPendingTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean { return isPendingTaskdReportTask(task); }
+function isTerminalTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean { return isTerminalTaskdReportTask(task); }
 function isTaskStatus(value: string): value is TaskdTask["status"] { return new Set<TaskdTask["status"]>(["queued", "leased", "running", "interrupt_requested", "succeeded", "failed", "interrupted", "superseded"]).has(value as TaskdTask["status"]); }
 function normalizeReasoningEffort(value: string | null | undefined): "low" | "medium" | "high" | "xhigh" { const normalized = text(value) || DEFAULT_REASONING_EFFORT; if (!new Set(["low", "medium", "high", "xhigh"]).has(normalized)) throw new Error("unsupported financial-analysis reasoning effort"); return normalized as "low" | "medium" | "high" | "xhigh"; }
 export function validateFinancialMarkdown(markdown: string): void { if (markdown.length < 800) throw new Error("financial analysis result is shorter than 800 characters"); const headings = new Set([...markdown.matchAll(/^# ([1-8])\. /gm)].map((match) => match[1])); if (headings.size !== 8) throw new Error("financial analysis result must contain all eight numbered H1 headings"); }

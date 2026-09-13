@@ -2,6 +2,10 @@
 
 ## Generic Research Execution Vocabulary
 
+**Taskd-managed report**:
+A durable read model in `kv_cache` that records one business-owned taskd run, its frozen input, its projected terminal artifact, and any recovery state. Synchronization only observes and projects that same run; it never creates a provider turn.
+_Avoid_: A generic queue table, a transient browser request, a prompt replay
+
 **Research work package**:
 A bounded, ordered group of research stages that shares one declared input projection and produces normalized stage artifacts for downstream owners. A work package is an execution boundary, not a new research conclusion or evidence type.
 _Avoid_: Provider-specific task, merged report text, unbounded stage bundle

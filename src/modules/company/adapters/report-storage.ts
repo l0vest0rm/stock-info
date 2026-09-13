@@ -66,6 +66,15 @@ export async function writeStoredCompanyReportDiscovery(
   });
 }
 
+/** Pending discovery rows are durable `kv_cache` read models, not a queue table. */
+export async function listCompanyReportDiscoveriesToReconcile(db: Database): Promise<string[]> {
+  const rows = await db.prepare(`select key from kv_cache
+    where namespace = ? and json_valid(value_json)
+      and json_extract(value_json, '$.task.status') in ('queued', 'running')
+    order by updated_at asc`).bind(COMPANY_REPORT_DISCOVERY_NAMESPACE).all<{ key: string }>();
+  return rows.results.map((row) => normalizeSecurityCode(row.key));
+}
+
 function parseStoredCompanyReportDiscoveryReport(value: unknown): StoredCompanyReportDiscoveryReport | null {
   const row = asRecord(value);
   const response = asRecord(row?.response);

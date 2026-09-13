@@ -4,10 +4,9 @@ import { loadFinancialStatementReadModel } from "../../finance/application/load-
 import { selectAnnualIncomeStatements } from "../../finance/domain/annual-income-statements";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import { externalHttpOptions } from "../../../shared/http";
-import { taskdWebQaInput } from "../../../shared/llm-client";
 import { taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
-import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
+import { observeTaskdReport, submitTaskdReport } from "../../../shared/taskd-report-workflow";
 import { REPORT_DISCOVERY_PROMPT } from "../../../generated/prompt-text";
 import { type AppEnv, type CompanyOverview } from "../../../types";
 import {
@@ -60,6 +59,7 @@ import {
   readAppJson,
   writeAppJson,
   readStoredCompanyReportDiscovery,
+  listCompanyReportDiscoveriesToReconcile,
   writeStoredCompanyReportDiscovery,
 } from "../adapters/report-storage";
 import {
@@ -219,16 +219,8 @@ export async function enqueueCompanyReportDiscovery(
   await loadMaterializedCompanyReportSourcePool(env, code);
   const prepared = await prepareCompanyReportDiscoveryExecution(env.DB, code, reasoningEffort);
   const name = companyReportDiscoveryTaskName(code);
-  const task = await taskdCallerClient(env).submit({
-    name,
-    taskType: REPORT_DISCOVERY_TASK_TYPE,
-    payload: taskdWebQaInput(env, {
-      model: REPORT_LLM_MODEL,
-      reasoningEffort: prepared.reasoningEffort as "low" | "medium" | "high" | "xhigh",
-      waitTimeoutMs: prepared.jobTimeoutMs,
-      messages: [{ role: "user", content: prepared.prompt }],
-    }, name),
-  });
+  const task = await submitTaskdReport(env, { name, taskType: REPORT_DISCOVERY_TASK_TYPE, model: REPORT_LLM_MODEL,
+    reasoningEffort: prepared.reasoningEffort as "low" | "medium" | "high" | "xhigh", waitTimeoutMs: prepared.jobTimeoutMs, prompt: prepared.prompt });
   const stored = await persistCompanyReportDiscoveryTaskSnapshot(env.DB, code, await readStoredCompanyReportDiscovery(env.DB, code), task);
   return { accepted: true, task: stored.task };
 }
@@ -726,12 +718,20 @@ export async function loadCompanyReportDiscoverySnapshot(
   securityCode: string,
 ): Promise<StoredCompanyReportDiscoveryValue | null> {
   const code = normalizeSecurityCode(securityCode);
+  return readStoredCompanyReportDiscovery(env.DB, code);
+}
+
+/** Explicit observation/projection; normal report-page reads never contact taskd. */
+export async function syncCompanyReportDiscovery(env: AppEnv["Bindings"], securityCode: string): Promise<StoredCompanyReportDiscoveryValue | null> {
+  if (env.LLM_RUNTIME !== "local") throw new Error("company report discovery synchronization is only available in local LLM runtime");
+  const code = normalizeSecurityCode(securityCode);
   let stored = await readStoredCompanyReportDiscovery(env.DB, code);
   if (env.LLM_RUNTIME !== "local" || !shouldQueryTaskdForCompanyReportDiscovery(stored)) {
     return stored;
   }
-  const state = await reconcileTaskdResult(taskdCallerClient(env), {
-    name: companyReportDiscoveryTaskName(code),
+  if (!stored?.task) return stored;
+  const state = await observeTaskdReport({
+    client: taskdCallerClient(env), expected: { ...stored.task, taskId: null },
     project: (task) => projectCompanyReportDiscovery(env, code, task),
   });
   switch (state.state) {
@@ -749,6 +749,18 @@ export async function loadCompanyReportDiscoverySnapshot(
       }
       return stored;
   }
+}
+
+/** Local lifecycle polling across all report-search keys, without a new table. */
+export async function reconcileCompanyReportDiscoveries(env: AppEnv["Bindings"], onError: (code: string, error: unknown) => void = () => {}): Promise<{ inspected: number; failed: number }> {
+  if (env.LLM_RUNTIME !== "local") return { inspected: 0, failed: 0 };
+  const codes = await listCompanyReportDiscoveriesToReconcile(env.DB);
+  let failed = 0;
+  for (const code of codes) {
+    try { await syncCompanyReportDiscovery(env, code); }
+    catch (error) { failed += 1; onError(code, error); }
+  }
+  return { inspected: codes.length, failed };
 }
 
 async function persistCompanyReportDiscoveryTaskSnapshot(

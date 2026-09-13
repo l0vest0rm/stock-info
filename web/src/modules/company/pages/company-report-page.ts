@@ -1,8 +1,9 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { prepareCompanyReportContext } from '../../../platform/legacy/legacy-runtime'
 import { createCompanyReportController } from '../runtime/company-pages-runtime'
-import type { CompanyReportRow, CompanyReportStatePatch, CompanyReportDiscoveryReasoningEffort } from '../runtime/company-report-contract'
+import type { CompanyReportRow, CompanyReportStatePatch } from '../runtime/company-report-contract'
 import { knowledgeDocModalStyles } from '../../knowledge/runtime/knowledge-doc-modal'
+import { renderTaskdReportActions, renderTaskdReportIdentity, taskdReportStatus, type TaskdReportState } from '../../../shared/taskd/taskd-report-ui'
 
 const companyReportStyles = `
 ${knowledgeDocModalStyles}
@@ -15,10 +16,6 @@ ${knowledgeDocModalStyles}
   white-space: nowrap;
 }
 
-.company-report-discovery-effort {
-  flex: 0 0 5.5rem;
-  width: 5.5rem;
-}
 `
 
 
@@ -42,14 +39,6 @@ function companyReportRawResponseTitle(value: unknown): string | undefined {
   return `模型原始返回：\n${rendered || '（空）'}`
 }
 
-const companyReportDiscoveryReasoningOptions: Array<{ value: CompanyReportDiscoveryReasoningEffort, label: string }> = [
-  { value: 'low', label: '低' },
-  { value: 'medium', label: '中' },
-  { value: 'high', label: '高' },
-  { value: 'xhigh', label: '超高' },
-  { value: 'pro', label: '专业' },
-]
-
 function formatCompanyReportElapsedSeconds(value: number): string {
   const totalSeconds = Math.max(0, Math.floor(Number.isFinite(value) ? value : 0))
   const seconds = totalSeconds % 60
@@ -60,13 +49,19 @@ function formatCompanyReportElapsedSeconds(value: number): string {
   return hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(totalMinutes)}:${pad(seconds)}`
 }
 
-function formatCompanyReportDiscoveryExecution(model: unknown, reasoningEffort: unknown): string {
+function companyReportDiscoveryTaskdState(name: string | null, status: string, createdAt: number | null = null, updatedAt: number | null = null, completedAt: number | null = null): TaskdReportState {
+  if (!name) return {}
+  const taskStatus = status === 'completed'
+    ? 'succeeded'
+    : status === 'blocked'
+      ? 'interrupted'
+      : status
+  return { task: { name, status: taskStatus, createdAt, updatedAt, completedAt } }
+}
+
+function formatCompanyReportDiscoveryExecution(model: unknown): string {
   const modelText = typeof model === 'string' ? model.trim() : ''
-  const effortText = typeof reasoningEffort === 'string' ? reasoningEffort.trim() : ''
-  return [
-    modelText ? `模型 ${modelText}` : '',
-    effortText ? `推理 ${effortText}` : '',
-  ].filter(Boolean).join('，')
+  return modelText ? `模型 ${modelText}` : ''
 }
 
 function formatCompanyReportDiscoveryTimestamp(value: number | null): string {
@@ -167,14 +162,16 @@ const CompanyReportPage = defineComponent({
     const discoveryStatus = ref('idle')
     const discoveryMessage = ref('')
     const discoveryBusy = ref(false)
+    const discoveryCreatedAt = ref<number | null>(null)
+    const discoveryUpdatedAt = ref<number | null>(null)
+    const discoveryCompletedAt = ref<number | null>(null)
     const discoveryElapsedSeconds = ref(0)
     const discoveryElapsedStartAt = ref<number | null>(null)
     const discoveryElapsedEndAt = ref<number | null>(null)
     const discoveryLastSuccessfulAt = ref<number | null>(null)
     const discoveryModel = ref<string | null>(null)
-    const discoveryReasoningEffort = ref<string | null>(null)
-    const selectedDiscoveryReasoningEffort = ref<CompanyReportDiscoveryReasoningEffort>('xhigh')
     let discoveryElapsedTimer: number | null = null
+    const discoveryTaskdState = () => companyReportDiscoveryTaskdState(discoveryTaskName.value, discoveryStatus.value, discoveryCreatedAt.value, discoveryUpdatedAt.value, discoveryCompletedAt.value)
 
     const clearDiscoveryElapsedTimer = () => {
       if (discoveryElapsedTimer !== null) {
@@ -249,14 +246,20 @@ const CompanyReportPage = defineComponent({
       if (typeof detail.discoveryBusy === 'boolean') {
         discoveryBusy.value = detail.discoveryBusy
       }
+      if (detail.discoveryCreatedAt !== undefined) {
+        discoveryCreatedAt.value = optionalTimestamp(detail.discoveryCreatedAt)
+      }
+      if (detail.discoveryUpdatedAt !== undefined) {
+        discoveryUpdatedAt.value = optionalTimestamp(detail.discoveryUpdatedAt)
+      }
+      if (detail.discoveryCompletedAt !== undefined) {
+        discoveryCompletedAt.value = optionalTimestamp(detail.discoveryCompletedAt)
+      }
       if (detail.discoveryLastSuccessfulAt !== undefined) {
         discoveryLastSuccessfulAt.value = optionalTimestamp(detail.discoveryLastSuccessfulAt)
       }
       if (detail.discoveryModel !== undefined) {
         discoveryModel.value = typeof detail.discoveryModel === 'string' ? detail.discoveryModel : null
-      }
-      if (detail.discoveryReasoningEffort !== undefined) {
-        discoveryReasoningEffort.value = typeof detail.discoveryReasoningEffort === 'string' ? detail.discoveryReasoningEffort : null
       }
 
       const hasDiscoveryPatch = detail.discoveryEnabled !== undefined
@@ -270,7 +273,6 @@ const CompanyReportPage = defineComponent({
         || detail.discoveryUpdatedAt !== undefined
         || detail.discoveryLastSuccessfulAt !== undefined
         || detail.discoveryModel !== undefined
-        || detail.discoveryReasoningEffort !== undefined
       if (!hasDiscoveryPatch) {
         return
       }
@@ -363,26 +365,16 @@ const CompanyReportPage = defineComponent({
         discoveryEnabled.value
           ? h('div', { class: 'd-flex flex-wrap align-items-center justify-content-end gap-2 flex-shrink-0' }, [
             h('div', { class: 'company-report-discovery-actions d-flex align-items-center gap-2' }, [
-              h('button', {
-                type: 'button',
-                class: 'btn btn-sm btn-outline-primary company-report-discovery-trigger',
-                disabled: discoveryBusy.value,
-                onClick: () => controller?.discover(selectedDiscoveryReasoningEffort.value),
-              }, discoveryBusy.value
-                ? '正在搜索近期研报…'
-                : discoveryStatus.value === 'completed' ? '再次搜索研报' : '搜索近期研报'),
-              h('select', {
-                class: 'form-select form-select-sm company-report-discovery-effort',
-                'aria-label': '近期研报搜索推理深度',
-                value: selectedDiscoveryReasoningEffort.value,
-                disabled: discoveryBusy.value,
-                onChange: (event: Event) => {
-                  const value = (event.target as HTMLSelectElement).value
-                  if (companyReportDiscoveryReasoningOptions.some((option) => option.value === value)) {
-                    selectedDiscoveryReasoningEffort.value = value as CompanyReportDiscoveryReasoningEffort
-                  }
-                },
-              }, companyReportDiscoveryReasoningOptions.map((option) => h('option', { value: option.value }, option.label))),
+              renderTaskdReportActions({
+                state: discoveryTaskdState(),
+                busy: discoveryBusy.value,
+                className: 'd-flex gap-2',
+                buttonClass: 'btn btn-sm btn-outline-primary company-report-discovery-trigger',
+                submitLabel: '搜索近期研报',
+                resubmitLabel: '再次搜索研报',
+                onSubmit: () => { void controller?.discover() },
+                onSync: () => { void controller?.syncDiscovery() },
+              }),
             ]),
             discoveryLastSuccessfulAt.value !== null
               ? h('span', { class: 'small text-muted' }, `上次成功：${formatCompanyReportDiscoveryTimestamp(discoveryLastSuccessfulAt.value)}`)
@@ -391,8 +383,9 @@ const CompanyReportPage = defineComponent({
               ? h('span', {
                 class: `small ${['failed', 'blocked'].includes(discoveryStatus.value) ? 'text-danger' : 'text-muted'}`,
               }, [
+                discoveryTaskName.value ? taskdReportStatus(discoveryTaskdState()) : '',
                 discoveryMessage.value,
-                formatCompanyReportDiscoveryExecution(discoveryModel.value, discoveryReasoningEffort.value),
+                formatCompanyReportDiscoveryExecution(discoveryModel.value),
                 discoveryElapsedStartAt.value !== null && !discoveryBusy.value && ['completed', 'failed', 'blocked'].includes(discoveryStatus.value)
                   ? `用时 ${formatCompanyReportElapsedSeconds(discoveryElapsedSeconds.value)}`
                   : discoveryBusy.value
@@ -403,6 +396,7 @@ const CompanyReportPage = defineComponent({
           ])
           : null,
       ]),
+      renderTaskdReportIdentity(discoveryTaskdState(), 'small text-muted mb-2 d-flex flex-wrap gap-2'),
       h('div', { class: 'table-responsive' }, [
         h('table', { id: 'companyReport', class: 'table table-sm table-bordered table-hover text-nowrap' }, [
           h('thead', { class: 'table-info' }, [

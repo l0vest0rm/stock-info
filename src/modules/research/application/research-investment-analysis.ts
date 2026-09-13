@@ -1,11 +1,10 @@
 import type { Database } from "../../../platform/contracts";
 import type { AppEnv, KlineBar } from "../../../types";
-import { readResearchResult, saveResearchResult, isObservedResearchTask } from "../infrastructure/research-result-repository";
+import { readResearchResult, saveResearchResult } from "../infrastructure/research-result-repository";
 import { RESEARCH_OPERATING_ANALYSIS_PROMPT } from "../../../generated/prompt-text";
-import { taskdWebQaInput } from "../../../shared/llm-client";
 import { isTaskdReadUnavailable, taskdCallerClient, type TaskdTask } from "../../../shared/taskd-client";
-import { reconcileTaskdResult } from "../../../shared/taskd-result-projection";
 import { extractTaskdWebQaResult } from "../../../shared/taskd-webqa-result";
+import { hasRecoverableTaskdReportCheckpoint, isObservedTaskdReportTask, isPendingTaskdReportTask, isTerminalTaskdReportTask, observeTaskdReport, recoverTaskdReport, submitTaskdReport, taskdReportTaskView } from "../../../shared/taskd-report-workflow";
 import { loadKline } from "../../market/application/load-kline";
 import { loadLatestFinancialValuation, type FinancialValuationBasis } from "../../finance/application/latest-financial-valuation";
 import { getSecurity } from "../../security/application/search-securities";
@@ -98,28 +97,14 @@ export async function enqueueResearchInvestmentAnalysis(
   const current = await loadResult(env.DB, prepared.securityCode);
   const name = researchInvestmentAnalysisTaskName(prepared.securityCode);
   const normalizedReasoningEffort = normalizeReasoningEffort(options.reasoningEffort);
-  const task = await taskdCallerClient(env).submit({
-    name,
-    taskType: TASK_TYPE,
-    payload: {
-      ...taskdWebQaInput(env, {
-      model: MODEL,
-      reasoningEffort: normalizedReasoningEffort,
-      waitTimeoutMs: 2 * 60 * 60_000,
-      messages: [{ role: "user", content: prepared.prompt }],
-      }, name),
-      // The executor ignores this field; it is retained in taskd with the
-      // exact engineering snapshot that produced the submitted prompt.
-      business_input: prepared.input,
-    },
+  const task = await submitTaskdReport(env, { name, taskType: TASK_TYPE, model: MODEL, reasoningEffort: normalizedReasoningEffort, waitTimeoutMs: 2 * 60 * 60_000, prompt: prepared.prompt, businessInput: prepared.input,
     diagnostics: {
       securityCode: prepared.securityCode,
       model: MODEL,
       reasoningEffort: normalizedReasoningEffort,
       promptVersion: prepared.input.promptVersion,
       schemaVersion: prepared.input.schemaVersion,
-    },
-  });
+    } });
   await storeResult(env.DB, prepared.securityCode, mergeStoredResult(current, {
     pendingProjection: true,
     pendingInputJson: JSON.stringify(prepared.input),
@@ -145,10 +130,9 @@ export async function reconcileResearchInvestmentAnalysis(env: AppEnv["Bindings"
   const result = await loadResult(env.DB, code);
   if (!result?.task || (result.markdown && !result.pendingProjection && !isPendingTask(result.task))) return;
   try {
-    const state = await reconcileTaskdResult(taskdCallerClient(env), {
-      name: result.task.name,
+    const state = await observeTaskdReport({
+      client: taskdCallerClient(env), expected: result.task,
       project: async (task) => {
-        if (!isObservedResearchTask(result.task, task)) throw new Error("recorded research task was superseded; refusing a different run");
         const input = taskBusinessInput(task) ?? jsonObject(result.pendingInputJson ?? (result.pendingProjection && result.markdown ? null : result.inputJson));
         if (!input) throw new Error("investment analysis task has no frozen input snapshot");
         if (text(object(input.security)?.code).toUpperCase() !== code) throw new Error("investment analysis frozen input security mismatch");
@@ -159,7 +143,7 @@ export async function reconcileResearchInvestmentAnalysis(env: AppEnv["Bindings"
       await persistTaskSnapshot(env.DB, code, result, jsonObject(result.inputJson), null, {
         phase: "manual_required", reason: "taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。",
       });
-    } else if (state.state !== "projected" && isObservedResearchTask(result.task, state.task)) {
+    } else if (state.state !== "projected" && isObservedTaskdReportTask(result.task, state.task)) {
       await persistTaskSnapshot(env.DB, code, result, taskBusinessInput(state.task) ?? jsonObject(result.inputJson), state.task,
         recoveryAfterTask(result.recovery, state.task));
     } else if (state.state !== "projected") {
@@ -194,25 +178,22 @@ export async function resumeResearchInvestmentAnalysis(env: AppEnv["Bindings"], 
   if (!stored?.task) throw new Error("investment analysis has no recorded task to recover");
   if (env.LLM_RUNTIME !== "local") throw new Error("investment analysis recovery is only available in local LLM runtime");
 
-  const client = taskdCallerClient(env);
-  let remote = await client.get(stored.task.name);
+  const recovered = await recoverTaskdReport(taskdCallerClient(env), stored.task);
+  let remote = recovered.task;
   let recovery = stored.recovery;
   if (!remote) {
     recovery = {
       phase: "manual_required",
       reason: "taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。",
     };
-  } else if (!isObservedResearchTask(stored.task, remote)) {
-    throw new Error("recorded investment task was superseded; refusing to recover another run");
+  } else if (recovered.recoverable) {
+    recovery = {
+      phase: "recovering",
+      reason: "正在只读找回已提交的 ChatGPT 结果；不会重发提示词。",
+    };
   } else if (remote.status === "failed") {
     if (hasRecoverableProviderCheckpoint(remote.checkpoint)) {
-      // `recover` preserves the same task name/id and is the only permitted
-      // follow-up after a potentially side-effecting provider submission.
-      remote = await client.recover(stored.task.name);
-      recovery = remote ? {
-        phase: "recovering",
-        reason: "正在只读找回已提交的 ChatGPT 结果；不会重发提示词。",
-      } : {
+      recovery = {
         phase: "manual_required",
         reason: "taskd 未能重新排队原任务，无法确认已提交的 ChatGPT 会话。",
       };
@@ -517,18 +498,7 @@ function parseRecovery(value: unknown): RecoveryState {
   }
   return noRecovery();
 }
-function hasRecoverableProviderCheckpoint(value: unknown): boolean {
-  const checkpoint = object(value);
-  // taskd treats a canonical provider URL as sufficient to reopen the exact
-  // turn. Older CEA executions publish that URL plus their CEA resume state,
-  // but predate the private provider_submission.v1 marker.
-  if (Boolean(text(checkpoint?.provider_url))) return true;
-  const submission = object(checkpoint?.submission);
-  const state = text(submission?.state) || text(checkpoint?.submission_state);
-  return text(submission?.schema_version) === "provider_submission.v1"
-    && Boolean(text(submission?.marker))
-    && (state === "click_issued" || state === "url_bound");
-}
+function hasRecoverableProviderCheckpoint(value: unknown): boolean { return hasRecoverableTaskdReportCheckpoint(value); }
 function recoveryAfterTask(current: RecoveryState, task: TaskdTask): RecoveryState {
   if (current.phase === "recovering" && isTerminalTask(task)) {
     return {
@@ -565,12 +535,8 @@ function parseStoredTask(value: unknown): StoredTaskValue | null {
     completedAt: Number.isFinite(completedAt) ? completedAt : null,
   };
 }
-function isPendingTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean {
-  return task?.status === "queued" || task?.status === "leased" || task?.status === "running" || task?.status === "interrupt_requested";
-}
-function isTerminalTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean {
-  return task?.status === "succeeded" || task?.status === "failed" || task?.status === "interrupted" || task?.status === "superseded";
-}
+function isPendingTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean { return isPendingTaskdReportTask(task); }
+function isTerminalTask(task: StoredTaskValue | TaskdTask | null | undefined): boolean { return isTerminalTaskdReportTask(task); }
 function isTaskStatus(value: string): value is TaskdTask["status"] {
   return new Set<TaskdTask["status"]>(["queued", "leased", "running", "interrupt_requested", "succeeded", "failed", "interrupted", "superseded"]).has(value as TaskdTask["status"]);
 }

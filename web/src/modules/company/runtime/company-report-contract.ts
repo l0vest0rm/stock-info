@@ -59,8 +59,4 @@ export type CompanyReportStatePatch = {
   discoveryUpdatedAt?: number | null
   discoveryLastSuccessfulAt?: number | null
   discoveryModel?: string | null
-  discoveryReasoningEffort?: string | null
 }
-
-
-export type CompanyReportDiscoveryReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'pro'
