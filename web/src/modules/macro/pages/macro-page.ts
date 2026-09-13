@@ -4,7 +4,7 @@ import { AriaComponent, GridComponent, TooltipComponent } from "echarts/componen
 import { CanvasRenderer } from "echarts/renderers";
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref, watch, type PropType } from "vue";
 import { createMacroValueFormatter, formatMacroValue } from "./macro-value-format";
-import { renderTaskdMarkdown, renderTaskdReportActions, renderTaskdReportIdentity, renderTaskdReportMessage, taskdReportFailed, taskdReportPending, taskdReportStatus } from "../../../shared/taskd/taskd-report-ui";
+import { renderTaskdReportDiagnostics, renderTaskdMarkdown, renderTaskdReportActions, renderTaskdReportIdentity, renderTaskdReportMessage, taskdReportFailed, taskdReportPending, taskdReportStatus } from "../../../shared/taskd/taskd-report-ui";
 
 type Region = { code: string; name: string; sort: number };
 type Category = { id: number; code: string; name: string; sort: number };
@@ -40,7 +40,7 @@ type ApiEnvelope<T> = { code: number; msg: string; data: T };
 type MacroTask = { name?: string; status?: "queued" | "leased" | "running" | "interrupt_requested" | "succeeded" | "failed" | "interrupted" | "superseded"; errorMessage?: string | null; createdAt?: number; completedAt?: number | null };
 type MacroRecovery = { phase?: "none" | "recovering" | "manual_required"; reason?: string | null };
 type MacroReport = { markdown?: string; projectedAt?: number | null };
-type MacroAnalysis = { availability?: "available" | "empty" | "pending" | "failed"; task?: MacroTask | null; recovery?: MacroRecovery | null; report?: MacroReport | null; resume?: { available?: boolean } | null };
+type MacroAnalysis = { availability?: "available" | "empty" | "pending" | "failed"; task?: MacroTask | null; recovery?: MacroRecovery | null; report?: MacroReport | null; resume?: { available?: boolean } | null; canManageLocally?: boolean };
 
 echarts.use([AriaComponent, CanvasRenderer, GridComponent, LineChart, TooltipComponent]);
 
@@ -170,13 +170,13 @@ const MacroPage = defineComponent({
       h("section", { class: "macro-hero" }, [h("div", { class: "macro-eyebrow" }, "DATA-DRIVEN MACRO DIRECTORY"), h("h1", "宏观指标浏览器"), h("p", "按目录元数据浏览各地区、分类和统计口径。当前值、同比、环比和趋势均保留数据期、发布时间与不可用原因。"), catalog.value ? h("div", { class: "macro-updated" }, `目录更新于 ${formatTimestamp(catalog.value.generatedAt)}`) : null]),
       h("section", { class: "macro-analysis", "data-macro-analysis": "taskd" }, [
         h("div", { class: "macro-analysis-head" }, [
-          h("div", [h("h2", ["全球宏观投资分析", h("span", { class: `macro-analysis-status ${taskdReportFailed(analysis.value) ? "failed" : taskdReportPending(analysis.value) ? "pending" : ""}` }, taskdReportStatus(analysis.value))]), h("p", "手动提交 taskd 任务，按指定研究框架用 Web Search 核验中美与全球美元流动性。本地运行期会每 15 秒只读同步状态并投影已校验报告；页面不会自动提交或重放提示词。"), renderTaskdReportIdentity(analysis.value, "macro-analysis-meta")]),
-          h("div", { class: "macro-analysis-controls" }, [renderTaskdReportActions({ state: analysis.value, busy: analysisBusy.value, className: "macro-analysis-controls", buttonClass: "primary", submitLabel: "生成宏观分析", resubmitLabel: "重新生成分析", onSubmit: () => { void submitAnalysis(); }, onSync: () => { void syncAnalysis(); }, onResume: () => { void resumeAnalysis(); } })]),
+          h("div", [h("h2", ["全球宏观投资分析", h("span", { class: `macro-analysis-status ${taskdReportFailed(analysis.value) ? "failed" : taskdReportPending(analysis.value) ? "pending" : ""}` }, taskdReportStatus(analysis.value))]), renderTaskdReportDiagnostics(analysis.value, h("p", "本地运行期可生成、同步和找回已提交任务；合格报告会自动发布到线上。")), renderTaskdReportIdentity(analysis.value, "macro-analysis-meta")]),
+          analysis.value?.canManageLocally ? h("div", { class: "macro-analysis-controls" }, [renderTaskdReportActions({ enabled: true, state: analysis.value, busy: analysisBusy.value, className: "macro-analysis-controls", buttonClass: "primary", submitLabel: "生成宏观分析", resubmitLabel: "重新生成分析", onSubmit: () => { void submitAnalysis(); }, onSync: () => { void syncAnalysis(); }, onResume: () => { void resumeAnalysis(); } })]) : null,
         ]),
         h("div", { class: "macro-analysis-body" }, [
           analysisLoading.value ? h("div", { class: "macro-analysis-message" }, "正在读取已保存的宏观任务状态…") : null,
           ...renderTaskdReportMessage(analysis.value, analysisError.value, "任务已提交给 taskd。本地运行期会周期性只读同步状态与已校验报告；也可立即手动同步。", "macro-analysis-message"),
-          analysis.value?.report?.markdown ? [h("div", { class: "macro-analysis-meta" }, `报告投影时间：${formatTimestamp(String(analysis.value.report.projectedAt ?? ""))}`), h("article", { class: "macro-analysis-report" }, renderTaskdMarkdown(analysis.value.report.markdown))] : !analysisLoading.value && !analysisError.value && !taskdReportPending(analysis.value) ? h("div", { class: "macro-analysis-message" }, "尚无已完成的全球宏观投资分析。点击“生成宏观分析”手动提交任务。") : null,
+          analysis.value?.report?.markdown ? [h("div", { class: "macro-analysis-meta" }, `报告更新时间：${formatTimestamp(String(analysis.value.report.projectedAt ?? ""))}`), h("article", { class: "macro-analysis-report" }, renderTaskdMarkdown(analysis.value.report.markdown))] : !analysisLoading.value && !analysisError.value && !taskdReportPending(analysis.value) ? h("div", { class: "macro-analysis-message" }, analysis.value?.canManageLocally ? "尚无已完成的全球宏观投资分析。点击“生成宏观分析”开始本地生成。" : "尚无已发布的全球宏观投资分析。") : null,
         ]),
       ]),
       error.value ? h("div", { class: "macro-error" }, [error.value, h("button", { class: "btn btn-sm btn-outline-danger ms-3", onClick: () => void loadCatalog() }, "重试")]) : null,

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import { resolve, basename, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build, defineConfig } from 'vite'
-import { buildPages } from './page-build-config.mjs'
+import { buildPages, buildRuntime } from './page-build-config.mjs'
 
 // One graph for layout, Vue pages and transitional legacy adapters means every
 // browser page loads one Vue instance and one instance of shared services.
@@ -42,7 +42,10 @@ for (const page of buildPages) {
 try {
   await build(defineConfig({
     configFile: false,
-    define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('production'),
+      __STOCK_INFO_LOCAL_PAGES__: JSON.stringify(buildRuntime === 'local'),
+    },
     publicDir: false,
     build: {
       emptyOutDir: false,

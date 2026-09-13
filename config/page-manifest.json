@@ -107,7 +107,7 @@
   {
     "path": "/company-trade.html",
     "entry": "src/modules/company/pages/company-trade-page.ts",
-    "runtime": "all",
+    "runtime": "local",
     "legacy": true,
     "globalName": "LicaiCompanyTradePage"
   },
@@ -177,7 +177,7 @@
   {
     "path": "/information-processing.html",
     "entry": "src/modules/knowledge/pages/information-processing-page.ts",
-    "runtime": "all",
+    "runtime": "local",
     "legacy": true,
     "globalName": "LicaiInformationProcessingPage"
   },
@@ -212,14 +212,14 @@
   {
     "path": "/option-strategy.html",
     "entry": "src/modules/options/pages/option-strategy-page.ts",
-    "runtime": "all",
+    "runtime": "local",
     "legacy": true,
     "globalName": "LicaiOptionStrategyPage"
   },
   {
     "path": "/research-news.html",
     "entry": "src/modules/knowledge/pages/knowledge-news-page.ts",
-    "runtime": "all",
+    "runtime": "local",
     "legacy": true,
     "globalName": "LicaiKnowledgeNewsPage"
   },

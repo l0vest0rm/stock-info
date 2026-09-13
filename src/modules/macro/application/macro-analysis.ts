@@ -38,7 +38,7 @@ export function macroAnalysisTaskName(): string { return TASK_NAME; }
 /** Read model only: opening the page never contacts taskd or a model. */
 export async function loadMacroAnalysis(env: AppEnv["Bindings"]) {
   const result = await loadStored(env.DB);
-  return result ? response(result) : emptyResponse();
+  return { ...(result ? response(result) : emptyResponse()), canManageLocally: env.LLM_RUNTIME === "local" };
 }
 
 /**

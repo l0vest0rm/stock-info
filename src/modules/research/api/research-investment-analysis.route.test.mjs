@@ -25,6 +25,19 @@ test("investment-analysis synchronization remains unavailable outside the local 
   assert.match(body.msg, /synchronization is only available in local research runtime/);
 });
 
+test("production research reads are explicitly read-only and do not need taskd", async () => {
+  const db = { prepare: () => ({ bind() { return this; }, first: async () => null }) };
+  for (const path of [
+    "/research/company/300308.SZ/investment-analysis",
+    "/research/company/300308.SZ/financial-analysis",
+  ]) {
+    const response = await researchRoutes.request(`http://example.test${path}`, undefined, { LLM_RUNTIME: "production", DB: db });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.data.canManageLocally, false);
+  }
+});
+
 test("retired research workbench routes are not registered", async () => {
   for (const [path, init] of [
     ["/research/company/300308.SZ/forecasts", {}],

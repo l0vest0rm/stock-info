@@ -52,6 +52,23 @@ STOCK_INFO_TASKD_CALLER_TOKEN="<taskd-stock-info-caller-token>"
 `queued`、`running` 这类中间态时，才继续向 taskd 对账；从未提交过任务或已经是稳态结果时，
 不应把 taskd 当成默认查询源。
 
+### 已完成报告发布凭据
+
+本地调度器会在 taskd 结果通过业务校验并投影后，向生产 Worker 的
+`/api/internal/report-sync` 发送已完成的宏观、完整投资、财务和公司研报发现只读模型。
+该入口不执行 LLM/taskd 调用，且只接受 Cloudflare 运行期的 Bearer 鉴权请求；按
+`updatedAt` 单调写入，重试不会覆盖较新的线上结果。
+
+要启用该发布，在忽略的 `.dev.vars` 中配置与生产 Worker `REPORT_SYNC_TOKEN` secret 相同的值：
+
+```text
+REPORT_SYNC_TOKEN="<random-shared-report-sync-token>"
+```
+
+`PRODUCTION_REPORT_SYNC_URL` 默认是 `https://tinfo.cc/api/internal/report-sync`；仅在需要指向
+明确的非生产测试 Worker 时覆盖它。缺少任一配置时，调度器保持本地结果并跳过发布，不会重试
+模型任务，也不会把已完成任务标记为失败。不要把 token 放入 `wrangler.jsonc`、源码或 Git。
+
 ## 命令
 
 ```bash

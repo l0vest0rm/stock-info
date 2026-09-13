@@ -1,5 +1,7 @@
 export type PageInitializer = () => void | Promise<void>
 
+declare const __STOCK_INFO_LOCAL_PAGES__: boolean
+
 type LegacyPageRegistryContext = Record<string, any>
 
 const initStaticPage: PageInitializer = () => {}
@@ -214,6 +216,7 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
       })
     }
     case 'company-trade.html': {
+      if (!__STOCK_INFO_LOCAL_PAGES__) return null
       const { createCompanyTradeInitializer } = await import('../../modules/company/runtime/company-trade-runtime')
       return createCompanyTradeInitializer({
         getCode: context.getCode,
@@ -233,6 +236,7 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
       })
     }
     case 'company-option.html': {
+      if (!__STOCK_INFO_LOCAL_PAGES__) return null
       const { createCompanyOptionInitializer } = await import('../../modules/company/runtime/company-option-runtime')
       return createCompanyOptionInitializer({
         getCode: context.getCode,
@@ -246,6 +250,7 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
       })
     }
     case 'company-option-theta.html': {
+      if (!__STOCK_INFO_LOCAL_PAGES__) return null
       const { createCompanyOptionThetaInitializer } = await import('../../modules/company/runtime/company-option-theta-runtime')
       return createCompanyOptionThetaInitializer({
         getCode: context.getCode,
@@ -335,6 +340,7 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
       })
     }
     case 'research-news.html':
+      if (!__STOCK_INFO_LOCAL_PAGES__) return null
       return createKnowledgeNewsPageInitializer(context)
     default:
       return null

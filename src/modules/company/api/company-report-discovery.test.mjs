@@ -298,7 +298,7 @@ test("discovery capability returns enabled with no task when kv_cache has no sna
   }
 });
 
-test("discovery capability refreshes only pending task state from taskd and persists it", async () => {
+test("discovery synchronization refreshes only pending task state from taskd and persists it", async () => {
   const db = new FakeD1();
   await writeStoredCompanyReportDiscovery(db, "603986.SH", {
     report: null,
@@ -335,8 +335,8 @@ test("discovery capability refreshes only pending task state from taskd and pers
 
   try {
     const response = await companyRoutes.request(
-      "http://example.test/company/reports/discovery-capability?code=603986.SH",
-      {},
+      "http://example.test/company/reports/discover/sync?code=603986.SH",
+      { method: "POST" },
       {
         LLM_RUNTIME: "local",
         DB: db,

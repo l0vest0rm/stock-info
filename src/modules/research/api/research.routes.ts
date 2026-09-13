@@ -30,7 +30,7 @@ researchRoutes.get("/research/company/:code/investment-analysis", async (c) => {
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   try {
-    return ok(c, await loadResearchInvestmentAnalysis(c.env, code));
+    return ok(c, { ...(await loadResearchInvestmentAnalysis(c.env, code)), canManageLocally: canWriteResearchLocally(c.env) });
   } catch (error) {
     return fail(c, 400, error instanceof Error ? error.message : String(error));
   }
@@ -40,7 +40,7 @@ researchRoutes.get("/research/company/:code/financial-analysis", async (c) => {
   const code = normalizeSecurityCode(c.req.param("code"));
   if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
   try {
-    return ok(c, await loadResearchFinancialAnalysis(c.env, code));
+    return ok(c, { ...(await loadResearchFinancialAnalysis(c.env, code)), canManageLocally: canWriteResearchLocally(c.env) });
   } catch (error) {
     return fail(c, 400, error instanceof Error ? error.message : String(error));
   }

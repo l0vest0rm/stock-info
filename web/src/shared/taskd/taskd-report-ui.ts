@@ -2,7 +2,7 @@ import { h, type VNodeChild } from "vue";
 
 export type TaskdReportTask = { taskId?: number | string | null; name?: string; status?: string; errorMessage?: string | null; createdAt?: number | null; updatedAt?: number | null; completedAt?: number | null };
 export type TaskdReportRecovery = { phase?: "none" | "recovering" | "manual_required"; reason?: string | null };
-export type TaskdReportState = { task?: TaskdReportTask | null; recovery?: TaskdReportRecovery | null; report?: { markdown?: string } | null; resume?: { available?: boolean } | null };
+export type TaskdReportState = { canManageLocally?: boolean; task?: TaskdReportTask | null; recovery?: TaskdReportRecovery | null; report?: { markdown?: string } | null; resume?: { available?: boolean } | null };
 
 export function taskdReportPending(state: TaskdReportState | null | undefined): boolean {
   const status = state?.task?.status;
@@ -19,15 +19,20 @@ export function taskdReportFailed(state: TaskdReportState | null | undefined): b
   return state?.recovery?.phase === "manual_required" || state?.task?.status === "failed" || state?.task?.status === "interrupted" || state?.task?.status === "superseded";
 }
 
-/** Stable taskd diagnostics, shown consistently wherever a task is visible. */
+/** Development-only content uses the capability supplied by the runtime API. */
+export function renderTaskdReportDiagnostics(state: TaskdReportState | null | undefined, content: VNodeChild): VNodeChild | null {
+  return state?.canManageLocally === true ? content : null;
+}
+
+/** Report timestamps are public; execution identifiers are local diagnostics. */
 export function renderTaskdReportIdentity(state: TaskdReportState | null | undefined, className = "taskd-report-meta"): VNodeChild | null {
   const task = state?.task;
   if (!task) return null;
   const fields: Array<{ label: string; value: string; code?: boolean }> = [];
   const taskId = task.taskId === null || task.taskId === undefined ? "" : String(task.taskId).trim();
   const name = String(task.name || "").trim();
-  if (taskId) fields.push({ label: "taskd ID", value: taskId, code: true });
-  if (name) fields.push({ label: "taskd 业务名", value: name, code: true });
+  if (state?.canManageLocally === true && taskId) fields.push({ label: "taskd ID", value: taskId, code: true });
+  if (state?.canManageLocally === true && name) fields.push({ label: "taskd 业务名", value: name, code: true });
   const createdAt = formatTaskdReportTimestamp(task.createdAt);
   const updatedAt = formatTaskdReportTimestamp(task.updatedAt);
   const completedAt = formatTaskdReportTimestamp(task.completedAt);
@@ -40,6 +45,7 @@ export function renderTaskdReportIdentity(state: TaskdReportState | null | undef
 
 export function renderTaskdReportActions(options: {
   state: TaskdReportState | null | undefined;
+  enabled?: boolean;
   busy?: boolean;
   className?: string;
   buttonClass?: string;
@@ -48,7 +54,8 @@ export function renderTaskdReportActions(options: {
   onSubmit(): void;
   onSync?(): void;
   onResume?(): void;
-}): VNodeChild {
+}): VNodeChild | null {
+  if (options.enabled === false) return null;
   const disabled = Boolean(options.busy) || taskdReportPending(options.state);
   return h("div", { class: options.className || "taskd-report-actions" }, [
     options.state?.task && options.onSync ? h("button", { type: "button", class: options.buttonClass, disabled: options.busy, onClick: options.onSync }, options.busy ? "正在同步" : "同步 taskd 状态") : null,
@@ -58,6 +65,9 @@ export function renderTaskdReportActions(options: {
 }
 
 export function renderTaskdReportMessage(state: TaskdReportState | null | undefined, error: string | null | undefined, pendingMessage: string, className = "taskd-report-message"): VNodeChild[] {
+  if (state?.canManageLocally !== true) {
+    return error ? [h("div", { class: `${className} error`, role: "alert" }, "报告暂时无法加载，请稍后重试。")] : [];
+  }
   const recovery = state?.recovery;
   const task = state?.task;
   return [

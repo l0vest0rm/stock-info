@@ -1,36 +1,21 @@
 import { defineComponent, h } from "vue";
-import { navConfig } from "../config/navigation";
+import { navConfig, visibleNavigationItems } from "../config/navigation";
 
 type NavItem = {
   href: string;
   text: string;
 };
 
-function isLocalHost(): boolean {
-  return (
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname === "0.0.0.0"
-  );
-}
-
 function subnavItems(kind: string): NavItem[] {
-  const filterLocalOnly = (items: NavItem[]) =>
-    items.filter((item) => {
-      if (item.href === "company-option.html") {
-        return isLocalHost();
-      }
-      return true;
-    });
   switch (kind) {
     case "companies":
-      return navConfig.companiesNav;
+      return visibleNavigationItems(navConfig.companiesNav);
     case "company":
-      return filterLocalOnly(navConfig.companyNav);
+      return visibleNavigationItems(navConfig.companyNav);
     case "fund":
-      return navConfig.fundNav;
+      return visibleNavigationItems(navConfig.fundNav);
     case "index":
-      return navConfig.indexNav;
+      return visibleNavigationItems(navConfig.indexNav);
     default:
       return [];
   }

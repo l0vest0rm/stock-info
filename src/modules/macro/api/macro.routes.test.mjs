@@ -16,6 +16,14 @@ test("macro taskd analysis writes stay unavailable outside the local LLM runtime
   }
 });
 
+test("production macro analysis read model is explicitly read-only", async () => {
+  const db = { prepare: () => ({ bind() { return this; }, first: async () => null }) };
+  const response = await macroRoutes.request("http://macro.test/macro/analysis", undefined, { LLM_RUNTIME: "production", DB: db });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.data.canManageLocally, false);
+});
+
 test("macro API is catalog driven and applies asOf before derived measurements", async () => {
   const directory = await mkdtemp(join(tmpdir(), "stock-info-macro-api-"));
   try {

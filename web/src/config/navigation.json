@@ -4,9 +4,9 @@
     {"href": "macro.html", "text": "宏观"},
     {"href": "companies-filter.html", "text": "公司"},
     {"href": "funds.html", "text": "基金"},
-    {"href": "research-news.html", "text": "研报资讯"},
-    {"href": "information-processing.html", "text": "信息整理"},
-    {"href": "option-strategy.html", "text": "期权策略"},
+    {"href": "research-news.html", "text": "研报资讯", "runtime": "local"},
+    {"href": "information-processing.html", "text": "信息整理", "runtime": "local"},
+    {"href": "option-strategy.html", "text": "期权策略", "runtime": "local"},
     {"href": "13f.html", "text": "13F"}
   ],
   "companiesNav": [
@@ -20,9 +20,9 @@
   "companyNav": [
     {"href": "company.html", "text": "股价表现"},
     {"href": "investment-analysis.html", "text": "投资分析"},
-    {"href": "company-trade.html", "text": "买卖建议"},
-    {"href": "company-option.html", "text": "期权"},
-    {"href": "company-option-theta.html", "text": "时间损耗"},
+    {"href": "company-trade.html", "text": "买卖建议", "runtime": "local"},
+    {"href": "company-option.html", "text": "期权", "runtime": "local"},
+    {"href": "company-option-theta.html", "text": "时间损耗", "runtime": "local"},
     {"href": "company-finance.html", "text": "财务指标"},
     {"href": "company-holders.html", "text": "股东分析"},
     {"href": "company-dividend.html", "text": "分红融资"},

@@ -1,5 +1,5 @@
 import { createApp, defineComponent, h, onMounted, onUnmounted, ref } from "vue";
-import { renderTaskdMarkdown, renderTaskdReportActions, renderTaskdReportIdentity, renderTaskdReportMessage, taskdReportPending, taskdReportStatus } from "../../../shared/taskd/taskd-report-ui";
+import { renderTaskdReportDiagnostics, renderTaskdMarkdown, renderTaskdReportActions, renderTaskdReportIdentity, renderTaskdReportMessage, taskdReportPending, taskdReportStatus } from "../../../shared/taskd/taskd-report-ui";
 
 const DEFAULT_CODE = "300308.SZ";
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -10,7 +10,7 @@ type Recovery = { phase?: "none" | "recovering" | "manual_required"; reason?: st
 type ReportEvidenceItem = { text?: string | null; title?: string | null; url?: string | null };
 type Report = { markdown?: string; citations?: ReportEvidenceItem[]; sources?: ReportEvidenceItem[]; terminalMetadata?: Json | null; projectedAt?: number };
 type ReportVersion = { status?: "current" | "legacy" | "unknown"; inputSchemaVersion?: string | null; currentInputSchemaVersion?: string | null };
-type InvestmentAnalysis = { availability?: "available" | "empty" | "pending" | "failed"; task?: Task | null; recovery?: Recovery | null; input?: Json | null; report?: Report | null; reportVersion?: ReportVersion | null; resume?: { available?: boolean; reason?: string } | null };
+type InvestmentAnalysis = { availability?: "available" | "empty" | "pending" | "failed"; task?: Task | null; recovery?: Recovery | null; input?: Json | null; report?: Report | null; reportVersion?: ReportVersion | null; resume?: { available?: boolean; reason?: string } | null; canManageLocally?: boolean };
 type CompanyOverview = { name?: string; latestPrice?: number | null; pctChange?: number | null; marketCapYi?: number | null };
 type KlineBar = { date?: string; close?: number | null };
 type IncomeStatement = { parentNetprofit?: number | null };
@@ -179,23 +179,24 @@ const App = defineComponent({
       const recovery = model.value?.recovery || null;
       const recovering = isRecovering(recovery);
       const reportVersion = model.value?.reportVersion || null;
+      const canManageLocally = model.value?.canManageLocally === true;
       const promptInput = model.value?.input ? JSON.stringify(model.value.input, null, 2) : "";
       return h("main", { class: "ia" }, [
         h("style", `${styles}${recoveryStyles}`),
         h("div", { class: "container ia-shell" }, [
-          h("section", { class: "ia-hero" }, [h("div", { class: "ia-kicker" }, "TASKD · CHATGPT"), h("h1", "完整投资研究"), h("p", "stock-info 先工程化获取并冻结证券和财务必要输入，再提交一份 ChatGPT 投资分析任务给 taskd。页面只按业务 name 读取最终状态和已校验的报告。")]),
+          h("section", { class: "ia-hero" }, [h("div", { class: "ia-kicker" }, "INVESTMENT RESEARCH"), h("h1", "完整投资研究"), renderTaskdReportDiagnostics(model.value, h("p", "本地运行期可生成并校验研究报告；合格报告会自动同步到线上。"))]),
           loading.value ? h("section", { class: "ia-report", style: "margin-top:16px" }, "正在读取任务状态…") : h("div", { class: "ia-document" }, [
             h("section", { class: "ia-report" }, [
               h("div", { class: "ia-report-head" }, [
-                h("div", [h("h2", ["完整投资研究", h("span", { class: `ia-status ${recovery?.phase === "manual_required" || task?.status === "failed" ? "failed" : ""}` }, taskdReportStatus(model.value))]), h("p", "一份任务完成公司、行业、竞争、风险与估值分析；刷新会以相同业务 name 提交新任务，taskd 自动替代尚未完成的旧任务。"), renderTaskdReportIdentity(model.value, "ia-meta")]),
-                h("div", { class: "ia-controls" }, [renderTaskdReportActions({ state: model.value, busy: syncing.value, className: "ia-controls", buttonClass: "ia-refresh", submitLabel: "生成完整研究", resubmitLabel: "重新生成报告", onSubmit: () => { void refresh(); }, onSync: () => { void sync(); }, onResume: () => { void resume(); } })]),
+                h("div", [h("h2", ["完整投资研究", h("span", { class: `ia-status ${recovery?.phase === "manual_required" || task?.status === "failed" ? "failed" : ""}` }, taskdReportStatus(model.value))]), renderTaskdReportDiagnostics(model.value, h("p", "本地生成后会自动同步合格报告到线上。")), renderTaskdReportIdentity(model.value, "ia-meta")]),
+                canManageLocally ? h("div", { class: "ia-controls" }, [renderTaskdReportActions({ enabled: canManageLocally, state: model.value, busy: syncing.value, className: "ia-controls", buttonClass: "ia-refresh", submitLabel: "生成完整研究", resubmitLabel: "重新生成报告", onSubmit: () => { void refresh(); }, onSync: () => { void sync(); }, onResume: () => { void resume(); } })]) : null,
               ]),
               ...renderTaskdReportMessage(model.value, error.value, "任务已提交给 taskd；页面每 5 秒读取本地状态，本地调度器周期同步 taskd，报告完成并通过质量校验后显示。", "ia-message"),
-              reportVersion?.status === "legacy" ? h("div", { class: "ia-message", role: "status" }, `这份已完成报告使用 ${reportVersion.inputSchemaVersion || "旧版"} 输入；当前生成使用 ${reportVersion.currentInputSchemaVersion || "最新版"}。报告已保留供阅读，是否重新生成由你决定。`) : null,
-              reportVersion?.status === "unknown" ? h("div", { class: "ia-message", role: "status" }, "这份已完成报告未记录输入版本；报告已保留供阅读，是否重新生成由你决定。") : null,
+              canManageLocally && reportVersion?.status === "legacy" ? h("div", { class: "ia-message", role: "status" }, `这份已完成报告使用 ${reportVersion.inputSchemaVersion || "旧版"} 输入；当前生成使用 ${reportVersion.currentInputSchemaVersion || "最新版"}。报告已保留供阅读，是否重新生成由你决定。`) : null,
+              canManageLocally && reportVersion?.status === "unknown" ? h("div", { class: "ia-message", role: "status" }, "这份已完成报告未记录输入版本；报告已保留供阅读，是否重新生成由你决定。") : null,
               issues.length ? h("div", { class: "ia-message error", role: "alert" }, `已拒绝不符合报告契约的结果：${issues.join("；")}`) : null,
-              promptInput ? h("details", { class: "ia-prompt" }, [h("summary", "查看工程冻结输入"), h("pre", promptInput)]) : null,
-              markdown ? h("article", { class: "ia-markdown" }, renderTaskdMarkdown(markdown)) : !pending && !recovering && !error.value ? h("div", { class: "ia-message" }, `尚无 ${code} 的投资研究报告。点击“生成完整研究”后提交 ChatGPT 任务。`) : null,
+              canManageLocally && promptInput ? h("details", { class: "ia-prompt" }, [h("summary", "查看工程冻结输入"), h("pre", promptInput)]) : null,
+              markdown ? h("article", { class: "ia-markdown" }, renderTaskdMarkdown(markdown)) : !pending && !recovering && !error.value ? h("div", { class: "ia-message" }, canManageLocally ? `尚无 ${code} 的投资研究报告。点击“生成完整研究”开始本地生成。` : `尚无 ${code} 的已发布投资研究报告。`) : null,
             ]),
           ]),
         ]),

@@ -190,6 +190,7 @@ const primaryCards = [
     kicker: 'Research Feed',
     title: '研报资讯',
     copy: '把更值得看的公司研报、行业报告和资讯聚合在一个入口里。',
+    runtime: 'local',
   },
   {
     href: '13f.html',
@@ -198,6 +199,14 @@ const primaryCards = [
     copy: '跟踪海外机构的季度持仓变化，补充观察重要资金动向。',
   },
 ]
+
+function isLocalBrowserRuntime() {
+  return ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname)
+}
+
+function visibleHomeCards() {
+  return primaryCards.filter((card) => card.runtime !== 'local' || isLocalBrowserRuntime())
+}
 
 const workflowCards = [
   {
@@ -330,8 +339,8 @@ const HomePage = defineComponent({
         h('div', { class: 'row align-items-center g-4 position-relative', style: 'z-index: 1;' }, [
           h('div', { class: 'col-lg-7' }, [
             h('div', { class: 'small text-uppercase fw-bold mb-3', style: 'letter-spacing: .12em;' }, 'Investment Research Hub'),
-            h('h1', { class: 'display-5 fw-bold mb-3' }, '把股票、基金、研报资讯放到同一条研究路径里。'),
-            h('p', { class: 'lead mb-4', style: 'max-width: 42rem;' }, '先找候选标的，再看机构、财务、资讯和持仓变化。首页不做花架子，直接把最常用的入口和高价值内容放在一起。'),
+            h('h1', { class: 'display-5 fw-bold mb-3' }, '把股票、基金和公开市场数据放到同一条研究路径里。'),
+            h('p', { class: 'lead mb-4', style: 'max-width: 42rem;' }, '先找候选标的，再看机构、财务和持仓变化。首页直接把常用入口和高价值数据放在一起。'),
             h('div', { class: 'mb-3' }, exampleSearches.map((item) => h('button', {
               key: item.query,
               class: 'home-chip border-0',
@@ -340,7 +349,7 @@ const HomePage = defineComponent({
                 query.value = item.query
               },
             }, item.label))),
-            h('div', { class: 'small text-white-50' }, '覆盖股票、基金、研报资讯、13F 持仓与多维筛选能力。'),
+          h('div', { class: 'small text-white-50' }, '覆盖股票、基金、13F 持仓与多维筛选能力。'),
           ]),
           h('div', { class: 'col-lg-5' }, [
             h('div', { class: 'home-search-shell p-3 p-lg-4' }, [
@@ -394,12 +403,12 @@ const HomePage = defineComponent({
       h('section', { class: 'mb-4 mb-lg-5' }, [
         h('div', { class: 'd-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-3' }, [
           h('div', [
-            h('h2', { class: 'home-section-title mb-2' }, '四个主入口'),
+            h('h2', { class: 'home-section-title mb-2' }, isLocalBrowserRuntime() ? '四个主入口' : '三个主入口'),
             h('p', { class: 'home-section-copy mb-0' }, '按真实研究流程组织，而不是把所有页面平铺成导航列表。'),
           ]),
-          h('a', { href: 'research-news.html', class: 'home-example-link' }, '先看研报资讯'),
+          isLocalBrowserRuntime() ? h('a', { href: 'research-news.html', class: 'home-example-link' }, '先看研报资讯') : null,
         ]),
-        h('div', { class: 'row g-3 g-lg-4' }, primaryCards.map((card) => h('div', { key: card.href, class: 'col-md-6 col-xl-3' }, [
+        h('div', { class: 'row g-3 g-lg-4' }, visibleHomeCards().map((card) => h('div', { key: card.href, class: 'col-md-6 col-xl-3' }, [
           h('a', { href: card.href, class: 'home-card' }, [
             h('div', { class: 'home-card-kicker' }, card.kicker),
             h('h3', card.title),
@@ -416,7 +425,7 @@ const HomePage = defineComponent({
               h('ol', { class: 'home-bullet-list mt-3' }, [
                 h('li', '先用公司筛选或基金筛选找到候选标的。'),
                 h('li', '再看机构持仓、板块资金流和指数对比，判断它处在什么市场环境。'),
-                h('li', '最后回到单公司、单基金或研报资讯页做更细的确认。'),
+                h('li', '最后回到单公司或单基金页做更细的确认。'),
               ]),
             ]),
           ]),
@@ -426,7 +435,7 @@ const HomePage = defineComponent({
               h('ul', { class: 'home-bullet-list' }, [
                 h('li', '把股票、基金和内容研究放到同一个站内闭环。'),
                 h('li', '公司页覆盖股价、财务、公告、研报、资讯。'),
-                h('li', '研报资讯页适合作为“每天先看什么”的入口。'),
+                isLocalBrowserRuntime() ? h('li', '研报资讯页适合作为“每天先看什么”的入口。') : null,
               ]),
             ]),
           ]),
@@ -448,7 +457,7 @@ const HomePage = defineComponent({
             h('h2', { class: 'home-section-title mb-2' }, '关于数据与使用方式'),
             h('p', { class: 'mb-2 text-secondary' }, '本站更适合做研究入口和信息聚合，不替代完整交易终端。'),
             h('ul', { class: 'home-bullet-list' }, [
-              h('li', '数据覆盖股票、基金、研报资讯与13F等公开信息。'),
+              h('li', '数据覆盖股票、基金与13F等公开信息。'),
               h('li', '更适合先收敛范围，再对个股或基金做深入查看。'),
               h('li', '内容仅供研究参考，不构成投资建议。'),
             ]),
@@ -458,7 +467,7 @@ const HomePage = defineComponent({
             h('div', { class: 'd-flex flex-column gap-2' }, [
               h('a', { href: 'company.html?code=300308.SZ', class: 'home-example-link' }, '示例公司：中际旭创'),
               h('a', { href: 'fund.html?code=513100.OF', class: 'home-example-link' }, '示例基金：纳指 ETF'),
-              h('a', { href: 'research-news.html', class: 'home-example-link' }, '去看今日研报资讯'),
+              isLocalBrowserRuntime() ? h('a', { href: 'research-news.html', class: 'home-example-link' }, '去看今日研报资讯') : null,
             ]),
           ]),
         ]),

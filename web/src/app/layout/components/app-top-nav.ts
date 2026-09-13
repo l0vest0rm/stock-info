@@ -4,7 +4,7 @@ import {
   rememberSecuritySearch,
   type SecuritySearchHistoryItem,
 } from "../../../platform/search-history";
-import { navConfig } from "../config/navigation";
+import { navConfig, visibleNavigationItems } from "../config/navigation";
 import { routeForSecuritySearch } from "../security-search-route";
 
 type SearchResult = SecuritySearchHistoryItem;
@@ -126,7 +126,7 @@ export const AppTopNav = defineComponent({
             h(
               "ul",
               { class: "nav col-12 col-lg-auto me-lg-auto mb-2 justify-content-center mb-md-0" },
-              navConfig.nav.map((item) =>
+              visibleNavigationItems(navConfig.nav).map((item) =>
                 h("li", { key: item.href }, [
                   h(
                     "a",

@@ -171,7 +171,7 @@ const CompanyReportPage = defineComponent({
     const discoveryLastSuccessfulAt = ref<number | null>(null)
     const discoveryModel = ref<string | null>(null)
     let discoveryElapsedTimer: number | null = null
-    const discoveryTaskdState = () => companyReportDiscoveryTaskdState(discoveryTaskName.value, discoveryStatus.value, discoveryCreatedAt.value, discoveryUpdatedAt.value, discoveryCompletedAt.value)
+    const discoveryTaskdState = () => ({ ...companyReportDiscoveryTaskdState(discoveryTaskName.value, discoveryStatus.value, discoveryCreatedAt.value, discoveryUpdatedAt.value, discoveryCompletedAt.value), canManageLocally: discoveryEnabled.value })
 
     const clearDiscoveryElapsedTimer = () => {
       if (discoveryElapsedTimer !== null) {

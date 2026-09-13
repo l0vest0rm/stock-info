@@ -6,6 +6,7 @@ import { dispatchScheduledTask } from "../../app/scheduled";
 import { reconcileMacroAnalysis } from "../../modules/macro/application/macro-analysis";
 import { reconcileCompanyReportDiscoveries } from "../../modules/company/application/company-reports";
 import { reconcileResearchResults } from "../../modules/research/application/reconcile-research-results";
+import { publishCompletedReportsToProduction } from "../../shared/remote-report-sync";
 import { createLocalBindings } from "./local-bindings";
 
 const configPath = resolve(process.env.LOCAL_CRON_CONFIG || "wrangler.jsonc");
@@ -71,6 +72,16 @@ async function reconcileTaskdReports(event: (event: string, details: Record<stri
   if (research.inspected) event("research-reconciled", research);
   if (macro) event("macro-reconciled", { inspected: 1 });
   if (reportDiscovery.inspected) event("company-report-discovery-reconciled", reportDiscovery);
+  // Publication is deliberately after local projection and remains separate
+  // from taskd observation. A remote outage must never make a completed local
+  // task look failed or cause a prompt retry; the next 15-second tick retries
+  // only this authorized read-model transfer.
+  try {
+    const publication = await publishCompletedReportsToProduction(bindings);
+    if (publication.published) event("reports-published-to-production", publication);
+  } catch (error) {
+    event("report-publication-failed", { error: String(error) });
+  }
 }
 
 async function main(): Promise<void> {

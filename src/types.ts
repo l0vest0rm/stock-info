@@ -23,6 +23,10 @@ export type Bindings = {
   TASKD_NAMESPACE?: string;
   STOCK_INFO_TASKD_CALLER_TOKEN?: string;
   TASKD_CALLER_TOKEN?: string;
+  /** Shared only through ignored local vars and the production Worker secret. */
+  REPORT_SYNC_TOKEN?: string;
+  /** Local-only destination for publishing validated, completed report read models. */
+  PRODUCTION_REPORT_SYNC_URL?: string;
   LLM_DAILY_LIMIT?: string;
   HTTP_PROXY_URL?: string;
   HTTP_PROXY_RELAY_URL?: string;
