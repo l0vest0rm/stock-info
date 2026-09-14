@@ -1,5 +1,6 @@
 [
   "app_kv",
+  "auth_sessions",
   "company_notices",
   "financial_statements",
   "fund_nav",
@@ -7,7 +8,6 @@
   "information_processing_jobs",
   "information_processing_jobs_v2",
   "kline_bars",
-  "kv_cache",
   "knowledge_assertion_evidence",
   "knowledge_assertions",
   "knowledge_claim_assertions",
@@ -35,6 +35,7 @@
   "knowledge_stock_aliases",
   "knowledge_view_item_claims",
   "knowledge_view_items",
+  "kv_cache",
   "llm_cache_entries",
   "llm_run_artifact_links",
   "llm_run_artifacts",
@@ -195,5 +196,6 @@
   "situation_snapshots",
   "situation_sources",
   "sync_jobs",
+  "users",
   "watchlist_items"
 ]

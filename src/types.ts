@@ -7,6 +7,14 @@ export type Bindings = {
   MARKET_DATA_BUCKET: ObjectBucket;
   RAW_BUCKET?: ObjectBucket;
   KNOWLEDGE_CONTENT_BUCKET?: ObjectBucket;
+  AUTH_LOGIN_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+  AUTH_RESET_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+  MAIL_SMTP_HOST?: string;
+  MAIL_SMTP_PORT?: string;
+  MAIL_SMTP_USERNAME?: string;
+  MAIL_SMTP_PASSWORD?: string;
+  MAIL_FROM_EMAIL?: string;
+  MAIL_FROM_NAME?: string;
   APP_VERSION?: string;
   MARKET_DATA_PUBLIC_BASE_URL?: string;
   KNOWLEDGE_CONTENT_PUBLIC_BASE_URL?: string;

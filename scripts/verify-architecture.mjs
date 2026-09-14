@@ -78,6 +78,10 @@ export async function bundleUnitTest(source, outfile, { projectRoot = root, bind
     outfile,
     bundle: true,
     platform: "node",
+  alias: { "cloudflare:sockets": resolve(projectRoot, "src/platform/node/sockets.ts") },
+    // Frontend production/local identity is injected by Vite in normal builds.
+    // Unit bundles bypass Vite, so supply the same local-runtime value here.
+    define: { __STOCK_INFO_APP_RUNTIME__: JSON.stringify("node") },
     format: "esm",
     target: "node22",
     // In particular, esbuild cannot itself be bundled into a test. Keeping

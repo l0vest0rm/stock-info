@@ -1,3 +1,4 @@
+import { currentUser, loginRedirect } from "../../auth/auth";
 import type { Assets } from "../../../platform/contracts";
 import { Hono } from "hono";
 import { fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
@@ -766,13 +767,21 @@ knowledgeRoutes.get("/knowledge/file", async (c) => {
   if (!id) {
     return fail(c, 400, "missing doc id");
   }
-  const row = await c.env.DB.prepare("select url from knowledge_docs where doc_id = ?")
+  const table = c.req.query("filtered") === "1" ? "knowledge_filtered_docs" : "knowledge_docs";
+  const row = await c.env.DB.prepare(`select url, source_type, report_type from ${table} where doc_id = ?`)
     .bind(id)
-    .first<{ url: string | null }>();
+    .first<{ url: string | null; source_type: string; report_type: string }>();
+  c.header("Cache-Control", "no-store");
+  c.header("Referrer-Policy", "no-referrer");
+  if (row && !isLocalDevelopmentRuntime(c.env) && (row.source_type === "research_report" || ["company_report", "industry_report", "research_report"].includes(row.report_type)) && !await currentUser(c.req.raw, c.env)) return loginRedirect(c.req.raw);
   if (!row?.url) {
     return fail(c, 404, "document file is not stored; original url is unavailable");
   }
-  return c.redirect(row.url, 302);
+  try {
+    const target = new URL(row.url);
+    if (!["https:", "http:"].includes(target.protocol) || target.username || target.password) return fail(c, 400, "invalid document URL");
+    return c.redirect(target.href, 302);
+  } catch { return fail(c, 400, "invalid document URL"); }
 });
 
 knowledgeRoutes.get("/knowledge/content", async (c) => {

@@ -45,6 +45,7 @@ try {
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),
       __STOCK_INFO_LOCAL_PAGES__: JSON.stringify(buildRuntime === 'local'),
+      __STOCK_INFO_APP_RUNTIME__: JSON.stringify(buildRuntime === 'local' ? 'node' : 'cloudflare'),
     },
     publicDir: false,
     build: {

@@ -1,3 +1,4 @@
+import { knowledgeReportLink } from "../../../shared/report-link"
 type KnowledgeDocFetchRequest = (request: {
   url?: string
   params?: Record<string, unknown>
@@ -324,7 +325,8 @@ export function createKnowledgeDocModalController(context: KnowledgeDocModalCont
     if (!title || !content || !meta) {
       throw new Error('knowledge document modal elements are missing')
     }
-    const originalUrl = knowledgeOriginalUrl(data)
+    const isReport = data?.source_type === 'research_report' || ['company_report', 'industry_report', 'research_report'].includes(data?.report_type || '')
+    const originalUrl = isReport ? knowledgeReportLink(trimmedDocId, filtered) : knowledgeOriginalUrl(data)
     const metaText = [
       knowledgeReportTypeText(data),
       knowledgeTargetText(data),

@@ -4,7 +4,7 @@ export type CompanyReportRow = {
   title: string
   provenance: string
   reportHref: string
-  reportInfoCode: string
+  reportLocked: boolean
   docId: string
   revenue2025: string
   revenueGrowth2025: string

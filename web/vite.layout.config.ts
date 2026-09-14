@@ -7,7 +7,10 @@ export default defineConfig(({ command }) => {
     throw new Error('Use npm run build:web to build layout and page entries together')
   }
   return {
-    define: { 'process.env.NODE_ENV': JSON.stringify('development') },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('development'),
+      __STOCK_INFO_APP_RUNTIME__: JSON.stringify('node'),
+    },
     publicDir: false,
   }
 })

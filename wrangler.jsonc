@@ -20,6 +20,10 @@
     "KNOWLEDGE_CONTENT_PUBLIC_BASE_URL": "https://content.tinfo.cc",
     "KNOWLEDGE_ALLOW_TEXT_SEARCH": "false",
   },
+  "ratelimits": [
+    { "name": "AUTH_LOGIN_LIMITER", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
+    { "name": "AUTH_RESET_LIMITER", "namespace_id": "1002", "simple": { "limit": 3, "period": 60 } }
+  ],
   "assets": {
     "directory": "./web/dist",
     "binding": "ASSETS",

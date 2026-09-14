@@ -35,7 +35,6 @@ function context(fetchRequest: CompanyReportContext['fetchRequest']): CompanyRep
   return {
     server: '', fetchRequest, fetchCodeNames: (_codes, callback) => callback({}),
     fetchFinanceIncome: (_code, callback) => callback(undefined),
-    fetchReportUrl: (_type, _code, callback) => callback(null),
     toDateString: () => '2026-09-08', getCode: () => '600519.SH',
     getCache: () => ({}), getCodeNameMap: () => ({ '600519.SH': '贵州茅台' }), echarts: {},
   }

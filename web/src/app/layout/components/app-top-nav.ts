@@ -6,6 +6,7 @@ import {
 } from "../../../platform/search-history";
 import { navConfig, visibleNavigationItems } from "../config/navigation";
 import { routeForSecuritySearch } from "../security-search-route";
+import { isLocalDevelopmentRuntime } from "../../../platform/runtime";
 
 type SearchResult = SecuritySearchHistoryItem;
 
@@ -28,6 +29,17 @@ export const AppTopNav = defineComponent({
     },
   },
   setup(props) {
+    const authEmail = ref("");
+    const authError = ref("");
+    const authenticationEnabled = !isLocalDevelopmentRuntime;
+    const logout = async () => {
+      try {
+        const response = await fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (!response.ok) throw new Error('退出失败，请重试');
+        authEmail.value = '';
+        authError.value = '';
+      } catch { authError.value = '退出失败，请重试'; }
+    };
     const query = ref("");
     const suggestions = ref<SearchResult[]>([]);
     const searching = ref(false);
@@ -87,6 +99,11 @@ export const AppTopNav = defineComponent({
     };
 
     onMounted(() => {
+      if (authenticationEnabled) {
+        void fetch('/api/auth/me').then(async (response) => {
+          if (response.ok) authEmail.value = (await response.json()).user?.email || '';
+        }).catch(() => {});
+      }
       document.addEventListener("click", closeSearchOnOutsideClick);
     });
 
@@ -210,6 +227,11 @@ export const AppTopNav = defineComponent({
                   )
                 : null,
             ]),
+            authenticationEnabled ? h('div', { class: 'd-flex align-items-center gap-2' }, authEmail.value ? [
+              h('span', { class: 'small text-truncate', style: 'max-width: 160px', title: authEmail.value }, authEmail.value),
+              h('button', { type: 'button', class: 'btn btn-sm btn-outline-light', onClick: logout }, '退出'),
+              authError.value ? h('span', { role: 'alert', class: 'small text-warning' }, authError.value) : null,
+            ] : [h('a', { class: 'btn btn-sm btn-outline-light', href: `/login.html?returnTo=${encodeURIComponent(location.pathname + location.search)}` }, '登录')]) : null,
           ]),
         ]),
       ]);

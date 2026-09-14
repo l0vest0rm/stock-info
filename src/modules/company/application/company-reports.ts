@@ -99,7 +99,8 @@ export async function getCompanyReportsWithProgress(
     loadActualAnnualProfitByYear(env, code),
   ]);
   let items = sourceItems;
-  if (page === 1) {
+  // Production reads persisted forecasts; extraction belongs to the local runtime.
+  if (page === 1 && env.LLM_RUNTIME === "local") {
     const failures = await ensureReportForecastsForItemsWithProgress(env, code, items, overview, actualAnnualProfitByYear, onProgress);
     if (failures.length > 0) onProgress({ failures });
   } else {

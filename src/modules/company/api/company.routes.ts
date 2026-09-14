@@ -18,6 +18,9 @@ import {
 } from "../application/company-reports";
 import { isCnCode } from "../domain/report-identity";
 import { aggregateForecastsForCode } from "../domain/report-valuation";
+import { currentUser } from "../../auth/auth";
+import { projectCompanyReportItemsForSession } from "./company-report-access";
+import { isLocalDevelopmentRuntime } from "../../../shared/request";
 
 export const companyRoutes = new Hono<AppEnv>();
 
@@ -87,7 +90,10 @@ companyRoutes.get("/company/reports", async (c) => {
   }
   const page = positivePage(c.req.query("page"));
   const items = await getCompanyReportsWithProgress(c.env, code, page, () => undefined);
-  return ok(c, items);
+  const authenticated = isLocalDevelopmentRuntime(c.env) || Boolean(await currentUser(c.req.raw, c.env));
+  c.header("Cache-Control", "no-store");
+  c.header("Vary", "Cookie");
+  return ok(c, projectCompanyReportItemsForSession(items, authenticated));
 });
 
 // The discovery control is intentionally advertised only by the local LLM
@@ -115,11 +121,15 @@ companyRoutes.get("/company/reports/discovery-capability", async (c) => {
 });
 
 companyRoutes.get("/company/reports/stream", async (c) => {
+  if (!isLocalDevelopmentRuntime(c.env)) {
+    return fail(c, 404, "company report progress stream is only available in local development");
+  }
   const code = requireQuery(c, "code");
   if (code instanceof Response) {
     return code;
   }
   const page = positivePage(c.req.query("page"));
+  const authenticated = true;
   const stream = new ReadableStream({
     async start(controller) {
       try {
@@ -135,7 +145,7 @@ companyRoutes.get("/company/reports/stream", async (c) => {
             );
           }
           if (event.items) {
-            controller.enqueue(encodeSseData({ type: "partial", data: event.items }));
+            controller.enqueue(encodeSseData({ type: "partial", data: projectCompanyReportItemsForSession(event.items, authenticated) }));
           }
           if (event.delta) {
             controller.enqueue(encodeSseData({ type: "delta", text: event.delta }));
@@ -144,7 +154,7 @@ companyRoutes.get("/company/reports/stream", async (c) => {
           if (event.status === "running") controller.enqueue(encodeSseData({ type: "claimed" }));
           if (event.failures?.length) controller.enqueue(encodeSseData({ type: "forecast_failures", failures: event.failures }));
         });
-        controller.enqueue(encodeSseData({ type: "result", data: items }));
+        controller.enqueue(encodeSseData({ type: "result", data: projectCompanyReportItemsForSession(items, authenticated) }));
       } catch (error) {
         controller.enqueue(
           encodeSseData({
@@ -159,9 +169,10 @@ companyRoutes.get("/company/reports/stream", async (c) => {
   });
   return new Response(stream, {
     headers: {
-      "Cache-Control": "no-cache",
+      "Cache-Control": "no-store",
       Connection: "keep-alive",
       "Content-Type": "text/event-stream; charset=utf-8",
+      Vary: "Cookie",
     },
   });
 });

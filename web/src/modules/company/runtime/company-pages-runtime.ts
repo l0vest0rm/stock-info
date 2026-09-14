@@ -1,5 +1,6 @@
 import type { CompanyReportStatePatch, CompanyReportRow } from './company-report-contract'
 import { createKnowledgeDocModalController } from '../../knowledge/runtime/knowledge-doc-modal'
+import { isLocalDevelopmentRuntime } from '../../../platform/runtime'
 
 type FetchRequest = (request: {
   url?: string
@@ -55,7 +56,6 @@ type CompanyPagesRuntimeContext = {
   fetchRequest: FetchRequest
   fetchCodeNames: (codes: string[], callback: Callback) => void
   fetchFinanceIncome: (code: string, callback: Callback) => void
-  fetchReportUrl: (qtype: string, code: string, callback: (url: string | null) => void) => void
   fetchCodesData: (codes: string[], fetcher: (code: string, callback: Callback) => void, callback: (codes: string[]) => void) => void
   fetchShareChange: (code: string, callback: (data: any) => void) => void
   toDateString: (ts: number) => string
@@ -509,14 +509,13 @@ export function createCompanyFinanceInitializer(context: Pick<CompanyPagesRuntim
   }
 }
 
-export type CompanyReportContext = Pick<CompanyPagesRuntimeContext, 'server' | 'fetchCodeNames' | 'fetchFinanceIncome' | 'fetchReportUrl' | 'toDateString' | 'getCode' | 'getCache' | 'getCodeNameMap' | 'echarts' | 'fetchRequest'>
+export type CompanyReportContext = Pick<CompanyPagesRuntimeContext, 'server' | 'fetchCodeNames' | 'fetchFinanceIncome' | 'toDateString' | 'getCode' | 'getCache' | 'getCodeNameMap' | 'echarts' | 'fetchRequest'>
 
 export function createCompanyReportController(context: CompanyReportContext, onState: (patch: CompanyReportStatePatch) => void) {
   const {
     server,
     fetchCodeNames,
     fetchFinanceIncome,
-    fetchReportUrl,
     toDateString,
     getCode,
     getCache,
@@ -579,15 +578,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
       return `已加载 ${count} 条公司研报，第 ${page} 页`
     }
     return `最近暂无公司研报，第 ${page} 页为空`
-  }
-
-  function companyReportForecastFailureStatus(failures: any[]): string {
-    const titles = failures
-      .map((item: any) => String(item?.title || '').trim())
-      .filter(Boolean)
-    const firstMessage = String(failures[0]?.message || '').trim()
-    const subject = titles.length > 0 ? `《${titles[0]}》` : '部分研报'
-    return `${subject}预测提取失败，未将其显示为空数据${firstMessage ? `：${firstMessage}` : ''}`
   }
 
   function closeCompanyReportStream(): void {
@@ -830,36 +820,12 @@ export function createCompanyReportController(context: CompanyReportContext, onS
     }
   }
 
-  function openExternalUrlWithoutReferrer(url: string): void {
-    const trimmed = String(url || '').trim()
-    if (!trimmed) {
-      return
-    }
-    const link = document.createElement('a')
-    link.href = trimmed
-    link.target = '_blank'
-    link.rel = 'noreferrer noopener'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-  }
-
   function mapCompanyReportRows(items: any[], actualFinancialMap: Map<number, AnnualFinancial>): CompanyReportRow[] {
     if (!Array.isArray(items)) {
       return []
     }
     return items.map((item: any, index: number) => {
-      let reportHref = ''
-      let reportInfoCode = ''
-      if (item.localUrl) {
-        reportHref = `${item.localUrl}#zoom=150`
-      } else if (item.url) {
-        reportHref = `${item.url}#zoom=150`
-      } else if (item.code && (item.code.endsWith('.HK') || item.code.endsWith('.US')) && item.infoCode) {
-        reportInfoCode = String(item.infoCode || '')
-      } else if (item.infoCode) {
-        reportHref = `https://pdf.dfcfw.com/pdf/H3_${item.infoCode}_1.pdf#zoom=150`
-      }
+      const reportHref = typeof item.reportUrl === 'string' ? item.reportUrl : ''
 
       const ts = item.publishDate ? Math.floor(Date.parse(item.publishDate.substring(0, 10)) / 1000) : item.ts
       const revenue2025 = formatForecastRevenueCells(item, 2025, actualFinancialMap)
@@ -886,7 +852,7 @@ export function createCompanyReportController(context: CompanyReportContext, onS
         // here and then losing the distinction in the renderer.
         provenance: String(item.provenance || '').trim().toLowerCase(),
         reportHref,
-        reportInfoCode,
+        reportLocked: item.reportLocked === true,
         docId: item.knowledgeNewsReport ? String(item.knowledgeDocId || '') : '',
         revenue2025: revenue2025[0],
         revenueGrowth2025: revenue2025[1],
@@ -992,10 +958,9 @@ export function createCompanyReportController(context: CompanyReportContext, onS
       status: companyReportLoadingStatus(companyReportCurrentPage),
       error: false,
     })
-    if (companyReportCurrentPage === 1 && typeof EventSource !== 'undefined') {
+    if (companyReportCurrentPage === 1 && isLocalDevelopmentRuntime && typeof EventSource !== 'undefined') {
       const streamURL = `${server}/api/company/reports/stream?code=${encodeURIComponent(code)}&page=${companyReportCurrentPage}`
       let finished = false
-      let forecastFailures: any[] = []
       companyReportStream = new EventSource(streamURL)
       companyReportStream.onmessage = (event) => {
         if (disposed || generation !== requestGeneration) return
@@ -1023,7 +988,9 @@ export function createCompanyReportController(context: CompanyReportContext, onS
           return
         }
         if (payload.type === 'forecast_failures') {
-          forecastFailures = Array.isArray(payload.failures) ? payload.failures : []
+          if (Array.isArray(payload.failures) && payload.failures.length > 0) {
+            console.warn('Company report forecast extraction failed:', payload.failures)
+          }
           return
         }
         if (payload.type === 'error') {
@@ -1042,12 +1009,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
           finished = true
           const items = Array.isArray(payload.data) ? payload.data : []
           renderCompanyReportRows(items, actualFinancialMap)
-          if (forecastFailures.length > 0) {
-            emitCompanyReportState({
-              status: companyReportForecastFailureStatus(forecastFailures),
-              error: true,
-            })
-          }
           closeCompanyReportStream()
           void drawValuationTrendChart(code, actualFinancialMap, items)
         }
@@ -1241,12 +1202,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
     },
     openDoc(docId: string) {
       if (!disposed && docId.trim()) void knowledgeDocModal.openByDocId(docId.trim())
-    },
-    openReport(infoCode: string) {
-      if (disposed || !infoCode) return
-      fetchReportUrl('dataeye', infoCode, (url) => {
-        if (!disposed && url) openExternalUrlWithoutReferrer(url)
-      })
     },
     discover() {
       return triggerCompanyReportDiscovery(getCode())

@@ -23,6 +23,10 @@ function companyReportProvenanceLabel(value: unknown): string {
   return String(value || '').trim().toLowerCase() === 'web_search' ? '搜索发现' : '既有来源'
 }
 
+function companyReportLoginLink(): string {
+  return `/login.html?returnTo=${encodeURIComponent(location.pathname + location.search)}`
+}
+
 function companyReportRawResponseTitle(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined
@@ -432,19 +436,14 @@ const CompanyReportPage = defineComponent({
               }, [
                 h('td', row.rank),
                 h('td', row.publishDate),
-                h('td', row.reportInfoCode
-                  ? h('a', {
-                    href: `#${row.reportInfoCode}`,
-                    name: 'infoCode',
-                    'data-code': row.reportInfoCode,
-                    onClick: (event: Event) => { event.preventDefault(); controller?.openReport(row.reportInfoCode) },
-                  }, row.title)
-                  : row.reportHref
+                h('td', row.reportHref
                     ? h('a', {
                       href: row.reportHref,
                       target: '_blank',
                       rel: 'noreferrer noopener',
                     }, row.title)
+                    : row.reportLocked
+                      ? h('a', { href: companyReportLoginLink() }, row.title)
                     : row.docId
                       ? h('a', {
                         href: `#knowledge:${row.docId}`,

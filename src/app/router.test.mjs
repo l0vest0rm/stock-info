@@ -16,6 +16,16 @@ test("one page manifest enforces local-only pages before asset access", async ()
   }
 });
 
+test("login page is unavailable in local Node and served only by Cloudflare", async () => {
+  const app = createRouter();
+  let served = 0;
+  const assets = { fetch: async () => { served += 1; return new Response("login page"); } };
+  assert.equal((await app.request("/login.html", {}, { APP_RUNTIME: "node", ASSETS: assets })).status, 404);
+  assert.equal(served, 0);
+  assert.equal((await app.request("/login.html", {}, { APP_RUNTIME: "cloudflare", ASSETS: assets })).status, 200);
+  assert.equal(served, 1);
+});
+
 test("production research GET does not contact taskd or submit a model request", async () => {
   const app = createRouter();
   const env = {

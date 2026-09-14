@@ -229,5 +229,11 @@
     "runtime": "all",
     "legacy": true,
     "globalName": "LicaiSectorFlowPage"
+  },
+  {
+    "path": "/login.html",
+    "entry": "src/modules/auth/login-page.ts",
+    "runtime": "all",
+    "legacy": false
   }
 ]

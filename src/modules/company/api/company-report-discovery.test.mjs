@@ -106,6 +106,15 @@ test("hides the discovery capability endpoint outside the local LLM runtime", as
   assert.equal(response.status, 404);
 });
 
+test("does not expose the report progress stream in the Cloudflare runtime", async () => {
+  const response = await companyRoutes.request(
+    "http://example.test/company/reports/stream?code=000001.SZ",
+    {},
+    { APP_RUNTIME: "cloudflare" },
+  );
+  assert.equal(response.status, 404);
+});
+
 test("does not expose the retired notice PDF endpoint", async () => {
   const response = await companyRoutes.request("http://example.test/notice/pdf?artCode=123");
   assert.equal(response.status, 404);

@@ -78,6 +78,9 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
+echo "Syncing account email Worker secrets..."
+CF_WORKER_NAME="$WORKER_NAME" node scripts/sync-mail-secrets.mjs
+
 if [[ "$SKIP_PREFLIGHT" -eq 0 ]]; then
   echo "Running Cloudflare release preflight..."
   ./scripts/preflight-cloudflare-release.sh

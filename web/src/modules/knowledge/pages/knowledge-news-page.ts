@@ -1,3 +1,4 @@
+import { knowledgeReportLink } from "../../../shared/report-link"
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { knowledgeDocModalStyles } from '../runtime/knowledge-doc-modal'
 
@@ -204,6 +205,10 @@ function knowledgeNewsRemotePdfUrl(row: KnowledgeNewsTableRow) {
 
 function onKnowledgeNewsTitleClick(event: Event, row: KnowledgeNewsTableRow) {
   event.preventDefault()
+  if (row.isReport) {
+    window.open(knowledgeReportLink(row.docId, row.isFiltered), '_blank', 'noopener,noreferrer')
+    return
+  }
   if (row.isFiltered) {
     emitKnowledgeNewsOpenFilteredDoc(row)
     return
@@ -288,7 +293,7 @@ function knowledgeNewsPagination(currentPage: number, hasNext: boolean): Array<{
 function knowledgeNewsTitleContent(row: KnowledgeNewsTableRow) {
   const title = row.docId
     ? h('a', {
-      href: '#',
+      href: row.isReport ? knowledgeReportLink(row.docId, row.isFiltered) : '#',
       class: 'knowledge-news-title-link',
       onClick: (event: Event) => {
         onKnowledgeNewsTitleClick(event, row)

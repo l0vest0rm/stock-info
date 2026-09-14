@@ -1,3 +1,4 @@
+import { authRoutes } from "../modules/auth/auth";
 import pages from "../../config/page-manifest.json";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -30,6 +31,7 @@ export function createRouter(): Hono<AppEnv> {
   app.use("*", (c, next) => c.req.path === "/api/health" ? next() : requestLogger(c, next));
   app.use("/api/*", cors());
 
+  app.route("/api", authRoutes);
   app.route("/api", healthRoutes);
   app.route("/api", securityRoutes);
   app.route("/api", researchRoutes);
@@ -64,6 +66,13 @@ export function createRouter(): Hono<AppEnv> {
   });
 
   app.get("/home.html", (c) => c.redirect("/", 301));
+
+  // Account UI and endpoints are production-only. Keep the local Node runtime
+  // free of a reachable login surface as well as of login controls.
+  app.all("/login.html", (c) => {
+    if (isLocalDevelopmentRuntime(c.env)) return fail(c, 404, "login is only available in production");
+    return c.env.ASSETS ? c.env.ASSETS.fetch(c.req.raw) : fail(c, 404, "not found");
+  });
 
   // All HTML requests pass the Worker (wrangler assets.run_worker_first).
   // The manifest is also the build input, preventing policy/build drift.

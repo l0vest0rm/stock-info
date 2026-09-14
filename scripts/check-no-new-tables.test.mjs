@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const gate = join(root, "scripts/check-no-new-tables.mjs");
+
+test("approved authentication migration introduces only the two approved account tables", () => {
+  const sql = readFileSync(join(root, "migrations/0139_auth_accounts.sql"), "utf8");
+  const tables = [...sql.matchAll(/CREATE TABLE (\w+)/g)].map((match) => match[1]).sort();
+  assert.deepEqual(tables, ["auth_sessions", "users"]);
+  const approved = JSON.parse(readFileSync(join(root, "scripts/check-no-new-tables-allowlist.json"), "utf8"));
+  for (const table of tables) assert.ok(approved.includes(table));
+  assert.match(sql, /reset_token_hash TEXT/);
+  assert.match(sql, /reset_expires_at_ms INTEGER/);
+});
 
 test("new-table gate rejects a migration that creates an unapproved table", () => {
   const fixture = mkdtempSync(join(tmpdir(), "stock-info-new-table-gate-"));
