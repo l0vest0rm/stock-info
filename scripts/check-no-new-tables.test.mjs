@@ -8,6 +8,16 @@ import test from "node:test";
 const root = resolve(new URL("..", import.meta.url).pathname);
 const gate = join(root, "scripts/check-no-new-tables.mjs");
 
+test("approved featured-report migration has an independent unique code and report identity", () => {
+  const sql = readFileSync(join(root, "migrations/0140_featured_reports.sql"), "utf8");
+  const tables = [...sql.matchAll(/CREATE TABLE (\w+)/g)].map(match => match[1]);
+  assert.deepEqual(tables, ["featured_reports"]);
+  const approved = JSON.parse(readFileSync(join(root, "scripts/check-no-new-tables-allowlist.json"), "utf8"));
+  assert.ok(approved.includes("featured_reports"));
+  assert.match(sql, /code TEXT PRIMARY KEY/);
+  assert.match(sql, /report_id TEXT NOT NULL UNIQUE/);
+});
+
 test("approved authentication migration introduces only the two approved account tables", () => {
   const sql = readFileSync(join(root, "migrations/0139_auth_accounts.sql"), "utf8");
   const tables = [...sql.matchAll(/CREATE TABLE (\w+)/g)].map((match) => match[1]).sort();

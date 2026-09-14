@@ -137,6 +137,9 @@ function parseArgs(argv) {
     else if (arg === "--skip-run-record") parsed.writeRun = false;
     else throw new Error(`unknown argument: ${arg}`);
   }
+  if (!parsed.prefix.startsWith('knowledge-content/')) {
+    throw new Error('Knowledge cleanup is restricted to knowledge-content/; featured reports have a separate publication lifecycle');
+  }
   return parsed;
 }
 

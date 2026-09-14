@@ -65,7 +65,7 @@
   {
     "path": "/company-news.html",
     "entry": "src/modules/company/pages/company-news-page.ts",
-    "runtime": "all",
+    "runtime": "local",
     "legacy": true,
     "globalName": "LicaiCompanyNewsPage"
   },
@@ -233,6 +233,12 @@
   {
     "path": "/login.html",
     "entry": "src/modules/auth/login-page.ts",
+    "runtime": "all",
+    "legacy": false
+  },
+  {
+    "path": "/featured-report.html",
+    "entry": "src/modules/featured-reports/pages/featured-report-page.ts",
     "runtime": "all",
     "legacy": false
   }

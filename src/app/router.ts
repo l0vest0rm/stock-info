@@ -1,3 +1,4 @@
+import { currentUser, loginRedirect } from "../modules/auth/auth";
 import { authRoutes } from "../modules/auth/auth";
 import pages from "../../config/page-manifest.json";
 import { Hono } from "hono";
@@ -22,6 +23,8 @@ import { ExternalConcurrencyTimeoutError, ExternalRequestTimeoutError } from "..
 import { isLocalDevelopmentRuntime } from "../shared/request";
 import type { AppEnv } from "../types";
 
+import { featuredReportRoutes } from "../modules/featured-reports/api/featured-reports.routes";
+
 export function createRouter(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
   const requestLogger = logger();
@@ -33,6 +36,7 @@ export function createRouter(): Hono<AppEnv> {
 
   app.route("/api", authRoutes);
   app.route("/api", healthRoutes);
+  app.route("/api", featuredReportRoutes);
   app.route("/api", securityRoutes);
   app.route("/api", researchRoutes);
   app.route("/api", reportSyncRoutes);
@@ -63,6 +67,11 @@ export function createRouter(): Hono<AppEnv> {
       method: c.req.raw.method,
       headers: c.req.raw.headers,
     }));
+  });
+
+  app.get("/featured-report.html", async (c) => {
+    if (!isLocalDevelopmentRuntime(c.env) && !await currentUser(c.req.raw, c.env)) return loginRedirect(c.req.raw);
+    return c.env.ASSETS ? c.env.ASSETS.fetch(c.req.raw) : fail(c, 404, "not found");
   });
 
   app.get("/home.html", (c) => c.redirect("/", 301));

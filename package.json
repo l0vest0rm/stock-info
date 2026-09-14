@@ -98,14 +98,17 @@
     "verify:architecture": "node scripts/verify-architecture.mjs",
     "check:runtime-boundaries": "node scripts/check-runtime-boundaries.mjs",
     "check:release-inputs": "node scripts/check-release-inputs.mjs",
-    "sync:xueqiu-secret": "node scripts/sync-xueqiu-secret.mjs"
+    "sync:xueqiu-secret": "node scripts/sync-xueqiu-secret.mjs",
+    "test:smoke:featured": "node scripts/smoke-featured-reports.mjs"
   },
   "dependencies": {
     "@m2ai/shared-llm-client": "file:../shared-ts/packages/llm-client",
     "@m2ai/shared-taskd-client": "file:../shared-ts/packages/taskd-client",
     "@vitejs/plugin-vue": "^6.0.3",
+    "dompurify": "^3.4.15",
     "echarts": "^6.0.0",
     "hono": "^4.12.27",
+    "marked": "^18.0.13",
     "pdfjs-dist": "5.6.205",
     "vite": "^7.2.7",
     "vue": "^3.5.35"

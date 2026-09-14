@@ -1,13 +1,4 @@
-import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import {
-  loadSecuritySearchHistory,
-  rememberSecuritySearch,
-  type SecuritySearchHistoryItem,
-} from '../../../platform/search-history'
-import { routeForSecuritySearch } from '../../../app/layout/security-search-route'
-
-type SearchResult = SecuritySearchHistoryItem
-
+import { createApp, defineComponent, h, ref } from 'vue'
 const homePageStyle = `
 .home-hero {
   background:
@@ -130,35 +121,6 @@ const homePageStyle = `
   text-decoration: underline;
 }
 
-.home-search-result {
-  border-bottom: 1px solid #edf2f7;
-  color: inherit;
-  display: block;
-  padding: .85rem 1rem;
-  text-decoration: none;
-}
-
-.home-search-result:last-child {
-  border-bottom: 0;
-}
-
-.home-search-result:hover,
-.home-search-result:focus {
-  background: #f8fafc;
-  color: inherit;
-}
-
-.home-search-result-code {
-  color: #0f766e;
-  font-size: .9rem;
-  font-weight: 700;
-}
-
-.home-search-result-meta {
-  color: #64748b;
-  font-size: .85rem;
-}
-
 .home-note {
   background: #f8fafc;
   border: 1px solid #e2e8f0;
@@ -226,111 +188,19 @@ const workflowCards = [
   },
 ]
 
-const exampleSearches = [
-  { label: '中际旭创', query: '300308' },
-  { label: '新易盛', query: '300502' },
-  { label: '天孚通信', query: '300394' },
-  { label: '澜起科技', query: '688008' },
-]
-
-function labelForMarket(result: SearchResult) {
-  const market = String(result.market || '').trim()
-  switch (market) {
-    case 'cn-sh':
-      return 'A股·沪市'
-    case 'cn-sz':
-      return 'A股·深市'
-    case 'cn-bj':
-      return 'A股·北交所'
-    case 'hk':
-      return '港股'
-    case 'fund':
-      return '基金'
-    default:
-      return market || '全球市场'
-  }
-}
-
 const HomePage = defineComponent({
   name: 'HomePage',
   setup() {
-    const query = ref('')
-    const searching = ref(false)
-    const status = ref('输入股票代码、公司名称或基金名称后可直接跳转。')
-    const suggestions = ref<SearchResult[]>([])
-    const showingHistory = ref(false)
-    const history = ref<SearchResult[]>(loadSecuritySearchHistory())
-    let currentRequestId = 0
-    let searchTimer = 0
-
-    const searchNow = async (raw: string) => {
-      const trimmed = raw.trim()
-      currentRequestId += 1
-      const requestId = currentRequestId
-      if (!trimmed) {
-        history.value = loadSecuritySearchHistory()
-        suggestions.value = history.value
-        searching.value = false
-        showingHistory.value = history.value.length > 0
-        status.value = history.value.length > 0 ? '最近搜索' : '输入股票代码、公司名称或基金名称后可直接跳转。'
-        return
-      }
-      showingHistory.value = false
-      searching.value = true
-      status.value = '搜索中...'
-      try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`)
-        const payload = await response.json()
-        if (requestId !== currentRequestId) {
-          return
-        }
-        const rows = Array.isArray(payload?.data) ? payload.data as SearchResult[] : []
-        suggestions.value = rows
-        status.value = rows.length > 0 ? `找到 ${rows.length} 个结果` : '没有找到匹配结果'
-      } catch (error) {
-        if (requestId !== currentRequestId) {
-          return
-        }
-        suggestions.value = []
-        status.value = error instanceof Error ? error.message : '搜索失败，请稍后重试'
-      } finally {
-        if (requestId === currentRequestId) {
-          searching.value = false
-        }
-      }
-    }
-
-    watch(query, (value) => {
-      window.clearTimeout(searchTimer)
-      searchTimer = window.setTimeout(() => {
-        void searchNow(value)
-      }, 220)
-    })
-
-    onMounted(() => {
-      const q = new URLSearchParams(window.location.search).get('q')?.trim() || ''
-      if (q) {
-        query.value = q
-      }
-    })
-
-    onBeforeUnmount(() => {
-      window.clearTimeout(searchTimer)
-    })
-
-    const openFirstResult = () => {
-      const first = suggestions.value[0]
-      if (!first) {
-        status.value = '请先从下方结果中选择证券。'
-        return
-      }
-      history.value = rememberSecuritySearch(first)
-      window.location.href = routeForSecuritySearch(first)
-    }
-
+    const code = ref('')
+    const status = ref('输入 6 位研报码，登录后查看完整研报。')
     const onSubmit = (event: Event) => {
       event.preventDefault()
-      openFirstResult()
+      const value = code.value.trim()
+      if (!/^[1-9]\d{5}$/.test(value)) {
+        status.value = '请输入 6 位数字研报码'
+        return
+      }
+      window.location.href = `/featured-report.html?code=${encodeURIComponent(value)}`
     }
 
     return () => h('div', { class: 'container py-4 py-lg-5' }, [
@@ -341,61 +211,32 @@ const HomePage = defineComponent({
             h('div', { class: 'small text-uppercase fw-bold mb-3', style: 'letter-spacing: .12em;' }, 'Investment Research Hub'),
             h('h1', { class: 'display-5 fw-bold mb-3' }, '把股票、基金和公开市场数据放到同一条研究路径里。'),
             h('p', { class: 'lead mb-4', style: 'max-width: 42rem;' }, '先找候选标的，再看机构、财务和持仓变化。首页直接把常用入口和高价值数据放在一起。'),
-            h('div', { class: 'mb-3' }, exampleSearches.map((item) => h('button', {
-              key: item.query,
-              class: 'home-chip border-0',
-              type: 'button',
-              onClick: () => {
-                query.value = item.query
-              },
-            }, item.label))),
           h('div', { class: 'small text-white-50' }, '覆盖股票、基金、13F 持仓与多维筛选能力。'),
           ]),
           h('div', { class: 'col-lg-5' }, [
             h('div', { class: 'home-search-shell p-3 p-lg-4' }, [
               h('form', { onSubmit }, [
-                h('label', { for: 'homeSearchInput', class: 'form-label fw-semibold' }, '输入股票代码、公司名称或基金名称'),
+                h('label', { for: 'homeReportCode', class: 'form-label fw-semibold' }, '输入研报码'),
                 h('div', { class: 'd-flex gap-2 flex-column flex-sm-row' }, [
                   h('input', {
-                    id: 'homeSearchInput',
+                    id: 'homeReportCode',
                     class: 'form-control form-control-lg',
-                    type: 'search',
-                    placeholder: '例如 300308、中际旭创、300502、688008',
-                    value: query.value,
+                    type: 'text',
+                    inputmode: 'numeric',
+                    autocomplete: 'off',
+                    maxlength: 6,
+                    pattern: '[1-9][0-9]{5}',
+                    required: true,
+                    placeholder: '请输入 6 位研报码',
+                    value: code.value,
                     onInput: (event: Event) => {
-                      query.value = (event.target as HTMLInputElement).value
-                    },
-                    onFocus: () => {
-                      if (!query.value.trim()) {
-                        history.value = loadSecuritySearchHistory()
-                        suggestions.value = history.value
-                        showingHistory.value = history.value.length > 0
-                        status.value = history.value.length > 0
-                          ? '最近搜索'
-                          : '输入股票代码、公司名称或基金名称后可直接跳转。'
-                      }
+                      code.value = (event.target as HTMLInputElement).value
                     },
                   }),
-                  h('button', { class: 'btn btn-success btn-lg px-4', type: 'submit', disabled: searching.value }, searching.value ? '搜索中' : '进入详情'),
+                  h('button', { class: 'btn btn-success btn-lg px-4', type: 'submit' }, '查看研报'),
                 ]),
               ]),
-              h('div', { class: 'small text-muted mt-3' }, status.value),
-              suggestions.value.length > 0
-                ? h('div', { class: 'mt-3 border rounded-4 overflow-hidden bg-white' }, suggestions.value.map((item) => h('a', {
-                  key: item.code,
-                  href: routeForSecuritySearch(item),
-                  class: 'home-search-result',
-                  onClick: () => {
-                    history.value = rememberSecuritySearch(item)
-                  },
-                }, [
-                  h('div', { class: 'd-flex align-items-center justify-content-between gap-3' }, [
-                    h('div', { class: 'fw-semibold text-truncate' }, item.name),
-                    h('div', { class: 'home-search-result-code flex-shrink-0' }, item.code),
-                  ]),
-                  showingHistory.value ? null : h('div', { class: 'home-search-result-meta mt-1' }, labelForMarket(item)),
-                ])))
-                : null,
+              h('div', { class: 'small text-muted mt-3', role: 'status', 'aria-live': 'polite' }, status.value),
             ]),
           ]),
         ]),
@@ -434,7 +275,7 @@ const HomePage = defineComponent({
               h('div', { class: 'home-card-kicker mb-2' }, 'What This Site Is Good At'),
               h('ul', { class: 'home-bullet-list' }, [
                 h('li', '把股票、基金和内容研究放到同一个站内闭环。'),
-                h('li', '公司页覆盖股价、财务、公告、研报、资讯。'),
+                h('li', isLocalBrowserRuntime() ? '公司页覆盖股价、财务、公告、研报、资讯。' : '公司页覆盖股价、财务、公告、研报。'),
                 isLocalBrowserRuntime() ? h('li', '研报资讯页适合作为“每天先看什么”的入口。') : null,
               ]),
             ]),

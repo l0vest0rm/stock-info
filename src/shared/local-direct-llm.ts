@@ -10,6 +10,7 @@ export type LocalDirectLlmTextRequest = {
   maxTokens?: number;
   temperature?: number;
   onText?: (delta: string) => Promise<void> | void;
+  signal?: AbortSignal;
 };
 
 export type LocalDirectLlmTextResponse = {
@@ -43,6 +44,7 @@ export async function requestLocalDirectLlmText(
     maxOutputTokens: request.maxTokens,
     temperature: request.temperature,
     onText: request.onText,
+    signal: request.signal,
   });
   return {
     model: request.model,

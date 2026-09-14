@@ -197,5 +197,6 @@
   "situation_sources",
   "sync_jobs",
   "users",
-  "watchlist_items"
+  "watchlist_items",
+  "featured_reports"
 ]

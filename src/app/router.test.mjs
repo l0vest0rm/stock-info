@@ -37,3 +37,18 @@ test("production research GET does not contact taskd or submit a model request",
     assert.equal((await app.request(path, { method: "POST" }, env)).status, 404);
   }
 });
+
+test("featured reports require a production session and preserve the report code through login", async () => {
+  const app = createRouter();
+  const path = "/featured-report.html?code=123456";
+  let served = 0;
+  const env = { APP_RUNTIME: "cloudflare", ASSETS: { fetch: async () => { served++; return new Response("report"); } } };
+  const response = await app.request(path, {}, env);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), `/login.html?returnTo=${encodeURIComponent(path)}`);
+  assert.equal((await app.request("/api/featured-reports/123456", {}, env)).status, 401);
+  assert.equal(served, 0);
+  const loggedIn = { ...env, DB: { prepare: () => ({ bind() { return this; }, first: async () => ({ id: "user", email: "user@example.com" }) }) } };
+  assert.equal((await app.request(path, { headers: { cookie: `tinfo_session=${"a".repeat(43)}` } }, loggedIn)).status, 200);
+  assert.equal((await app.request(path, {}, { ...env, APP_RUNTIME: "node" })).status, 200);
+});

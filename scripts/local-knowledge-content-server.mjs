@@ -113,12 +113,22 @@ async function handleRequest(req, res) {
       "access-control-allow-origin": "*",
       "cache-control": "public, max-age=31536000, immutable",
       "content-length": String(stat.size),
-      "content-type": "text/markdown; charset=utf-8",
+      "content-type": file.endsWith('.pdf') ? 'application/pdf' : file.endsWith('.json') ? 'application/json; charset=utf-8' : 'text/markdown; charset=utf-8',
+      "accept-ranges": "bytes",
+      "access-control-expose-headers": "Accept-Ranges, Content-Length, Content-Range",
     };
     if (file.endsWith(".md.br")) {
       headers["content-encoding"] = "br";
     } else if (file.endsWith(".md.gz")) {
       headers["content-encoding"] = "gzip";
+    }
+    const range = req.headers.range?.match(/^bytes=(\d+)-(\d*)$/);
+    if (range && file.endsWith('.pdf')) {
+      const start = Number(range[1]), end = Math.min(Number(range[2] || stat.size - 1), stat.size - 1);
+      if (start > end || start >= stat.size) { res.writeHead(416, { ...headers, 'content-length': '0', 'content-range': `bytes */${stat.size}` }); res.end(); return; }
+      res.writeHead(206, { ...headers, 'content-length': String(end-start+1), 'content-range': `bytes ${start}-${end}/${stat.size}` });
+      if (method === 'HEAD') res.end(); else createReadStream(file, { start, end }).pipe(res);
+      return;
     }
     res.writeHead(200, headers);
     if (method === "HEAD") {
@@ -368,10 +378,10 @@ function requireValue(argv, index, flag) {
 function safeRelativePath(urlValue) {
   const url = new URL(urlValue, "http://127.0.0.1");
   const pathname = decodeURIComponent(url.pathname || "");
-  if (!pathname.startsWith("/knowledge-content/")) {
+  if (!pathname.startsWith("/knowledge-content/") && !pathname.startsWith('/featured-reports/')) {
     return "";
   }
-  const relativePath = pathname.slice("/knowledge-content/".length);
+  const relativePath = pathname.startsWith('/featured-reports/') ? pathname.slice(1) : pathname.slice("/knowledge-content/".length);
   if (!relativePath || relativePath.split("/").some((part) => !part || part === "." || part === "..")) {
     return "";
   }

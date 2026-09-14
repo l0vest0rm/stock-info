@@ -8,6 +8,11 @@ import { buildPages, buildRuntime } from './page-build-config.mjs'
 // browser page loads one Vue instance and one instance of shared services.
 const webRoot = fileURLToPath(new URL('..', import.meta.url))
 const dist = resolve(webRoot, 'dist')
+// PDF.js auxiliary assets are local, version-matched and available offline in review.
+const pdfAssets = resolve(webRoot, '../node_modules/pdfjs-dist')
+for (const name of ['cmaps', 'standard_fonts', 'wasm']) {
+  fs.cpSync(resolve(pdfAssets, name), resolve(dist, 'pdfjs', name), { recursive: true })
+}
 const temporary = resolve(webRoot, '.vite-page-entries')
 const jsDir = resolve(dist, 'js')
 for (const directory of ['page-shared', 'legacy-shared', 'legacy-pages']) {
