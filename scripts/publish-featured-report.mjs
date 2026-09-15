@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { parse as parseJsonc } from 'jsonc-parser';
 import { root, hash, readJson, writeJson, loadCredentials, checkCoverage } from './lib/featured-report-files.mjs';
 import { validateContent, MAX_CONTENT_BYTES } from '../src/modules/featured-reports/domain/content.ts';
 
@@ -24,6 +25,10 @@ const receiptFile = join(dir, 'published.json');
 const previous = existsSync(receiptFile) ? readJson(receiptFile) : null;
 if (previous && previous.base !== base) throw new Error('Publication receipt belongs to another environment');
 const prefix = `featured-reports/${content.reportId}`;
+const config = parseJsonc(readFileSync(join(root, 'wrangler.jsonc'), 'utf8'));
+const database = config.d1_databases?.find(db => db.binding === 'DB')?.database_name;
+const publicBase = config.vars?.KNOWLEDGE_CONTENT_PUBLIC_BASE_URL?.replace(/\/$/, '');
+if (!database || !publicBase) throw new Error('Missing DB or KNOWLEDGE_CONTENT_PUBLIC_BASE_URL in wrangler.jsonc');
 const bucket = process.env.KNOWLEDGE_CONTENT_BUCKET || 'stock-info-knowledge-content';
 for (const [file, key, type] of [
   ['original.pdf', `${prefix}/original.pdf`, 'application/pdf'],
@@ -39,9 +44,19 @@ const result = await response.json();
 if (!response.ok || !result.data?.code) throw new Error(`Publication failed: ${result.msg || response.status}`);
 // Persist the successful commit before checking the public CDN, so retries never change code.
 writeJson(receiptFile, { base, code: result.data.code, contentHash });
-const lookup = await fetch(`${base}/api/featured-reports/${result.data.code}`).then(r => r.json());
-if (lookup.data?.contentHash !== contentHash) throw new Error('Public index verification failed');
-const [published, publishedPdf] = await Promise.all([fetch(lookup.data.contentUrl), fetch(lookup.data.pdfUrl, { headers: { Range: 'bytes=0-1023' } })]);
+// Reader lookup requires a login session. Verify the committed index with the
+// publisher's Cloudflare credentials instead of weakening reader authentication.
+const query = `SELECT code, content_hash, content_key, pdf_key, status FROM featured_reports WHERE report_id = '${content.reportId}'`;
+const output = execFileSync('npx', ['wrangler', 'd1', 'execute', database, '--remote', '--command', query, '--json'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+const row = JSON.parse(output)[0]?.results?.[0];
+if (row?.code !== result.data.code || row?.content_hash !== contentHash || row?.status !== 'published'
+  || row?.content_key !== `${prefix}/${contentHash}/content.json` || row?.pdf_key !== `${prefix}/original.pdf`) {
+  throw new Error(`Published index verification failed for report ${result.data.code}: remote D1 record is missing, withdrawn, or differs from the submitted report`);
+}
+const [published, publishedPdf] = await Promise.all([
+  fetch(`${publicBase}/${row.content_key}`, { signal: AbortSignal.timeout(60000) }),
+  fetch(`${publicBase}/${row.pdf_key}`, { headers: { Range: 'bytes=0-1023' }, signal: AbortSignal.timeout(60000) }),
+]);
 if (!published.ok || hash(Buffer.from(await published.arrayBuffer())) !== contentHash || !publishedPdf.ok) throw new Error('Published R2 resources not yet readable; retry publication');
 await publishedPdf.body?.cancel();
 console.log(`研报码：${result.data.code}\n阅读地址：${base}/featured-report.html?code=${result.data.code}`);

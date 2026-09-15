@@ -7,7 +7,7 @@ import { root, hash, readJson, writeJson, loadCredentials, checkCoverage } from 
 import { registerLocalReport } from './lib/featured-report-local.mjs';
 import { startReviewServer } from './lib/featured-report-review.mjs';
 
-import { selectTranslationSource } from './lib/featured-report-selection.mjs';
+import { selectTranslationSource, addOmissionPlaceholders } from './lib/featured-report-selection.mjs';
 import { planTranslationBatches, translateReport, OUTPUT_TOKENS, validateReportSummary } from './lib/featured-report-batches.mjs';
 
 const args = process.argv.slice(2);
@@ -95,7 +95,7 @@ if (args.includes('--review')) {
         const summary = await llm('summary', translationSource.sections.map(s => ({
           title: s.title, digest: s.blocks.map(b => b.original).join('\n\n'),
         })), validateReportSummary);
-        const content = validateContent({ ...previous, sections, summary: summary.summary });
+        const content = validateContent({ ...previous, sections: addOmissionPlaceholders(source, sections), summary: summary.summary });
         checkCoverage(content, source);
         const checksFile = join(dir, 'checks.json');
         const checks = existsSync(checksFile) ? readJson(checksFile) : { issues: source.issues || [] };
@@ -127,7 +127,7 @@ if (args.includes('--review')) {
           });
         }
         const content = validateContent({ schemaVersion: 1, reportId, title: option('--title', source.title || basename(input).replace(/\.pdf$/i, '')),
-          institution: option('--institution'), reportDate: option('--date'), pageCount: source.pageCount, summary: summary.summary, sections });
+          institution: option('--institution'), reportDate: option('--date'), pageCount: source.pageCount, summary: summary.summary, sections: addOmissionPlaceholders(source, sections) });
         checkCoverage(content, source);
         writeJson(join(dir, 'content.json'), content);
         writeJson(join(dir, 'checks.json'), { issues: checks, skippedBlocks: skipped });

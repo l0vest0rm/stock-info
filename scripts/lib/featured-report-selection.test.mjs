@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { selectTranslationSource } from './featured-report-selection.mjs';
+import { selectTranslationSource, addOmissionPlaceholders } from './featured-report-selection.mjs';
 import { checkCoverage } from './featured-report-files.mjs';
 import { planTranslationBatches, translateReport } from './featured-report-batches.mjs';
 const block = (id, original) => ({ id, original, sourceLocations: [{ page: 1, bbox: [0, 0, 1, 1] }] });
@@ -63,4 +63,19 @@ test('disclosure appendix spans pages while the research following it remains in
 test('discussion of conflicts in industry research is not report boilerplate', () => {
   const source = { sections: [{ id: 's', title: 'Legal', blocks: [block('a', 'The regulator identified a conflict of interest at the company.')] }] };
   assert.equal(selectTranslationSource(source).skipped.length, 0);
+});
+
+test('placeholders restore every original position without sending omitted text to the model', () => {
+  const original = input();
+  const selected = selectTranslationSource(original).source;
+  const translated = selected.sections.map(s => ({ ...s, blocks: s.blocks.map(b => ({ id: b.id, translation: '人工修改的正文', sourceLocations: b.sourceLocations })) }));
+  const result = addOmissionPlaceholders(original, translated);
+  assert.deepEqual(result.flatMap(s => s.blocks.map(b => b.id)), ['a', 'b', 'c', 'd', 'e']);
+  assert.deepEqual(result[0].blocks[0], translated[0].blocks[0]);
+  assert.match(result[1].blocks[0].translation, /未翻译.*无需逐段翻译/);
+  assert.deepEqual(result[1].blocks[0].sourceLocations, original.sections[1].blocks[0].sourceLocations);
+  checkCoverage({ sections: result }, original);
+  assert.deepEqual(addOmissionPlaceholders(original, result), result);
+  assert.throws(() => addOmissionPlaceholders(original, []), /研究正文译文缺失/);
+  assert.deepEqual(selected.sections.flatMap(s => s.blocks.map(b => b.id)), ['a', 'd']);
 });
