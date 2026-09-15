@@ -2,7 +2,7 @@ import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { validateContent, type FeaturedContent, type SourceLocation } from '../../../../../src/modules/featured-reports/domain/content';
+import { validateContent, type FeaturedContent } from '../../../../../src/modules/featured-reports/domain/content';
 import styles from './featured-report.css?inline';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -12,14 +12,30 @@ root.innerHTML = `<section class="fr-search"><span class="fr-eyebrow">精选研�
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const escape = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const markdown = (text: string) => DOMPurify.sanitize(marked.parse(text, { async: false }) as string);
+function renderSummary(text: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = markdown(text);
+  // Drop source-only columns, without altering financial data columns.
+  template.content.querySelectorAll('table').forEach(table => {
+    const columns = Array.from(table.querySelectorAll('thead th'))
+      .map((cell, index) => /^(页码|原文页码|来源位置|原文位置|来源页码)$/.test(cell.textContent?.trim() || '') ? index : -1)
+      .filter(index => index >= 0).reverse();
+    table.querySelectorAll('tr').forEach(row => columns.forEach(index => row.children[index]?.remove()));
+  });
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    node.textContent = (node.textContent || '')
+      .replace(/[（(](?:原文)?第?\s*\d+(?:\s*[—–\-、，,至]\s*\d+)*\s*页(?:[；;，,、]\s*(?:原文)?第?\s*\d+(?:\s*[—–\-、，,至]\s*\d+)*\s*页)*[）)]/g, '')
+      .replace(/原文第?\s*\d+(?:\s*[—–\-、，,至]\s*\d+)*\s*页/g, '');
+  }
+  return template.innerHTML;
+}
 let content: FeaturedContent;
 let pdf: pdfjs.PDFDocumentProxy | undefined;
-let page = 1, zoom = 1, renderGeneration = 0, loadGeneration = 0;
-let renderTask: pdfjs.RenderTask | undefined;
-let review: { token: string; issues: string[] } | undefined;
-let contentHash = '';
-let currentLocations: SourceLocation[] = [];
-let resizeObserver: ResizeObserver | undefined;
+let loadGeneration = 0;
+let pageObserver: IntersectionObserver | undefined;
+const renderTasks = new Set<pdfjs.RenderTask>();
 
 $('fr-form').addEventListener('submit', event => {
   event.preventDefault(); const code = $<HTMLInputElement>('fr-code').value.trim();
@@ -33,10 +49,12 @@ if (initialCode) void load(initialCode);
 async function load(code: string) {
   const generation = ++loadGeneration;
   $('fr-error').textContent = '正在加载研报…'; $('fr-report').hidden = true;
-  renderTask?.cancel(); resizeObserver?.disconnect(); await pdf?.destroy(); pdf = undefined;
-  review = undefined; page = 1; zoom = 1; currentLocations = [];
+  pageObserver?.disconnect();
+  for (const task of renderTasks) task.cancel();
+  renderTasks.clear();
+  await pdf?.destroy(); pdf = undefined;
   try {
-    if (!/^[1-9]\d{5}$/.test(code) && !(code === 'review' && location.hostname === '127.0.0.1')) throw new Error('请输入 6 位数字研报码');
+    if (!/^[1-9]\d{5}$/.test(code)) throw new Error('请输入 6 位数字研报码');
     const response = await fetch(`/api/featured-reports/${code}`, { cache: 'no-store' });
     const result = await response.json();
     if (!response.ok || !result.data) throw new Error(result.msg || '暂时无法读取研报');
@@ -45,8 +63,8 @@ async function load(code: string) {
     if (!raw.ok) throw new Error('研报内容暂时无法读取，请稍后重试');
     const nextContent = validateContent(await raw.json());
     if (generation !== loadGeneration) return;
-    content = nextContent; contentHash = record.contentHash; review = code === 'review' ? record.review : undefined;
-    $('fr-error').textContent = ''; $<HTMLInputElement>('fr-code').value = code === 'review' ? '' : code;
+    content = nextContent;
+    $('fr-error').textContent = ''; $<HTMLInputElement>('fr-code').value = code;
     document.querySelector('.fr-search')?.classList.add('fr-compact');
     renderReport(code, record.pdfUrl);
     const task = pdfjs.getDocument({ url: record.pdfUrl, cMapUrl: '/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/pdfjs/standard_fonts/', wasmUrl: '/pdfjs/wasm/' });
@@ -54,111 +72,71 @@ async function load(code: string) {
     if (generation !== loadGeneration) { await loadedPdf.destroy(); return; }
     pdf = loadedPdf;
     if (pdf.numPages !== content.pageCount) throw new Error('原文页数与译文映射不一致');
-    await renderPdf();
-    resizeObserver = new ResizeObserver(() => { void renderPdf(); }); resizeObserver.observe($('fr-pdf-view'));
+    await setupContinuousPdf(loadedPdf, generation);
   } catch (error) { if (generation === loadGeneration) $('fr-error').textContent = error instanceof Error ? error.message : String(error); }
 }
 
 function renderReport(code: string, pdfUrl: string) {
   const container = $('fr-report'); container.hidden = false;
-  container.innerHTML = `<header class="fr-heading"><div><span class="fr-eyebrow">${review ? '本地审阅' : `研报码 ${escape(code)}`}</span><h2>${escape(content.title)}</h2><p>${escape([content.institution, content.reportDate, `${content.pageCount} 页`].filter(Boolean).join(' · '))}</p></div><a class="fr-original-link" href="${escape(pdfUrl)}" target="_blank" rel="noopener">打开原文 ↗</a></header>
-    ${review ? `<aside class="fr-review"><h3>审阅与修改</h3><details><summary>待核对事项（${review.issues.length}）</summary><ul>${review.issues.map(i => `<li>${escape(i)}</li>`).join('')}</ul></details><p>展开下方编辑框可修改标题、总结、章节及译文；修改后保存到本地。</p><button id="fr-edit">编辑内容</button> <button id="fr-save">保存修改</button> <label><input type="checkbox" id="fr-approve">已核对全文及待核对事项，确认可发布</label><span id="fr-save-status" role="status"></span></aside>` : ''}
-    <details class="fr-summary" open><summary>研报精华</summary><div class="fr-markdown">${markdown(content.summary)}</div>${review ? `<textarea class="fr-editor" id="fr-summary-edit" aria-label="编辑总结" hidden>${escape(content.summary)}</textarea><label class="fr-editor" hidden>报告标题<input id="fr-title-edit" value="${escape(content.title)}"></label><label class="fr-editor" hidden>机构<input id="fr-institution-edit" value="${escape(content.institution)}"></label><label class="fr-editor" hidden>日期<input id="fr-date-edit" type="date" value="${escape(content.reportDate)}"></label>` : ''}</details>
-    <div class="fr-reading-nav"><label>章节 <select id="fr-section"><option value="">选择章节</option>${content.sections.map((s, i) => `<option value="${i}">${escape(s.title)}</option>`).join('')}</select></label><label><input id="fr-link" type="checkbox" checked> 翻页时定位译文</label><div class="fr-tabs"><button id="fr-show-translation" aria-pressed="true">译文</button><button id="fr-show-pdf" aria-pressed="false">原文</button></div></div>
-    <div class="fr-columns" id="fr-columns"><section class="fr-pdf"><div class="fr-toolbar"><strong>原文 PDF</strong><button id="fr-prev" aria-label="上一页">‹</button><label><input id="fr-page" aria-label="PDF页码" type="number" min="1" max="${content.pageCount}" value="1"> / ${content.pageCount}</label><button id="fr-next" aria-label="下一页">›</button><button id="fr-minus" aria-label="缩小">−</button><button id="fr-plus" aria-label="放大">＋</button></div><div id="fr-pdf-view"><div id="fr-canvas-wrap"><canvas id="fr-canvas" aria-label="PDF原文页面"></canvas><div id="fr-highlights"></div></div><p id="fr-pdf-status" role="status">正在加载 PDF…</p></div></section>
-    <section class="fr-translation"><div class="fr-toolbar"><strong>中文全文翻译</strong><span>点击页码对照原文</span></div><div id="fr-translation-scroll">${content.sections.map((s, i) => `<section id="fr-section-${i}"><h3>${escape(s.title)}</h3>${review ? `<input class="fr-editor" data-section="${i}" aria-label="编辑章节 ${i+1}" value="${escape(s.title)}" hidden>` : ''}${s.blocks.map(b => `<div class="fr-block" id="${escape(b.id)}"><button class="fr-source" data-block="${escape(b.id)}">查看原文第 ${[...new Set(b.sourceLocations.map(l => l.page))].join('、')} 页</button><div class="fr-markdown">${markdown(b.translation)}</div>${review ? `<textarea class="fr-editor" data-edit="${escape(b.id)}" aria-label="编辑段落 ${escape(b.id)}" hidden>${escape(b.translation)}</textarea>` : ''}</div>`).join('')}</section>`).join('')}</div></section></div>`;
-  $('fr-section').addEventListener('change', () => {
-    const i = Number($<HTMLSelectElement>('fr-section').value);
-    if (!content.sections[i]) return;
-    focusTranslation(`fr-section-${i}`); void locate(content.sections[i].blocks[0].sourceLocations);
-  });
-  container.querySelectorAll<HTMLButtonElement>('[data-block]').forEach(button => button.addEventListener('click', () => {
-    const block = content.sections.flatMap(s => s.blocks).find(b => b.id === button.dataset.block)!;
-    setTab('pdf'); void locate(block.sourceLocations);
-  }));
-  $('fr-prev').onclick = () => { void changePage(page - 1); };
-  $('fr-next').onclick = () => { void changePage(page + 1); };
-  $('fr-page').onchange = () => { void changePage(Number($<HTMLInputElement>('fr-page').value)); };
-  $('fr-minus').onclick = () => { zoom = Math.max(.6, zoom - .2); void renderPdf(); };
-  $('fr-plus').onclick = () => { zoom = Math.min(2.5, zoom + .2); void renderPdf(); };
-  $('fr-show-pdf').onclick = () => { setTab('pdf'); void renderPdf(); };
+  container.innerHTML = `<header class="fr-heading"><div><span class="fr-eyebrow">研报码 ${escape(code)}</span><h2>${escape(content.title)}</h2><p>${escape([content.institution, content.reportDate, `${content.pageCount} 页`].filter(Boolean).join(' · '))}</p></div><a class="fr-original-link" href="${escape(pdfUrl)}" target="_blank" rel="noopener">打开原文 ↗</a></header>
+    <details class="fr-summary" open><summary>研报精华</summary><div class="fr-markdown">${renderSummary(content.summary)}</div></details>
+    <div class="fr-reading-nav"><div class="fr-tabs" role="group" aria-label="阅读显示模式"><button id="fr-show-pdf" aria-pressed="false">原文</button><button id="fr-show-translation" aria-pressed="false">译文</button><button id="fr-show-compare" aria-pressed="true">对照</button></div></div>
+    <div class="fr-columns" id="fr-columns" data-mode="compare">${Array.from({ length: content.pageCount }, (_, i) => {
+      const blocks = content.sections.flatMap(section => section.blocks).filter(block => block.sourceLocations[0].page === i + 1);
+      return `<div class="fr-page-pair"><div class="fr-pdf" id="fr-original-${i + 1}"></div><section class="fr-translation"><div class="fr-markdown">${blocks.map(block => `<div class="fr-block">${markdown(block.translation)}</div>`).join('')}</div></section></div>`;
+    }).join('')}</div><p id="fr-pdf-status" role="status">正在加载 PDF…</p>`;
+  $('fr-show-pdf').onclick = () => setTab('pdf');
   $('fr-show-translation').onclick = () => setTab('translation');
-  if (review) {
-    $('fr-edit').onclick = () => container.querySelectorAll<HTMLElement>('.fr-editor').forEach(e => { e.hidden = !e.hidden; });
-    $('fr-save').onclick = () => { void saveReview(); };
+  $('fr-show-compare').onclick = () => setTab('compare');
+}
+function setTab(tab: 'pdf' | 'translation' | 'compare') {
+  $('fr-columns').dataset.mode = tab;
+  for (const mode of ['pdf', 'translation', 'compare']) {
+    $(`fr-show-${mode}`).setAttribute('aria-pressed', String(mode === tab));
   }
 }
-function setTab(tab: string) {
-  $('fr-columns').classList.toggle('fr-pdf-active', tab === 'pdf');
-  $('fr-show-pdf').setAttribute('aria-pressed', String(tab === 'pdf'));
-  $('fr-show-translation').setAttribute('aria-pressed', String(tab !== 'pdf'));
-}
-function focusTranslation(id: string) {
-  const element = document.getElementById(id), scroll = $('fr-translation-scroll');
-  if (element) scroll.scrollTo({ top: scroll.scrollTop + element.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 12, behavior: 'smooth' });
-}
-async function locate(locations: SourceLocation[]) {
-  currentLocations = locations; page = locations[0].page; await renderPdf();
-}
-async function changePage(next: number) {
-  if (!Number.isInteger(next)) return;
-  page = Math.max(1, Math.min(content.pageCount, next)); currentLocations = [];
-  if ($<HTMLInputElement>('fr-link').checked) {
-    const block = content.sections.flatMap(s => s.blocks).find(b => b.sourceLocations.some(l => l.page === page));
-    if (block) focusTranslation(block.id);
+async function setupContinuousPdf(documentPdf: pdfjs.PDFDocumentProxy, generation: number) {
+  // Reserve every page's space so scrolling and source links never replace a page.
+  const pages: { page: pdfjs.PDFPageProxy; sheet: HTMLDivElement }[] = [];
+  for (let number = 1; number <= documentPdf.numPages; number++) {
+    const page = await documentPdf.getPage(number);
+    if (generation !== loadGeneration) return;
+    const viewport = page.getViewport({ scale: 1 });
+    const sheet = document.createElement('div');
+    sheet.id = `fr-pdf-page-${number}`; sheet.className = 'fr-pdf-page';
+    sheet.style.aspectRatio = `${viewport.width} / ${viewport.height}`;
+    sheet.innerHTML = `<canvas aria-label="PDF 原文第 ${number} 页"></canvas>`;
+    $(`fr-original-${number}`).append(sheet);
+    pages.push({ page, sheet });
   }
-  await renderPdf();
-}
-async function renderPdf() {
-  if (!pdf || !$('fr-pdf-view')) return;
-  const generation = ++renderGeneration;
-  renderTask?.cancel();
-  try { await renderTask?.promise; } catch { /* A newer page replaces this canvas render. */ }
-  if (generation !== renderGeneration) return;
-  try {
-    const p = await pdf.getPage(page);
-    if (generation !== renderGeneration) return;
-    const width = Math.max(280, $('fr-pdf-view').clientWidth - 32);
-    const viewport = p.getViewport({ scale: width / p.getViewport({ scale: 1 }).width * zoom });
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const canvas = $<HTMLCanvasElement>('fr-canvas');
-    canvas.width = Math.round(viewport.width * dpr); canvas.height = Math.round(viewport.height * dpr);
-    canvas.style.width = `${viewport.width}px`; canvas.style.height = `${viewport.height}px`;
-    $('fr-canvas-wrap').style.width = `${viewport.width}px`;
-    renderTask = p.render({ canvas, viewport, transform: [dpr, 0, 0, dpr, 0, 0] }); await renderTask.promise;
-    if (generation !== renderGeneration) return;
-    $('fr-highlights').innerHTML = currentLocations.filter(l => l.page === page).map(l => {
-      const [x0, y0, x1, y1] = l.bbox;
-      return `<span style="left:${x0*100}%;top:${y0*100}%;width:${(x1-x0)*100}%;height:${(y1-y0)*100}%"></span>`;
-    }).join('');
-    $<HTMLInputElement>('fr-page').value = String(page); $('fr-pdf-status').textContent = `原文第 ${page} 页`;
-  } catch (e) { if (generation === renderGeneration) $('fr-pdf-status').textContent = `PDF 加载失败：${String(e)}`; }
-}
-async function saveReview() {
-  if (!review) return;
-  const button = $<HTMLButtonElement>('fr-save'); button.disabled = true;
-  try {
-    content.summary = $<HTMLTextAreaElement>('fr-summary-edit').value;
-    content.title = $<HTMLInputElement>('fr-title-edit').value;
-    content.institution = $<HTMLInputElement>('fr-institution-edit').value;
-    content.reportDate = $<HTMLInputElement>('fr-date-edit').value;
-    root.querySelectorAll<HTMLInputElement>('[data-section]').forEach(e => { content.sections[Number(e.dataset.section)].title = e.value; });
-    const blocks = new Map(content.sections.flatMap(s => s.blocks).map(b => [b.id, b]));
-    root.querySelectorAll<HTMLTextAreaElement>('[data-edit]').forEach(e => { blocks.get(e.dataset.edit!)!.translation = e.value; });
-    validateContent(content);
-    const response = await fetch('/__review/save', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Review-Token': review.token }, body: JSON.stringify({ content, expectedHash: contentHash, approve: $<HTMLInputElement>('fr-approve').checked }) });
-    if (!response.ok) throw new Error(await response.text());
-    const result = await response.json(); contentHash = result.contentHash;
-    // Keep the reading preview consistent with the editable source without losing scroll.
-    root.querySelectorAll<HTMLElement>('.fr-block').forEach(e => { const block = blocks.get(e.id); if (block) e.querySelector('.fr-markdown')!.innerHTML = markdown(block.translation); });
-    root.querySelector('.fr-summary .fr-markdown')!.innerHTML = markdown(content.summary);
-    root.querySelector('.fr-heading h2')!.textContent = content.title;
-    root.querySelector('.fr-heading p')!.textContent = [content.institution, content.reportDate, `${content.pageCount} 页`].filter(Boolean).join(' · ');
-    content.sections.forEach((section, index) => {
-      $(`fr-section-${index}`).querySelector('h3')!.textContent = section.title;
-      $<HTMLSelectElement>('fr-section').options[index + 1].textContent = section.title;
-    });
-    $('fr-save-status').textContent = result.approved ? '已保存并确认，可运行发布脚本' : '修改已保存，尚未确认发布';
-  } catch (e) { $('fr-save-status').textContent = String(e); }
-  finally { button.disabled = false; }
+  if (generation !== loadGeneration) return;
+  const byElement = new Map(pages.map(item => [item.sheet, item]));
+  // Render pages near the viewport instead of rasterizing the entire PDF up front.
+  pageObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      const item = byElement.get(entry.target as HTMLDivElement);
+      if (!item || generation !== loadGeneration) continue;
+      if (entry.isIntersecting) void paint(item);
+    }
+  }, { rootMargin: '800px 0px' });
+  const painted = new Set<HTMLElement>();
+  async function paint({ page, sheet }: typeof pages[number]) {
+    if (painted.has(sheet) || generation !== loadGeneration) return;
+    painted.add(sheet);
+    let task: pdfjs.RenderTask | undefined;
+    try {
+      const width = Math.max(600, sheet.clientWidth);
+      const viewport = page.getViewport({ scale: width / page.getViewport({ scale: 1 }).width });
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const canvas = sheet.querySelector('canvas')!;
+      canvas.width = Math.round(viewport.width * dpr); canvas.height = Math.round(viewport.height * dpr);
+      task = page.render({ canvas, viewport, transform: [dpr, 0, 0, dpr, 0, 0] });
+      renderTasks.add(task); await task.promise;
+    } catch (error) {
+      if (generation === loadGeneration) { painted.delete(sheet); sheet.dataset.error = String(error); $('fr-pdf-status').textContent = `PDF 加载失败：${String(error)}`; }
+    } finally { if (task) renderTasks.delete(task); }
+  }
+  for (const { sheet } of pages) pageObserver.observe(sheet);
+  await paint(pages[0]);
+  if (generation === loadGeneration && !pages.some(({ sheet }) => sheet.dataset.error)) $('fr-pdf-status').textContent = `共 ${documentPdf.numPages} 页`;
 }

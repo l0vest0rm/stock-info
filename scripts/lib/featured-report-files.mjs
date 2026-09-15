@@ -1,3 +1,4 @@
+import { selectTranslationSource } from './featured-report-selection.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -23,10 +24,13 @@ export function loadCredentials() {
 export function checkCoverage(content, source) {
   const before = source.sections.flatMap(s => s.blocks);
   const after = content.sections.flatMap(s => s.blocks);
-  if (before.length !== after.length) throw new Error('译文段落数量与原文不一致');
+  const optional = new Set(selectTranslationSource(source).skipped.map(b => b.id));
+  const sourceIds = new Set(before.map(b => b.id));
+  if (new Set(after.map(b => b.id)).size !== after.length || after.some(b => !sourceIds.has(b.id))) throw new Error('译文段落 ID 重复或不属于原文');
   const map = new Map(after.map(b => [b.id, b]));
   for (const b of before) {
     const translated = map.get(b.id);
+    if (!translated && optional.has(b.id)) continue;
     if (!translated?.translation?.trim() || JSON.stringify(translated.sourceLocations) !== JSON.stringify(b.sourceLocations)) throw new Error(`段落缺失或原文位置被修改: ${b.id}`);
   }
 }

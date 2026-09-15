@@ -12,7 +12,6 @@ const contentBytes = readFileSync(join(dir, 'content.json'));
 if (contentBytes.length > MAX_CONTENT_BYTES) throw new Error('Content JSON exceeds 12 MiB');
 const content = validateContent(JSON.parse(contentBytes));
 const contentHash = hash(contentBytes);
-if (readJson(join(dir, 'review.json')).approvedHash !== contentHash) throw new Error('内容尚未审阅确认，或审阅后文件发生变化；请使用 --review 审阅并确认');
 checkCoverage(content, readJson(join(dir, 'source.json')));
 const pdf = readFileSync(join(dir, 'original.pdf'));
 if (hash(pdf) !== content.reportId) throw new Error('PDF checksum mismatch');

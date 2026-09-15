@@ -7,9 +7,13 @@ import { createLocalBindings } from "./local-bindings";
 
 const { createKnowledgeContentServer } = await import(pathToFileURL(resolve(process.cwd(), "scripts/local-knowledge-content-server.mjs")).href);
 
+// @ts-expect-error Node-only review adapter is bundled from JavaScript.
+import { createLocalReportHandler } from "../../../scripts/lib/featured-report-local.mjs";
+
 const host = process.env.HOST || "127.0.0.1";
 const port = positivePort(process.env.PORT || "8000");
 const contentPort = positivePort(process.env.KNOWLEDGE_CONTENT_LOCAL_PORT || "8788");
+const localReportHandler = createLocalReportHandler(port);
 const bindings = createLocalBindings();
 const app = createRouter();
 
@@ -51,6 +55,7 @@ function closeServers(): void {
 }
 
 async function handle(incoming: IncomingMessage, outgoing: ServerResponse): Promise<void> {
+  if (await localReportHandler(incoming, outgoing)) return;
   const request = toWebRequest(incoming);
   const context = { waitUntil(promise: Promise<unknown>) { void promise.catch((error) => localRuntimeError("wait_until_failed", error)); }, passThroughOnException() {} } as unknown as ExecutionContext;
   const response = await app.fetch(request, bindings, context);

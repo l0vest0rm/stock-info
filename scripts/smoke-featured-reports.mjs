@@ -8,7 +8,14 @@ const health = await get('/api/health'); assert.equal(health.status, 200);
 const page = await get('/featured-report.html'); assert.equal(page.status, 200);
 assert.match(await page.text(), /featured-report-root/);
 const entry = await get('/js/featured-report-page.js'); assert.equal(entry.status, 200);
-assert.match(await entry.text(), /研报精选/);
+const entryText = await entry.text();
+assert.match(entryText, /研报精选/);
+const workerPath = entryText.match(/\/assets\/pdf\.worker-[^"'`\s]+\.mjs/)?.[0];
+assert.ok(workerPath, 'PDF worker asset must be bundled');
+const worker = await get(workerPath);
+assert.equal(worker.status, 200);
+assert.match(worker.headers.get('content-type'), /javascript/);
+await worker.body.cancel();
 assert.equal((await get('/api/featured-reports/abc')).status, 400);
 assert.equal((await get('/api/internal/featured-reports', { method: 'POST', body: '{}' })).status, 401);
 const code = process.env.FEATURED_SMOKE_CODE;
@@ -23,7 +30,7 @@ if (code) {
   const pdf = await get(data.pdfUrl, { headers: { Range: 'bytes=0-1023', Origin: new URL(base).origin } });
   assert.equal(pdf.status, 206); assert.match(pdf.headers.get('content-type'), /application\/pdf/);
   assert.ok(Buffer.from(await pdf.arrayBuffer()).includes(Buffer.from('%PDF-')));
-  if (new URL(data.pdfUrl).origin !== new URL(base).origin) assert.ok(['*', new URL(base).origin].includes(pdf.headers.get('access-control-allow-origin')));
+  if (new URL(data.pdfUrl, base).origin !== new URL(base).origin) assert.ok(['*', new URL(base).origin].includes(pdf.headers.get('access-control-allow-origin')));
   console.log(`Report ${code}: JSON checksum, source PDF Range/CORS and metadata verified.`);
 }
 console.log(`Featured report live smoke passed: ${base}`);
