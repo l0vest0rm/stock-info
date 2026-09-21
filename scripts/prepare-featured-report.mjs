@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, openSync, closeSync, unlinkSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, openSync, closeSync, unlinkSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { requestLocalDirectLlmText } from '../src/shared/local-direct-llm.ts';
@@ -6,6 +6,7 @@ import { validateContent } from '../src/modules/featured-reports/domain/content.
 import { root, hash, readJson, writeJson, loadCredentials, checkCoverage } from './lib/featured-report-files.mjs';
 import { registerLocalReport } from './lib/featured-report-local.mjs';
 import { startReviewServer } from './lib/featured-report-review.mjs';
+import { prepareCleanPdf } from './lib/featured-report-cleaning.mjs';
 
 import { selectTranslationSource, addOmissionPlaceholders } from './lib/featured-report-selection.mjs';
 import { planTranslationBatches, translateReport, OUTPUT_TOKENS, validateReportSummary } from './lib/featured-report-batches.mjs';
@@ -24,23 +25,15 @@ if (args.includes('--review')) {
   const input = args[0];
   let bytes;
   if (/^https?:\/\//.test(input)) {
-    // Persist URL downloads so rerunning a failed translation does not redownload.
-    const cache = join(root, 'data/featured-reports/downloads'); mkdirSync(cache, { recursive: true });
-    const cached = join(cache, `${hash(input)}.pdf`);
-    if (existsSync(cached)) bytes = readFileSync(cached);
-    else {
-      const response = await fetch(input, { signal: AbortSignal.timeout(120000) });
-      if (!response.ok) throw new Error(`PDF download HTTP ${response.status}`);
-      const parts = []; let size = 0;
-      for await (const part of response.body) { size += part.length; if (size > 200 * 1024 * 1024) throw new Error('PDF exceeds 200 MiB'); parts.push(part); }
-      bytes = Buffer.concat(parts);
-      if (!bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) throw new Error('URL did not return a PDF');
-      writeFileSync(`${cached}.${process.pid}.tmp`, bytes); renameSync(`${cached}.${process.pid}.tmp`, cached);
-    }
+    const response = await fetch(input, { signal: AbortSignal.timeout(120000) });
+    if (!response.ok) throw new Error(`PDF download HTTP ${response.status}`);
+    const parts = []; let size = 0;
+    for await (const part of response.body) { size += part.length; if (size > 200 * 1024 * 1024) throw new Error('PDF exceeds 200 MiB'); parts.push(part); }
+    bytes = Buffer.concat(parts);
+    if (!bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) throw new Error('URL did not return a PDF');
   } else bytes = readFileSync(resolve(input));
   if (!bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) throw new Error('Not a PDF file');
-  const reportId = hash(bytes);
-  const dir = resolve(option('--out', join(root, 'data/featured-reports', reportId)));
+  const dir = resolve(option('--out', join(root, 'data/featured-reports', hash(bytes))));
   mkdirSync(dir, { recursive: true });
   const lock = join(dir, '.prepare.lock');
   if (existsSync(lock)) {
@@ -51,9 +44,8 @@ if (args.includes('--review')) {
   }
   const fd = openSync(lock, 'wx'); writeFileSync(fd, String(process.pid));
   try {
-    const original = join(dir, 'original.pdf');
-    if (existsSync(original) && hash(readFileSync(original)) !== reportId) throw new Error('Output directory belongs to a different PDF');
-    writeFileSync(original, bytes);
+    const original = prepareCleanPdf(dir, bytes);
+    const reportId = hash(readFileSync(original));
     const sourceFile = join(dir, 'source.json');
     if (!existsSync(sourceFile)) {
       const source = JSON.parse(execFileSync(process.env.PYTHON_BIN || 'python3', [join(root, 'scripts/extract-featured-report.py'), original], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 600000 }));

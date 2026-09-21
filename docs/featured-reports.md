@@ -1,6 +1,6 @@
 # 研报精选
 
-人工精选 PDF → 本地提取、gpt-5.6-luna 翻译和总结 → 本地审阅 → 发布两个 R2 对象 → 六位研报码阅读。
+人工精选 PDF → 本地清理 PDF → 本地提取、gpt-5.6-luna 翻译和总结 → 本地审阅 → 发布两个 R2 对象 → 六位研报码阅读。
 
 ## 准备环境
 
@@ -25,7 +25,7 @@
 ./prepare-featured-report.sh '/absolute/path/report.pdf'
 ```
 
-输出默认在忽略目录 `data/featured-reports/<PDF的SHA256>/`；可用 `--out DIR` 指定。URL 下载、提取、模型结果都有本地缓存，失败重跑会继续。已存在 `content.json` 时保留人工修改；要重新生成，指定新的输出目录。`--extract-only` 只提取，不调用模型。
+输出默认在忽略目录 `data/featured-reports/<PDF的SHA256>/`；可用 `--out DIR` 指定。清理结果、提取和模型结果都有本地缓存，失败重跑会继续；URL 输入每次重新下载到内存，不保存清理前副本。已存在 `content.json` 时保留人工修改；要重新生成，指定新的输出目录。`--extract-only` 只提取，不调用模型。
 
 ```sh
 ./prepare-featured-report.sh --review 'data/featured-reports/<报告ID>'
@@ -81,3 +81,11 @@ D1 的 `featured_reports` 仅保存唯一六位 code、唯一 report_id、展示
 此操作保留研究正文译文和人工修改，移除识别出的披露附录及固定声明，并仅用过滤后的原文重新生成摘要。原 content/checks 自动备份到报告目录下的 `before-refilter-*`；默认重复运行仍保留已有产物。原 PDF 和来源坐标不变，修改后的内容需重新审阅后发布。
 
 跳过翻译的内容仍在阅读产物中保留中文占位，标注披露类型和未翻译原因。占位按原文段落顺序插入，并保留原段落 ID、页码及坐标，因此对照页不会整页空白；占位由本地生成，声明原文不送入翻译或摘要模型。
+
+## PDF 前置清理
+
+准备流程在提取、翻译之前调用 `python3 /Users/terry/git/skills/attachments-to-markdown/scripts/clean-pdf.py`（也支持 `PYTHON_BIN`），使用该脚本的默认清理规则。清理失败立即停止，不使用未清理的 PDF 继续处理。脚本及其 PyMuPDF、按规则需要的 OCR 依赖须在本机可用。
+
+报告目录中的 `original.pdf` 是清理后的 PDF，本地对照查看和最终 Cloudflare 上传均使用此文件；报告 ID、页数及来源坐标也以它为准。清理前文件仅在处理期间临时落盘，结束后删除，不在生成目录保留副本；`original.pdf.json` 保存清理审计及前后哈希。默认目录名仍取输入 PDF 的 SHA256，保证重跑找到同一份清理结果。
+
+重跑复用已清理 PDF，不重复改写或改变页码；清理规则更新后如需重新应用，请指定新的 `--out` 目录。已有未经清理的报告目录会提示使用新目录，以免旧译文和清理后的页码混用。`--extract-only` 同样先清理；已有报告的 `--review` 和发布操作不会擅自改写 PDF，需先用原输入在新目录重新准备后再查看或发布。
