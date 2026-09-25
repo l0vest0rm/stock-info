@@ -15,15 +15,17 @@ type FeedRow = {
 
 const topicMap = new Map(taxonomy.topics.map((item) => [`topic:${item.id}`, item]));
 const currentTagContract = String(feedConfig.tagContract).replaceAll("'", "''");
-const industryThemes = new Map<string, string[]>();
-for (const theme of taxonomy.topics) for (const industry of theme.industryIds) {
-  industryThemes.set(industry, [...(industryThemes.get(industry) || []), `topic:${theme.id}`]);
+const currentTaxonomyVersion = String(taxonomy.version).replaceAll("'", "''");
+const industryTopics = new Map<string, string[]>();
+for (const topic of taxonomy.topics) for (const industry of topic.industryIds) {
+  industryTopics.set(industry, [...(industryTopics.get(industry) || []), `topic:${topic.id}`]);
 }
 
 const tagsJson = (alias: 'v' | 'd') => `(select coalesce(json_group_array(json_object('tagId',t.tag,'weight',t.weight)), '[]')
   from knowledge_doc_tags t where t.doc_id=${alias}.doc_id and (t.tag like 'company:%' or t.tag like 'topic:%')
   and t.tagging_input_fingerprint=json_extract(${alias}.metadata_json,'$.feed.taggingInputFingerprint')
   and t.contract_version=json_extract(${alias}.metadata_json,'$.feed.tagContract')
+  and json_extract(${alias}.metadata_json,'$.feed.taxonomyVersion')='${currentTaxonomyVersion}'
   and t.contract_version='${currentTagContract}')`;
 const ELIGIBLE = `d.source_type='information_feed' and d.access_method='markdown'
   and json_extract(d.metadata_json,'$.feed.version')='v1'
@@ -31,6 +33,7 @@ const ELIGIBLE = `d.source_type='information_feed' and d.access_method='markdown
   and exists (select 1 from knowledge_doc_content_refs c where c.doc_id=d.doc_id and c.content_key is not null)`;
 const TAGGED = `json_extract(d.metadata_json,'$.feed.taggingStatus')='complete'
   and json_extract(d.metadata_json,'$.feed.tagContract')='${currentTagContract}'
+  and json_extract(d.metadata_json,'$.feed.taxonomyVersion')='${currentTaxonomyVersion}'
   and json_extract(d.metadata_json,'$.feed.publishAllowed')=1
   and exists (select 1 from knowledge_doc_content_refs c where c.doc_id=d.doc_id
     and c.content_sha256=json_extract(d.metadata_json,'$.feed.taggingContentSha256'))
@@ -62,7 +65,8 @@ function mapRow(row: FeedRow) {
     doc_id: row.doc_id, title: row.title, url: row.url, source_name: row.source_name,
     published_at: row.published_at, sort_time: row.sort_time, summary: row.summary,
     content_type: metadata.feed?.contentType || 'news', kind: metadata.feed?.kind || 'new', story_key: metadata.feed?.storyKey || row.doc_id,
-    tagging_status: metadata.feed?.taggingStatus === 'complete' && metadata.feed?.tagContract !== feedConfig.tagContract
+    tagging_status: metadata.feed?.taggingStatus === 'complete' && (metadata.feed?.tagContract !== feedConfig.tagContract
+      || metadata.feed?.taxonomyVersion !== taxonomy.version)
       ? 'pending' : (metadata.feed?.taggingStatus || 'pending'),
     sources: ((metadata.feed?.sources || []) as Array<{ sourceKey: string }>).map((source) => source.sourceKey),
     tags: tags.sort((a, b) => b.weight - a.weight), industries,
@@ -78,7 +82,7 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
   const industries = parseCsv(c.req.query('industry'));
   const status = c.req.query('status')?.trim() || '';
   if (status && (!local || !['unclassified', 'pending', 'failed', 'complete'].includes(status))) return fail(c, 400, 'invalid feed status');
-  if (industries.some((industry) => !industryThemes.has(industry))) return fail(c, 400, 'unknown industry');
+  if (industries.some((industry) => !industryTopics.has(industry))) return fail(c, 400, 'unknown industry');
   const pageSize = Math.min(50, Math.max(1, Math.floor(Number(c.req.query('limit') || 20) || 20)));
   const cursor = parseCursor(c.req.query('cursor'));
   if (c.req.query('cursor') && !cursor) return fail(c, 400, 'invalid cursor');
@@ -96,18 +100,22 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
     conditions.push(`exists (select 1 from knowledge_doc_tags t where t.doc_id=v.doc_id and t.tag in (${placeholders(values.length)})
       and t.tagging_input_fingerprint=json_extract(v.metadata_json,'$.feed.taggingInputFingerprint')
       and t.contract_version=json_extract(v.metadata_json,'$.feed.tagContract')
+      and json_extract(v.metadata_json,'$.feed.taxonomyVersion')='${currentTaxonomyVersion}'
       and t.contract_version='${currentTagContract}')`);
     binds.push(...values);
   };
   if (companies.length) tagExists(companies.map((item) => `company:${item.replace(/^company:/, '')}`));
   if (topics.length) tagExists(topics.map((item) => `topic:${item.replace(/^topic:/, '')}`));
-  if (industries.length) tagExists([...new Set(industries.flatMap((industry) => industryThemes.get(industry) || []))]);
+  if (industries.length) tagExists([...new Set(industries.flatMap((industry) => industryTopics.get(industry) || []))]);
   if (status === 'unclassified') conditions.push(`not exists (select 1 from knowledge_doc_tags t where t.doc_id=v.doc_id and (t.tag like 'company:%' or t.tag like 'topic:%')
-    and t.tagging_input_fingerprint=json_extract(v.metadata_json,'$.feed.taggingInputFingerprint') and t.contract_version='${currentTagContract}')`);
+    and t.tagging_input_fingerprint=json_extract(v.metadata_json,'$.feed.taggingInputFingerprint')
+    and json_extract(v.metadata_json,'$.feed.taxonomyVersion')='${currentTaxonomyVersion}' and t.contract_version='${currentTagContract}')`);
   else if (status === 'pending') conditions.push(`(json_extract(v.metadata_json,'$.feed.taggingStatus')='pending'
-    or (json_extract(v.metadata_json,'$.feed.taggingStatus')='complete' and json_extract(v.metadata_json,'$.feed.tagContract')!='${currentTagContract}'))`);
+    or (json_extract(v.metadata_json,'$.feed.taggingStatus')='complete' and (json_extract(v.metadata_json,'$.feed.tagContract')!='${currentTagContract}'
+      or coalesce(json_extract(v.metadata_json,'$.feed.taxonomyVersion'),'')!='${currentTaxonomyVersion}')))`);
   else if (status) {
-    conditions.push(`json_extract(v.metadata_json,'$.feed.taggingStatus')=?${status === 'complete' ? ` and json_extract(v.metadata_json,'$.feed.tagContract')='${currentTagContract}'` : ''}`);
+    conditions.push(`json_extract(v.metadata_json,'$.feed.taggingStatus')=?${status === 'complete' ? ` and json_extract(v.metadata_json,'$.feed.tagContract')='${currentTagContract}'
+      and json_extract(v.metadata_json,'$.feed.taxonomyVersion')='${currentTaxonomyVersion}'` : ''}`);
     binds.push(status);
   }
   if (cursor) { conditions.push('(v.sort_time < ? or (v.sort_time = ? and v.doc_id < ?))'); binds.push(cursor.time, cursor.time, cursor.id); }

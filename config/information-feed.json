@@ -1,0 +1,23 @@
+{
+  "tagContract": "feed-tag-v4",
+  "automation": {
+    "enabled": true,
+    "runOnStart": false,
+    "cron": "*/15 * * * *",
+    "maxDocumentsPerRun": 200,
+    "maxTagsPerRun": 20,
+    "maxTagsPerDay": 200,
+    "lookbackDays": 14,
+    "publishRemote": false
+  },
+  "remotePublication": {
+    "cls_telegraph": { "fullTextAllowed": true },
+    "tencent_stock_news": { "fullTextAllowed": true }
+  },
+  "companyCandidates": {
+    "excludedMappings": [
+      { "code": "000660.SZ", "name": "SK海力士" },
+      { "code": "005930.SZ", "name": "三星电子" }
+    ]
+  }
+}

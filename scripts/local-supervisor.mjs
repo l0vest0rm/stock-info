@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { startKnowledgeIngestScheduler } from "./knowledge-ingest-scheduler.mjs";
+import { startInformationFeedScheduler } from "./information-feed-scheduler.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(new URL("..", import.meta.url).pathname);
@@ -71,7 +72,14 @@ async function main() {
       onEvent: (event, details) => log("local-scheduler", `knowledge_ingest_${event}`, details),
     });
   if (process.env.KNOWLEDGE_INGEST_SCHEDULER === "0") log("local-scheduler", "knowledge_ingest_disabled", { reason: "environment" });
-  installShutdown({ cron, ingest });
+  const feed = process.env.INFORMATION_FEED_SCHEDULER === "0"
+    ? { stop() {} }
+    : startInformationFeedScheduler({
+      configPath: resolve(process.env.LOCAL_INFORMATION_FEED_CONFIG || "config/information-feed.json"),
+      runChild: runOneShot,
+      onEvent: (event, details) => log("local-scheduler", `information_feed_${event}`, details),
+    });
+  installShutdown({ cron, ingest, feed });
   scheduleHealthChecks();
   scheduleCookieRefreshAfter(cookieReady ? cookieRefreshIntervalMs : cookieRefreshRetryMs);
   log("local-supervisor", "ready", {
@@ -274,8 +282,8 @@ async function recordCookieRefreshState() {
   await rename(temporary, stateFile);
 }
 
-function installShutdown({ cron, ingest }) {
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.once(signal, () => { void shutdown(0, { cron, ingest, signal }); });
+function installShutdown({ cron, ingest, feed }) {
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.once(signal, () => { void shutdown(0, { cron, ingest, feed, signal }); });
 }
 
 async function shutdown(exitCode, scheduler = null) {
@@ -285,6 +293,7 @@ async function shutdown(exitCode, scheduler = null) {
   if (cookieTimer) clearTimeout(cookieTimer);
   scheduler?.cron.stop();
   scheduler?.ingest.stop();
+  scheduler?.feed.stop();
   log("local-supervisor", "stopping", { signal: scheduler?.signal ?? null });
   const active = [
     ...[...children.values()].map((state) => state.child),

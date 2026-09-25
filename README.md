@@ -6,7 +6,8 @@ Cloudflare Workers 股票信息站。当前知识链路已收敛到固定形态�
 - R2 + `content.tinfo.cc`：正文对象存储，浏览器直接访问
 - R2 + `market-data.tinfo.cc`：市场历史快照对象存储，浏览器可直接访问
 - Worker API：只返回结构化业务数据，不中转正文
-- Importer pipeline：唯一负责内容清洗、preview、标签、压缩、对象写入、D1 upsert
+- 旧知识 Importer pipeline：负责非资讯信息流文档的清洗、preview、标签、压缩、对象写入、D1 upsert
+- 资讯信息流：本地独立采集/工程去重/`gpt-6-luna` 打标，远端仅批量接收有许可且已打标的独有内容
 - Cleanup pipeline：周期性清理未引用正文对象
 - Observability：分开看 Worker、D1、R2 和正文域名缓存
 
@@ -45,6 +46,20 @@ chmod +x ./start-local.sh
 ```
 
 默认访问地址是 `http://127.0.0.1:8000`。
+
+### 资讯信息流
+
+本地页面为 `/news.html`，接口为 `/api/knowledge/feed` 和 `/api/knowledge/feed/facets`。
+`config/information-feed.json` 控制每 15 分钟的财联社采集、腾讯/财联社文件入库、打标上限与远端发布开关；去重只使用工程规则，模型只打公司/主题标签。腾讯原始 JSON 由仓库外的现有采集器提供。手动处理和检查：
+
+```bash
+npm run process:feed -- --max-documents 200 --max-tags 20
+npm run reconcile:feed:dry-run # 去重规则更新后检查存量同标题重复卡片
+npm run publish:feed:dry-run
+npm run test:feed
+```
+
+腾讯自选股、财联社采集全文已获远端发布许可，但 `publishRemote` 开关仍关闭；手动执行发布器的 `--apply` 也会跳过远端操作。先验收本地采集、去重与打标效果，之后再应用远端 D1 迁移、验证批量发布与生产只读 API，并单独开启发布开关。设计、门禁及剩余验收见 [资讯信息流方案](docs/information-feed-design.md)。
 
 `start-local.sh` 最终以前台 `local-supervisor` 运行，并管理 `local-http` 与
 `local-scheduler` 两个常驻角色。`local-http` 同时监听 8000 API

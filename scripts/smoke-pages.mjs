@@ -36,6 +36,27 @@ await check("health", async () => {
   assert(body.code === 200, `unexpected api code: ${body.code}`);
 });
 
+await check("information feed page and API", async () => {
+  const page = await fetchWithTimeout(`${baseUrl}/news.html`);
+  const html = await page.text();
+  assert(page.status === 200 && html.includes('information-feed-root') && html.includes('js/information-feed-page.js'), 'information feed page is unavailable');
+  const old = await fetchWithTimeout(`${baseUrl}/research-news.html`);
+  assert(old.status === 404, `retired research-news page status=${old.status}`);
+  const feed = await fetchApi('/api/knowledge/feed?limit=2');
+  assert(Array.isArray(feed.data?.list), 'information feed list is missing');
+  assert(feed.data.list.every((item) => ['news', 'flash', 'announcement', 'text_report'].includes(item.content_type)
+    && Array.isArray(item.tags)), 'information feed list has invalid items');
+  const facets = await fetchApi('/api/knowledge/feed/facets');
+  assert(Array.isArray(facets.data?.sources) && Array.isArray(facets.data?.topics), 'information feed facets are missing');
+  assert(!('themes' in facets.data), 'legacy theme facet must not be returned');
+  if (facets.data.topics.length) {
+    const topic = facets.data.topics[0].id;
+    const filtered = await fetchApi(`/api/knowledge/feed?topic=${encodeURIComponent(topic)}&limit=2`);
+    assert(filtered.data?.list?.length > 0 && filtered.data.list.every((item) => item.tags.some((tag) => tag.tagId === topic)),
+      'information feed topic filter did not match its facet');
+  }
+});
+
 await check("retired situation surfaces", async () => {
   for (const path of [
     "/situation.html",

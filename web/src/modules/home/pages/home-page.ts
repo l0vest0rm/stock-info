@@ -148,10 +148,10 @@ const primaryCards = [
     copy: '覆盖基金排名、持仓、成分股与净值表现，适合快速比较不同产品。',
   },
   {
-    href: 'research-news.html',
-    kicker: 'Research Feed',
-    title: '研报资讯',
-    copy: '把更值得看的公司研报、行业报告和资讯聚合在一个入口里。',
+    href: 'news.html',
+    kicker: 'Information Feed',
+    title: '资讯',
+    copy: '按时间阅读资讯，查看公司与主题标签，避免重复内容。',
     runtime: 'local',
   },
   {
@@ -247,7 +247,7 @@ const HomePage = defineComponent({
             h('h2', { class: 'home-section-title mb-2' }, isLocalBrowserRuntime() ? '四个主入口' : '三个主入口'),
             h('p', { class: 'home-section-copy mb-0' }, '按真实研究流程组织，而不是把所有页面平铺成导航列表。'),
           ]),
-          isLocalBrowserRuntime() ? h('a', { href: 'research-news.html', class: 'home-example-link' }, '先看研报资讯') : null,
+          isLocalBrowserRuntime() ? h('a', { href: 'news.html', class: 'home-example-link' }, '先看资讯') : null,
         ]),
         h('div', { class: 'row g-3 g-lg-4' }, visibleHomeCards().map((card) => h('div', { key: card.href, class: 'col-md-6 col-xl-3' }, [
           h('a', { href: card.href, class: 'home-card' }, [
@@ -276,7 +276,7 @@ const HomePage = defineComponent({
               h('ul', { class: 'home-bullet-list' }, [
                 h('li', '把股票、基金和内容研究放到同一个站内闭环。'),
                 h('li', isLocalBrowserRuntime() ? '公司页覆盖股价、财务、公告、研报、资讯。' : '公司页覆盖股价、财务、公告、研报。'),
-                isLocalBrowserRuntime() ? h('li', '研报资讯页适合作为“每天先看什么”的入口。') : null,
+                isLocalBrowserRuntime() ? h('li', '资讯页适合作为“每天先看什么”的入口。') : null,
               ]),
             ]),
           ]),
@@ -308,7 +308,7 @@ const HomePage = defineComponent({
             h('div', { class: 'd-flex flex-column gap-2' }, [
               h('a', { href: 'company.html?code=300308.SZ', class: 'home-example-link' }, '示例公司：中际旭创'),
               h('a', { href: 'fund.html?code=513100.OF', class: 'home-example-link' }, '示例基金：纳指 ETF'),
-              isLocalBrowserRuntime() ? h('a', { href: 'research-news.html', class: 'home-example-link' }, '去看今日研报资讯') : null,
+              isLocalBrowserRuntime() ? h('a', { href: 'news.html', class: 'home-example-link' }, '去看今日资讯') : null,
             ]),
           ]),
         ]),

@@ -93,15 +93,6 @@ function createFundPagesContext(context: LegacyPageRegistryContext) {
   }
 }
 
-async function createKnowledgeNewsPageInitializer(context: LegacyPageRegistryContext): Promise<PageInitializer> {
-  const { createKnowledgeNewsInitializer } = await import('../../modules/knowledge/runtime/knowledge-news-runtime')
-  return createKnowledgeNewsInitializer({
-    server: context.server,
-    fetchRequest: context.fetchRequest,
-    escapeHtml: context.escapeHtml,
-  })
-}
-
 export async function loadLegacyPageInitializer(page: string, context: LegacyPageRegistryContext): Promise<PageInitializer | null> {
   switch (page) {
     case '':
@@ -339,9 +330,6 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
         alert: context.alert,
       })
     }
-    case 'research-news.html':
-      if (!__STOCK_INFO_LOCAL_PAGES__) return null
-      return createKnowledgeNewsPageInitializer(context)
     default:
       return null
   }

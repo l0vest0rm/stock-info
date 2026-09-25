@@ -103,6 +103,7 @@ logProgress("discovered input files", {
 const results = [];
 const fileBatches = [];
 let skippedImportedDocs = 0;
+let delegatedFeedDocs = 0;
 
 let scannedFiles = 0;
 for (const file of files) {
@@ -115,7 +116,10 @@ for (const file of files) {
     });
   }
   try {
-    const fileDocs = await processInputFile(file, config);
+    const allFileDocs = await processInputFile(file, config);
+    const fileDocs = allFileDocs.filter((doc) => !["tencent_stock_news", "cls_telegraph"].includes(doc.metadata?.source));
+    const delegatedFromFile = allFileDocs.length - fileDocs.length;
+    delegatedFeedDocs += delegatedFromFile;
     const currentSourceFingerprint = sourceFingerprint(file);
     const newDocs = fileDocs.filter((doc) => !isDocAlreadySynced(doc.docId, currentSourceFingerprint, importSyncState));
     const skipped = fileDocs.length - newDocs.length;
@@ -128,8 +132,8 @@ for (const file of files) {
       });
     }
     if (newDocs.length === 0) {
-      archiveProcessedFile(file);
-      results.push({ file, status: "skipped_synced", docs: 0, skippedExisting: skipped });
+      if (fileDocs.length > 0) archiveProcessedFile(file);
+      results.push({ file, status: delegatedFromFile > 0 ? "delegated_feed" : "skipped_synced", docs: 0, skippedExisting: skipped });
       lastProcessedFile = file;
       continue;
     }
@@ -149,6 +153,7 @@ for (const file of files) {
 
 logProgress("evaluating topic filter", {
   docs: fileBatches.reduce((sum, batch) => sum + batch.docs.length, 0),
+  delegatedFeedDocs,
 });
 const topicEvaluation = await evaluateTopics(fileBatches.flatMap((batch) => batch.docs), config);
 const topicDecisions = topicEvaluation.decisions;

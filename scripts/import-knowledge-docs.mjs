@@ -33,6 +33,9 @@ const docChunkSize = positiveInteger(process.env.KNOWLEDGE_IMPORT_DOC_CHUNK_SIZE
 const contentOptions = buildContentOptions(args);
 const localCompanyCodeResolver = loadLocalCompanyCodeResolver(process.cwd());
 const docs = loadDocs(args.file);
+if (docs.some((doc) => ["tencent_stock_news", "cls_telegraph"].includes(doc?.metadata?.source))) {
+  throw new Error("Tencent/CLS text news belongs to the information-feed pipeline, not the legacy knowledge importer");
+}
 if (docs.length === 0) {
   throw new Error(`no knowledge docs found in ${args.file}`);
 }

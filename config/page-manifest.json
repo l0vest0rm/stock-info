@@ -217,11 +217,11 @@
     "globalName": "LicaiOptionStrategyPage"
   },
   {
-    "path": "/research-news.html",
-    "entry": "src/modules/knowledge/pages/knowledge-news-page.ts",
+    "path": "/news.html",
+    "entry": "src/modules/knowledge/pages/information-feed-page.ts",
     "runtime": "local",
-    "legacy": true,
-    "globalName": "LicaiKnowledgeNewsPage"
+    "legacy": false,
+    "globalName": null
   },
   {
     "path": "/sector-flow.html",

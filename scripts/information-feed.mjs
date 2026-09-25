@@ -18,7 +18,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));
 const taxonomy = JSON.parse(readFileSync(resolve(ROOT, 'config/information-feed-topics.json'), 'utf8'));
 const feedConfig = JSON.parse(readFileSync(resolve(ROOT, 'config/information-feed.json'), 'utf8'));
-const topics = new Map(taxonomy.topics.map((theme) => [`topic:${theme.id}`, theme]));
+const topics = new Map(taxonomy.topics.map((topic) => [`topic:${topic.id}`, topic]));
 const contentOptions = buildContentOptions({ remote: false });
 const stateFile = resolve(ROOT, process.env.INFORMATION_FEED_STATE_FILE || 'data/local/information-feed-ingest-state.json');
 const usageFile = resolve(ROOT, process.env.INFORMATION_FEED_TAG_USAGE_FILE || 'data/local/information-feed-tag-usage.json');
@@ -185,7 +185,7 @@ async function tagPending() {
       usage.count += 1;
       saveJson(usageFile, usage);
       const input = JSON.stringify({ title: row.title, content: body.slice(0, 12000), previousContext: context.slice(0, 1500),
-        companyCandidates, topicCandidates: [...topics].map(([tagId, theme]) => ({ tagId, label: theme.label })) });
+        companyCandidates, topicCandidates: [...topics].map(([tagId, topic]) => ({ tagId, label: topic.label })) });
       const response = await requestLocalDirectLlmText(process.env, {
         model: 'gpt-6-luna', instructions: INFORMATION_FEED_TAGGING_PROMPT,
         input: [{ role: 'user', content: [{ type: 'input_text', text: input }] }], maxTokens: 1200,
@@ -208,7 +208,7 @@ async function tagPending() {
         tagCandidatePolicyHash: CANDIDATE_POLICY_HASH,
         taggedAt: Date.now(), lastTagAttemptAt: Date.now(), nextRetryAt: null,
         tagLeaseOwner: null, tagLeaseUntil: null };
-      executeLocalD1Sql(`delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'topic:%');
+      executeLocalD1Sql(`delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'topic:%' or tag like 'theme:%');
         ${tags.map((tag) => `insert into knowledge_doc_tags (doc_id,tag,weight,tagging_input_fingerprint,contract_version) values (${q(row.doc_id)},${q(tag.tagId)},${tag.weight},${q(fingerprint)},${q(TAG_CONTRACT)});`).join('\n')}
         update knowledge_docs set metadata_json=${q(JSON.stringify(meta))},updated_at=${Date.now()} where doc_id=${q(row.doc_id)};`, { requiredTable: 'knowledge_doc_tags' });
       counters.tagged += 1;

@@ -29,6 +29,10 @@ const promptEntries = [
     source: "prompts/knowledge/topic-batch-user.md",
   },
   {
+    exportName: "INFORMATION_FEED_TAGGING_PROMPT",
+    source: "prompts/knowledge/information-feed-tagging.md",
+  },
+  {
     exportName: "INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT",
     source: "prompts/information-processing/document-analysis-system.md",
   },

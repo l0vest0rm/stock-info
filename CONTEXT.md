@@ -113,6 +113,30 @@ _Avoid_: Entity type, sentiment
 **Processing outcome**:
 The automatic result for one document version: extracted, no information, or unresolved. An unresolved result records its reason and reprocessing condition; a failed model attempt is not a processing outcome and does not remain in the information-processing ledger.
 
+**Information-feed item**:
+A consumer-visible unit of unique information or a material update from a text-origin source; its local presence does not depend on semantic tagging being complete. PDF-origin material, including PDF converted to Markdown, is not an information-feed item.
+_Avoid_: Verified fact, model analysis result
+
+**Semantic feed tag**:
+A normalized relationship between an information-feed item and a company or fine-grained topic. It describes topical relevance, not the truth of the source or an investment recommendation; industry is derived from the topic taxonomy rather than tagged independently.
+_Avoid_: Source-supplied label, information record
+
+**Tag weight**:
+The relative topical importance of one semantic feed tag to an information-feed item, used to order displayed tags and optionally rank matching items.
+_Avoid_: Model confidence, source credibility, investment value
+
+**Topic**:
+A controlled, durable investment subject narrower than an industry, such as a product, technology, business segment, or industry-specific core metric, assigned directly to an information-feed item. It maps deterministically to one or more industries and is not an article event, corporate action, policy catalyst, or source type.
+_Avoid_: Theme, 赛道, industry, event category
+
+**Repeated source**:
+A recapture, reprint, or rewrite that adds no meaningful information to an existing feed item. Its redundant body is not retained; only a minimal source identity mapping may remain.
+_Avoid_: New information item, event update
+
+**Information update**:
+A source-bound material change or addition to an existing story. The feed shows the new content without repeating already retained paragraphs.
+_Avoid_: Reprint, silent overwrite
+
 ## Company Investment Analysis
 
 **Engineering baseline**:

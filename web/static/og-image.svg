@@ -9,7 +9,7 @@
   <circle cx="1010" cy="110" r="120" fill="#ffffff" fill-opacity="0.08"/>
   <circle cx="1120" cy="280" r="180" fill="#ffffff" fill-opacity="0.05"/>
   <text x="88" y="198" fill="#f7f3e8" font-family="Georgia, serif" font-size="84" font-weight="700">投研社</text>
-  <text x="88" y="286" fill="#d5ede8" font-family="PingFang SC, Hiragino Sans GB, sans-serif" font-size="34">股票、基金、研报资讯研究入口</text>
-  <text x="88" y="356" fill="#d5ede8" font-family="PingFang SC, Hiragino Sans GB, sans-serif" font-size="28">公司筛选 · 基金排名 · 研报资讯 · 13F 持仓</text>
+  <text x="88" y="286" fill="#d5ede8" font-family="PingFang SC, Hiragino Sans GB, sans-serif" font-size="34">股票、基金、资讯研究入口</text>
+  <text x="88" y="356" fill="#d5ede8" font-family="PingFang SC, Hiragino Sans GB, sans-serif" font-size="28">公司筛选 · 基金排名 · 资讯 · 13F 持仓</text>
   <path d="M88 462h120l82-152 96 68 154-226 84 56-210 322-112-82-58 118H88z" fill="#f6d365"/>
 </svg>

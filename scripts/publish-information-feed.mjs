@@ -166,7 +166,7 @@ function statementsFor(row, tags) {
   return [
     `insert into knowledge_docs (${columns.join(',')}) values (${columns.map((column) => q(row[column])).join(',')}) on conflict(doc_id) do update set ${columns.filter((column) => column !== 'doc_id').map((column) => `${column}=excluded.${column}`).join(',')};`,
     `insert into knowledge_doc_content_refs (${content.join(',')}) values (${content.map((column) => q(row[column])).join(',')}) on conflict(doc_id) do update set ${content.filter((column) => column !== 'doc_id').map((column) => `${column}=excluded.${column}`).join(',')};`,
-    `delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'topic:%');`,
+    `delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'topic:%' or tag like 'theme:%');`,
     ...tags.map((tag) => `insert into knowledge_doc_tags (doc_id,tag,weight,tagging_input_fingerprint,contract_version) values (${q(row.doc_id)},${q(tag.tag)},${q(tag.weight)},${q(tag.tagging_input_fingerprint)},${q(tag.contract_version)});`),
   ];
 }

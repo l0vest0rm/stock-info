@@ -3,7 +3,7 @@ import { extractTaskdWebQaResult } from "./taskd-webqa-result";
 import type { Bindings } from "../types";
 
 /** taskd currently routes explicit discovery requests through input-gateway's ChatGPT WebQA executor. */
-export type SupportedLlmModel = "gpt-5.4-mini" | "gpt-5.6-luna";
+export type SupportedLlmModel = "gpt-5.4-mini" | "gpt-5.6-luna" | "gpt-6-luna";
 
 export type LlmMessage = {
   role: "system" | "user" | "assistant";
