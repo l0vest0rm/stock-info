@@ -1,0 +1,40 @@
+{
+  "version": "feed-topics-v1",
+  "topics": [
+    {"id":"bank","label":"银行","industryIds":["银行"]},
+    {"id":"insurance","label":"保险","industryIds":["保险"]},
+    {"id":"brokerage","label":"券商","industryIds":["证券"]},
+    {"id":"real_estate","label":"房地产","industryIds":["房地产"]},
+    {"id":"pharma","label":"医药","industryIds":["医药生物"]},
+    {"id":"consumer_retail","label":"消费零售","industryIds":["商贸零售"]},
+
+    {"id":"ai_model_application","label":"AI模型与应用","industryIds":["计算机"]},
+    {"id":"gpu_cpu","label":"GPU/CPU与AI芯片","industryIds":["半导体"]},
+    {"id":"asic_chip","label":"ASIC与专用AI芯片","industryIds":["半导体"]},
+    {"id":"ai_server","label":"AI服务器","industryIds":["计算机"]},
+    {"id":"hbm_memory","label":"HBM/存储芯片","industryIds":["半导体"]},
+    {"id":"optical_modules","label":"光模块","industryIds":["通信"]},
+    {"id":"cpo_lpo","label":"CPO/LPO","industryIds":["通信"]},
+    {"id":"pcb","label":"PCB","industryIds":["电子"]},
+    {"id":"advanced_packaging","label":"先进封装与Chiplet","industryIds":["半导体"]},
+    {"id":"eda_ip","label":"EDA与半导体IP","industryIds":["半导体"]},
+    {"id":"semiconductor_equipment","label":"半导体设备与材料","industryIds":["半导体"]},
+    {"id":"data_center_power","label":"数据中心电力","industryIds":["电力设备"]},
+    {"id":"liquid_cooling","label":"数据中心液冷与基础设施","industryIds":["计算机"]},
+
+    {"id":"robotics","label":"机器人与具身智能","industryIds":["机械设备"]},
+    {"id":"autonomous_driving","label":"智能驾驶","industryIds":["汽车"]},
+    {"id":"battery_storage","label":"电池与储能","industryIds":["电力设备"]},
+    {"id":"critical_materials","label":"关键矿产与资源","industryIds":["有色金属"]},
+    {"id":"power_grid","label":"电网设备与输配电","industryIds":["电力设备"]},
+
+    {"id":"earnings","label":"业绩与财报","industryIds":[]},
+    {"id":"orders","label":"订单与中标","industryIds":[]},
+    {"id":"capacity_expansion","label":"扩产与资本开支","industryIds":[]},
+    {"id":"price_cycle","label":"产品价格与周期","industryIds":[]},
+    {"id":"dividend_buyback","label":"分红与回购","industryIds":[]},
+    {"id":"monetary_policy","label":"货币政策与利率","industryIds":[]},
+    {"id":"fiscal_policy","label":"财政与产业政策","industryIds":[]},
+    {"id":"geopolitics_supply_chain","label":"地缘政治与供应链","industryIds":[]}
+  ]
+}
