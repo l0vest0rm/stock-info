@@ -32,6 +32,7 @@ test('company and category filters must match the same record, and matching info
     ]});
     const get=client(f);
     assert.equal((await get('/knowledge/feed?company=300308.SZ&category=net_profit')).data.list.length,0);
+    assert.equal((await get('/knowledge/feed?entity=company%3A300308.SZ&category=net_profit')).data.list.length,0);
     assert.equal((await get('/knowledge/feed?company=300308.SZ&industry='+encodeURIComponent('电子设备-电子设备制造-电子设备制造'))).data.list.length,0);
     assert.equal((await get('/knowledge/feed?category=net_profit&industry='+encodeURIComponent('信息技术-通信设备-通信传输设备'))).data.list.length,0);
     const matched=await get('/knowledge/feed?company=688008.SH&category=net_profit');
@@ -41,6 +42,9 @@ test('company and category filters must match the same record, and matching info
     assert.equal(matched.data.list[0].tags.find((tag) => tag.tagId.startsWith('category:')).tagId,'category:net_profit');
     assert.equal((await get('/knowledge/feed?category=revenue,net_profit')).data.list.length,1);
     assert.equal((await get('/knowledge/feed?company=300308.SZ,688008.SH')).data.list.length,1);
+    assert.equal((await get('/knowledge/feed?entity=company%3A300308.SZ,company%3A688008.SH')).data.list.length,1);
+    const entities=(await get('/knowledge/feed/facets')).data.entities;
+    assert.deepEqual(entities.map((item) => item.id).sort(),['company:300308.SZ','company:688008.SH']);
   }finally{f.close();}
 });
 
@@ -82,9 +86,16 @@ test('digest tampering and source-content changes are excluded from entity summa
 });
 
 test('unresolved non-company names remain retrievable without a fabricated entity key',async()=>{
-  const f=fixture();try {const item={...record,entity:'测试市场',statement:'测试市场2026Q2收入增长。'},doc=addDocument(f.db,{body:item.statement});extract(f,doc,[item]);
-    const response=await client(f)('/knowledge/information-records?entity='+encodeURIComponent('测试市场'));
+  const f=fixture();try {const item={...record,entity:'测试,市场',statement:'测试,市场2026Q2收入增长。'},doc=addDocument(f.db,{body:item.statement});extract(f,doc,[item]);
+    const get=client(f);
+    const response=await get('/knowledge/information-records?entity='+encodeURIComponent(item.entity));
     assert.equal(response.data.list.length,1);assert.equal(response.data.list[0].entity_key,null);assert.equal(response.data.list[0].entity_resolved,false);
+    const facets=(await get('/knowledge/feed/facets')).data.entities;
+    assert.deepEqual(facets,[{id:`entity:${encodeURIComponent(item.entity)}`,count:1,label:item.entity}]);
+    const feed=await get('/knowledge/feed?entity='+encodeURIComponent(facets[0].id));
+    assert.equal(feed.data.list.length,1);assert.equal(feed.data.list[0].records[0].entity,item.entity);
+    assert.equal((await get('/knowledge/feed?entity='+encodeURIComponent(facets[0].id)+'&category=net_profit')).data.list.length,0);
+    assert.equal((await get('/knowledge/feed?entity=entity%3A%25BAD')).status,400);
   }finally{f.close();}
 });
 

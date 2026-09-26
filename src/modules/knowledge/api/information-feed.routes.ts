@@ -68,10 +68,22 @@ async function verifiedRows(row: FeedRow): Promise<InformationRow[] | null> {
   } catch { return null; }
 }
 
-type RecordFilters = { categories: string[]; companies: string[]; industries: string[] };
+type RecordFilters = { categories: string[]; entities: string[]; companies: string[]; industries: string[] };
+type EntityIdentity = { entity: string; entity_key: string | null };
+const entityFacetId = (record: EntityIdentity) => record.entity_key || `entity:${encodeURIComponent(record.entity)}`;
+
+function decodeEntityFacetId(id: string): { key: string | null; name: string | null } | null {
+  if (id.startsWith('company:') && id.length <= 200) return { key: id, name: null };
+  if (!id.startsWith('entity:') || id.length > 900) return null;
+  try {
+    const name = decodeURIComponent(id.slice('entity:'.length));
+    return name && name.length <= 200 && `entity:${encodeURIComponent(name)}` === id ? { key: null, name } : null;
+  } catch { return null; }
+}
 
 function matchesRecord(record: InformationRow, filters: RecordFilters): boolean {
   return (!filters.categories.length || filters.categories.includes(record.category))
+    && (!filters.entities.length || filters.entities.includes(entityFacetId(record)))
     && (!filters.companies.length || !!record.entity_key && filters.companies.includes(record.entity_key))
     && (!filters.industries.length || !!record.entity_key && filters.industries.includes(record.entity_key));
 }
@@ -83,7 +95,7 @@ async function mapRow(row: FeedRow, cutoff: string, local: boolean, filters?: Re
   const valid = rows !== null;
   const tags = (valid ? JSON.parse(row.tags_json || '[]') : []) as Array<{ tagId: string; weight: number }>;
   const industries = [...new Set(tags.map((tag) => industryByCompany.get(tag.tagId)).filter((value): value is string => !!value))];
-  const orderedRows = filters && (filters.categories.length || filters.companies.length || filters.industries.length)
+  const orderedRows = filters && (filters.categories.length || filters.entities.length || filters.companies.length || filters.industries.length)
     ? [...(rows || [])].sort((a, b) => Number(matchesRecord(b, filters)) - Number(matchesRecord(a, filters))) : rows || [];
   const leadingTags = new Set(orderedRows.length ? [`category:${orderedRows[0].category}`, orderedRows[0].entity_key] : []);
   const rawStatus = extraction?.status || 'pending';
@@ -106,6 +118,7 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
   const cutoff = new Date(Date.now() - (feedConfig.automation.maxAgeHours || 48) * 3600000).toISOString();
   const sources = parseCsv(c.req.query('source'));
   const contentTypes = parseCsv(c.req.query('content_type'));
+  const entities = parseCsv(c.req.query('entity'));
   const companies = parseCsv(c.req.query('company'));
   const selectedCategories = parseCsv(c.req.query('category'));
   const industries = parseCsv(c.req.query('industry'));
@@ -113,6 +126,8 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
   if (status && (!local || !['unclassified','category_gap','category_unassessed','pending','failed','complete','expired'].includes(status))) return fail(c, 400, 'invalid feed status');
   if (industries.some((industry) => !industryCompanies.has(industry))) return fail(c, 400, 'unknown industry');
   if (selectedCategories.some((category) => !categories.has(category))) return fail(c, 400, 'unknown category');
+  const entityFilters = entities.map(decodeEntityFacetId);
+  if (entityFilters.some((item) => !item)) return fail(c, 400, 'invalid entity');
   const pageSize = Math.min(50, Math.max(1, Math.floor(Number(c.req.query('limit') || 20) || 20)));
   const cursor = parseCursor(c.req.query('cursor'));
   if (c.req.query('cursor') && !cursor) return fail(c, 400, 'invalid cursor');
@@ -128,8 +143,16 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
   if (contentTypes.length) { conditions.push(`coalesce(json_extract(v.metadata_json,'$.feed.contentType'),'news') in (${placeholders(contentTypes.length)})`); binds.push(...contentTypes); }
   const companyKeys = companies.map((item) => `company:${item.replace(/^company:/, '')}`);
   const industryKeys = [...new Set(industries.flatMap((industry) => industryCompanies.get(industry) || []))];
-  if (companyKeys.length || selectedCategories.length || industryKeys.length) {
+  if (entities.length || companyKeys.length || selectedCategories.length || industryKeys.length) {
     const recordConditions = ['r.doc_id=v.doc_id'];
+    if (entities.length) {
+      const keys = entityFilters.flatMap((item) => item?.key ? [item.key] : []);
+      const names = entityFilters.flatMap((item) => item?.name ? [item.name] : []);
+      const alternatives = [];
+      if (keys.length) { alternatives.push(`r.entity_key in (${placeholders(keys.length)})`); binds.push(...keys); }
+      if (names.length) { alternatives.push(`(r.entity_key is null and r.entity in (${placeholders(names.length)}))`); binds.push(...names); }
+      recordConditions.push(`(${alternatives.join(' or ')})`);
+    }
     if (companyKeys.length) { recordConditions.push(`r.entity_key in (${placeholders(companyKeys.length)})`); binds.push(...companyKeys); }
     if (selectedCategories.length) { recordConditions.push(`r.category in (${placeholders(selectedCategories.length)})`); binds.push(...selectedCategories); }
     if (industryKeys.length) { recordConditions.push(`r.entity_key in (${placeholders(industryKeys.length)})`); binds.push(...industryKeys); }
@@ -149,7 +172,7 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
   const page = rows.results.slice(0, pageSize);
   const hasNext = rows.results.length > pageSize;
   const mapped = await Promise.all(page.map((row) => mapRow(row, cutoff, local,
-    { categories: selectedCategories, companies: companyKeys, industries: industryKeys })));
+    { categories: selectedCategories, entities, companies: companyKeys, industries: industryKeys })));
   const list = local ? mapped : mapped.filter((row) => row.records.length > 0);
   const last = page.at(-1);
   return ok(c, { list, has_next: hasNext, next_cursor: hasNext && last ? btoa(JSON.stringify({ time: last.sort_time, id: last.doc_id })) : null });
@@ -160,6 +183,7 @@ informationFeedRoutes.get('/knowledge/feed/facets', async (c) => {
   const cutoff = new Date(Date.now() - (feedConfig.automation.maxAgeHours || 48) * 3600000).toISOString();
   const rows = await c.env.DB.prepare(`${visibleCte(local)} select ${selectFields('v')} from visible v`).all<FeedRow>();
   const sources = new Map<string, number>(), contentTypes = new Map<string, number>(), companies = new Map<string, number>();
+  const entities = new Map<string, { count: number; label: string }>();
   const categoryCounts = new Map<string, number>(), industries = new Map<string, number>();
   const items = await Promise.all(rows.results.map((row) => mapRow(row, cutoff, local)));
   for (const item of items) {
@@ -167,10 +191,22 @@ informationFeedRoutes.get('/knowledge/feed/facets', async (c) => {
     contentTypes.set(item.content_type, (contentTypes.get(item.content_type) || 0) + 1);
     for (const source of new Set(item.sources)) sources.set(source, (sources.get(source) || 0) + 1);
     for (const tag of item.tags) { const target = tag.tagId.startsWith('company:') ? companies : categoryCounts; target.set(tag.tagId, (target.get(tag.tagId) || 0) + 1); }
+    const seenEntities = new Set<string>();
+    for (const record of item.records) {
+      const id = entityFacetId(record);
+      if (seenEntities.has(id)) continue;
+      seenEntities.add(id);
+      const previous = entities.get(id);
+      if (!previous) entities.set(id, { count: 1, label: id.startsWith('company:')
+        ? `${nameByCompany.get(id) || record.entity}（${id.slice('company:'.length)}）` : record.entity });
+      else previous.count += 1;
+    }
     for (const industry of item.industries) industries.set(industry, (industries.get(industry) || 0) + 1);
   }
   const options = (map: Map<string, number>) => [...map].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
   return ok(c, { sources: options(sources), content_types: options(contentTypes),
+    entities: [...entities].map(([id, value]) => ({ id, ...value }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
     companies: options(companies).map((item) => ({ ...item, label: nameByCompany.get(item.id) || item.id.replace(/^company:/, '') })),
     categories: options(categoryCounts).map((item) => ({ ...item, label: (informationLabels.categories as Record<string, string>)[item.id.replace(/^category:/, '')] || item.id })),
     industries: options(industries), ...(local ? { statuses: ['unclassified','category_gap','category_unassessed','pending','failed','complete','expired'] } : {}) });

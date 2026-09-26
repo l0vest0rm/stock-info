@@ -1,5 +1,5 @@
 type Facet = { id: string; count: number; label?: string }
-type FeedFacets = { sources: Facet[]; content_types: Facet[]; companies: Facet[]; categories: Facet[]; industries: Facet[]; statuses?: string[] }
+type FeedFacets = { sources: Facet[]; content_types: Facet[]; entities: Facet[]; companies: Facet[]; categories: Facet[]; industries: Facet[]; statuses?: string[] }
 type ForecastMeasurement = { fiscalYear: number; rawValue: number; rawUnit: string; currency: string | null;
   accountingBasis: string; ownershipBasis: string; shareBasis: string }
 type FeedRecord = { entity: string; informationType: string; category: string; period: string | null;
@@ -63,7 +63,7 @@ more.hidden = true
 shell.append(more)
 
 const selected = new Map<string, Set<string>>()
-let facets: FeedFacets = { sources: [], content_types: [], companies: [], categories: [], industries: [] }
+let facets: FeedFacets = { sources: [], content_types: [], entities: [], companies: [], categories: [], industries: [] }
 let cursor: string | null = null
 let generation = 0
 
@@ -216,7 +216,7 @@ function renderFilters() {
     label: ({ cls_telegraph: '财联社', tencent_stock_news: '腾讯自选股' } as Record<string,string>)[item.id] || item.id })))
   quickGroup('content_type', '类型', facets.content_types.map(item => ({ ...item,
     label: ({ news: '新闻', flash: '快讯', announcement: '公告', text_report: '文本研报' } as Record<string,string>)[item.id] || item.id })))
-  advancedGroup('company', '公司', facets.companies)
+  advancedGroup('entity', '实体', facets.entities)
   advancedGroup('category', '信息类别', facets.categories.map(item => ({ ...item, id: item.id.replace(/^category:/, '') })))
   advancedGroup('industry', '行业', facets.industries)
   if (facets.statuses) advancedGroup('status', '提取状态', [

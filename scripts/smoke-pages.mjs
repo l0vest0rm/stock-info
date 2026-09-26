@@ -66,13 +66,14 @@ await check("information feed page and API", async () => {
   for (const [facet, parameter, matches] of [
     ['sources', 'source', (item, id) => item.sources.includes(id)],
     ['content_types', 'content_type', (item, id) => item.content_type === id],
+    ['entities', 'entity', (item, id) => item.records.some((record) => (record.entity_key || `entity:${encodeURIComponent(record.entity)}`) === id)],
     ['companies', 'company', (item, id) => item.records.some((record) => record.entity_key === id)],
     ['categories', 'category', (item, id) => item.records.some((record) => `category:${record.category}` === id)],
     ['industries', 'industry', (item, id) => item.industries.includes(id)],
   ]) {
     assert(Array.isArray(facets.data[facet]), `information feed ${facet} facets are missing`);
     for (const option of facets.data[facet]) {
-      const value = option.id.replace(/^(?:company|category):/, '');
+      const value = parameter === 'entity' ? option.id : option.id.replace(/^(?:company|category):/, '');
       const filtered = await fetchApi(`/api/knowledge/feed?${parameter}=${encodeURIComponent(value)}&limit=2`);
       assert(filtered.data?.list?.length > 0 && filtered.data.list.every((item) => matches(item, option.id)),
         `information feed ${facet} filter ${option.id} did not match its facet`);

@@ -6,7 +6,7 @@
 
 ## 目标与边界
 
-一张卡代表一篇文本来源的独有信息或同一事件的实质更新，而不是一个 URL。公司、行业、信息类别是**从记录派生的索引**，不是模型另外猜出的文章级话题。模型只回答“来源明确说了什么”，不判断真伪、投资影响、重复或行业。首期仅处理原始格式确认为文本/HTML/Markdown 的腾讯自选股、财联社等来源；PDF 原件及其 Markdown 转换稿不进入资讯流。生产 Worker 只读，远程模型调用仅可由本地 Node 的 `LLM_RUNTIME=local` 发起。
+一张卡代表一篇文本来源的独有信息或同一事件的实质更新，而不是一个 URL。实体、公司、行业、信息类别是**从记录派生的索引**，不是模型另外猜出的文章级话题。实体不要求是上市公司；未解析出证券代码的组织、项目或具名市场仍可按原始名称筛选。模型只回答“来源明确说了什么”，不判断真伪、投资影响、重复或行业。首期仅处理原始格式确认为文本/HTML/Markdown 的腾讯自选股、财联社等来源；PDF 原件及其 Markdown 转换稿不进入资讯流。生产 Worker 只读，远程模型调用仅可由本地 Node 的 `LLM_RUNTIME=local` 发起。
 
 “公司对应行业”仅在**公司身份唯一解析且已有可靠行业映射**时成立；一家公司的多元业务、未覆盖的海外公司、行业新闻和宏观政策无法由公司自动得出唯一行业。首期只使用现有 `eastmoney-company-em2016-profiles.json` 中已确认公司的行业，未命中的行业为空，不按公司名、文章标题或模型输出猜行业。该分类口径/覆盖率需要单独验收；它也不是文章具体涉及的业务细分主题。本期不提供细分 `topic` 筛选。
 
@@ -49,7 +49,7 @@
 
 ## 页面/API 与验收
 
-`GET /api/knowledge/feed` 返回本条记录、`category:`/`company:` 标签、已映射行业及来源元数据，按 `(sort_time,doc_id)` 稳定游标分页；仅本地返回 `category_candidates` 并可用 `status=category_gap` 查看待审条目。`category_candidates=null` 表示尚未用候选契约评估，不等同于候选为空；来源绑定已经核对且契约仍有效的这类结果，可用 `status=category_unassessed` 查看。来源本身未核查或契约已过期的数据会显示为待重新处理/超过窗口，而不是混入当前有效记录。`category`、`company`、`industry`、`source`、`content_type` 同维多选 OR、跨维 AND；其中公司、类别、行业组合必须命中**同一条正式记录**，不能由一篇文章中互不相关的记录分别满足；命中记录排在卡片摘录首位。`source` 是采集渠道键，不是卡片显示的原始媒体署名 `source_name`。`/facets` 提供 `categories`，不再提供 `topics`。卡片优先展示正式记录的 `statement`，无正式记录时退回正文摘要。本地“提取详情”区分正式记录与非正式候选；生产页面不显示该调试入口。原文入口仅指向获准文本来源。
+`GET /api/knowledge/feed` 返回本条记录、`category:`/`company:` 标签、已映射行业及来源元数据，按 `(sort_time,doc_id)` 稳定游标分页；仅本地返回 `category_candidates` 并可用 `status=category_gap` 查看待审条目。`category_candidates=null` 表示尚未用候选契约评估，不等同于候选为空；来源绑定已经核对且契约仍有效的这类结果，可用 `status=category_unassessed` 查看。来源本身未核查或契约已过期的数据会显示为待重新处理/超过窗口，而不是混入当前有效记录。页面的“实体”筛选来自每条正式记录的 `entity_key` 或原始 `entity`，不局限于 `company:` 标签；调用 `GET /api/knowledge/feed?entity=...` 时应使用 `/facets.entities[].id`（未归一名称使用 `entity:` 加 URI 编码），API 保留 `company` 参数兼容旧调用。`entity`、`category`、`company`、`industry`、`source`、`content_type` 同维多选 OR、跨维 AND；其中实体、公司、类别、行业组合必须命中**同一条正式记录**，不能由一篇文章中互不相关的记录分别满足；命中记录排在卡片摘录首位。`source` 是采集渠道键，不是卡片显示的原始媒体署名 `source_name`。`/facets` 提供 `entities` 与 `categories`，不再提供 `topics`。卡片优先展示正式记录的 `statement`，无正式记录时退回正文摘要。本地“提取详情”区分正式记录与非正式候选；生产页面不显示该调试入口。原文入口仅指向获准文本来源。
 
 新增 `GET /api/knowledge/information-records` 作为后续 entity 总结的材料接口：必须且只能提供 `entity_key` 或 `entity`，支持 category、from/to、limit、cursor。按记录归属查询，不取文章内其他公司的记录，也不套用首页每 story 只取最新或自动提取 48 小时窗口。返回信息 ID、doc_id、来源、输入指纹、记录集合摘要和 story 更新关系；未知实体身份明确保留未归一状态。默认排除未核查来源、旧契约、失败和待审结果，生产还要求正式发布权限。本接口不执行模型、不自动生成总结。
 
