@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os';
 import { buildContentOptions, prepareKnowledgeContentAsync } from './knowledge-content-r2.mjs';
 import { executeLocalD1Sql, queryLocalD1Sql } from './lib/local-d1-sqlite.mjs';
 import { feedCategoryCatalogHash } from './lib/information-feed-extraction.mjs';
-import { INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT, INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT } from './generated/prompt-text.mjs';
+import { INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
+  INFORMATION_FEED_DOCUMENT_ANALYSIS_USER_PROMPT } from './generated/prompt-text.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const apply = process.argv.includes('--apply');
@@ -22,8 +23,18 @@ if (apply && config.automation?.publishRemote !== true) {
   console.log(JSON.stringify({ published: 0, skipped: 'remote publication switch is off' }));
   process.exit(0);
 }
+// The legacy remote writer must not run after direct-document storage migration.
+// New owner-fenced staging helpers are tested separately; remote execution stays
+// blocked until the coordinated D1/Worker publication integration is completed.
+const recordColumns = queryLocalD1Sql('PRAGMA table_info(knowledge_information_records);', { requiredTable: 'knowledge_information_records' });
+if (recordColumns.some((column) => column.name === 'doc_id')) {
+  if (apply) throw new Error('direct-document record storage: remote publication integration is pending; legacy writer refused');
+  const { informationPublicationPlan } = await import('./lib/information-records-publication-plan.mjs');
+  console.log(JSON.stringify(informationPublicationPlan()));
+  process.exit(0);
+}
 const maxBatch = 200;
-const currentPromptHash = sha(INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT + INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT);
+const currentPromptHash = sha(INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT + INFORMATION_FEED_DOCUMENT_ANALYSIS_USER_PROMPT);
 const currentCategoryCatalogHash = feedCategoryCatalogHash();
 const currentCandidatePolicyHash = sha(JSON.stringify(config.companyCandidates || {}));
 const ledgerFile = resolve(root, process.env.INFORMATION_FEED_PUBLISH_LEDGER || 'data/local/information-feed-publish-ledger.json');
@@ -68,6 +79,7 @@ for (const row of rows) {
     || feed.tagCandidatePolicyHash !== currentCandidatePolicyHash
     || feed.taggingContentSha256 !== row.content_sha256
     || !feed.taggingInputFingerprint || !Array.isArray(feed.records) || feed.records.length === 0
+    || !Array.isArray(feed.categoryCandidates) || feed.categoryCandidates.length > 0
     || feed.records.some((record) => !categoryIds.has(record?.category))
     || new Set(validTags.filter((tag) => tag.tag.startsWith('category:')).map((tag) => tag.tag.slice('category:'.length))).size
       !== new Set(feed.records.map((record) => record.category)).size
@@ -76,7 +88,8 @@ for (const row of rows) {
     continue;
   }
   feed.publishAllowed = true;
-  row.metadata_json = JSON.stringify(row.meta);
+  // Candidates are a local review artifact, never part of the production feed snapshot.
+  row.metadata_json = JSON.stringify({ ...row.meta, feed: { ...feed, categoryCandidates: undefined } });
   const fingerprint = sha(JSON.stringify([row.doc_id,row.content_sha256,validTags.map((tag) => [tag.tag,tag.weight]).sort(),
     feed.sources,feed.taggingInputFingerprint,feed.tagContract]));
   if (feed.publishedFingerprint !== fingerprint) eligible.push({ row, validTags, fingerprint });

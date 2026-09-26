@@ -94,36 +94,9 @@ npm run dev:cron:once
 - 内容哈希 key
 - 浏览器直连 `KNOWLEDGE_CONTENT_PUBLIC_BASE_URL`
 
-### 机构持仓关键词信息预处理
+### 资讯流信息提取
 
-用于按机构持仓关键词筛选本地 Node SQLite 中的新闻，并逐篇调用本地 Node HTTP 的信息处理接口。
-先用 `./start-local.sh` 启动本地 Node 运行时（信息处理只允许在 `LLM_RUNTIME=local` 下运行），再执行：
-
-```bash
-npm run process:information:institutional
-```
-
-默认读取 `config/information-processing-institutional-top300.json`，每个关键词只从最近 30 天的文档中选择，按关键词优先级、再按文档时间从近到远处理；默认最多处理 100 篇、并发 3 篇。处理进度与结果会写入 `data/stock-info/knowledge/state/` 下的 JSONL 文件。
-
-先查看候选而不调用模型：
-
-```bash
-npm run process:information:institutional -- --dry-run --max-documents 20
-```
-
-调整时间窗口、数量或并发：
-
-```bash
-npm run process:information:institutional -- --max-age-days 7 --max-documents 50 --concurrency 5
-```
-
-处理该时间窗口内全部候选：
-
-```bash
-npm run process:information:institutional -- --all --max-age-days 14
-```
-
-`--all` 只取消文档数量上限，不会取消 `--max-age-days` 的时间范围。需要使用其他关键词清单或本地 Worker 地址时，可追加 `--input /absolute/path/keywords.json`、`--server http://127.0.0.1:8000`；关键词清单必须是非空 JSON 字符串数组。
+资讯流由本地 Node 运行时处理。启动 `./start-local.sh` 后使用 `npm run process:feed`；生产 Worker 不调用模型。旧“信息整理”页面和知识文档单篇信息预处理入口已停用，历史数据库表保留供已有数据读取或归档。
 
 ### `./process-knowledge-local-full.sh`
 
@@ -138,7 +111,7 @@ npm run process:information:institutional -- --all --max-age-days 14
 - 把 `processedDir` 也作为额外输入目录重新扫描
 - 结果写入本地 Node SQLite，并把正文内容写入本地正文缓存，内容键统一为 `knowledge-content/*`
 - 更新本地同步状态文件 `knowledge-remote-sync.jsonl`
-- 导入后的自动信息抽取按“每篇一条 HTTP 请求”推进本地持久化游标；本轮最多处理 `maxDocumentsPerRun` 篇。单篇请求默认 240 秒，超时会在最终 JSON 中标记 `informationProcessing.status: "incomplete"` 并以非零退出，已完成的导入和游标步骤可在下次运行续跑
+- 知识导入不再自动调用旧单篇信息抽取接口；资讯流提取由独立的本地 `npm run process:feed` 链路执行
 - 本地导入直接对 `data/local/stock-info.sqlite` 执行分块事务；远端导入仍使用 `wrangler d1 execute --remote`
 - 增量判断使用排除抓取时间、来源文件名和 mtime 等易变字段后的内容指纹；同步账本会在导入完成后原子压缩，只保留每篇文档在各目标上的最新状态
 

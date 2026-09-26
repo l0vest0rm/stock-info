@@ -175,13 +175,6 @@
     "globalName": "LicaiIndexPage"
   },
   {
-    "path": "/information-processing.html",
-    "entry": "src/modules/knowledge/pages/information-processing-page.ts",
-    "runtime": "local",
-    "legacy": true,
-    "globalName": "LicaiInformationProcessingPage"
-  },
-  {
     "path": "/institutional-tracks.html",
     "entry": "src/modules/companies/pages/institutional-tracks-page.ts",
     "runtime": "all",

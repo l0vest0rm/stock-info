@@ -23,13 +23,40 @@ export function feedCategoryCatalogHash(text = ontologyText) {
   return createHash('sha256').update(contractText).digest('hex');
 }
 
-export function parseFeedExtraction(text) {
+export function parseFeedExtraction(text, sourceContent) {
   const response = JSON.parse(String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
   if (!response || typeof response !== 'object' || Array.isArray(response)
-    || Object.keys(response).join(',') !== 'records' || !Array.isArray(response.records) || response.records.length > 3) {
+    || Object.keys(response).length !== 2 || !Object.hasOwn(response, 'records') || !Object.hasOwn(response, 'categoryCandidates')
+    || !Array.isArray(response.records) || !Array.isArray(response.categoryCandidates)
+    || response.records.length + response.categoryCandidates.length > 3) {
     throw new Error('invalid feed extraction response');
   }
-  return response.records.map(parseRecord);
+  const records = response.records.map(parseRecord);
+  const categoryCandidates = response.categoryCandidates.map((value) => parseCategoryCandidate(value, sourceContent));
+  if (categoryCandidates.some((candidate) => records.some((record) => record.statement === candidate.statement))) {
+    throw new Error('feed category candidate duplicates a record');
+  }
+  return { records, categoryCandidates };
+}
+
+function parseCategoryCandidate(value, sourceContent) {
+  const keys = ['entity', 'informationType', 'statement', 'suggestedCategory', 'evidence', 'whyNotExisting'];
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).length !== keys.length || keys.some((key) => !Object.hasOwn(value, key))) {
+    throw new Error('invalid feed category candidate');
+  }
+  const candidate = Object.fromEntries(keys.map((key) => [key, typeof value[key] === 'string' ? value[key].trim() : '']));
+  const { entity, informationType, statement, suggestedCategory, evidence, whyNotExisting } = candidate;
+  if (!entity || entity.length > 120 || !informationTypes.has(informationType)
+    || !statement || statement.length > 120 || !statement.includes(entity)
+    || suggestedCategory.length < 2 || suggestedCategory.length > 40 || /^(?:其他|综合信息|一般事件)$/.test(suggestedCategory)
+    || Object.hasOwn(categoryRules, suggestedCategory)
+    || Object.values(categoryRules).some((rule) => rule.label === suggestedCategory)
+    || evidence.length < 10 || evidence.length > 160 || !String(sourceContent || '').includes(evidence)
+    || !whyNotExisting || whyNotExisting.length > 160) {
+    throw new Error('invalid feed category candidate fields');
+  }
+  return candidate;
 }
 
 function parseRecord(value) {
@@ -73,14 +100,16 @@ function isPeriod(value) {
     || /^\d{4}年(?:第?[一二三四1-4]季度|上半年|下半年|全年|前\d{1,2}个月)$/.test(value));
 }
 
+export function entityKeyForRecord(record, candidates) {
+  const entity = normalizeName(record.entity);
+  const matches = [...new Set(candidates.filter((candidate) =>
+    normalizeName(candidate.name) === entity || normalizeName(candidate.matchedAlias) === entity
+  ).map((candidate) => candidate.tagId))];
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export function companyTagsForRecords(records, candidates) {
-  const tags = new Set();
-  for (const record of records) {
-    const entity = normalizeName(record.entity);
-    const matches = candidates.filter((candidate) => normalizeName(candidate.name) === entity || normalizeName(candidate.matchedAlias) === entity);
-    if (matches.length === 1) tags.add(matches[0].tagId);
-  }
-  return [...tags];
+  return [...new Set(records.map((record) => entityKeyForRecord(record, candidates)).filter(Boolean))];
 }
 
 function normalizeName(value) {

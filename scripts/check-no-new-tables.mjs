@@ -34,6 +34,11 @@ const retiredHistoricalTables = new Set([
   "macro_source_health",
   "macro_user_watch_configs",
 ]);
+// This retired table may be created only by these immutable historical files.
+const retiredResultFiles = new Set([
+  '0021_information_processing.sql', '0028_rebuild_information_processing_records.sql',
+  '0126_replace_knowledge_document_versions_with_current_state.sql', '0128_drop_knowledge_run_ledgers.sql',
+]);
 const violations = findViolations(migrationsDirectory, allowlist, retiredHistoricalTables, scanRoot);
 
 if (violations.length > 0) {
@@ -74,7 +79,10 @@ function findViolations(migrationsDirectory, allowlist, retiredHistoricalTables,
     const source = readFileSync(absoluteFile, "utf8");
     for (const match of source.matchAll(createTablePattern)) {
       const table = normalizeIdentifier(match[1] || match[2] || match[3] || match[4] || "");
-      if (!table || allowlist.has(table) || retiredHistoricalTables.has(table)) continue;
+      if (!table) continue;
+      if (table === 'knowledge_document_results') {
+        if (retiredResultFiles.has(file)) continue;
+      } else if (allowlist.has(table) || retiredHistoricalTables.has(table)) continue;
       const index = match.index ?? 0;
       violations.push({
         file: relative(scanRoot, absoluteFile) || absoluteFile,

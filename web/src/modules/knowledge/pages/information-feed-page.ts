@@ -4,9 +4,12 @@ type ForecastMeasurement = { fiscalYear: number; rawValue: number; rawUnit: stri
   accountingBasis: string; ownershipBasis: string; shareBasis: string }
 type FeedRecord = { entity: string; informationType: string; category: string; period: string | null;
   statement: string; forecastMeasurement?: ForecastMeasurement | null }
+type CategoryCandidate = { entity: string; informationType: string; statement: string; suggestedCategory: string;
+  evidence: string; whyNotExisting: string }
 type FeedItem = { doc_id: string; title: string; url: string | null; source_name: string | null; published_at: string | null;
   summary: string | null; kind: string; story_key: string; tagging_status: string; sources: string[];
-  tags: Array<{ tagId: string; weight: number }>; industries: string[]; records: FeedRecord[] }
+  tags: Array<{ tagId: string; weight: number }>; industries: string[]; records: FeedRecord[];
+  category_candidates?: CategoryCandidate[] | null }
 type FeedPage = { list: FeedItem[]; has_next: boolean; next_cursor: string | null }
 
 const root = document.getElementById('information-feed-root')!
@@ -40,7 +43,7 @@ shell.append(hero)
 const filterPanel = el('section', 'feed-filter')
 const filterHead = el('div', 'feed-filter-head')
 const filterHeading = el('div')
-filterHeading.append(el('h2', '', '筛选资讯'), el('p', '', '快速定位你关心的来源和信息'))
+filterHeading.append(el('h2', '', '筛选资讯'), el('p', '', '按采集渠道和提取记录定位资讯'))
 const resetButton = el('button', 'feed-filter-reset', '清除筛选') as HTMLButtonElement
 resetButton.type = 'button'
 filterHead.append(filterHeading, resetButton)
@@ -209,7 +212,7 @@ function renderFilters() {
   advancedFilters.replaceChildren()
   filterOptions.clear()
   filterNames.clear()
-  quickGroup('source', '来源', facets.sources.map(item => ({ ...item,
+  quickGroup('source', '采集渠道', facets.sources.map(item => ({ ...item,
     label: ({ cls_telegraph: '财联社', tencent_stock_news: '腾讯自选股' } as Record<string,string>)[item.id] || item.id })))
   quickGroup('content_type', '类型', facets.content_types.map(item => ({ ...item,
     label: ({ news: '新闻', flash: '快讯', announcement: '公告', text_report: '文本研报' } as Record<string,string>)[item.id] || item.id })))
@@ -218,6 +221,8 @@ function renderFilters() {
   advancedGroup('industry', '行业', facets.industries)
   if (facets.statuses) advancedGroup('status', '提取状态', [
     { id: 'unclassified', label: '无可提取信息', count: 0 },
+    { id: 'category_gap', label: '待审类别', count: 0 },
+    { id: 'category_unassessed', label: '类别缺口未评估', count: 0 },
     { id: 'pending', label: '待提取', count: 0 },
     { id: 'failed', label: '提取失败', count: 0 },
     { id: 'complete', label: '已提取', count: 0 },
@@ -297,8 +302,10 @@ function renderStructuredResult(item: FeedItem) {
   panel.append(el('div', 'feed-structured-heading', `提取记录 · ${item.records.length} 条`),
     el('p', 'feed-structured-note', '结构化摘录仅反映来源表述，未经独立核实。'))
   if (!item.records.length) {
-    panel.append(el('p', 'feed-structured-empty', '模型已完成提取，但没有匹配当前类别目录的记录。'))
-    return panel
+    panel.append(el('p', 'feed-structured-empty', item.category_candidates?.length
+      ? '没有匹配当前类别目录的记录；以下类别候选尚未审核。'
+      : item.category_candidates === null ? '当前记录尚未进行类别缺口评估。'
+        : '模型已完成提取，但没有匹配当前类别目录的记录。'))
   }
   const basisLabels: Record<string, string> = { gaap: 'GAAP', non_gaap: '非 GAAP', adjusted: '调整后', unspecified: '未注明' }
   const ownershipLabels: Record<string, string> = { attributable_to_parent: '归属于母公司', consolidated: '合并口径',
@@ -326,6 +333,19 @@ function renderStructuredResult(item: FeedItem) {
       section.append(el('p', 'feed-structured-note', '未形成可结构化的单一预测数值。'))
     }
     panel.append(section)
+  }
+  if (item.category_candidates?.length) {
+    panel.append(el('div', 'feed-structured-subtitle', `待审类别候选 · ${item.category_candidates.length} 条（非正式标签）`))
+    for (const candidate of item.category_candidates) {
+      const section = el('section', 'feed-structured-record')
+      section.append(el('div', 'feed-structured-record-title', candidate.suggestedCategory))
+      const fields = el('dl', 'feed-structured-grid')
+      fields.append(structuredField('主体', candidate.entity), structuredField('信息类型', recordTypeLabel(candidate.informationType)),
+        structuredField('信息陈述', candidate.statement, true), structuredField('原文证据', candidate.evidence, true),
+        structuredField('与现有类别的区别', candidate.whyNotExisting, true))
+      section.append(fields)
+      panel.append(section)
+    }
   }
   return panel
 }
@@ -358,6 +378,8 @@ function renderItem(item: FeedItem) {
   else if (item.tagging_status === 'failed') tags.append(el('span', 'feed-update', '提取失败，等待重试'))
   else if (item.tagging_status === 'processing') tags.append(el('span', 'feed-update', '提取中'))
   else if (item.tagging_status !== 'complete') tags.append(el('span', 'feed-update', '待提取'))
+  else if (item.category_candidates?.length) tags.append(el('span', 'feed-update', '待审类别'))
+  else if (item.category_candidates === null) tags.append(el('span', 'feed-update', '类别缺口未评估'))
   else if (!item.records?.length) tags.append(el('span', 'feed-update', '无可提取信息'))
   const categories = item.tags.filter((tag) => tag.tagId.startsWith('category:')).map((tag) => tagLabel(tag.tagId))
   const types = [...new Set(item.records.map((record) => recordTypeLabel(record.informationType)))]

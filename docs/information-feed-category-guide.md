@@ -1,6 +1,6 @@
 # 资讯提取类别释义（阅读用）
 
-这份说明供人理解现有类别，不参与模型提示词、解析、标签或发布判断，也不新增类别。实际可用的类别 ID、允许的 `informationType` 和 `period` 规则以 [`config/knowledge-ontology.json`](../config/knowledge-ontology.json) 为准；该文件每个类别内的 `label` 是供人阅读的中文翻译，不参与提取契约。页面仍使用 [`web/src/config/information-processing-labels.json`](../web/src/config/information-processing-labels.json) 中的显示名称。修改本说明或 `label` **不会触发重新提取**。
+这份说明供人理解现有类别，不参与模型提示词、解析、标签或发布判断，也不新增类别。实际可用的类别 ID、允许的 `informationType` 和 `period` 规则以 [`config/knowledge-ontology.json`](../config/knowledge-ontology.json) 为准；该文件每个类别内的 `label` 是供人阅读的中文翻译，不参与提取契约。页面仍使用 [`web/src/config/information-feed-labels.json`](../web/src/config/information-feed-labels.json) 中的显示名称。修改本说明或 `label` **不会触发重新提取**。
 
 `category` 说明“信息涉及什么事项或指标”；`informationType` 另说明来源把它表述为事实、计划、预测、观点、事件还是关系。后者的 `event` **不是**兜底类别。下列解释是便于阅读的通常含义，不替代原文证据及当前提取规则。
 

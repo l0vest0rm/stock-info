@@ -11,10 +11,15 @@ import { executeLocalD1Sql, queryLocalD1Sql } from './lib/local-d1-sqlite.mjs';
 import { canonicalFeedUrl, classifyFeedItem, feedBodyHash, feedShingleSketch, sketchesOverlap, FEED_DEDUPE_VERSION } from './lib/information-feed-dedupe.mjs';
 import { normalizeFeedSource } from './lib/information-feed-source.mjs';
 import { feedCompanyCandidates } from './lib/information-feed-company-candidates.mjs';
-import { companyTagsForRecords, feedCategoryCatalog, feedCategoryCatalogHash, parseFeedExtraction } from './lib/information-feed-extraction.mjs';
+import { feedCategoryCatalog, feedCategoryCatalogHash, parseFeedExtraction } from './lib/information-feed-extraction.mjs';
 import { isRecentFeedTime, recentFeedRows, MAX_FEED_AGE_HOURS } from './lib/information-feed-window.mjs';
-import { INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT, INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT } from './generated/prompt-text.mjs';
+import { INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
+  INFORMATION_FEED_DOCUMENT_ANALYSIS_USER_PROMPT } from './generated/prompt-text.mjs';
 import { requestLocalDirectLlmText } from '../src/shared/local-direct-llm.ts';
+import { claimExtraction, commitExtraction, failExtraction, feedInputFingerprint, sourceExpectation,
+  shouldAttemptExtraction, mergeStorySourceReference } from './lib/information-records-store.mjs';
+import { FEED_EXTRACTION_CONTRACT } from './generated/information-records-contract.mjs';
+import { INFORMATION_STORAGE_VERSION, contractMatches } from '../src/modules/knowledge/domain/information-records.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));
@@ -24,9 +29,12 @@ const stateFile = resolve(ROOT, process.env.INFORMATION_FEED_STATE_FILE || 'data
 const usageFile = resolve(ROOT, process.env.INFORMATION_FEED_TAG_USAGE_FILE || 'data/local/information-feed-tag-usage.json');
 const TAG_CONTRACT = feedConfig.tagContract;
 if (!/^feed-tag-v\d+$/.test(TAG_CONTRACT)) throw new Error('invalid information feed tag contract');
-const PROMPT_HASH = sha(INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT + INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT);
+const PROMPT_HASH = sha(INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT + INFORMATION_FEED_DOCUMENT_ANALYSIS_USER_PROMPT);
 const CATEGORY_CATALOG_HASH = feedCategoryCatalogHash();
 const CANDIDATE_POLICY_HASH = sha(JSON.stringify(feedConfig.companyCandidates || {}));
+const EXTRACTION_CONTRACT = { contractVersion: TAG_CONTRACT, promptHash: PROMPT_HASH,
+  categoryCatalogHash: CATEGORY_CATALOG_HASH, candidatePolicyHash: CANDIDATE_POLICY_HASH, model: 'gpt-6-luna' };
+if (!contractMatches(FEED_EXTRACTION_CONTRACT, EXTRACTION_CONTRACT)) throw new Error('extraction contract build is stale; run npm run build:prompts');
 
 if (args.mode !== 'ingest' && process.env.LLM_RUNTIME !== 'local') throw new Error('information feed tagging requires LLM_RUNTIME=local from the local launch script');
 
@@ -127,13 +135,12 @@ function ingestOne(source, candidates) {
     sources: choice.kind === 'update'
       ? [...new Map([...(choice.candidate.feed.sources || []), sourceReference(source)].map((item) => [`${item.sourceKey}|${item.sourceItemId}|${item.url}`, item])).values()]
       : [sourceReference(source)],
-    taggingStatus: 'pending', taggingInputFingerprint: null,
   };
   const sortTime = choice.kind === 'update' ? source.fetchedAt : (source.publishedAt || source.fetchedAt);
   const now = Date.now();
   executeLocalD1Sql(`
     insert into knowledge_docs (doc_id,source_type,report_type,source_name,title,url,published_at,fetched_at,event_time,access_method,summary,content_preview,metadata_json,sort_time,source_name_normalized,updated_at)
-    values (${q(docId)},'information_feed',${q(source.contentType)},${q(source.sourceName)},${q(source.title)},${q(source.url)},${q(source.publishedAt)},${q(source.fetchedAt)},${q(sortTime)},'markdown',${q(body.slice(0,600))},${q(body.slice(0,280))},${q(JSON.stringify({feed}))},${q(sortTime)},${q(source.sourceName.toLowerCase())},${now});
+    values (${q(docId)},'information_feed',${q(source.contentType)},${q(source.sourceName)},${q(source.title)},${q(source.url)},${q(source.publishedAt)},${q(source.fetchedAt)},${q(sortTime)},'markdown',${q(body.slice(0,600))},${q(body.slice(0,280))},${q(JSON.stringify({feed, informationExtraction: { storageVersion: INFORMATION_STORAGE_VERSION, status: 'pending', current: null, categoryCandidates: null }}))},${q(sortTime)},${q(source.sourceName.toLowerCase())},${now});
     insert into knowledge_doc_content_refs (doc_id,content_key,content_url,content_type,content_encoding,content_bytes,content_sha256,updated_at)
     values (${q(docId)},${q(content.contentKey)},${q(content.contentUrl)},${q(content.contentType)},${q(content.contentEncoding)},${content.contentBytes},${q(content.contentSha256)},${now});
   `, { requiredTable: 'knowledge_docs' });
@@ -151,90 +158,44 @@ async function tagPending() {
   const usage = loadJson(usageFile, { day, count: 0 });
   if (usage.day !== day) { usage.day = day; usage.count = 0; }
   const remainingToday = Math.max(0, Number(feedConfig.automation?.maxTagsPerDay || 200) - Number(usage.count || 0));
-  if (!remainingToday) return;
   const limit = Math.min(args.maxTags, remainingToday);
+  if (!limit) return;
   const rows = recentFeedRows(loadFeedRows(), Date.now(), args.maxAgeHours)
-    .filter((row) => !args.docId || row.doc_id === args.docId)
-    .filter((row) => ['pending', 'processing', 'failed', 'complete'].includes(row.feed.taggingStatus))
-    .filter((row) => row.feed.taggingStatus !== 'processing' || Number(row.feed.tagLeaseUntil || 0) <= Date.now())
-    .filter((row) => row.feed.taggingStatus !== 'failed' || row.feed.lastAttemptContract !== TAG_CONTRACT
-      || row.feed.lastAttemptCategoryCatalogHash !== CATEGORY_CATALOG_HASH || row.feed.lastAttemptPromptHash !== PROMPT_HASH
-      || row.feed.lastAttemptCandidatePolicyHash !== CANDIDATE_POLICY_HASH
-      || Number(row.feed.tagAttempts || 0) < 5)
-    .filter((row) => row.feed.taggingStatus !== 'failed' || row.feed.lastAttemptContract !== TAG_CONTRACT
-      || row.feed.lastAttemptCategoryCatalogHash !== CATEGORY_CATALOG_HASH || row.feed.lastAttemptPromptHash !== PROMPT_HASH
-      || row.feed.lastAttemptCandidatePolicyHash !== CANDIDATE_POLICY_HASH
-      || !row.feed.nextRetryAt || row.feed.nextRetryAt <= Date.now())
-    .filter((row) => row.feed.taggingStatus !== 'complete' || row.feed.tagContract !== TAG_CONTRACT
-      || row.feed.tagCategoryCatalogHash !== CATEGORY_CATALOG_HASH || row.feed.tagPromptHash !== PROMPT_HASH
-      || row.feed.tagCandidatePolicyHash !== CANDIDATE_POLICY_HASH || !row.feed.taggingContentSha256);
-  const companyAliases = queryLocalD1Sql("select alias,code,name from knowledge_stock_aliases where length(alias)>=2", { requiredTable: 'knowledge_stock_aliases' });
+    .filter((row) => !args.docId || row.doc_id === args.docId);
+  const aliases = queryLocalD1Sql("select alias,code,name from knowledge_stock_aliases where length(alias)>=2", { requiredTable: 'knowledge_stock_aliases' });
   for (const row of rows) {
     if (counters.tagged + counters.tagFailed >= limit) break;
     if (!isRecentFeedTime(row.sort_time, Date.now(), args.maxAgeHours)) continue;
     const body = readLocalBody(row.content_key);
     if (!body) continue;
-    const fingerprint = sha(JSON.stringify([body, row.title, row.published_at, CATEGORY_CATALOG_HASH, PROMPT_HASH, CANDIDATE_POLICY_HASH, TAG_CONTRACT, 'gpt-6-luna']));
-    if (row.feed.taggingStatus === 'complete' && row.feed.taggingInputFingerprint === fingerprint && row.feed.taggingContentSha256) continue;
-    const companyCandidates = feedCompanyCandidates(companyAliases, row.title, body, feedConfig.companyCandidates);
+    const fingerprint = feedInputFingerprint(row, body, EXTRACTION_CONTRACT);
+    if (!shouldAttemptExtraction(row.extraction, fingerprint, EXTRACTION_CONTRACT)) continue;
+    const companyCandidates = feedCompanyCandidates(aliases, row.title, body, feedConfig.companyCandidates);
     const owner = randomUUID();
+    const source = sourceExpectation(row, body);
+    let claimed = false;
     try {
-      const current = JSON.parse(queryLocalD1Sql(`select metadata_json from knowledge_docs where doc_id=${q(row.doc_id)}`, { requiredTable: 'knowledge_docs' })[0].metadata_json);
-      if (current.feed.fullBodyHash !== row.feed.fullBodyHash) continue;
-      if (current.feed.taggingStatus === 'processing' && Number(current.feed.tagLeaseUntil || 0) > Date.now()) continue;
-      current.feed = { ...current.feed, taggingStatus: 'processing', tagLeaseOwner: owner, tagLeaseUntil: Date.now() + 15 * 60000 };
-      executeLocalD1Sql(`update knowledge_docs set metadata_json=${q(JSON.stringify(current))},updated_at=${Date.now()}
-        where doc_id=${q(row.doc_id)} and json_extract(metadata_json,'$.feed.taggingStatus')=${q(row.feed.taggingStatus)}
-          and json_extract(metadata_json,'$.feed.fullBodyHash')=${q(row.feed.fullBodyHash)}
-          and (json_extract(metadata_json,'$.feed.taggingStatus')!='processing'
-          or coalesce(json_extract(metadata_json,'$.feed.tagLeaseUntil'),0)<=${Date.now()});`, { requiredTable: 'knowledge_docs' });
-      const claimed = JSON.parse(queryLocalD1Sql(`select metadata_json from knowledge_docs where doc_id=${q(row.doc_id)}`, { requiredTable: 'knowledge_docs' })[0].metadata_json);
-      if (claimed.feed.tagLeaseOwner !== owner) continue;
+      claimed = claimExtraction(row.doc_id, { owner, fingerprint, source, contract: EXTRACTION_CONTRACT });
+      if (!claimed) continue;
       usage.count += 1;
       saveJson(usageFile, usage);
       const promptValues = { CATEGORY_CATALOG: feedCategoryCatalog(), TITLE: row.title, SOURCE_TYPE: row.source_type,
         REPORT_TYPE: row.feed.contentType || '', PUBLISHED_AT: row.published_at || '', CONTENT: body.slice(0, 12000) };
-      const input = INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT.replace(/\{\{([A-Z_]+)\}\}/g,
+      const input = INFORMATION_FEED_DOCUMENT_ANALYSIS_USER_PROMPT.replace(/\{\{([A-Z_]+)\}\}/g,
         (_match, key) => promptValues[key] ?? '');
       const response = await requestLocalDirectLlmText(process.env, {
-        model: 'gpt-6-luna', instructions: INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
+        model: EXTRACTION_CONTRACT.model, instructions: INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
         input: [{ role: 'user', content: [{ type: 'input_text', text: input }] }], maxTokens: 2500,
       });
-      if (response.raw?.model !== 'gpt-6-luna') throw new Error(`unexpected actual model: ${String(response.raw?.model || 'missing')}`);
-      const records = parseFeedExtraction(response.text);
-      const categoryTags = [...new Set(records.map((record) => record.category))];
-      const tags = [...categoryTags.map((category, index) => ({ tagId: `category:${category}`, weight: 100 - index * 10 })),
-        ...companyTagsForRecords(records, companyCandidates).map((tagId) => ({ tagId, weight: 100 }))];
-      const latest = queryLocalD1Sql(`select metadata_json from knowledge_docs where doc_id=${q(row.doc_id)}`, { requiredTable: 'knowledge_docs' })[0];
-      const meta = JSON.parse(latest.metadata_json);
-      if (meta.feed.fullBodyHash !== row.feed.fullBodyHash || meta.feed.tagLeaseOwner !== owner) throw new Error('tagging input or lease changed');
-      meta.feed = { ...meta.feed, taggingStatus: 'complete', taggingInputFingerprint: fingerprint,
-        taggingContentSha256: sha(body), records,
-        tagContract: TAG_CONTRACT, tagCategoryCatalogHash: CATEGORY_CATALOG_HASH, tagPromptHash: PROMPT_HASH,
-        tagCandidatePolicyHash: CANDIDATE_POLICY_HASH,
-        taggedAt: Date.now(), lastTagAttemptAt: Date.now(), nextRetryAt: null,
-        tagLeaseOwner: null, tagLeaseUntil: null };
-      executeLocalD1Sql(`delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'category:%' or tag like 'topic:%' or tag like 'theme:%' or tag like 'focus:%');
-        ${tags.map((tag) => `insert into knowledge_doc_tags (doc_id,tag,weight,tagging_input_fingerprint,contract_version) values (${q(row.doc_id)},${q(tag.tagId)},${tag.weight},${q(fingerprint)},${q(TAG_CONTRACT)});`).join('\n')}
-        update knowledge_docs set metadata_json=${q(JSON.stringify(meta))},updated_at=${Date.now()} where doc_id=${q(row.doc_id)};`, { requiredTable: 'knowledge_doc_tags' });
+      if (response.raw?.model !== EXTRACTION_CONTRACT.model) throw new Error(`unexpected actual model: ${String(response.raw?.model || 'missing')}`);
+      const { records, categoryCandidates } = parseFeedExtraction(response.text, promptValues.CONTENT);
+      commitExtraction(row.doc_id, { owner, fingerprint, source, contract: EXTRACTION_CONTRACT,
+        body, records, categoryCandidates, companyCandidates });
       counters.tagged += 1;
     } catch (error) {
-      const meta = JSON.parse(queryLocalD1Sql(`select metadata_json from knowledge_docs where doc_id=${q(row.doc_id)}`, { requiredTable: 'knowledge_docs' })[0].metadata_json);
-      if (meta.feed.tagLeaseOwner !== owner) continue;
-      const sameContract = meta.feed.lastAttemptContract === TAG_CONTRACT
-        && meta.feed.lastAttemptCategoryCatalogHash === CATEGORY_CATALOG_HASH && meta.feed.lastAttemptPromptHash === PROMPT_HASH
-        && meta.feed.lastAttemptCandidatePolicyHash === CANDIDATE_POLICY_HASH;
-      const attempts = (sameContract ? Number(meta.feed.tagAttempts) || 0 : 0) + 1;
-      meta.feed = { ...meta.feed, taggingStatus: 'failed', tagAttempts: attempts,
-        lastAttemptContract: TAG_CONTRACT, lastAttemptCategoryCatalogHash: CATEGORY_CATALOG_HASH, lastAttemptPromptHash: PROMPT_HASH,
-        lastAttemptCandidatePolicyHash: CANDIDATE_POLICY_HASH,
-        lastTagAttemptAt: Date.now(),
-        tagLeaseOwner: null, tagLeaseUntil: null,
-        nextRetryAt: Date.now() + Math.min(86400000, 60000 * 2 ** Math.min(attempts, 10)),
-        lastTagError: String(error?.message || error).slice(0, 300) };
-      executeLocalD1Sql(`update knowledge_docs set metadata_json=${q(JSON.stringify(meta))},updated_at=${Date.now()} where doc_id=${q(row.doc_id)};`, { requiredTable: 'knowledge_docs' });
+      if (claimed) failExtraction(row.doc_id, { owner, error });
       counters.tagFailed += 1;
-      console.error(`[information-feed] tag failed ${row.doc_id}: ${String(error?.message || error)}`);
+      console.error(`[information-feed] extraction failed ${row.doc_id}: ${String(error?.message || error)}`);
     }
   }
 }
@@ -244,8 +205,9 @@ function loadFeedRows() {
     from knowledge_docs d left join knowledge_doc_content_refs c on c.doc_id=d.doc_id
     where d.source_type='information_feed' order by d.sort_time desc,d.doc_id desc`, { requiredTable: 'knowledge_docs' })
     .map((row) => {
-      const feed = JSON.parse(row.metadata_json || '{}').feed || {};
-      return { ...row, feed, sourceKey: feed.sourceKey, sourceItemId: feed.sourceItemId, entityCodes: feed.entityCodes };
+      const metadata = JSON.parse(row.metadata_json || '{}');
+      const feed = metadata.feed || {};
+      return { ...row, feed, extraction: metadata.informationExtraction, sourceKey: feed.sourceKey, sourceItemId: feed.sourceItemId, entityCodes: feed.entityCodes };
     });
 }
 
@@ -258,22 +220,8 @@ function readLocalBody(key) {
 }
 
 function addSourceReference(candidate, source) {
-  const ref = sourceReference(source);
-  const rows = queryLocalD1Sql(`select doc_id,metadata_json from knowledge_docs where source_type='information_feed'
-    and json_extract(metadata_json,'$.feed.storyKey')=${q(candidate.feed.storyKey)}`, { requiredTable: 'knowledge_docs' });
-  const updates = [];
-  for (const row of rows) {
-    const meta = JSON.parse(row.metadata_json);
-    const sources = meta.feed.sources || [];
-    const existingIndex = sources.findIndex((item) => item.sourceKey === ref.sourceKey && item.sourceItemId === ref.sourceItemId && item.url === ref.url);
-    if (existingIndex >= 0 && sources[existingIndex].contentHash === ref.contentHash) continue;
-    meta.feed.sources = existingIndex >= 0
-      ? sources.map((item, index) => index === existingIndex ? ref : item)
-      : [...sources, ref];
-    if (row.doc_id === candidate.doc_id) candidate.feed.sources = meta.feed.sources;
-    updates.push(`update knowledge_docs set metadata_json=${q(JSON.stringify(meta))},updated_at=${Date.now()} where doc_id=${q(row.doc_id)};`);
-  }
-  if (updates.length) executeLocalD1Sql(updates.join('\n'), { requiredTable: 'knowledge_docs' });
+  const updated = mergeStorySourceReference(candidate.feed.storyKey, sourceReference(source));
+  if (updated.has(candidate.doc_id)) candidate.feed.sources = updated.get(candidate.doc_id);
 }
 
 function sourceReference(source) {

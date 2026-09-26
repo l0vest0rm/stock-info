@@ -2,6 +2,7 @@
 
 const baseUrl = normalizeBaseUrl(process.env.SMOKE_BASE_URL || "http://127.0.0.1:8000");
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS || "30000");
+const checkFilter = process.env.SMOKE_FILTER ? new RegExp(process.env.SMOKE_FILTER) : null;
 
 const stocks = [
   { market: "sz-a", code: "300750.SZ", name: "宁德时代", minKlineRows: 100 },
@@ -45,7 +46,8 @@ await check("information feed page and API", async () => {
   const feed = await fetchApi('/api/knowledge/feed?limit=2');
   assert(Array.isArray(feed.data?.list), 'information feed list is missing');
   assert(feed.data.list.every((item) => ['news', 'flash', 'announcement', 'text_report'].includes(item.content_type)
-    && Array.isArray(item.tags) && Array.isArray(item.records)), 'information feed list has invalid items');
+    && Array.isArray(item.tags) && Array.isArray(item.records)
+    && (item.category_candidates === null || Array.isArray(item.category_candidates))), 'information feed list has invalid items');
   assert(feed.data.list.every((item) => item.tagging_status !== 'expired'), 'default information feed includes expired unextracted items');
   const pending = await fetchApi('/api/knowledge/feed?status=pending&limit=2');
   assert(pending.data.list.every((item) => item.tagging_status === 'pending'
@@ -53,14 +55,50 @@ await check("information feed page and API", async () => {
   const expired = await fetchApi('/api/knowledge/feed?status=expired&limit=2');
   assert(expired.data.list.every((item) => item.tagging_status === 'expired'
     && Date.parse(item.sort_time) < Date.now() - 48 * 3600000), 'information feed expired filter is invalid');
+  const categoryGaps = await fetchApi('/api/knowledge/feed?status=category_gap&limit=2');
+  assert(categoryGaps.data.list.every((item) => Array.isArray(item.category_candidates)
+    && item.category_candidates.length > 0), 'information feed category gap filter is invalid');
+  const unassessed = await fetchApi('/api/knowledge/feed?status=category_unassessed&limit=2');
+  assert(unassessed.data.list.every((item) => item.category_candidates === null), 'information feed unassessed filter is invalid');
   const facets = await fetchApi('/api/knowledge/feed/facets');
   assert(Array.isArray(facets.data?.sources) && Array.isArray(facets.data?.categories), 'information feed facets are missing');
   assert(!('themes' in facets.data), 'legacy theme facet must not be returned');
-  if (facets.data.categories.length) {
-    const category = facets.data.categories[0].id;
-    const filtered = await fetchApi(`/api/knowledge/feed?category=${encodeURIComponent(category.replace(/^category:/, ''))}&limit=2`);
-    assert(filtered.data?.list?.length > 0 && filtered.data.list.every((item) => item.tags.some((tag) => tag.tagId === category)),
-      'information feed category filter did not match its facet');
+  for (const [facet, parameter, matches] of [
+    ['sources', 'source', (item, id) => item.sources.includes(id)],
+    ['content_types', 'content_type', (item, id) => item.content_type === id],
+    ['companies', 'company', (item, id) => item.records.some((record) => record.entity_key === id)],
+    ['categories', 'category', (item, id) => item.records.some((record) => `category:${record.category}` === id)],
+    ['industries', 'industry', (item, id) => item.industries.includes(id)],
+  ]) {
+    assert(Array.isArray(facets.data[facet]), `information feed ${facet} facets are missing`);
+    for (const option of facets.data[facet]) {
+      const value = option.id.replace(/^(?:company|category):/, '');
+      const filtered = await fetchApi(`/api/knowledge/feed?${parameter}=${encodeURIComponent(value)}&limit=2`);
+      assert(filtered.data?.list?.length > 0 && filtered.data.list.every((item) => matches(item, option.id)),
+        `information feed ${facet} filter ${option.id} did not match its facet`);
+    }
+  }
+});
+
+await check("entity information record API", async () => {
+  const missingEntity = await fetchWithTimeout(`${baseUrl}/api/knowledge/information-records`);
+  assert(missingEntity.status === 400, 'record query must require an explicit entity');
+  const body = await fetchApi('/api/knowledge/information-records?entity_key=company%3A300308.SZ&limit=2');
+  assert(Array.isArray(body.data?.list) && typeof body.data?.has_next === 'boolean', 'record query pagination is missing');
+  assert(body.data.list.every((record) => record.entity_key === 'company:300308.SZ'
+    && record.information_id && record.doc_id && record.statement && record.input_fingerprint
+    && record.records_digest && record.source), 'entity query returned a wrong-owner or untraceable record');
+});
+
+await check("retired information processing surfaces", async () => {
+  for (const path of [
+    "/information-processing.html",
+    "/api/knowledge/processed-documents",
+    "/api/knowledge/information-filters",
+    "/api/knowledge/processing-jobs",
+  ]) {
+    const response = await fetchWithTimeout(`${baseUrl}${path}`);
+    assert(response.status === 404, `${path} status=${response.status}`);
   }
 });
 
@@ -267,9 +305,11 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`\nSmoke passed: ${passed} checks`);
+if (!passed) throw new Error('no smoke checks matched SMOKE_FILTER');
+console.log(`\nSmoke passed: ${passed} checks${checkFilter ? ` (filter=${checkFilter.source})` : ''}`);
 
 async function check(name, fn) {
+  if (checkFilter && !checkFilter.test(name)) return;
   try {
     await fn();
     passed += 1;

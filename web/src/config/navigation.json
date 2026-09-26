@@ -6,7 +6,6 @@
     {"href": "funds.html", "text": "基金"},
     {"href": "featured-report.html", "text": "研报精选"},
     {"href": "news.html", "text": "资讯", "runtime": "local"},
-    {"href": "information-processing.html", "text": "信息整理", "runtime": "local"},
     {"href": "option-strategy.html", "text": "期权策略", "runtime": "local"},
     {"href": "13f.html", "text": "13F"}
   ],

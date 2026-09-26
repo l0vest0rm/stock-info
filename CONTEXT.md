@@ -110,15 +110,16 @@ _Avoid_: Business topic, investment impact
 The controlled business topic of a record, such as revenue, financing, listing, or product development. It is independent of information type.
 _Avoid_: Entity type, sentiment
 
-**Processing outcome**:
-The automatic result for one document version: extracted, no information, or unresolved. An unresolved result records its reason and reprocessing condition; a failed model attempt is not a processing outcome and does not remain in the information-processing ledger.
+**Category candidate**:
+A source-grounded suggestion for a business topic missing from the controlled category catalog. It is not an approved category or a semantic feed tag.
+_Avoid_: Catch-all category, article-level topic guess, approved category
 
 **Information-feed item**:
 A consumer-visible unit of unique information or a material update from a text-origin source; its local presence does not depend on semantic tagging being complete. PDF-origin material, including PDF converted to Markdown, is not an information-feed item.
 _Avoid_: Verified fact, model analysis result
 
 **Information-feed record**:
-A source-bound statement extracted from a text-origin feed item using the shared information-processing record contract. It describes what the source says, not an independently verified fact.
+A source-bound statement extracted from a text-origin feed item using the information-feed record contract. It describes what the source says, not an independently verified fact.
 _Avoid_: Article-level topic, investment conclusion
 
 **Semantic feed tag**:

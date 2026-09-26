@@ -11,14 +11,11 @@ const root = resolve(new URL("..", import.meta.url).pathname);
 export function loadKnowledgeIngestConfig(configPath = resolve(root, "config/knowledge-processing.json")) {
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   const automation = config.automation && typeof config.automation === "object" ? config.automation : {};
-  const informationProcessing = config.informationProcessing && typeof config.informationProcessing === "object" ? config.informationProcessing : {};
   const cronExpression = String(automation.cron || "*/15 * * * *").trim();
-  const configuredMaxDocuments = Number(informationProcessing.maxDocumentsPerRun);
   return {
     enabled: automation.enabled !== false,
     runOnStart: automation.runOnStart === true,
     cronExpression,
-    maxDocumentsPerRun: Number.isFinite(configuredMaxDocuments) ? Math.max(0, Math.min(200, Math.floor(configuredMaxDocuments))) : 5,
   };
 }
 
@@ -46,13 +43,13 @@ export function startKnowledgeIngestScheduler({
     }
     active = true;
     const startedAt = Date.now();
-    onEvent("started", { reason, max_documents_per_run: config.maxDocumentsPerRun });
+    onEvent("started", { reason });
     try {
       await runChild({
         command: "./process-knowledge.sh",
         args: [],
         cwd: root,
-        env: { ...process.env, INFORMATION_PROCESSING_MAX_DOCUMENTS: String(config.maxDocumentsPerRun) },
+        env: process.env,
       });
       onEvent("completed", { reason, duration_ms: Date.now() - startedAt });
       return true;
@@ -67,7 +64,7 @@ export function startKnowledgeIngestScheduler({
     timezone: "Asia/Shanghai",
     catch: (error) => onEvent("cron_failed", { error: error instanceof Error ? error.message : String(error) }),
   }, () => { void runNow("schedule"); });
-  onEvent("scheduled", { cron: config.cronExpression, timezone: "Asia/Shanghai", next: job.nextRun()?.toISOString() ?? null, max_documents_per_run: config.maxDocumentsPerRun });
+  onEvent("scheduled", { cron: config.cronExpression, timezone: "Asia/Shanghai", next: job.nextRun()?.toISOString() ?? null });
   if (config.runOnStart) void runNow("startup");
   return {
     config,

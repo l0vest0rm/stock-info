@@ -6,7 +6,8 @@ import { brotliDecompressSync } from 'node:zlib';
 import { closeSync, existsSync, openSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { classifyFeedCandidate } from './lib/information-feed-dedupe.mjs';
-import { executeLocalD1Sql, queryLocalD1Sql } from './lib/local-d1-sqlite.mjs';
+import { queryLocalD1Sql } from './lib/local-d1-sqlite.mjs';
+import { hasRetainedExtraction, reconcileUnextractedPairs } from './lib/information-records-reconcile.mjs';
 
 const apply = process.argv.includes('--apply');
 if (process.argv.slice(2).some((arg) => arg !== '--apply')) throw new Error('unknown argument');
@@ -24,7 +25,8 @@ if (apply) {
   process.on('exit', () => { try { unlinkSync(lockFile); } catch { /* already removed */ } });
 }
 const root = resolve(process.env.KNOWLEDGE_CONTENT_LOCAL_DIR || '/Users/terry/git/data/stock-info/knowledge/content-cache');
-const rows = queryLocalD1Sql(`select d.doc_id,d.title,d.published_at,d.fetched_at,d.metadata_json,c.content_key
+const rows = queryLocalD1Sql(`select d.doc_id,d.title,d.published_at,d.fetched_at,d.metadata_json,c.content_key,c.content_sha256,
+  (select count(*) from knowledge_information_records r where r.doc_id=d.doc_id) as record_count
   from knowledge_docs d join knowledge_doc_content_refs c on c.doc_id=d.doc_id
   where d.source_type='information_feed' order by d.title,d.published_at,d.doc_id`, { requiredTable: 'knowledge_docs' });
 const groups = new Map();
@@ -43,7 +45,7 @@ for (const group of groups.values()) {
   if (group.length < 2) continue;
   const retained = [];
   for (const row of group) {
-    if (row.meta.feed?.kind !== 'new') { retained.push(row); continue; }
+    if (row.meta.feed?.kind !== 'new' || hasRetainedExtraction(row)) { retained.push(row); continue; }
     const match = retained.find((candidate) =>
       candidate.meta.feed?.kind === 'new'
       && Math.abs(Date.parse(candidate.published_at || candidate.fetched_at) - Date.parse(row.published_at || row.fetched_at)) <= 7 * 86400000
@@ -61,20 +63,7 @@ if (!apply || !removals.length) process.exit(0);
 if (removals.some(({ keep, drop }) => keep.meta.feed.publishedFingerprint || drop.meta.feed.publishedFingerprint)) {
   throw new Error('published feed entries require coordinated remote deletion; local-only reconcile refused');
 }
-const sourceSets = new Map();
-for (const { keep, drop } of removals) {
-  const refs = sourceSets.get(keep.doc_id) || new Map((keep.meta.feed.sources || []).map((item) => [sourceKey(item), item]));
-  for (const item of drop.meta.feed.sources || []) refs.set(sourceKey(item), item);
-  sourceSets.set(keep.doc_id, refs);
-}
-const statements = [];
-for (const [docId, refs] of sourceSets) {
-  const row = rows.find((item) => item.doc_id === docId);
-  row.meta.feed.sources = [...refs.values()];
-  statements.push(`update knowledge_docs set metadata_json=${q(JSON.stringify(row.meta))},updated_at=${Date.now()} where doc_id=${q(docId)};`);
-}
-for (const { drop } of removals) statements.push(`delete from knowledge_docs where doc_id=${q(drop.doc_id)};`);
-executeLocalD1Sql(statements.join('\n'), { requiredTable: 'knowledge_docs' });
+reconcileUnextractedPairs(removals);
 let removedFiles = 0;
 for (const { drop } of removals) {
   const refs = queryLocalD1Sql(`select count(*) n from knowledge_doc_content_refs where content_key=${q(drop.content_key)}`, { requiredTable: 'knowledge_doc_content_refs' });
@@ -82,5 +71,4 @@ for (const { drop } of removals) {
 }
 console.log(JSON.stringify({ reconciled: removals.length, removedFiles }));
 
-function sourceKey(item) { return [item.sourceKey,item.sourceItemId,item.url,item.contentHash].join('|'); }
 function q(value) { return `'${String(value).replaceAll("'", "''")}'`; }

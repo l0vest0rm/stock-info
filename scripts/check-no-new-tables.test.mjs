@@ -8,6 +8,19 @@ import test from "node:test";
 const root = resolve(new URL("..", import.meta.url).pathname);
 const gate = join(root, "scripts/check-no-new-tables.mjs");
 
+for (const approvedAgain of [false, true]) test(`retired results table cannot be recreated (allowlist override=${approvedAgain})`, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'stock-info-retired-results-'));
+  try {
+    mkdirSync(join(dir, 'migrations'));
+    writeFileSync(join(dir, 'allowlist.json'), JSON.stringify(approvedAgain ? ['knowledge_document_results'] : []));
+    writeFileSync(join(dir, 'migrations/0128_drop_knowledge_run_ledgers.sql'), 'CREATE TABLE knowledge_document_results (result_id text);');
+    execFileSync(process.execPath, [gate, '--root', dir, '--allowlist', 'allowlist.json'], { stdio:'pipe' });
+    writeFileSync(join(dir, 'migrations/0999_recreate_results.sql'), 'CREATE TABLE knowledge_document_results (result_id text);');
+    assert.throws(() => execFileSync(process.execPath, [gate, '--root', dir, '--allowlist', 'allowlist.json'], { stdio:'pipe' }),
+      (error) => /0999_recreate_results.sql/.test(String(error.stderr)));
+  } finally { rmSync(dir, { recursive:true, force:true }); }
+});
+
 test("approved featured-report migration has an independent unique code and report identity", () => {
   const sql = readFileSync(join(root, "migrations/0140_featured_reports.sql"), "utf8");
   const tables = [...sql.matchAll(/CREATE TABLE (\w+)/g)].map(match => match[1]);

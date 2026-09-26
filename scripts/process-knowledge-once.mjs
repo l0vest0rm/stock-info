@@ -22,7 +22,6 @@ import {
 } from "./generated/prompt-text.mjs";
 import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
 import { executeLocalD1Sql } from "./lib/local-d1-sqlite.mjs";
-import { runAutomaticInformationProcessing as runAutomaticInformationProcessingSteps } from "./lib/automatic-information-processing.mjs";
 import { shouldKeepOriginalReportPdf, topicFilterBypassDecision, topicFilterKeywordDecision } from "./lib/knowledge-topic-filter.mjs";
 import {
   downloadPdfBytes,
@@ -283,7 +282,6 @@ if (uniqueDocs.length > 0) {
   mergeImportSyncState(importSyncState, importedEntries, importTarget);
   imported = importedEntries.length;
 }
-const informationProcessing = await runAutomaticInformationProcessing(config, dbTarget);
 const storageCleanup = pruneKnowledgeStorage(config);
 const storageReport = runKnowledgeStorageReport(config);
 
@@ -317,7 +315,6 @@ console.log(JSON.stringify({
   nextScanWatermark: new Date(scanStartedAtMs).toISOString(),
   elapsedSeconds: Math.round((Date.now() - runStartedAt) / 1000),
   imported,
-  informationProcessing,
   filteredImported,
   filteredImportEnabled: filteredReviewImportEnabled,
   storageCleanup,
@@ -334,22 +331,6 @@ console.log(JSON.stringify({
     error: item.error || undefined,
   })),
 }, null, 2));
-if (informationProcessing.status === "incomplete") {
-  process.exitCode = 1;
-}
-
-async function runAutomaticInformationProcessing(cfg, remote) {
-  const processing = object(cfg.informationProcessing);
-  return runAutomaticInformationProcessingSteps({
-    enabled: Boolean(processing.enabled), remote,
-    server: process.env.INFORMATION_PROCESSING_SERVER || processing.server,
-    concurrency: process.env.INFORMATION_PROCESSING_CONCURRENCY ?? processing.concurrency,
-    maxDocuments: process.env.INFORMATION_PROCESSING_MAX_DOCUMENTS ?? processing.maxDocumentsPerRun,
-    maxAgeDays: process.env.INFORMATION_PROCESSING_MAX_AGE_DAYS ?? processing.maxAgeDays,
-    titleKeywords: processing.autoTitleKeywords,
-    requestTimeoutMs: process.env.INFORMATION_PROCESSING_REQUEST_TIMEOUT_MS ?? processing.requestTimeoutMs,
-  });
-}
 
 function runKnowledgeStorageReport(cfg) {
   try {

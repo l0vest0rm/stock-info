@@ -66,6 +66,8 @@ function loadDocuments(database) {
            d.summary, d.metadata_json, coalesce(json_group_array(t.tag), '[]') as tags_json
       from knowledge_docs d
       left join knowledge_doc_tags t on t.doc_id = d.doc_id
+     where d.source_type != 'information_feed'
+       and not exists (select 1 from knowledge_information_records r where r.doc_id=d.doc_id)
      group by d.doc_id
      order by d.doc_id
   `);
@@ -92,15 +94,12 @@ function deleteDocuments(databaseFile, docIds) {
       .map((ids) => `insert into historical_blacklist_doc_ids (doc_id) values ${ids.map((id) => `(${sqlString(id)})`).join(", ")};`)
       .join("\n");
     const selectedDocs = "select doc_id from historical_blacklist_doc_ids";
-    const selectedVersions = `select version_id from knowledge_document_versions where doc_id in (${selectedDocs})`;
     writeFileSync(sqlFile, `
       create temp table historical_blacklist_doc_ids (doc_id text primary key);
       ${values}
-      delete from knowledge_information_records where result_id in (
-        select result_id from knowledge_document_results where version_id in (${selectedVersions})
-      );
-      delete from knowledge_document_results where version_id in (${selectedVersions});
-      delete from knowledge_docs where doc_id in (${selectedDocs});
+      -- Direct document ownership; protect newly extracted data from a stale scan.
+      delete from knowledge_docs where doc_id in (${selectedDocs}) and source_type!='information_feed'
+        and not exists (select 1 from knowledge_information_records r where r.doc_id=knowledge_docs.doc_id);
     `);
     executeLocalD1SqlFile(sqlFile, { root, requiredTable: "knowledge_docs" });
   } finally {
