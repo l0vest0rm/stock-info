@@ -117,17 +117,17 @@ The automatic result for one document version: extracted, no information, or unr
 A consumer-visible unit of unique information or a material update from a text-origin source; its local presence does not depend on semantic tagging being complete. PDF-origin material, including PDF converted to Markdown, is not an information-feed item.
 _Avoid_: Verified fact, model analysis result
 
+**Information-feed record**:
+A source-bound statement extracted from a text-origin feed item using the shared information-processing record contract. It describes what the source says, not an independently verified fact.
+_Avoid_: Article-level topic, investment conclusion
+
 **Semantic feed tag**:
-A normalized relationship between an information-feed item and a company or fine-grained topic. It describes topical relevance, not the truth of the source or an investment recommendation; industry is derived from the topic taxonomy rather than tagged independently.
-_Avoid_: Source-supplied label, information record
+A deterministic index derived from an information-feed record: its controlled category or an unambiguously resolved company. Industry is derived only from an existing confirmed company classification; it is not model-generated.
+_Avoid_: Source-supplied label, fine-grained topic guess, information record itself
 
 **Tag weight**:
-The relative topical importance of one semantic feed tag to an information-feed item, used to order displayed tags and optionally rank matching items.
+A deterministic display-order value for record-derived feed tags, not a model score.
 _Avoid_: Model confidence, source credibility, investment value
-
-**Topic**:
-A controlled, durable investment subject narrower than an industry, such as a product, technology, business segment, or industry-specific core metric, assigned directly to an information-feed item. It maps deterministically to one or more industries and is not an article event, corporate action, policy catalyst, or source type.
-_Avoid_: Theme, 赛道, industry, event category
 
 **Repeated source**:
 A recapture, reprint, or rewrite that adds no meaningful information to an existing feed item. Its redundant body is not retained; only a minimal source identity mapping may remain.

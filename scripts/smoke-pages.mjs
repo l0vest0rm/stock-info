@@ -45,15 +45,22 @@ await check("information feed page and API", async () => {
   const feed = await fetchApi('/api/knowledge/feed?limit=2');
   assert(Array.isArray(feed.data?.list), 'information feed list is missing');
   assert(feed.data.list.every((item) => ['news', 'flash', 'announcement', 'text_report'].includes(item.content_type)
-    && Array.isArray(item.tags)), 'information feed list has invalid items');
+    && Array.isArray(item.tags) && Array.isArray(item.records)), 'information feed list has invalid items');
+  assert(feed.data.list.every((item) => item.tagging_status !== 'expired'), 'default information feed includes expired unextracted items');
+  const pending = await fetchApi('/api/knowledge/feed?status=pending&limit=2');
+  assert(pending.data.list.every((item) => item.tagging_status === 'pending'
+    && Date.parse(item.sort_time) >= Date.now() - 48 * 3600000), 'information feed pending items exceed the extraction window');
+  const expired = await fetchApi('/api/knowledge/feed?status=expired&limit=2');
+  assert(expired.data.list.every((item) => item.tagging_status === 'expired'
+    && Date.parse(item.sort_time) < Date.now() - 48 * 3600000), 'information feed expired filter is invalid');
   const facets = await fetchApi('/api/knowledge/feed/facets');
-  assert(Array.isArray(facets.data?.sources) && Array.isArray(facets.data?.topics), 'information feed facets are missing');
+  assert(Array.isArray(facets.data?.sources) && Array.isArray(facets.data?.categories), 'information feed facets are missing');
   assert(!('themes' in facets.data), 'legacy theme facet must not be returned');
-  if (facets.data.topics.length) {
-    const topic = facets.data.topics[0].id;
-    const filtered = await fetchApi(`/api/knowledge/feed?topic=${encodeURIComponent(topic)}&limit=2`);
-    assert(filtered.data?.list?.length > 0 && filtered.data.list.every((item) => item.tags.some((tag) => tag.tagId === topic)),
-      'information feed topic filter did not match its facet');
+  if (facets.data.categories.length) {
+    const category = facets.data.categories[0].id;
+    const filtered = await fetchApi(`/api/knowledge/feed?category=${encodeURIComponent(category.replace(/^category:/, ''))}&limit=2`);
+    assert(filtered.data?.list?.length > 0 && filtered.data.list.every((item) => item.tags.some((tag) => tag.tagId === category)),
+      'information feed category filter did not match its facet');
   }
 });
 

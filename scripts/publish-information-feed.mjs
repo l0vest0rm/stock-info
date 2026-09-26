@@ -9,11 +9,13 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildContentOptions, prepareKnowledgeContentAsync } from './knowledge-content-r2.mjs';
 import { executeLocalD1Sql, queryLocalD1Sql } from './lib/local-d1-sqlite.mjs';
-import { INFORMATION_FEED_TAGGING_PROMPT } from './generated/prompt-text.mjs';
+import { feedCategoryCatalogHash } from './lib/information-feed-extraction.mjs';
+import { INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT, INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT } from './generated/prompt-text.mjs';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const apply = process.argv.includes('--apply');
 const config = JSON.parse(readFileSync(resolve(root, 'config/information-feed.json'), 'utf8'));
+const categoryIds = new Set(Object.keys(JSON.parse(readFileSync(resolve(root, 'config/knowledge-ontology.json'), 'utf8')).informationExtraction.categories));
 const currentTagContract = config.tagContract;
 if (!/^feed-tag-v\d+$/.test(currentTagContract)) throw new Error('invalid information feed tag contract');
 if (apply && config.automation?.publishRemote !== true) {
@@ -21,8 +23,8 @@ if (apply && config.automation?.publishRemote !== true) {
   process.exit(0);
 }
 const maxBatch = 200;
-const currentPromptHash = sha(INFORMATION_FEED_TAGGING_PROMPT);
-const currentTaxonomyHash = sha(JSON.stringify(JSON.parse(readFileSync(resolve(root, 'config/information-feed-topics.json'), 'utf8'))));
+const currentPromptHash = sha(INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT + INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT);
+const currentCategoryCatalogHash = feedCategoryCatalogHash();
 const currentCandidatePolicyHash = sha(JSON.stringify(config.companyCandidates || {}));
 const ledgerFile = resolve(root, process.env.INFORMATION_FEED_PUBLISH_LEDGER || 'data/local/information-feed-publish-ledger.json');
 const ledger = existsSync(ledgerFile) ? JSON.parse(readFileSync(ledgerFile, 'utf8')) : { uploadedKeys: {} };
@@ -49,7 +51,7 @@ const remove = [];
 for (const row of rows) {
   const feed = row.meta.feed || {};
   const validTags = (tagsByDoc.get(row.doc_id) || []).filter((tag) =>
-    (tag.tag.startsWith('company:') || tag.tag.startsWith('topic:'))
+    (tag.tag.startsWith('company:') || (tag.tag.startsWith('category:') && categoryIds.has(tag.tag.slice('category:'.length))))
     && tag.weight >= 1 && tag.weight <= 100
     && tag.tagging_input_fingerprint === feed.taggingInputFingerprint
     && tag.contract_version === feed.tagContract
@@ -62,10 +64,14 @@ for (const row of rows) {
     && feed.publishedFingerprint) { remove.push(row); continue; }
   if (latest !== row) continue;
   if (feed.version !== 'v1' || feed.originalFormat !== 'text' || !fullTextAllowed || !row.content_key || feed.taggingStatus !== 'complete'
-    || feed.tagContract !== currentTagContract || feed.tagPromptHash !== currentPromptHash || feed.tagTaxonomyHash !== currentTaxonomyHash
+    || feed.tagContract !== currentTagContract || feed.tagPromptHash !== currentPromptHash || feed.tagCategoryCatalogHash !== currentCategoryCatalogHash
     || feed.tagCandidatePolicyHash !== currentCandidatePolicyHash
     || feed.taggingContentSha256 !== row.content_sha256
-    || !feed.taggingInputFingerprint || validTags.length === 0) {
+    || !feed.taggingInputFingerprint || !Array.isArray(feed.records) || feed.records.length === 0
+    || feed.records.some((record) => !categoryIds.has(record?.category))
+    || new Set(validTags.filter((tag) => tag.tag.startsWith('category:')).map((tag) => tag.tag.slice('category:'.length))).size
+      !== new Set(feed.records.map((record) => record.category)).size
+    || feed.records.some((record) => !validTags.some((tag) => tag.tag === `category:${record.category}`))) {
     if (feed.publishedFingerprint && (feed.taggingStatus !== 'pending' || feed.originalFormat !== 'text' || !fullTextAllowed)) remove.push(row);
     continue;
   }
@@ -166,7 +172,7 @@ function statementsFor(row, tags) {
   return [
     `insert into knowledge_docs (${columns.join(',')}) values (${columns.map((column) => q(row[column])).join(',')}) on conflict(doc_id) do update set ${columns.filter((column) => column !== 'doc_id').map((column) => `${column}=excluded.${column}`).join(',')};`,
     `insert into knowledge_doc_content_refs (${content.join(',')}) values (${content.map((column) => q(row[column])).join(',')}) on conflict(doc_id) do update set ${content.filter((column) => column !== 'doc_id').map((column) => `${column}=excluded.${column}`).join(',')};`,
-    `delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'topic:%' or tag like 'theme:%');`,
+    `delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'category:%' or tag like 'topic:%' or tag like 'theme:%' or tag like 'focus:%');`,
     ...tags.map((tag) => `insert into knowledge_doc_tags (doc_id,tag,weight,tagging_input_fingerprint,contract_version) values (${q(row.doc_id)},${q(tag.tag)},${q(tag.weight)},${q(tag.tagging_input_fingerprint)},${q(tag.contract_version)});`),
   ];
 }
@@ -174,7 +180,7 @@ function statementsFor(row, tags) {
 function hasCurrentTags(row) {
   const feed = row.meta.feed || {};
   return (tagsByDoc.get(row.doc_id) || []).some((tag) =>
-    (tag.tag.startsWith('company:') || tag.tag.startsWith('topic:'))
+    tag.tag.startsWith('category:') && categoryIds.has(tag.tag.slice('category:'.length))
     && tag.tagging_input_fingerprint === feed.taggingInputFingerprint
     && tag.contract_version === feed.tagContract
     && tag.weight >= 1 && tag.weight <= 100);

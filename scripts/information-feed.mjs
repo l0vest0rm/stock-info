@@ -11,21 +11,21 @@ import { executeLocalD1Sql, queryLocalD1Sql } from './lib/local-d1-sqlite.mjs';
 import { canonicalFeedUrl, classifyFeedItem, feedBodyHash, feedShingleSketch, sketchesOverlap, FEED_DEDUPE_VERSION } from './lib/information-feed-dedupe.mjs';
 import { normalizeFeedSource } from './lib/information-feed-source.mjs';
 import { feedCompanyCandidates } from './lib/information-feed-company-candidates.mjs';
-import { INFORMATION_FEED_TAGGING_PROMPT } from './generated/prompt-text.mjs';
+import { companyTagsForRecords, feedCategoryCatalog, feedCategoryCatalogHash, parseFeedExtraction } from './lib/information-feed-extraction.mjs';
+import { isRecentFeedTime, recentFeedRows, MAX_FEED_AGE_HOURS } from './lib/information-feed-window.mjs';
+import { INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT, INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT } from './generated/prompt-text.mjs';
 import { requestLocalDirectLlmText } from '../src/shared/local-direct-llm.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));
-const taxonomy = JSON.parse(readFileSync(resolve(ROOT, 'config/information-feed-topics.json'), 'utf8'));
 const feedConfig = JSON.parse(readFileSync(resolve(ROOT, 'config/information-feed.json'), 'utf8'));
-const topics = new Map(taxonomy.topics.map((topic) => [`topic:${topic.id}`, topic]));
 const contentOptions = buildContentOptions({ remote: false });
 const stateFile = resolve(ROOT, process.env.INFORMATION_FEED_STATE_FILE || 'data/local/information-feed-ingest-state.json');
 const usageFile = resolve(ROOT, process.env.INFORMATION_FEED_TAG_USAGE_FILE || 'data/local/information-feed-tag-usage.json');
 const TAG_CONTRACT = feedConfig.tagContract;
 if (!/^feed-tag-v\d+$/.test(TAG_CONTRACT)) throw new Error('invalid information feed tag contract');
-const PROMPT_HASH = sha(INFORMATION_FEED_TAGGING_PROMPT);
-const TAXONOMY_HASH = sha(JSON.stringify(taxonomy));
+const PROMPT_HASH = sha(INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT + INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT);
+const CATEGORY_CATALOG_HASH = feedCategoryCatalogHash();
 const CANDIDATE_POLICY_HASH = sha(JSON.stringify(feedConfig.companyCandidates || {}));
 
 if (args.mode !== 'ingest' && process.env.LLM_RUNTIME !== 'local') throw new Error('information feed tagging requires LLM_RUNTIME=local from the local launch script');
@@ -63,6 +63,14 @@ async function ingest() {
       if (processed >= args.maxDocuments) break;
       const raw = rawItems[index];
       const source = normalizeFeedSource(raw);
+      if (source.accepted && !isRecentFeedTime(source.publishedAt || source.fetchedAt, Date.now(), args.maxAgeHours)) {
+        counters.rejected.outside_48_hour_window = (counters.rejected.outside_48_hour_window || 0) + 1;
+        if (!args.file) {
+          state.files[file] = index + 1 === rawItems.length ? signature : { signature, nextIndex: index + 1 };
+          saveJson(stateFile, state);
+        }
+        continue;
+      }
       const sourceVersionKey = source.accepted ? `${source.sourceKey}|${source.sourceItemId || source.url}` : '';
       const sourceVersionHash = source.accepted ? feedBodyHash(source.body) : '';
       if (clsFile && source.accepted && knownSourceVersions.get(sourceVersionKey)?.has(sourceVersionHash)) continue;
@@ -145,30 +153,30 @@ async function tagPending() {
   const remainingToday = Math.max(0, Number(feedConfig.automation?.maxTagsPerDay || 200) - Number(usage.count || 0));
   if (!remainingToday) return;
   const limit = Math.min(args.maxTags, remainingToday);
-  const rows = loadFeedRows().filter((row) => !args.docId || row.doc_id === args.docId)
+  const rows = recentFeedRows(loadFeedRows(), Date.now(), args.maxAgeHours)
+    .filter((row) => !args.docId || row.doc_id === args.docId)
     .filter((row) => ['pending', 'processing', 'failed', 'complete'].includes(row.feed.taggingStatus))
     .filter((row) => row.feed.taggingStatus !== 'processing' || Number(row.feed.tagLeaseUntil || 0) <= Date.now())
     .filter((row) => row.feed.taggingStatus !== 'failed' || row.feed.lastAttemptContract !== TAG_CONTRACT
-      || row.feed.lastAttemptTaxonomyHash !== TAXONOMY_HASH || row.feed.lastAttemptPromptHash !== PROMPT_HASH
+      || row.feed.lastAttemptCategoryCatalogHash !== CATEGORY_CATALOG_HASH || row.feed.lastAttemptPromptHash !== PROMPT_HASH
       || row.feed.lastAttemptCandidatePolicyHash !== CANDIDATE_POLICY_HASH
       || Number(row.feed.tagAttempts || 0) < 5)
     .filter((row) => row.feed.taggingStatus !== 'failed' || row.feed.lastAttemptContract !== TAG_CONTRACT
-      || row.feed.lastAttemptTaxonomyHash !== TAXONOMY_HASH || row.feed.lastAttemptPromptHash !== PROMPT_HASH
+      || row.feed.lastAttemptCategoryCatalogHash !== CATEGORY_CATALOG_HASH || row.feed.lastAttemptPromptHash !== PROMPT_HASH
       || row.feed.lastAttemptCandidatePolicyHash !== CANDIDATE_POLICY_HASH
       || !row.feed.nextRetryAt || row.feed.nextRetryAt <= Date.now())
     .filter((row) => row.feed.taggingStatus !== 'complete' || row.feed.tagContract !== TAG_CONTRACT
-      || row.feed.tagTaxonomyHash !== TAXONOMY_HASH || row.feed.tagPromptHash !== PROMPT_HASH
+      || row.feed.tagCategoryCatalogHash !== CATEGORY_CATALOG_HASH || row.feed.tagPromptHash !== PROMPT_HASH
       || row.feed.tagCandidatePolicyHash !== CANDIDATE_POLICY_HASH || !row.feed.taggingContentSha256);
   const companyAliases = queryLocalD1Sql("select alias,code,name from knowledge_stock_aliases where length(alias)>=2", { requiredTable: 'knowledge_stock_aliases' });
   for (const row of rows) {
     if (counters.tagged + counters.tagFailed >= limit) break;
+    if (!isRecentFeedTime(row.sort_time, Date.now(), args.maxAgeHours)) continue;
     const body = readLocalBody(row.content_key);
     if (!body) continue;
-    const context = row.feed.previousItemId ? loadPreviousContext(row.feed.previousItemId) : '';
-    const fingerprint = sha(JSON.stringify([body, context, TAXONOMY_HASH, PROMPT_HASH, CANDIDATE_POLICY_HASH, TAG_CONTRACT, 'gpt-6-luna']));
+    const fingerprint = sha(JSON.stringify([body, row.title, row.published_at, CATEGORY_CATALOG_HASH, PROMPT_HASH, CANDIDATE_POLICY_HASH, TAG_CONTRACT, 'gpt-6-luna']));
     if (row.feed.taggingStatus === 'complete' && row.feed.taggingInputFingerprint === fingerprint && row.feed.taggingContentSha256) continue;
     const companyCandidates = feedCompanyCandidates(companyAliases, row.title, body, feedConfig.companyCandidates);
-    const permitted = new Set([...topics.keys(), ...companyCandidates.map((item) => item.tagId)]);
     const owner = randomUUID();
     try {
       const current = JSON.parse(queryLocalD1Sql(`select metadata_json from knowledge_docs where doc_id=${q(row.doc_id)}`, { requiredTable: 'knowledge_docs' })[0].metadata_json);
@@ -184,31 +192,29 @@ async function tagPending() {
       if (claimed.feed.tagLeaseOwner !== owner) continue;
       usage.count += 1;
       saveJson(usageFile, usage);
-      const input = JSON.stringify({ title: row.title, content: body.slice(0, 12000), previousContext: context.slice(0, 1500),
-        companyCandidates, topicCandidates: [...topics].map(([tagId, topic]) => ({ tagId, label: topic.label })) });
+      const promptValues = { CATEGORY_CATALOG: feedCategoryCatalog(), TITLE: row.title, SOURCE_TYPE: row.source_type,
+        REPORT_TYPE: row.feed.contentType || '', PUBLISHED_AT: row.published_at || '', CONTENT: body.slice(0, 12000) };
+      const input = INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_USER_PROMPT.replace(/\{\{([A-Z_]+)\}\}/g,
+        (_match, key) => promptValues[key] ?? '');
       const response = await requestLocalDirectLlmText(process.env, {
-        model: 'gpt-6-luna', instructions: INFORMATION_FEED_TAGGING_PROMPT,
-        input: [{ role: 'user', content: [{ type: 'input_text', text: input }] }], maxTokens: 1200,
+        model: 'gpt-6-luna', instructions: INFORMATION_PROCESSING_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
+        input: [{ role: 'user', content: [{ type: 'input_text', text: input }] }], maxTokens: 2500,
       });
       if (response.raw?.model !== 'gpt-6-luna') throw new Error(`unexpected actual model: ${String(response.raw?.model || 'missing')}`);
-      const result = JSON.parse(response.text.replace(/^```(?:json)?\s*|\s*```$/g, ''));
-      if (!result || !Array.isArray(result.tags) || Object.keys(result).some((key) => key !== 'tags')) throw new Error('invalid tag response schema');
-      const used = new Set();
-      const tags = result.tags.map((tag) => {
-        if (!tag || Object.keys(tag).sort().join(',') !== 'tagId,weight' || !permitted.has(tag.tagId)
-          || !Number.isInteger(tag.weight) || tag.weight < 1 || tag.weight > 100 || used.has(tag.tagId)) throw new Error('invalid tag item');
-        used.add(tag.tagId); return tag;
-      });
+      const records = parseFeedExtraction(response.text);
+      const categoryTags = [...new Set(records.map((record) => record.category))];
+      const tags = [...categoryTags.map((category, index) => ({ tagId: `category:${category}`, weight: 100 - index * 10 })),
+        ...companyTagsForRecords(records, companyCandidates).map((tagId) => ({ tagId, weight: 100 }))];
       const latest = queryLocalD1Sql(`select metadata_json from knowledge_docs where doc_id=${q(row.doc_id)}`, { requiredTable: 'knowledge_docs' })[0];
       const meta = JSON.parse(latest.metadata_json);
       if (meta.feed.fullBodyHash !== row.feed.fullBodyHash || meta.feed.tagLeaseOwner !== owner) throw new Error('tagging input or lease changed');
       meta.feed = { ...meta.feed, taggingStatus: 'complete', taggingInputFingerprint: fingerprint,
-        taggingContentSha256: sha(body), taggingContextSha256: sha(context),
-        tagContract: TAG_CONTRACT, taxonomyVersion: taxonomy.version, tagTaxonomyHash: TAXONOMY_HASH, tagPromptHash: PROMPT_HASH,
+        taggingContentSha256: sha(body), records,
+        tagContract: TAG_CONTRACT, tagCategoryCatalogHash: CATEGORY_CATALOG_HASH, tagPromptHash: PROMPT_HASH,
         tagCandidatePolicyHash: CANDIDATE_POLICY_HASH,
         taggedAt: Date.now(), lastTagAttemptAt: Date.now(), nextRetryAt: null,
         tagLeaseOwner: null, tagLeaseUntil: null };
-      executeLocalD1Sql(`delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'topic:%' or tag like 'theme:%');
+      executeLocalD1Sql(`delete from knowledge_doc_tags where doc_id=${q(row.doc_id)} and (tag like 'company:%' or tag like 'category:%' or tag like 'topic:%' or tag like 'theme:%' or tag like 'focus:%');
         ${tags.map((tag) => `insert into knowledge_doc_tags (doc_id,tag,weight,tagging_input_fingerprint,contract_version) values (${q(row.doc_id)},${q(tag.tagId)},${tag.weight},${q(fingerprint)},${q(TAG_CONTRACT)});`).join('\n')}
         update knowledge_docs set metadata_json=${q(JSON.stringify(meta))},updated_at=${Date.now()} where doc_id=${q(row.doc_id)};`, { requiredTable: 'knowledge_doc_tags' });
       counters.tagged += 1;
@@ -216,11 +222,11 @@ async function tagPending() {
       const meta = JSON.parse(queryLocalD1Sql(`select metadata_json from knowledge_docs where doc_id=${q(row.doc_id)}`, { requiredTable: 'knowledge_docs' })[0].metadata_json);
       if (meta.feed.tagLeaseOwner !== owner) continue;
       const sameContract = meta.feed.lastAttemptContract === TAG_CONTRACT
-        && meta.feed.lastAttemptTaxonomyHash === TAXONOMY_HASH && meta.feed.lastAttemptPromptHash === PROMPT_HASH
+        && meta.feed.lastAttemptCategoryCatalogHash === CATEGORY_CATALOG_HASH && meta.feed.lastAttemptPromptHash === PROMPT_HASH
         && meta.feed.lastAttemptCandidatePolicyHash === CANDIDATE_POLICY_HASH;
       const attempts = (sameContract ? Number(meta.feed.tagAttempts) || 0 : 0) + 1;
       meta.feed = { ...meta.feed, taggingStatus: 'failed', tagAttempts: attempts,
-        lastAttemptContract: TAG_CONTRACT, lastAttemptTaxonomyHash: TAXONOMY_HASH, lastAttemptPromptHash: PROMPT_HASH,
+        lastAttemptContract: TAG_CONTRACT, lastAttemptCategoryCatalogHash: CATEGORY_CATALOG_HASH, lastAttemptPromptHash: PROMPT_HASH,
         lastAttemptCandidatePolicyHash: CANDIDATE_POLICY_HASH,
         lastTagAttemptAt: Date.now(),
         tagLeaseOwner: null, tagLeaseUntil: null,
@@ -241,11 +247,6 @@ function loadFeedRows() {
       const feed = JSON.parse(row.metadata_json || '{}').feed || {};
       return { ...row, feed, sourceKey: feed.sourceKey, sourceItemId: feed.sourceItemId, entityCodes: feed.entityCodes };
     });
-}
-
-function loadPreviousContext(docId) {
-  const row = queryLocalD1Sql(`select d.title,c.content_key from knowledge_docs d join knowledge_doc_content_refs c on c.doc_id=d.doc_id where d.doc_id=${q(docId)}`, { requiredTable: 'knowledge_docs' })[0];
-  return row ? `${row.title}\n${readLocalBody(row.content_key)}` : '';
 }
 
 function readLocalBody(key) {
@@ -347,7 +348,7 @@ function acquireLock(file) {
 }
 
 function parseArgs(argv) {
-  const result = { mode: 'run', file: '', docId: '', maxDocuments: 200, maxTags: 20, lookbackDays: 14 };
+  const result = { mode: 'run', file: '', docId: '', maxDocuments: 200, maxTags: 20, lookbackDays: 3, maxAgeHours: MAX_FEED_AGE_HOURS };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--mode') result.mode = argv[++i];
     else if (argv[i] === '--file') result.file = argv[++i];
@@ -355,10 +356,12 @@ function parseArgs(argv) {
     else if (argv[i] === '--max-documents') result.maxDocuments = Number(argv[++i]);
     else if (argv[i] === '--max-tags') result.maxTags = Number(argv[++i]);
     else if (argv[i] === '--lookback-days') result.lookbackDays = Number(argv[++i]);
+    else if (argv[i] === '--max-age-hours') result.maxAgeHours = Number(argv[++i]);
     else throw new Error(`unknown argument: ${argv[i]}`);
   }
   if (!['run', 'ingest', 'tag'].includes(result.mode) || (result.docId && (result.mode !== 'tag' || !/^f_[a-f0-9]{24}$/.test(result.docId)))
     || !Number.isInteger(result.maxDocuments) || result.maxDocuments < 1
-    || !Number.isInteger(result.maxTags) || result.maxTags < 1 || !Number.isInteger(result.lookbackDays) || result.lookbackDays < 1) throw new Error('invalid information feed arguments');
+    || !Number.isInteger(result.maxTags) || result.maxTags < 1 || !Number.isInteger(result.lookbackDays) || result.lookbackDays < 1
+    || !Number.isInteger(result.maxAgeHours) || result.maxAgeHours < 1 || result.maxAgeHours > MAX_FEED_AGE_HOURS) throw new Error('invalid information feed arguments');
   return result;
 }

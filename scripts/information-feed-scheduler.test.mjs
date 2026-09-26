@@ -19,6 +19,7 @@ test('local feed schedule collects CLS then ingests/tags without publishing by d
     try {
       assert.equal(await scheduler.runNow('test'), true);
       assert.deepEqual(calls.map((call) => call.command), ['node', './process-information-feed-local.sh']);
+      assert.deepEqual(calls[1].args.slice(-2), ['--max-age-hours', '48']);
     } finally { scheduler.stop(); }
   });
 });

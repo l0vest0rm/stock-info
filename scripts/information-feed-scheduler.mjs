@@ -22,6 +22,7 @@ export function startInformationFeedScheduler({
         '--max-documents', String(config.maxDocumentsPerRun || 200),
         '--max-tags', String(config.maxTagsPerRun || 20),
         '--lookback-days', String(config.lookbackDays || 14),
+        '--max-age-hours', String(config.maxAgeHours || 48),
       ], cwd: resolve('.'), env: process.env });
       if (config.publishRemote === true) await runChild({ command: 'node', args: ['scripts/publish-information-feed.mjs', '--apply'], cwd: resolve('.'), env: process.env });
       onEvent('completed', { reason });

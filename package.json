@@ -68,7 +68,7 @@
     "process:feed": "./process-information-feed-local.sh",
     "reconcile:feed:dry-run": "node scripts/reconcile-information-feed-local.mjs",
     "publish:feed:dry-run": "node scripts/publish-information-feed.mjs",
-    "test:feed": "node --test scripts/lib/information-feed-company-candidates.test.mjs scripts/lib/information-feed-dedupe.test.mjs scripts/lib/information-feed-source.test.mjs scripts/lib/information-feed-topics.test.mjs scripts/information-feed-scheduler.test.mjs scripts/information-feed-import-guard.test.mjs scripts/information-feed-publish-guard.test.mjs",
+    "test:feed": "node --test scripts/lib/information-feed-company-candidates.test.mjs scripts/lib/information-feed-dedupe.test.mjs scripts/lib/information-feed-source.test.mjs scripts/lib/information-feed-extraction.test.mjs scripts/lib/information-feed-window.test.mjs scripts/information-feed-scheduler.test.mjs scripts/information-feed-import-guard.test.mjs scripts/information-feed-publish-guard.test.mjs",
     "process:information:institutional": "node scripts/process-information-processing-keywords.mjs --input config/information-processing-institutional-top300.json",
     "process:knowledge:local:full": "npm run build:prompts && node scripts/process-knowledge-local-full.mjs",
     "stats:knowledge:storage": "node scripts/report-knowledge-storage.mjs",
