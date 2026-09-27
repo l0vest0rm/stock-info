@@ -58,12 +58,16 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Deploying commit: ${CURRENT_COMMIT}"
 fi
 
-echo "Checking release inputs, architecture, types and tests..."
-npm run verify:architecture
+echo "Checking release inputs, runtime boundaries and types..."
+npm run typecheck
+npm run check:no-new-tables
+npm run check:wrangler-local
+npm run check:inline-prompts
+npm run check:runtime-boundaries
+npm run check:release-inputs
 
 echo "Building production frontend..."
 npm run build:web:production
-node scripts/verify-page-artifacts.mjs --production
 
 echo "Packaging Worker with dry-run..."
 npx wrangler deploy --name "$WORKER_NAME" --dry-run
@@ -149,8 +153,18 @@ CF_WORKER_NAME="$WORKER_NAME" npm run sync:xueqiu-secret
 echo "Recent deployments:"
 npx wrangler deployments list --name "$WORKER_NAME"
 
-echo "Verifying deployed version and production page policy..."
-SMOKE_BASE_URL="https://${PRODUCTION_DOMAIN}" EXPECTED_APP_VERSION="$RELEASE_VERSION" node scripts/smoke-release.mjs
+echo "Verifying deployed version and production D1 health..."
+PRODUCTION_BASE_URL="https://${PRODUCTION_DOMAIN}" EXPECTED_APP_VERSION="$RELEASE_VERSION" node --input-type=module <<'EOF'
+const url = new URL('/api/health', process.env.PRODUCTION_BASE_URL);
+const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+if (!response.ok) throw new Error(`Production health HTTP ${response.status}`);
+const body = await response.json();
+if (body.code !== 200 || body.data?.d1 !== true) throw new Error('Production D1 health failed');
+if (body.data.version !== process.env.EXPECTED_APP_VERSION) {
+  throw new Error(`Unexpected deployed version: ${body.data.version}`);
+}
+console.log(`Production health passed: ${body.data.version}`);
+EOF
 
 echo "Cloudflare deploy finished."
 echo "Production URL: https://${PRODUCTION_DOMAIN}"

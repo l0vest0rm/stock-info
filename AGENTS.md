@@ -15,7 +15,7 @@
 ## Local Workflow
 
 - Use `./start-local.sh` for the standard local loop because it already builds `web/dist`, typechecks, applies local SQLite migrations, starts the Node runtime, and waits for `/api/health`.
-- Prefer `npm run test:smoke:pages` when the change affects served pages or routing.
+- The only retained automated test is `npm run test:basic` against a running local Node API.
 - For browser-facing changes, remember that static assets are served from `web/dist`; stale build output is a common false negative.
 
 ## Production Workflow
@@ -34,7 +34,7 @@
 ## Codex Proof
 
 - Default local proof path: `./start-local.sh`, then `GET http://127.0.0.1:8000/api/health`.
-- For served page or routing changes, prefer `npm run test:smoke:pages` when it exercises the changed behavior.
+- For served page or routing changes, verify the affected page manually and run `npm run test:basic` for the retained API baseline.
 - For remote knowledge visibility, prove through `/api/knowledge/docs` or remote D1 checks; prepare/upload logs alone do not prove the page can see the docs.
 
 ## Change Boundaries

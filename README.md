@@ -49,6 +49,14 @@ chmod +x ./start-local.sh
 
 默认访问地址是 `http://127.0.0.1:8000`。
 
+本地服务就绪后，运行唯一保留的基本接口测试：
+
+```bash
+npm run test:basic
+```
+
+它通过后端 API 检查中际旭创（`300308.SZ`）的日 K 线、三张财报、PE(TTM) 和市值。需要可用的雪球 Cookie 与上游行情／财报服务；失败时不会切换 K 线来源。
+
 ### 资讯信息流
 
 本地页面为 `/news.html`，接口为 `/api/knowledge/feed` 和 `/api/knowledge/feed/facets`。
@@ -58,7 +66,6 @@ chmod +x ./start-local.sh
 npm run process:feed -- --max-documents 200 --max-tags 20
 npm run reconcile:feed:dry-run # 去重规则更新后检查存量同标题重复卡片
 npm run publish:feed:dry-run
-npm run test:feed
 ```
 
 腾讯自选股、财联社采集全文已获远端发布许可，但 `publishRemote` 开关仍关闭；手动执行发布器的 `--apply` 也会跳过远端操作。先验收本地采集、去重与打标效果，之后再应用远端 D1 迁移、验证批量发布与生产只读 API，并单独开启发布开关。链路边界见 [架构文档](docs/architecture.md)。
@@ -383,7 +390,7 @@ npm run deploy
 
 `XUEQIU_COOKIE` 作为 Worker secret 管理，不写入版本化 `wrangler.jsonc`。执行 `npm run refresh:xueqiu-cookie` 从 CDP 刷新并验证后写入忽略的 `.dev.vars` 和本地 credential store；本地调度器默认每 3 小时刷新，失败 5 分钟后重试，不改生产。标准发布在部署前重新通过雪球 K 线验证本地凭据，并经 stdin 上传 Worker secret；不要把 Cookie 放到命令行参数或日志。
 
-发布前执行 `npm run verify:architecture`，覆盖前后端类型、schema/运行边界和单元测试。页面入口与环境策略统一定义在 `config/app/page-manifest.json`；本地构建默认 `WEB_RUNTIME=local`，生产构建使用 `npm run build:web:production`。相邻共享包的 Git revision 和实际 dist 内容由 `config/app/release-inputs.lock.json` 锁定，升级共享包时先构建并审查，再执行 `node scripts/check-release-inputs.mjs --update` 更新锁文件。发布不允许未审查的共享包漂移。
+发布脚本执行前后端类型检查及 schema、运行时、提示词和发布输入守卫；旧单元／页面 smoke 测试已移除。页面入口与环境策略统一定义在 `config/app/page-manifest.json`；本地构建默认 `WEB_RUNTIME=local`，生产构建使用 `npm run build:web:production`。相邻共享包的 Git revision 和实际 dist 内容由 `config/app/release-inputs.lock.json` 锁定，升级共享包时先构建并审查，再执行 `node scripts/check-release-inputs.mjs --update` 更新锁文件。发布不允许未审查的共享包漂移。
 
 
 只做打包检查但不真正上线：

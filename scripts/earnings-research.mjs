@@ -40,28 +40,21 @@ async function main() {
     limit,
     baseUrl,
     includeConsensus: options.includeConsensus,
-    fixtureDir: options.fixtureDir ? resolve(options.fixtureDir) : null,
     configVersion: config.version,
   };
 
-  const source = options.fixtureDir
-    ? await loadFixture(resolve(options.fixtureDir))
-    : await loadLiveSource({ baseUrl, reportDate, fromDate, asOf, config });
+  const source = await loadLiveSource({ baseUrl, reportDate, fromDate, asOf, config });
   const allRows = [...source.performanceRows, ...source.forecastRows];
   const futureRowsExcluded = allRows.filter((row) => trimDate(row.NOTICE_DATE ?? row.UPDATE_DATE) > asOf).length;
   const events = aggregateEarningsEvents(source.performanceRows, source.forecastRows, { asOf, fromDate, reportDate });
   const marketCandidateEvents = prioritizeEarningsEvents(events, config.marketCandidateLimit);
-  const marketRows = options.fixtureDir
-    ? source.marketRows
-    : await fetchMarketRows(baseUrl, marketCandidateEvents.map((event) => event.code), config.marketBatchSize);
+  const marketRows = await fetchMarketRows(baseUrl, marketCandidateEvents.map((event) => event.code), config.marketBatchSize);
   const marketCandidates = attachMarketsAndFilter(marketCandidateEvents, marketRows, config.filters);
   const analysisPoolSize = Math.min(config.analysisPoolLimit, Math.max(limit * 2, 20), marketCandidates.length);
   const candidates = marketCandidates.slice(0, analysisPoolSize);
 
   const analyzed = await mapLimit(candidates, config.financeConcurrency, async (candidate) => {
-    const statements = options.fixtureDir
-      ? statementsForFixture(source, candidate.code)
-      : await fetchStatements(baseUrl, candidate.code);
+    const statements = await fetchStatements(baseUrl, candidate.code);
     return analyzeCandidate(candidate, statements, {
       asOf,
       forecastYear: Number(asOf.slice(0, 4)),
@@ -80,9 +73,7 @@ async function main() {
         withConsensus.push(candidate);
         continue;
       }
-      const rows = options.fixtureDir
-        ? source.reportForecasts?.[candidate.code] ?? []
-        : await fetchTinfo(baseUrl, "/api/report/forecast", { code: candidate.code }, 120_000).catch((error) => {
+      const rows = await fetchTinfo(baseUrl, "/api/report/forecast", { code: candidate.code }, 120_000).catch((error) => {
           candidate.warnings.push(`研报预测获取失败：${error.message}`);
           return [];
         });
@@ -156,7 +147,6 @@ function parseArgs(args) {
       "--limit": "limit",
       "--base-url": "baseUrl",
       "--output": "output",
-      "--fixture-dir": "fixtureDir",
       "--config": "config",
     }[arg];
     if (!key) throw new Error(`unknown argument: ${arg}`);
@@ -177,7 +167,6 @@ Options:
   --limit N                 Maximum candidates in the evidence pack
   --base-url URL            stock-info API base URL
   --include-consensus       Fetch the slower report forecast endpoint
-  --fixture-dir PATH        Use fixture.json instead of live network data
   --output PATH             Output directory relative to the repo
   --config PATH             Config path relative to the repo
 `);
@@ -271,18 +260,6 @@ async function fetchJsonWithRetry(url, { headers = {}, timeoutMs }, attempts = 3
     }
   }
   throw lastError;
-}
-
-async function loadFixture(directory) {
-  return JSON.parse(await readFile(join(directory, "fixture.json"), "utf8"));
-}
-
-function statementsForFixture(source, code) {
-  return {
-    income: source.statements?.income?.[code] ?? [],
-    balance: source.statements?.balance?.[code] ?? [],
-    cashflow: source.statements?.cashflow?.[code] ?? [],
-  };
 }
 
 async function mapLimit(items, concurrency, mapper) {

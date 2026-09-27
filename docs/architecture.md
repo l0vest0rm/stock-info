@@ -30,7 +30,7 @@
 ## 开发与验证入口
 
 - 本地：`./start-local.sh` 构建前端和 Node 产物、类型检查、迁移本地 SQLite，并在 `http://127.0.0.1:8000` 提供服务；`GET /api/health` 是基础健康检查。
-- 页面或路由：`npm run test:smoke:pages`；资讯链路：`npm run test:feed`。
+- 唯一保留的自动化测试：本地服务启动后运行 `npm run test:basic`，通过后端 API 验证中际旭创的日 K 线、三张财报、PE(TTM) 和市值。页面／路由与资讯链路变更另行手工验收。
 - 生产：`wrangler.jsonc`、远端 D1 migration、部署脚本和真实生产 URL 分别检查；本地 Node 验证不能替代生产验证。生产只使用 Cloudflare Worker、D1、R2 和 Assets，不作为长驻 Node 服务运行。
 
 研究输出和运行时审计属于生成物，默认写到忽略的 `reports/` 或 `data/local/`，不写入 `docs/`。

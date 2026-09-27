@@ -2,7 +2,7 @@
 
 盘点日期：2026-09-27。范围：仓库跟踪的页面源码、`scripts/` 与仓库根目录可执行脚本、`*.test.*` 测试，以及 Worker／本地 Node 的定时入口。**这是代码与构建契约盘点，不等于生产流量统计或删除清单。** 未登录生产站点、未执行远端写入；“可达”指路由和构建策略允许，不保证上游数据、凭证及任务服务可用。
 
-> **后续清理记录（2026-09-27）**：本文件保留删除前的盘点快照，便于追溯清理依据。已按确认删除 `/knowledge-config.html`、`/index.html`、`/index-position.html` 及旧 `knowledge-news-page` 的页面入口、组件、专属 runtime／导航／配置；同步移除知识采集配置／执行占位 API 与指数持仓空数组 API。现行 `/news.html` 资讯流、`/api/kline`、基金页面、知识采集 CLI／scheduler 均保留。清理后 manifest 为 **31 页（公开构建 25、本地专用 6）**；下文 34 页表格是清理前基线，不是当前页面清单。
+> **后续清理记录（2026-09-27）**：本文件保留删除前的盘点快照，便于追溯清理依据。已按确认删除 `/knowledge-config.html`、`/index.html`、`/index-position.html` 及旧 `knowledge-news-page` 的页面入口、组件、专属 runtime／导航／配置；同步移除知识采集配置／执行占位 API 与指数持仓空数组 API。现行 `/news.html` 资讯流、`/api/kline`、基金页面、知识采集 CLI／scheduler 均保留。清理后 manifest 为 **31 页（公开构建 25、本地专用 6）**。随后删除旧自动化测试与专属夹具，仅保留 `scripts/test-basic-local-api.mjs`；发布所需 schema／运行时／输入守卫仍保留。下文页面、脚本、测试统计均为清理前基线，不是当前清单。
 
 ## 0. 判定口径与关键结论
 
