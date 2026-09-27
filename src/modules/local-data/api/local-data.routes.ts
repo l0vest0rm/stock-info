@@ -7,41 +7,6 @@ import type { AppEnv } from "../../../types";
 export const localDataRoutes = new Hono<AppEnv>();
 const COMPANIES_FOLLOW_CONFIG_KEY = "companies-follow-config";
 
-localDataRoutes.get("/knowledge/ingest-config", (c) => {
-  if (!isLocalDevelopmentRuntime(c.env)) {
-    return fail(c, 404, "knowledge ingest config is only available in local development");
-  }
-  return ok(c, {
-    config: {
-      enabled: false,
-      scheduleEvery: 30 * 60 * 1000,
-      topic: "ai",
-      pageSize: 50,
-      scanPages: 50,
-      workers: 1,
-      companyEnabled: false,
-      industryEnabled: false,
-      newsEnabled: false,
-      secEnabled: false,
-    },
-    sources: [],
-    newsSources: [],
-    newsSourceBacklog: [],
-  });
-});
-localDataRoutes.post("/knowledge/ingest-config", (c) => {
-  if (!isLocalDevelopmentRuntime(c.env)) {
-    return fail(c, 404, "knowledge ingest config is only available in local development");
-  }
-  return ok(c, { saved: false, reason: "not-migrated" });
-});
-localDataRoutes.post("/knowledge/ingest-run", (c) => {
-  if (!isLocalDevelopmentRuntime(c.env)) {
-    return fail(c, 404, "knowledge ingest run is only available in local development");
-  }
-  return ok(c, { started: false, reason: "not-migrated" });
-});
-
 localDataRoutes.get("/companies/follow/forecast", async (c) => {
   if (!isLocalDevelopmentRuntime(c.env)) {
     return ok(c, { version: 1, storage: "browser" });

@@ -100,6 +100,24 @@ await check("retired information processing surfaces", async () => {
   }
 });
 
+await check("retired index and knowledge configuration surfaces", async () => {
+  for (const path of [
+    "/index.html",
+    "/index-position.html",
+    "/knowledge-config.html",
+    "/api/index/positionDates",
+    "/api/index/position",
+    "/api/knowledge/ingest-config",
+  ]) {
+    const response = await fetchWithTimeout(`${baseUrl}${path}`);
+    assert(response.status === 404, `${path} status=${response.status}`);
+  }
+  for (const path of ["/api/knowledge/ingest-config", "/api/knowledge/ingest-run"]) {
+    const response = await fetchWithTimeout(`${baseUrl}${path}`, { method: "POST" });
+    assert(response.status === 404, `${path} POST status=${response.status}`);
+  }
+});
+
 await check("retired situation surfaces", async () => {
   for (const path of [
     "/situation.html",

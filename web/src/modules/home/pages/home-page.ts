@@ -181,11 +181,6 @@ const workflowCards = [
     title: '从板块资金流看风格',
     copy: '先观察资金偏好切换，再回到公司筛选找更具体的候选标的。',
   },
-  {
-    href: 'index.html',
-    title: '用指数走势做对比基准',
-    copy: '把单个公司或基金和主要指数做区间对比，避免脱离市场环境看表现。',
-  },
 ]
 
 const HomePage = defineComponent({
@@ -265,7 +260,7 @@ const HomePage = defineComponent({
               h('h3', '更适合真实使用的研究顺序'),
               h('ol', { class: 'home-bullet-list mt-3' }, [
                 h('li', '先用公司筛选或基金筛选找到候选标的。'),
-                h('li', '再看机构持仓、板块资金流和指数对比，判断它处在什么市场环境。'),
+                h('li', '再看机构持仓和板块资金流，判断它处在什么市场环境。'),
                 h('li', '最后回到单公司或单基金页做更细的确认。'),
               ]),
             ]),

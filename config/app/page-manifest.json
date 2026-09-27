@@ -161,20 +161,6 @@
     "globalName": "LicaiHomePage"
   },
   {
-    "path": "/index-position.html",
-    "entry": "src/modules/index/pages/index-position-page.ts",
-    "runtime": "all",
-    "legacy": true,
-    "globalName": "LicaiIndexPositionPage"
-  },
-  {
-    "path": "/index.html",
-    "entry": "src/modules/index/pages/index-page.ts",
-    "runtime": "all",
-    "legacy": true,
-    "globalName": "LicaiIndexPage"
-  },
-  {
     "path": "/institutional-tracks.html",
     "entry": "src/modules/companies/pages/institutional-tracks-page.ts",
     "runtime": "all",
@@ -187,13 +173,6 @@
     "runtime": "all",
     "legacy": true,
     "globalName": "LicaiInvestmentAnalysisPage"
-  },
-  {
-    "path": "/knowledge-config.html",
-    "entry": "src/modules/knowledge/pages/knowledge-config-page.ts",
-    "runtime": "local",
-    "legacy": true,
-    "globalName": "LicaiKnowledgeConfigPage"
   },
   {
     "path": "/macro.html",

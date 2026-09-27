@@ -36,9 +36,5 @@
     {"href": "fund-position.html", "text": "基金持仓"},
     {"href": "fund-notice.html", "text": "基金公告"},
     {"href": "fund-compare.html", "text": "基金对比"}
-  ],
-  "indexNav": [
-    {"href": "index.html", "text": "基本数据"},
-    {"href": "index-position.html", "text": "指数持仓"}
   ]
 }

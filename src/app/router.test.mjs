@@ -16,6 +16,31 @@ test("one page manifest enforces local-only pages before asset access", async ()
   }
 });
 
+test("retired index and knowledge configuration surfaces stay removed", async () => {
+  const retiredPages = ["/index.html", "/index-position.html", "/knowledge-config.html"];
+  for (const path of retiredPages) {
+    assert.equal(pages.some((page) => page.path === path), false, `${path} remains in the page manifest`);
+  }
+  assert.equal(pages.some((page) => page.path === "/news.html"), true, "current information feed was removed");
+
+  const app = createRouter();
+  const env = {
+    APP_RUNTIME: "node",
+    LLM_RUNTIME: "local",
+    ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
+  };
+  for (const path of [
+    "/api/index/positionDates",
+    "/api/index/position",
+    "/api/knowledge/ingest-config",
+  ]) {
+    assert.equal((await app.request(path, {}, env)).status, 404, `GET ${path}`);
+  }
+  for (const path of ["/api/knowledge/ingest-config", "/api/knowledge/ingest-run"]) {
+    assert.equal((await app.request(path, { method: "POST" }, env)).status, 404, `POST ${path}`);
+  }
+});
+
 test("login page is unavailable in local Node and served only by Cloudflare", async () => {
   const app = createRouter();
   let served = 0;

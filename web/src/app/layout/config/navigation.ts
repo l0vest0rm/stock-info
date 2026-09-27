@@ -11,7 +11,6 @@ export type NavigationConfig = {
   companiesNav: NavItem[];
   companyNav: NavItem[];
   fundNav: NavItem[];
-  indexNav: NavItem[];
 };
 
 export const navConfig = navigation as NavigationConfig;

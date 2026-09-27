@@ -14,8 +14,6 @@ function subnavItems(kind: string): NavItem[] {
       return visibleNavigationItems(navConfig.companyNav);
     case "fund":
       return visibleNavigationItems(navConfig.fundNav);
-    case "index":
-      return visibleNavigationItems(navConfig.indexNav);
     default:
       return [];
   }
@@ -64,7 +62,7 @@ export const SubNav = defineComponent({
   },
   setup(props) {
     return () => {
-      const nested = props.kind === "fund" || props.kind === "index";
+      const nested = props.kind === "fund";
       const buttonGroup = h(
         "div",
         { class: "d-flex flex-wrap justify-content-center gap-2 company-subnav-pills", role: "group" },

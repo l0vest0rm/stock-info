@@ -71,8 +71,6 @@ function createFundPagesContext(context: LegacyPageRegistryContext) {
     fetchFundPosition: context.fetchFundPosition,
     fetchFundInfo: context.fetchFundInfo,
     renderFundInfoTable: context.renderFundInfoTable,
-    fetchCodesData: context.fetchCodesData,
-    fetchCompanyInfo: context.fetchCompanyInfo,
     fillSelectOptions: context.fillSelectOptions,
     fetchKlines: context.fetchKlines,
     rerenderMyChart: context.rerenderMyChart,
@@ -83,7 +81,6 @@ function createFundPagesContext(context: LegacyPageRegistryContext) {
     klinePriceChange: context.klinePriceChange,
     positionCheckOnChange: context.positionCheckOnChange,
     emitFundState: context.emitFundState,
-    genFullCode: context.genFullCode,
     getCode: context.getCode,
     getCache: context.getCache,
     getCodeNameMap: context.getCodeNameMap,
@@ -95,23 +92,6 @@ function createFundPagesContext(context: LegacyPageRegistryContext) {
 
 export async function loadLegacyPageInitializer(page: string, context: LegacyPageRegistryContext): Promise<PageInitializer | null> {
   switch (page) {
-    case '':
-    case 'index.html': {
-      const { createIndexInitializer } = await import('../../modules/index/runtime/index-runtime')
-      return createIndexInitializer({
-        dateRangeInit: context.dateRangeInit,
-        codeSelectInit: context.codeSelectInit,
-        selectedOptionValues: context.selectedOptionValues,
-        getSelectedCodes: context.getSelectedCodes,
-        setSelectedCodes: context.setSelectedCodes,
-        fetchKlines: context.fetchKlines,
-        setKlineCodes: context.setKlineCodes,
-        getCodeNameMap: context.getCodeNameMap,
-        rerenderMyChart: context.rerenderMyChart,
-        onRatioCheckChange: context.onRatioCheckChange,
-        onAlignStartCheckChange: context.onAlignStartCheckChange,
-      })
-    }
     case '13f.html': {
       const { createThirteenFInitializer } = await import('../../modules/thirteenf/runtime/thirteenf-runtime')
       return createThirteenFInitializer({
@@ -294,8 +274,7 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
     }
     case 'fund.html':
     case 'fund-position.html':
-    case 'fund-notice.html':
-    case 'index-position.html': {
+    case 'fund-notice.html': {
       if (page === 'fund-notice.html') {
         const { createFundNoticeInitializer } = await import('../../modules/fund/runtime/fund-notice-runtime')
         return createFundNoticeInitializer({
@@ -307,29 +286,15 @@ export async function loadLegacyPageInitializer(page: string, context: LegacyPag
       const {
         createFundInitializer,
         createFundPositionInitializer,
-        createIndexPositionInitializer,
       } = await import('../../modules/fund/runtime/fund-pages-runtime')
       const fundPagesContext = createFundPagesContext(context)
       if (page === 'fund-position.html') {
         return createFundPositionInitializer(fundPagesContext)
       }
-      if (page === 'index-position.html') {
-        return createIndexPositionInitializer(fundPagesContext)
-      }
       return createFundInitializer(fundPagesContext)
     }
     case 'home.html':
       return initStaticPage
-    case 'knowledge-config.html': {
-      const { createKnowledgeConfigInitializer } = await import('../../modules/knowledge/runtime/knowledge-config-runtime')
-      return createKnowledgeConfigInitializer({
-        server: context.server,
-        fetchRequest: context.fetchRequest,
-        parseResponseData: context.parseResponseData,
-        escapeHtml: context.escapeHtml,
-        alert: context.alert,
-      })
-    }
     default:
       return null
   }

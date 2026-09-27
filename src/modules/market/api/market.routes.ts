@@ -100,8 +100,6 @@ marketRoutes.get("/companies/report/cnt", async (c) => {
   }
   return ok(c, counts);
 });
-marketRoutes.get("/index/positionDates", (c) => ok(c, []));
-marketRoutes.get("/index/position", (c) => ok(c, []));
 
 function parseReportCountDays(value: string | undefined): number {
   const days = Number(value ?? "90");
