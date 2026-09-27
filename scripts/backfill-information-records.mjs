@@ -25,14 +25,14 @@ for (let index = 2; index < process.argv.length; index += 1) {
   }
 }
 const root = resolve(new URL('..', import.meta.url).pathname);
-const feedConfig = JSON.parse(readFileSync(join(root, 'config/information-feed.json'), 'utf8'));
+const feedConfig = JSON.parse(readFileSync(join(root, 'config/knowledge/information-feed.json'), 'utf8'));
 const db = openInformationDatabase({ root, ...(options.database ? { path: options.database } : {}) }, !options.apply);
 const newSchema = db.prepare('PRAGMA table_info(knowledge_information_records)').all().some((column) => column.name === 'doc_id');
 if (options.apply && !newSchema) { db.close(); throw new Error('apply migration 0142 before backfilling; preflight without --apply is supported on the old schema'); }
 const archiveDir = resolve(options.archiveDir || join(root, 'data/local/information-records-archives'));
 const result = { dryRun: !options.apply, schema: newSchema ? INFORMATION_STORAGE_VERSION : 'legacy',
   scanned: 0, changed: 0, unchanged: 0, records: 0, verified: 0, unverified: 0, quarantined: 0, errors: [], issueCounts: {}, archiveDir: options.apply ? archiveDir : null };
-const aliases = db.prepare('SELECT alias,code,name FROM knowledge_stock_aliases WHERE length(alias)>=2').all();
+const aliases = db.prepare('SELECT a.alias,a.code,s.short_name AS name FROM stock_alias a JOIN stock s ON s.code=a.code WHERE length(a.alias)>=2').all();
 const ids = db.prepare(`SELECT doc_id FROM knowledge_docs WHERE
   (source_type='information_feed' OR json_type(metadata_json,'$.informationExtraction') IS NOT NULL
   ${newSchema ? '' : 'OR EXISTS (SELECT 1 FROM knowledge_document_results x WHERE x.version_id=knowledge_docs.doc_id)'})

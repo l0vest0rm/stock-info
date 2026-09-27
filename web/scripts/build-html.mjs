@@ -290,7 +290,7 @@ const partials = loadPartialSources()
 const registeredPaths = new Set(pageManifest.map((page) => page.path))
 for (const item of fs.readdirSync(srcDir, { withFileTypes: true })) {
   if (item.isFile() && item.name.endsWith('.html') && !registeredPaths.has(`/${item.name}`)) {
-    throw new Error(`Page must be registered in config/page-manifest.json: ${item.name}`)
+    throw new Error(`Page must be registered in config/app/page-manifest.json: ${item.name}`)
   }
 }
 const pageFiles = buildPages.map((page) => ({ name: page.path.slice(1) }))

@@ -24,17 +24,17 @@ export function loadLocalCompanyCodeResolver(projectRoot) {
         "-cmd",
         `.timeout ${LOCAL_SQLITE_BUSY_TIMEOUT_MS}`,
         dbPath,
-        `select code, alias
-           from knowledge_stock_aliases
+        `select a.code, a.alias
+           from stock_alias a
           where (
-              code like '%.SH'
-              or code like '%.SZ'
-              or code like '%.BJ'
-              or code like '%.HK'
-              or code like '%.US'
+              a.code like '%.SH'
+              or a.code like '%.SZ'
+              or a.code like '%.BJ'
+              or a.code like '%.HK'
+              or a.code like '%.US'
             )
-            and trim(coalesce(alias, '')) != ''
-          order by updated_at desc`,
+            and trim(a.alias) != ''
+          order by a.updated_at desc`,
       ],
       { encoding: "utf8" }
     );

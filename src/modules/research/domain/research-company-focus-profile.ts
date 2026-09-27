@@ -1,4 +1,4 @@
-import focusConfig from "../../../../config/research-company-focus-profile.v1.json";
+import focusConfig from "../../../../config/research/research-company-focus-profile.v1.json";
 
 export type ResearchFocusMembershipStatus = "active" | "removed";
 export type ResearchFocusProfileStatus = "draft" | "reviewed" | "superseded";

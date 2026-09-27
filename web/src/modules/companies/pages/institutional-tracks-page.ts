@@ -1,6 +1,6 @@
 import { computed, createApp, defineComponent, h, onMounted, ref } from 'vue'
 import trackSnapshotConfig from '../../../config/institutional-track-snapshot.json'
-import em2016ProfilesConfig from '../../../../../config/eastmoney-company-em2016-profiles.json'
+import em2016ProfilesConfig from '../../../../../config/generated/eastmoney-company-em2016-profiles.json'
 import sortingConfig from '../../../config/institutional-track-sorting.json'
 import valuationConfig from '../../../config/institutional-track-valuation.json'
 import {

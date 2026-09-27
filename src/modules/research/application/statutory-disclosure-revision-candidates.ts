@@ -1,5 +1,5 @@
 import type { Database } from "../../../platform/contracts";
-import revisionSignals from "../../../../config/research-statutory-disclosure-revision-signals.v1.json";
+import revisionSignals from "../../../../config/research/research-statutory-disclosure-revision-signals.v1.json";
 
 type Registry = "cninfo" | "hkex";
 type Row = Record<string, unknown>;

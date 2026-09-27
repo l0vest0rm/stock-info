@@ -52,7 +52,7 @@ chmod +x ./start-local.sh
 ### 资讯信息流
 
 本地页面为 `/news.html`，接口为 `/api/knowledge/feed` 和 `/api/knowledge/feed/facets`。
-`config/information-feed.json` 控制本地资讯文件变更触发的即时入库/提取、财联社采集、每日 500 次提取上限与远端发布开关。财联社源站无推送接口，因此仅采集仍每 60 秒轮询；无新增或修订内容时不运行入库/提取。腾讯原始 JSON 由仓库外的现有采集器提供，写入共享 news 目录后触发处理。资讯按 `config/information-feed-whitelist.json` 和 `config/information-feed-relevance.json` 先过滤再入库、提取；拒绝标题及链接只写本地 JSONL，页面本地环境可筛选复核。生产 Worker 不调用模型，远端发布默认关闭。手动处理和检查：
+`config/knowledge/information-feed.json` 控制本地资讯文件变更触发的即时入库/提取、财联社采集、每日 500 次提取上限与远端发布开关。财联社源站无推送接口，因此仅采集仍每 60 秒轮询；无新增或修订内容时不运行入库/提取。腾讯原始 JSON 由仓库外的现有采集器提供，写入共享 news 目录后触发处理。资讯按 `config/knowledge/information-feed-policy.json` 中的 `relevance` 和 `whitelist` 先过滤再入库、提取；拒绝标题及链接只写本地 JSONL，页面本地环境可筛选复核。生产 Worker 不调用模型，远端发布默认关闭。手动处理和检查：
 
 ```bash
 npm run process:feed -- --max-documents 200 --max-tags 20
@@ -76,7 +76,7 @@ npm run dev:cron:once
 ```
 
 知识库的 PDF 转 Markdown 不会在本地启动或运行期间自动执行：
-`config/knowledge-processing.json` 中的 `automation` 默认关闭。需要处理时，显式运行
+`config/knowledge/knowledge-processing.json` 中的 `automation` 默认关闭。需要处理时，显式运行
 `npm run process:knowledge` 或 `./process-knowledge-local-full.sh`；前者是增量处理，后者是全量重跑。
 
 第一步用 `--omit=optional` 跳过容易卡住的可选依赖构建；第二步补齐
@@ -240,7 +240,7 @@ export KNOWLEDGE_CONTENT_HOSTNAME=content.tinfo.cc
 
 它会做这些事：
 
-- 自动读取 `config/knowledge-processing.json` 里的 `workDir`、`stateDir`、`database`
+- 自动读取 `config/knowledge/knowledge-processing.json` 里的 `workDir`、`stateDir`、`database`
 - 扫描 `workDir` 中全部 `knowledge-import-*.jsonl`
 - 同一 `docId` 只保留最新一份清单中的版本
 - 远端补齐时额外按时间窗过滤：研报最近 30 天，新闻最近 14 天
@@ -383,7 +383,7 @@ npm run deploy
 
 `XUEQIU_COOKIE` 作为 Worker secret 管理，不写入版本化 `wrangler.jsonc`。执行 `npm run refresh:xueqiu-cookie` 从 CDP 刷新并验证后写入忽略的 `.dev.vars` 和本地 credential store；本地调度器默认每 3 小时刷新，失败 5 分钟后重试，不改生产。标准发布在部署前重新通过雪球 K 线验证本地凭据，并经 stdin 上传 Worker secret；不要把 Cookie 放到命令行参数或日志。
 
-发布前执行 `npm run verify:architecture`，覆盖前后端类型、schema/运行边界和单元测试。页面入口与环境策略统一定义在 `config/page-manifest.json`；本地构建默认 `WEB_RUNTIME=local`，生产构建使用 `npm run build:web:production`。相邻共享包的 Git revision 和实际 dist 内容由 `config/release-inputs.lock.json` 锁定，升级共享包时先构建并审查，再执行 `node scripts/check-release-inputs.mjs --update` 更新锁文件。发布不允许未审查的共享包漂移。
+发布前执行 `npm run verify:architecture`，覆盖前后端类型、schema/运行边界和单元测试。页面入口与环境策略统一定义在 `config/app/page-manifest.json`；本地构建默认 `WEB_RUNTIME=local`，生产构建使用 `npm run build:web:production`。相邻共享包的 Git revision 和实际 dist 内容由 `config/app/release-inputs.lock.json` 锁定，升级共享包时先构建并审查，再执行 `node scripts/check-release-inputs.mjs --update` 更新锁文件。发布不允许未审查的共享包漂移。
 
 
 只做打包检查但不真正上线：

@@ -1,4 +1,4 @@
-import companyNewsReportKeywords from "../../../../config/company-news-report-keywords.json";
+import companyNewsReportKeywords from "../../../../config/research/company-news-report-keywords.json";
 import {
   type ReportForecastExtraction,
   type SharedReportAnalysis,

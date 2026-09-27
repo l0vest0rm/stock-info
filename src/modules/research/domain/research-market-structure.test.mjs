@@ -67,7 +67,7 @@ test("requirement reason codes distinguish a missing source from a sourced recor
 });
 
 test("official sample config only imports source-backed market observations and keeps T+1 as a regulator rule", () => {
-  const samples = JSON.parse(readFileSync(resolve(process.cwd(), "config/research-market-structure-official-samples.json"), "utf8"));
+  const samples = JSON.parse(readFileSync(resolve(process.cwd(), "src/modules/research/domain/fixtures/research-market-structure-official-samples.json"), "utf8"));
   for (const item of samples.facts) assertMarketStructureFact({ ...item, measurementBasis: item.measurementBasis ?? null, createdAt: 1 });
 
   const byId = new Map(samples.facts.map((item) => [item.marketStructureFactId, item]));
@@ -84,7 +84,7 @@ test("official sample config only imports source-backed market observations and 
 });
 
 test("300308 official annual-report share count remains a basic period-end fact and cannot open valuation", () => {
-  const samples = JSON.parse(readFileSync(resolve(process.cwd(), "config/research-market-structure-official-samples.json"), "utf8"));
+  const samples = JSON.parse(readFileSync(resolve(process.cwd(), "src/modules/research/domain/fixtures/research-market-structure-official-samples.json"), "utf8"));
   const record = samples.facts.find((item) => item.marketStructureFactId === "official:300308:basic-shares:2025-12-31:cninfo-1225056459");
   assert.deepEqual(record && {
     securityCode: record.securityCode,

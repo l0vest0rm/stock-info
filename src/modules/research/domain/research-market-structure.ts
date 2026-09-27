@@ -1,4 +1,4 @@
-import marketStructureConfig from "../../../../config/research-market-structure-requirements.json";
+import marketStructureConfig from "../../../../config/research/research-market-structure-requirements.json";
 import type { ResearchInstrumentKind, ResearchMarket } from "./research-identity";
 
 type ValueKind = "number" | "text";

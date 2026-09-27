@@ -26,7 +26,7 @@ import { INFORMATION_STORAGE_VERSION, contractMatches } from '../src/modules/kno
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));
-const feedConfig = JSON.parse(readFileSync(resolve(ROOT, 'config/information-feed.json'), 'utf8'));
+const feedConfig = JSON.parse(readFileSync(resolve(ROOT, 'config/knowledge/information-feed.json'), 'utf8'));
 const contentOptions = buildContentOptions({ remote: false });
 const stateFile = resolve(ROOT, process.env.INFORMATION_FEED_STATE_FILE || 'data/local/information-feed-ingest-state.json');
 const usageFile = resolve(ROOT, process.env.INFORMATION_FEED_TAG_USAGE_FILE || 'data/local/information-feed-tag-usage.json');
@@ -181,7 +181,7 @@ async function tagPending() {
   const byId = new Map(allRows.map((row) => [row.doc_id, row]));
   const rows = recentFeedRows(allRows, Date.now(), args.maxAgeHours)
     .filter((row) => !args.docId || row.doc_id === args.docId);
-  const aliases = queryLocalD1Sql("select alias,code,name from knowledge_stock_aliases where length(alias)>=2", { requiredTable: 'knowledge_stock_aliases' });
+  const aliases = queryLocalD1Sql("select a.alias,a.code,s.short_name as name from stock_alias a join stock s on s.code=a.code where length(a.alias)>=2", { requiredTable: 'stock_alias' });
   for (const row of rows) {
     if (counters.tagged + counters.tagFailed >= limit) break;
     if (!isRecentFeedTime(row.sort_time, Date.now(), args.maxAgeHours)) continue;

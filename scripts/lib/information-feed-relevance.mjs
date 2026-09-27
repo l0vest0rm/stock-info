@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import config from '../../config/information-feed-relevance.json' with { type: 'json' };
-import whitelist from '../../config/information-feed-whitelist.json' with { type: 'json' };
+import policy from '../../config/knowledge/information-feed-policy.json' with { type: 'json' };
+const config = policy.relevance;
+const whitelist = policy.whitelist;
 
 const pattern = (value) => new RegExp(value, 'iu');
 const quoteOnly = { ...config.quoteOnly, title: pattern(config.quoteOnly.title), body: pattern(config.quoteOnly.body),

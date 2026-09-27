@@ -1,6 +1,6 @@
 import { currentUser, loginRedirect } from "../modules/auth/auth";
 import { authRoutes } from "../modules/auth/auth";
-import pages from "../../config/page-manifest.json";
+import pages from "../../config/app/page-manifest.json";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";

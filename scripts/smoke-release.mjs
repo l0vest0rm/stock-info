@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 const base = process.env.SMOKE_BASE_URL || "https://tinfo.cc";
-const pages = JSON.parse(readFileSync(resolve(import.meta.dirname, "../config/page-manifest.json"), "utf8"));
+const pages = JSON.parse(readFileSync(resolve(import.meta.dirname, "../config/app/page-manifest.json"), "utf8"));
 const healthResponse = await fetch(new URL("/api/health", base), { signal: AbortSignal.timeout(20_000) });
 if (!healthResponse.ok) throw new Error(`Health HTTP ${healthResponse.status}`);
 const health = await healthResponse.json();

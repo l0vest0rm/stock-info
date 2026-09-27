@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-const ontologyText = readFileSync(new URL('../../config/knowledge-ontology.json', import.meta.url), 'utf8');
+const ontologyText = readFileSync(new URL('../../config/knowledge/knowledge-ontology.json', import.meta.url), 'utf8');
 const ontology = JSON.parse(ontologyText).informationExtraction;
 const categoryRules = ontology.categories;
 const informationTypes = new Set(ontology.informationTypes);

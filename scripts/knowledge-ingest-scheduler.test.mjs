@@ -4,7 +4,7 @@ import test from "node:test";
 import { loadKnowledgeIngestConfig, startKnowledgeIngestScheduler } from "./knowledge-ingest-scheduler.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
-const configPath = resolve(root, "config/knowledge-processing.json");
+const configPath = resolve(root, "config/knowledge/knowledge-processing.json");
 
 test("default local knowledge ingest automation is disabled", async () => {
   const config = loadKnowledgeIngestConfig(configPath);

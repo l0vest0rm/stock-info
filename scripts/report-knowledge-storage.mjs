@@ -13,7 +13,7 @@ if (args.help) {
 }
 const localDatabaseFile = args.remote ? "" : resolveExistingLocalD1Database({ root });
 const existingTables = new Set(
-  (runD1Sql(["select name from sqlite_master where type = 'table' and name like 'knowledge_%'"])[0] ?? [])
+  (runD1Sql(["select name from sqlite_master where type = 'table' and (name like 'knowledge_%' or name in ('stock', 'stock_alias'))"])[0] ?? [])
     .map((row) => String(row.name || "").trim())
     .filter(Boolean)
 );
@@ -192,16 +192,27 @@ function knowledgeTableStatsSqls() {
     0 as searchBytes
   from knowledge_doc_tags`);
   }
-  if (existingTables.has("knowledge_stock_aliases")) {
+  if (existingTables.has("stock_alias")) {
     parts.push(`
   select
-    'knowledge_stock_aliases' as scope,
+    'stock_alias' as scope,
     count(*) as rowCount,
-    sum(${s("alias")} + ${s("code")} + ${s("name")} + ${s("source")} + 8) as approxBytes,
+    sum(${s("alias")} + ${s("code")} + ${s("source")} + 8) as approxBytes,
     0 as markdownBytes,
     0 as metadataBytes,
     0 as searchBytes
-  from knowledge_stock_aliases`);
+  from stock_alias`);
+  }
+  if (existingTables.has("stock")) {
+    parts.push(`
+  select
+    'stock' as scope,
+    count(*) as rowCount,
+    sum(${s("code")} + ${s("short_name")} + 8) as approxBytes,
+    0 as markdownBytes,
+    0 as metadataBytes,
+    0 as searchBytes
+  from stock`);
   }
   if (parts.length === 0) {
     return [`

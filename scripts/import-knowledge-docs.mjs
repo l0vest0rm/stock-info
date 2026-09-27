@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildContentOptions, prepareKnowledgeContentAsync } from "./knowledge-content-r2.mjs";
 import { loadLocalCompanyCodeResolver } from "./lib/local-company-code-resolver.mjs";
+import { stockAliasStatements } from "./lib/knowledge-stock-alias-statements.mjs";
 import { executeLocalD1SqlFile } from "./lib/local-d1-sqlite.mjs";
 import {
   appendSyncLedgerEntries,
@@ -203,15 +204,7 @@ function statementsForDoc(item) {
     ...item.tags.map((tag) =>
       `insert into knowledge_doc_tags (doc_id, tag) values (${q(item.docId)}, ${q(tag.toLowerCase())});`
     ),
-    ...item.stockAliases.map((alias) =>
-      `insert into knowledge_stock_aliases (alias, code, name, source, updated_at)
-         values (${q(alias.alias.toLowerCase())}, ${q(alias.code)}, ${q(alias.name)}, ${q(alias.source)}, ${item.updatedAt})
-         on conflict(alias) do update set
-           code=excluded.code,
-           name=excluded.name,
-           source=excluded.source,
-           updated_at=excluded.updated_at;`
-    ),
+    ...stockAliasStatements(item.stockAliases, item.updatedAt, q),
   ];
 }
 

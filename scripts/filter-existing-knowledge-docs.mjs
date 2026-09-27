@@ -11,7 +11,7 @@ const args = parseArgs(process.argv.slice(2));
 if (args.remote) throw new Error("historical blacklist filtering is local-only; remote deletion is intentionally unsupported");
 
 const root = resolve(".");
-const configPath = resolve(root, args.config || "config/knowledge-processing.json");
+const configPath = resolve(root, args.config || "config/knowledge/knowledge-processing.json");
 const config = JSON.parse(readFileSync(configPath, "utf8"));
 const filter = config.topicFilter || {};
 if (!filter.enabled || filter.mode !== "blacklist") {

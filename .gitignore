@@ -1,6 +1,7 @@
 node_modules/
 .wrangler/
 .dev.vars
+config/research/fund-quarterly-research.local.json
 config/fund-quarterly-research.local.json
 dist/
 web/dist/

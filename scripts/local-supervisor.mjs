@@ -67,7 +67,7 @@ async function main() {
   const ingest = process.env.KNOWLEDGE_INGEST_SCHEDULER === "0"
     ? { stop() {} }
     : startKnowledgeIngestScheduler({
-      configPath: resolve(process.env.LOCAL_KNOWLEDGE_INGEST_CONFIG || "config/knowledge-processing.json"),
+      configPath: resolve(process.env.LOCAL_KNOWLEDGE_INGEST_CONFIG || "config/knowledge/knowledge-processing.json"),
       runChild: runOneShot,
       onEvent: (event, details) => log("local-scheduler", `knowledge_ingest_${event}`, details),
     });
@@ -75,7 +75,7 @@ async function main() {
   const feed = process.env.INFORMATION_FEED_SCHEDULER === "0"
     ? { stop() {} }
     : startInformationFeedScheduler({
-      configPath: resolve(process.env.LOCAL_INFORMATION_FEED_CONFIG || "config/information-feed.json"),
+      configPath: resolve(process.env.LOCAL_INFORMATION_FEED_CONFIG || "config/knowledge/information-feed.json"),
       runChild: runOneShot,
       onEvent: (event, details) => log("local-scheduler", `information_feed_${event}`, details),
     });

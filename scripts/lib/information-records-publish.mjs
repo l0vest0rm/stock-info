@@ -1,7 +1,8 @@
 import { canonicalJson, extractionIsCurrent, INFORMATION_STORAGE_VERSION, sqlText as q,
   tagsForInformationRows } from '../../src/modules/knowledge/domain/information-records.ts';
 import { sha, recordDigest, RECORD_COLUMNS } from './information-records-store.mjs';
-import relevanceConfig from '../../config/information-feed-relevance.json' with { type: 'json' };
+import policy from '../../config/knowledge/information-feed-policy.json' with { type: 'json' };
+const relevanceConfig = policy.relevance;
 
 export const DOCUMENT_COLUMNS = ['doc_id','source_type','report_type','source_name','title','url','published_at','fetched_at','event_time','access_method',
   'summary','content_preview','metadata_json','sort_time','source_name_normalized','updated_at'];

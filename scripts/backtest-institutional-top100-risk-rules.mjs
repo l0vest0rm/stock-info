@@ -30,7 +30,7 @@ const institutionCountGrowth = args["institution-count-growth"] === "true";
 const institutionGrowthWeight = Number(args["institution-growth-weight"] ?? "0.5");
 const stockSleeveWeight = Number(args["stock-sleeve-weight"] ?? "1");
 const snapshotPath = new URL("../web/src/config/institutional-track-snapshot.json", import.meta.url);
-const industryGroupsPath = new URL("../config/institutional-backtest-industry-groups.json", import.meta.url);
+const industryGroupsPath = new URL("../config/backtest/institutional-backtest-industry-groups.json", import.meta.url);
 const trackTaxonomyPath = new URL("../web/src/config/institutional-track-taxonomy.json", import.meta.url);
 const trackOverridesPath = new URL("../web/src/config/institutional-track-overrides.json", import.meta.url);
 const industrySnapshot = JSON.parse(await readFile(snapshotPath, "utf8"));

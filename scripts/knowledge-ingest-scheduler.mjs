@@ -8,7 +8,7 @@ import { Cron } from "croner";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 
-export function loadKnowledgeIngestConfig(configPath = resolve(root, "config/knowledge-processing.json")) {
+export function loadKnowledgeIngestConfig(configPath = resolve(root, "config/knowledge/knowledge-processing.json")) {
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   const automation = config.automation && typeof config.automation === "object" ? config.automation : {};
   const cronExpression = String(automation.cron || "*/15 * * * *").trim();
@@ -24,7 +24,7 @@ export function loadKnowledgeIngestConfig(configPath = resolve(root, "config/kno
  * by local-supervisor, which retains the exact child handle until exit.
  */
 export function startKnowledgeIngestScheduler({
-  configPath = resolve(root, "config/knowledge-processing.json"),
+  configPath = resolve(root, "config/knowledge/knowledge-processing.json"),
   runChild = defaultRunChild,
   onEvent = defaultEvent,
 } = {}) {
@@ -86,6 +86,6 @@ function defaultEvent(event, details) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const scheduler = startKnowledgeIngestScheduler({ configPath: resolve(root, process.argv[2] || "config/knowledge-processing.json") });
+  const scheduler = startKnowledgeIngestScheduler({ configPath: resolve(root, process.argv[2] || "config/knowledge/knowledge-processing.json") });
   for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { scheduler.stop(); process.exit(0); });
 }

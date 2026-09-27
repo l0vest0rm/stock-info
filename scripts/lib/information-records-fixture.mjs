@@ -28,7 +28,9 @@ export function fixture({migrate = true} = {}) {
       FOREIGN KEY(doc_id) REFERENCES knowledge_docs(doc_id) ON DELETE CASCADE);
     CREATE TABLE knowledge_doc_tags (doc_id TEXT,tag TEXT,weight INTEGER DEFAULT 0,tagging_input_fingerprint TEXT,
       contract_version TEXT,PRIMARY KEY(doc_id,tag),FOREIGN KEY(doc_id) REFERENCES knowledge_docs(doc_id) ON DELETE CASCADE);
-    CREATE TABLE knowledge_stock_aliases (alias TEXT,code TEXT,name TEXT);`);
+    CREATE TABLE stock (code TEXT PRIMARY KEY,short_name TEXT NOT NULL,updated_at INTEGER NOT NULL);
+    CREATE TABLE stock_alias (alias TEXT NOT NULL,code TEXT NOT NULL,source TEXT,updated_at INTEGER NOT NULL,
+      PRIMARY KEY(alias,code),FOREIGN KEY(code) REFERENCES stock(code));`);
   const old = readFileSync(resolve('migrations/0128_drop_knowledge_run_ledgers.sql'),'utf8');
   db.exec(old.slice(old.indexOf('create table knowledge_document_results'),old.indexOf('insert into knowledge_document_results')));
   if (migrate) inTransaction(db, () => db.exec(readFileSync(migrationPath,'utf8')));

@@ -15,8 +15,8 @@ import { INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const apply = process.argv.includes('--apply');
-const config = JSON.parse(readFileSync(resolve(root, 'config/information-feed.json'), 'utf8'));
-const categoryIds = new Set(Object.keys(JSON.parse(readFileSync(resolve(root, 'config/knowledge-ontology.json'), 'utf8')).informationExtraction.categories));
+const config = JSON.parse(readFileSync(resolve(root, 'config/knowledge/information-feed.json'), 'utf8'));
+const categoryIds = new Set(Object.keys(JSON.parse(readFileSync(resolve(root, 'config/knowledge/knowledge-ontology.json'), 'utf8')).informationExtraction.categories));
 const currentTagContract = config.tagContract;
 if (!/^feed-tag-v\d+$/.test(currentTagContract)) throw new Error('invalid information feed tag contract');
 if (apply && config.automation?.publishRemote !== true) {

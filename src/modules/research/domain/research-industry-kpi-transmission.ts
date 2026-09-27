@@ -1,4 +1,4 @@
-import transmissionConfig from "../../../../config/research-industry-kpi-transmission.json";
+import transmissionConfig from "../../../../config/research/research-industry-kpi-transmission.json";
 import { compileDriverPlanToSelfBuiltScenario, type DriverPlanValuationBridge, type ResearchOperatingDriverPlan } from "./research-operating-market";
 import { projectOperatingScenarioForValuation, type OperatingScenarioValuationProjection } from "../application/operating-scenario-valuation";
 import type { ResearchSourceReference } from "./research-dossier";

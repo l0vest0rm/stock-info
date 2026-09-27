@@ -3,9 +3,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const outputPath = path.resolve(process.cwd(), "config/eastmoney-company-em2016-profiles.json");
+const outputPath = path.resolve(process.cwd(), "config/generated/eastmoney-company-em2016-profiles.json");
 const defaultInputPath = path.resolve(process.cwd(), "web/src/config/institutional-track-snapshot.json");
-const legacySeedPath = path.resolve(process.cwd(), "config/research-eastmoney-em2016-top300.json");
 
 const explicitCodes = parseCodes(optionValue("--codes"));
 const inputPath = optionValue("--input") ? path.resolve(process.cwd(), optionValue("--input")) : defaultInputPath;
@@ -13,11 +12,9 @@ const concurrency = Math.max(1, Number.parseInt(optionValue("--concurrency") || 
 const refreshExisting = hasFlag("--refresh-existing");
 
 const existingConfig = await readJson(outputPath).catch(() => null);
-const legacySeed = await readJson(legacySeedPath).catch(() => null);
 const inputPayload = await readJson(inputPath).catch(() => null);
 
 const existingProfiles = new Map();
-for (const entry of normalizeConfigEntries(legacySeed?.rows || [])) existingProfiles.set(entry.code, entry);
 for (const entry of normalizeConfigEntries(existingConfig?.profiles || [])) existingProfiles.set(entry.code, entry);
 
 const codesFromInput = extractCodes(inputPayload);

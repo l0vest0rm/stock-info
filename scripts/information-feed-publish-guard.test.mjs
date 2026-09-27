@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 test('manual feed publisher cannot bypass the disabled remote switch', (t) => {
-  const config = JSON.parse(readFileSync(new URL('../config/information-feed.json', import.meta.url), 'utf8'));
+  const config = JSON.parse(readFileSync(new URL('../config/knowledge/information-feed.json', import.meta.url), 'utf8'));
   if (config.automation?.publishRemote === true) {
     t.skip('remote publication is enabled; never exercise a real publish in a unit test');
     return;

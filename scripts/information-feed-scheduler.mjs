@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 // Ingestion is driven by source-file changes. CLS has no push endpoint, so only
 // its collection remains a bounded poll; an unchanged fetch does not run the feed.
 export function startInformationFeedScheduler({
-  configPath = resolve('config/information-feed.json'), runChild, onEvent = () => {},
+  configPath = resolve('config/knowledge/information-feed.json'), runChild, onEvent = () => {},
   watchFiles = watch, setTimer = setInterval, clearTimer = clearInterval,
 }) {
   const config = JSON.parse(readFileSync(configPath, 'utf8')).automation || {};

@@ -136,7 +136,7 @@ async function main() {
 
 function parseArgs(args) {
   const options = {
-    config: "config/earnings-research.json",
+    config: "config/research/earnings-research.json",
     includeConsensus: false,
   };
   for (let index = 0; index < args.length; index += 1) {

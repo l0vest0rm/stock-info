@@ -5,7 +5,7 @@ const root = resolve(new URL("..", import.meta.url).pathname);
 const sharedDataRoot = "/Users/terry/git/data";
 
 export function loadKnowledgeDefaults() {
-  const config = loadConfig(resolve(root, "config/knowledge-processing.json"));
+  const config = loadConfig(resolve(root, "config/knowledge/knowledge-processing.json"));
   const workDir = resolve(root, config.workDir || `${sharedDataRoot}/stock-info/knowledge/work`);
   const stateDir = resolve(root, config.stateDir || `${sharedDataRoot}/stock-info/knowledge/state`);
   return {

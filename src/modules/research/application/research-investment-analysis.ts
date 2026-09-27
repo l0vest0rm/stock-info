@@ -9,8 +9,8 @@ import { loadKline } from "../../market/application/load-kline";
 import { loadLatestFinancialValuation, type FinancialValuationBasis } from "../../finance/application/latest-financial-valuation";
 import { getSecurity } from "../../security/application/search-securities";
 import { normalizeSecurityCode } from "../../../shared/codes";
-import industryProfiles from "../../../../config/research-eastmoney-em2016-industry-profiles.json";
-import companyProfiles from "../../../../config/eastmoney-company-em2016-profiles.json";
+import industryProfiles from "../../../../config/research/research-eastmoney-em2016-industry-profiles.json";
+import companyProfiles from "../../../../config/generated/eastmoney-company-em2016-profiles.json";
 
 const TASK_TYPE = "webqa.chatgpt.v1";
 const MODEL = "gpt-5.6-luna" as const;

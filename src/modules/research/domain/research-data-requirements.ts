@@ -1,4 +1,4 @@
-import requirementConfig from "../../../../config/research-data-requirements.json";
+import requirementConfig from "../../../../config/research/research-data-requirements.json";
 
 export type ResearchDataRequirementStatus = "available" | "partial" | "missing" | "stale" | "conflict" | "source_error";
 export type ResearchSourceHealthStatus = "available" | "partial" | "missing" | "stale" | "conflict" | "source_error";

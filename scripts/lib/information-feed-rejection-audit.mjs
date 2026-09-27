@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import relevanceConfig from '../../config/information-feed-relevance.json' with { type: 'json' };
+import policy from '../../config/knowledge/information-feed-policy.json' with { type: 'json' };
+const relevanceConfig = policy.relevance;
 
 export function auditFilePath() {
   return resolve(process.env.INFORMATION_FEED_RELEVANCE_AUDIT_FILE || 'data/local/information-feed-relevance-rejected.jsonl');

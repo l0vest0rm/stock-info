@@ -5,7 +5,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const lockPath = resolve(root, "config/release-inputs.lock.json");
+const lockPath = resolve(root, "config/app/release-inputs.lock.json");
 const dependencies = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).dependencies;
 const packages = Object.entries(dependencies).filter(([, value]) => value.startsWith("file:")).map(([name, specifier]) => {
   const path = resolve(root, specifier.slice(5));
@@ -18,10 +18,10 @@ const packages = Object.entries(dependencies).filter(([, value]) => value.starts
 const actual = { schemaVersion: 1, packages };
 if (process.argv.includes("--update")) {
   writeFileSync(lockPath, JSON.stringify(actual, null, 2) + "\n");
-  console.log("Recorded package revisions and hashes in config/release-inputs.lock.json; review this file before release.");
+  console.log("Recorded package revisions and hashes in config/app/release-inputs.lock.json; review this file before release.");
 } else {
   const expected = JSON.parse(readFileSync(lockPath, "utf8"));
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("Local package release inputs changed. Review shared-ts revisions and rebuild its packages, then explicitly update config/release-inputs.lock.json.");
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("Local package release inputs changed. Review shared-ts revisions and rebuild its packages, then explicitly update config/app/release-inputs.lock.json.");
   console.log("Release package revisions and contents match the reviewed lock.");
 }
 

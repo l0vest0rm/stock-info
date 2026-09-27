@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import pages from "../../config/page-manifest.json" with { type: "json" };
+import pages from "../../config/app/page-manifest.json" with { type: "json" };
 import { createRouter } from "./router.ts";
 
 test("one page manifest enforces local-only pages before asset access", async () => {

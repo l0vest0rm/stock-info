@@ -1482,9 +1482,9 @@ async function readLocalKnowledgeProcessingConfig(): Promise<Record<string, unkn
     return {};
   }
   const candidates = [
-    path.resolve(getProcessCwd(), "config", "knowledge-processing.json"),
-    path.resolve(getProcessCwd(), "..", "stock-info", "config", "knowledge-processing.json"),
-    "/Users/terry/git/stock-info/config/knowledge-processing.json",
+    path.resolve(getProcessCwd(), "config", "knowledge", "knowledge-processing.json"),
+    path.resolve(getProcessCwd(), "..", "stock-info", "config", "knowledge", "knowledge-processing.json"),
+    "/Users/terry/git/stock-info/config/knowledge/knowledge-processing.json",
   ];
   for (const configFile of candidates) {
     if (!(await pathExists(configFile))) {

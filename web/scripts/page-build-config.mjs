@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-export const pageManifest = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../../config/page-manifest.json', import.meta.url)), 'utf8'))
+export const pageManifest = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../../config/app/page-manifest.json', import.meta.url)), 'utf8'))
 const paths = new Set()
 for (const page of pageManifest) {
   if (!/^\/[a-z0-9-]+\.html$/.test(page.path) || paths.has(page.path)) throw new Error(`Invalid or duplicate page path: ${page.path}`)

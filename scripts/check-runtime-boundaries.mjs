@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { parse } from "jsonc-parser";
 const root = resolve(import.meta.dirname, "..");
 const config = parse(readFileSync(resolve(root, "wrangler.jsonc"), "utf8"));
-const pages = JSON.parse(readFileSync(resolve(root, "config/page-manifest.json"), "utf8"));
+const pages = JSON.parse(readFileSync(resolve(root, "config/app/page-manifest.json"), "utf8"));
 if (config.vars.APP_RUNTIME !== "cloudflare" || config.vars.LLM_RUNTIME !== "production") throw new Error("Production runtime identity is invalid");
 if ("XUEQIU_COOKIE" in config.vars) throw new Error("XUEQIU_COOKIE must be a Worker secret, never a versioned var");
 if (!config.assets.run_worker_first.includes("/*.html") && !config.assets.run_worker_first.includes("/*")) throw new Error("All HTML pages must pass the page policy in the Worker");

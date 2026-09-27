@@ -199,7 +199,7 @@ function requireValue(argv, index, flag) {
 }
 
 function loadConfig(path) {
-  return JSON.parse(readFileSync(resolve(root, path || "config/knowledge-processing.json"), "utf8"));
+  return JSON.parse(readFileSync(resolve(root, path || "config/knowledge/knowledge-processing.json"), "utf8"));
 }
 
 function resolveFetchRange(cfg, rootConfig, state) {

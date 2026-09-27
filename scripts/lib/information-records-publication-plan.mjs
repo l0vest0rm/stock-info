@@ -7,8 +7,8 @@ import { FEED_EXTRACTION_CONTRACT } from '../generated/information-records-contr
 
 export function informationPublicationPlan(options = {}) {
   const root = resolve(new URL('../..', import.meta.url).pathname);
-  const config = JSON.parse(readFileSync(resolve(root,'config/information-feed.json'),'utf8'));
-  const categories = new Set(Object.keys(JSON.parse(readFileSync(resolve(root,'config/knowledge-ontology.json'),'utf8')).informationExtraction.categories));
+  const config = JSON.parse(readFileSync(resolve(root,'config/knowledge/information-feed.json'),'utf8'));
+  const categories = new Set(Object.keys(JSON.parse(readFileSync(resolve(root,'config/knowledge/knowledge-ontology.json'),'utf8')).informationExtraction.categories));
   return withInformationDatabase(options, (db) => {
     assertInformationSchema(db);
     const snapshots = db.prepare("SELECT doc_id FROM knowledge_docs WHERE source_type='information_feed' ORDER BY sort_time,doc_id").all()

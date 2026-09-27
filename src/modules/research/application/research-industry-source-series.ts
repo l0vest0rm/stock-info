@@ -1,5 +1,5 @@
 import type { Database } from "../../../platform/contracts";
-import extractionConfig from "../../../../config/research-industry-source-extraction.json";
+import extractionConfig from "../../../../config/research/research-industry-source-extraction.json";
 import { requestLocalDirectLlmText } from "../../../shared/local-direct-llm";
 import type { Bindings } from "../../../types";
 

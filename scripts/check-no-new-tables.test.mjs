@@ -41,6 +41,21 @@ test("approved authentication migration introduces only the two approved account
   assert.match(sql, /reset_expires_at_ms INTEGER/);
 });
 
+test("approved stock identity migration adds only the canonical stock table", () => {
+  const sql = readFileSync(join(root, "migrations/0143_stock_alias_identity.sql"), "utf8");
+  const tables = [...sql.matchAll(/create table (\w+)/gi)].map((match) => match[1]);
+  assert.deepEqual(tables, ["knowledge_stocks", "knowledge_stock_aliases"]);
+  const approved = JSON.parse(readFileSync(join(root, "scripts/check-no-new-tables-allowlist.json"), "utf8"));
+  assert.ok(approved.includes("knowledge_stocks"));
+  assert.match(sql, /primary key \(alias, code\)/i);
+  assert.match(sql, /foreign key \(code\) references knowledge_stocks\(code\)/i);
+  const rename = readFileSync(join(root, "migrations/0144_rename_stock_alias_tables.sql"), "utf8");
+  assert.match(rename, /alter table knowledge_stocks rename to stock/i);
+  assert.match(rename, /alter table knowledge_stock_aliases rename to stock_alias/i);
+  assert.ok(approved.includes("stock"));
+  assert.ok(approved.includes("stock_alias"));
+});
+
 test("new-table gate rejects a migration that creates an unapproved table", () => {
   const fixture = mkdtempSync(join(tmpdir(), "stock-info-new-table-gate-"));
   try {

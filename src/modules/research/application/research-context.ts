@@ -1,4 +1,4 @@
-import sourceRegistryConfigJson from "../../../../config/research-source-registry.json";
+import sourceRegistryConfigJson from "../../../../config/research/research-source-registry.json";
 
 export const RESEARCH_CONTEXT_VERSION = "research-context.v1";
 export const RESEARCH_SOURCE_REGISTRY_VERSION = sourceRegistryConfigJson.version;

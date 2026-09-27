@@ -1768,7 +1768,7 @@ async function mapWithConcurrency(items, concurrency, iteratee) {
 }
 
 function loadConfig(path) {
-  const file = resolve(root, path || "config/knowledge-processing.json");
+  const file = resolve(root, path || "config/knowledge/knowledge-processing.json");
   const config = JSON.parse(readFileSync(file, "utf8"));
   const topicFilter = object(config.topicFilter);
   if (Object.keys(topicFilter).length > 0) {

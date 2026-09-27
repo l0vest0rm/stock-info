@@ -7,7 +7,7 @@ import {
   topicFilterKeywordDecision,
 } from "./knowledge-topic-filter.mjs";
 
-const processingConfig = JSON.parse(readFileSync(new URL("../../config/knowledge-processing.json", import.meta.url), "utf8"));
+const processingConfig = JSON.parse(readFileSync(new URL("../../config/knowledge/knowledge-processing.json", import.meta.url), "utf8"));
 
 const filter = {
   bypassSourceTypes: ["research_report"],

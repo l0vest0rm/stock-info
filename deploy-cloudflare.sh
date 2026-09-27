@@ -128,7 +128,7 @@ fi
 
 # Public PDF/JSON readers fetch the knowledge bucket directly, including Range.
 echo "Applying public knowledge content CORS policy..."
-npx wrangler r2 bucket cors set "${KNOWLEDGE_CONTENT_BUCKET:-stock-info-knowledge-content}" --file config/knowledge-content-cors.json --force
+npx wrangler r2 bucket cors set "${KNOWLEDGE_CONTENT_BUCKET:-stock-info-knowledge-content}" --file config/knowledge/knowledge-content-cors.json --force
 
 if [[ "$SKIP_MIGRATE" -eq 0 ]]; then
   echo "Applying remote D1 migrations for ${DATABASE_NAME}..."

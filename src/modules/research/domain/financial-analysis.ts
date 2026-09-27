@@ -1,5 +1,5 @@
 import { RESEARCH_FINANCIAL_ANALYSIS_PROMPT } from "../../../generated/prompt-text";
-import riskRulesJson from "../../../../config/research-financial-analysis-risk-rules.json";
+import riskRulesJson from "../../../../config/research/research-financial-analysis-risk-rules.json";
 import type { ResearchFinancialFrequency, ResearchFinancialMetric, ResearchFinancialObservation, ResearchFinancialQuality, ResearchFinancialSeries, ResearchFinancialSeriesPoint } from "./research-financial-quality";
 
 export const FINANCIAL_ANALYSIS_PROTOCOL_VERSION = "financial-analysis-input.v1";

@@ -16,7 +16,7 @@ import {
 
 const fixtureDir = resolve("scripts/fixtures/earnings-research");
 const fixture = JSON.parse(readFileSync(join(fixtureDir, "fixture.json"), "utf8"));
-const ranking = JSON.parse(readFileSync(resolve("config/earnings-research.json"), "utf8")).ranking;
+const ranking = JSON.parse(readFileSync(resolve("config/research/earnings-research.json"), "utf8")).ranking;
 
 test("latest completed quarter uses the prior quarter end", () => {
   assert.equal(previousQuarterEndDate("2026-07-15"), "2026-06-30");

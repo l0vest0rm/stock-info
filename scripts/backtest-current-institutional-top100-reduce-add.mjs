@@ -20,7 +20,7 @@ Cash-ladder options (use with --strategy cash-ladder):
 Other useful options:
   --stock-limit 300 --from 2021-07-31 --to 2026-07-31
   --analysis-cohort triggered          report only windows where the first reduction actually occurred
-  --rules config/institutional-top300-reduce-add-grid.json
+  --rules config/backtest/institutional-top300-reduce-add-grid.json
   --output reports/research/report.md`);
   process.exit(0);
 }
@@ -43,8 +43,8 @@ const csvOutput = output.replace(/\.md$/i, ".csv");
 const stockSummaryOutput = output.replace(/\.md$/i, "-逐股汇总.csv");
 const industrySummaryOutput = output.replace(/\.md$/i, "-行业汇总.csv");
 const triggeredOutput = output.replace(/\.md$/i, "-触发样本.csv");
-const rulesPath = path.resolve(args.rules ?? "config/institutional-top100-reduce-add-rules.json");
-const industryGroupsPath = path.resolve(args["industry-groups"] ?? "config/institutional-backtest-industry-groups.json");
+const rulesPath = path.resolve(args.rules ?? "config/backtest/institutional-top100-reduce-add-rules.json");
+const industryGroupsPath = path.resolve(args["industry-groups"] ?? "config/backtest/institutional-backtest-industry-groups.json");
 
 if (!Number.isInteger(horizon) || horizon < 20) throw new Error("--horizon-days must be an integer of at least 20");
 if (!Number.isFinite(cost) || cost < 0 || cost > 0.01) throw new Error("--one-way-cost-bp must be between 0 and 100");

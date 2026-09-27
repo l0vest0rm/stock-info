@@ -111,7 +111,7 @@ console.log(JSON.stringify({
 }, null, 2));
 
 function loadConfig(file) {
-  const path = file ? resolve(root, file) : resolve(root, "config/knowledge-processing.json");
+  const path = file ? resolve(root, file) : resolve(root, "config/knowledge/knowledge-processing.json");
   return JSON.parse(readFileSync(path, "utf8"));
 }
 

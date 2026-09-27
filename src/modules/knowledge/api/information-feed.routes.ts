@@ -2,16 +2,17 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../../../types';
 import { isLocalDevelopmentRuntime } from '../../../shared/request';
 import { fail, ok } from '../../../shared/http';
-import ontology from '../../../../config/knowledge-ontology.json';
-import companyProfiles from '../../../../config/eastmoney-company-em2016-profiles.json';
+import ontology from '../../../../config/knowledge/knowledge-ontology.json';
+import companyProfiles from '../../../../config/generated/eastmoney-company-em2016-profiles.json';
 import informationLabels from '../../../../web/src/config/information-feed-labels.json';
-import feedConfig from '../../../../config/information-feed.json';
-import relevanceConfig from '../../../../config/information-feed-relevance.json';
+import feedConfig from '../../../../config/knowledge/information-feed.json';
+import feedPolicy from '../../../../config/knowledge/information-feed-policy.json';
 import { FEED_EXTRACTION_CONTRACT } from '../../../generated/information-records-contract';
 import { currentExtractionSql, informationRowsJsonSql, recordsDigestInput, rowToInformation,
   sha256Text, sqlText, type InformationRow, type ExtractionState } from '../domain/information-records';
 
 export const informationFeedRoutes = new Hono<AppEnv>();
+const relevanceConfig = feedPolicy.relevance;
 type FeedRow = {
   doc_id: string; title: string; url: string | null; source_name: string | null;
   published_at: string | null; sort_time: string; summary: string | null;

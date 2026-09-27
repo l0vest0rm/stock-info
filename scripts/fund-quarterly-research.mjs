@@ -622,7 +622,7 @@ function isPlainObject(value) {
 }
 
 function parseArgs(args) {
-  const options = { config: "config/fund-quarterly-research.json", dryRun: false, force: false };
+  const options = { config: "config/research/fund-quarterly-research.json", dryRun: false, force: false };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--dry-run") { options.dryRun = true; continue; }

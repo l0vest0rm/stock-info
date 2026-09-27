@@ -7,7 +7,7 @@ if (process.argv.slice(2).includes('--help')) {
   console.log(`Usage: node scripts/backtest-multi-asset-allocation.mjs [options]
 
 Data and time:
-  --config config/multi-asset-backtest.json
+  --config config/backtest/multi-asset-backtest.json
   --growth-code 300308.SZ --dividend-code 601088.SH --bond-code 000012.SH
   --from 2021-07-31 --to 2026-07-31 --horizon-days 252
 
@@ -24,7 +24,7 @@ Growth/dividend rotation:
 }
 
 const args = parseArgs(process.argv.slice(2));
-const configPath = path.resolve(args.config ?? 'config/multi-asset-backtest.json');
+const configPath = path.resolve(args.config ?? 'config/backtest/multi-asset-backtest.json');
 const config = JSON.parse(await readFile(configPath, 'utf8'));
 const from = args.from ?? '2021-07-31';
 const to = args.to ?? '2026-07-31';

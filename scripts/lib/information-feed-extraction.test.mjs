@@ -38,7 +38,7 @@ test('candidate categories preserve evidence but never become controlled records
 });
 
 test('Chinese display labels do not change the extraction contract or existing hash', () => {
-  const raw = readFileSync(new URL('../../config/knowledge-ontology.json', import.meta.url), 'utf8');
+  const raw = readFileSync(new URL('../../config/knowledge/knowledge-ontology.json', import.meta.url), 'utf8');
   assert.equal(feedCategoryCatalogHash(), '31390c312c0ea91d28aeac6f4637f8af87cebdac0991c0b3af39e2e8c2b02cdb');
   assert.equal(feedCategoryCatalogHash(raw.replace('"label": "营收"', '"label": "收入"')), feedCategoryCatalogHash());
   assert.notEqual(feedCategoryCatalogHash(raw.replace('"periodPolicy": "required"', '"periodPolicy": "optional"')), feedCategoryCatalogHash());

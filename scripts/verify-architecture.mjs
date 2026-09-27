@@ -155,7 +155,15 @@ async function main() {
       logLevel: "warning",
     }));
     const suites = [];
+    let dedicatedSuites = 0;
     for (const [index, source] of manifest.included.entries()) {
+      // This suite deliberately imports an independently bundled API through
+      // INFORMATION_RECORDS_API_BUNDLE; its own runner supplies that contract.
+      if (source === "src/modules/knowledge/api/information-records.routes.test.mjs") {
+        await gate("Information records API suite", () => run(["scripts/test-information-records.mjs"]));
+        dedicatedSuites += 1;
+        continue;
+      }
       // Script suites already use native ESM and may invoke their own build
       // tools. Run them in place, except the adapter suite whose old runtime
       // artifact import is redirected to current source inside a fresh bundle.
@@ -172,7 +180,7 @@ async function main() {
         suites.push(outfile);
       });
     }
-    console.log(`\n[verify] Running ${suites.length}/${manifest.included.length} unit suites; ${manifest.excluded.length} environment suites excluded.`);
+    console.log(`\n[verify] Running ${suites.length + dedicatedSuites}/${manifest.included.length} unit suites; ${manifest.excluded.length} environment suites excluded.`);
     if (manifest.excluded.length) console.log(manifest.excluded.join("\n"));
     if (!suites.length) failures.push({ name: "Unit suites", message: "No unit suites were discovered/prepared" });
     else await gate("All unit suites", () => run([

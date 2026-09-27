@@ -76,7 +76,7 @@ writeFileSync(generatedMjsPath, output);
 
 // Freeze the same contract hashes into both runtimes; do not change the LLM
 // contract merely because the persistence format changes.
-const feedConfig = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'config/information-feed.json'), 'utf8'));
+const feedConfig = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'config/knowledge/information-feed.json'), 'utf8'));
 const hash = (text) => createHash('sha256').update(text).digest('hex');
 const feedPrompt = (file) => readFileSync(resolve(PROJECT_ROOT, `prompts/information-feed/${file}`), 'utf8').trim();
 const contract = {
