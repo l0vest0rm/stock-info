@@ -6,6 +6,7 @@ import ontology from '../../../../config/knowledge-ontology.json';
 import companyProfiles from '../../../../config/eastmoney-company-em2016-profiles.json';
 import informationLabels from '../../../../web/src/config/information-feed-labels.json';
 import feedConfig from '../../../../config/information-feed.json';
+import relevanceConfig from '../../../../config/information-feed-relevance.json';
 import { FEED_EXTRACTION_CONTRACT } from '../../../generated/information-records-contract';
 import { currentExtractionSql, informationRowsJsonSql, recordsDigestInput, rowToInformation,
   sha256Text, sqlText, type InformationRow, type ExtractionState } from '../domain/information-records';
@@ -33,7 +34,11 @@ const tagsJson = (alias: 'v' | 'd') => `(select coalesce(json_group_array(json_o
 const ELIGIBLE = `d.source_type='information_feed' and d.access_method='markdown'
   and json_extract(d.metadata_json,'$.feed.version')='v1'
   and json_extract(d.metadata_json,'$.feed.originalFormat')='text'
-  and exists (select 1 from knowledge_doc_content_refs c where c.doc_id=d.doc_id and c.content_key is not null)`;
+  and json_extract(d.metadata_json,'$.feed.investmentGate.policyVersion')=${sqlText(relevanceConfig.version)}
+  and json_extract(d.metadata_json,'$.feed.investmentGate.effectiveDisposition')='pass'
+  and json_extract(d.metadata_json,'$.feed.investmentGate.title')=d.title
+  and exists (select 1 from knowledge_doc_content_refs c where c.doc_id=d.doc_id and c.content_key is not null
+    and c.content_sha256=json_extract(d.metadata_json,'$.feed.investmentGate.bodySha256'))`;
 const TAGGED = `${currentExtractionSql('d', contract)}
   and json_extract(d.metadata_json,'$.feed.publishAllowed')=1
   and exists (select 1 from knowledge_information_records r where r.doc_id=d.doc_id)
@@ -239,7 +244,8 @@ informationFeedRoutes.get('/knowledge/information-records', async (c) => {
   const limit = Math.min(100, Math.max(1, Math.floor(Number(c.req.query('limit') || 50) || 50)));
   const where = [currentExtractionSql('d', contract), entityKey ? 'r.entity_key=?' : 'r.entity=?'];
   const values: Array<string | number> = [entityKey || entity!];
-  if (!local) where.push(ELIGIBLE, TAGGED);
+  where.push(ELIGIBLE);
+  if (!local) where.push(TAGGED);
   if (category) { where.push('r.category=?'); values.push(category); }
   if (from) { where.push('d.sort_time>=?'); values.push(new Date(from).toISOString()); }
   if (to) { where.push('d.sort_time<?'); values.push(new Date(to).toISOString()); }

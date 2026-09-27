@@ -3,7 +3,7 @@
 // Local-only ingest/tag runner. The production Worker never invokes a model.
 import { createHash, randomUUID } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildContentOptions, prepareKnowledgeContent } from './knowledge-content-r2.mjs';
@@ -11,6 +11,8 @@ import { executeLocalD1Sql, queryLocalD1Sql } from './lib/local-d1-sqlite.mjs';
 import { canonicalFeedUrl, classifyFeedItem, feedBodyHash, feedShingleSketch, sketchesOverlap, FEED_DEDUPE_VERSION } from './lib/information-feed-dedupe.mjs';
 import { normalizeFeedSource } from './lib/information-feed-source.mjs';
 import { feedCompanyCandidates } from './lib/information-feed-company-candidates.mjs';
+import { currentInvestmentGate, evaluateInvestmentRelevance, investmentRelevanceEnabled,
+  INVESTMENT_RELEVANCE_VERSION } from './lib/information-feed-relevance.mjs';
 import { feedCategoryCatalog, feedCategoryCatalogHash, parseFeedExtraction } from './lib/information-feed-extraction.mjs';
 import { isRecentFeedTime, recentFeedRows, MAX_FEED_AGE_HOURS } from './lib/information-feed-window.mjs';
 import { INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
@@ -38,8 +40,9 @@ if (!contractMatches(FEED_EXTRACTION_CONTRACT, EXTRACTION_CONTRACT)) throw new E
 
 if (args.mode !== 'ingest' && process.env.LLM_RUNTIME !== 'local') throw new Error('information feed tagging requires LLM_RUNTIME=local from the local launch script');
 
-const counters = { scanned: 0, accepted: 0, repeat: 0, update: 0, new: 0, rejected: {}, tagged: 0, tagFailed: 0 };
-const releaseLock = acquireLock(resolve(ROOT, 'data/local/information-feed.lock'));
+const counters = { scanned: 0, accepted: 0, repeat: 0, update: 0, new: 0, relevanceRejected: 0,
+  relevanceUncertain: 0, rejected: {}, tagged: 0, tagFailed: 0 };
+const releaseLock = acquireLock(resolve(ROOT, process.env.INFORMATION_FEED_LOCK_FILE || 'data/local/information-feed.lock'));
 try {
   if (args.mode === 'ingest' || args.mode === 'run') await ingest();
   if (args.mode === 'tag' || args.mode === 'run') await tagPending();
@@ -48,6 +51,10 @@ try {
 
 async function ingest() {
   const state = loadJson(stateFile, { files: {} });
+  if (state.investmentGateVersion !== INVESTMENT_RELEVANCE_VERSION) {
+    state.files = {};
+    state.investmentGateVersion = INVESTMENT_RELEVANCE_VERSION;
+  }
   const files = args.file ? [resolve(args.file)] : recentSourceFiles(args.lookbackDays);
   const rows = loadFeedRows();
   const candidates = rows.map((row) => ({ ...row, body: readLocalBody(row.content_key) })).filter((row) => row.body);
@@ -122,6 +129,14 @@ function ingestOne(source, candidates) {
     return;
   }
   const body = choice.kind === 'update' ? choice.delta : source.body;
+  const investmentGate = evaluateGate({ title: source.title, body, kind: choice.kind,
+    previousStoryRelevant: choice.kind === 'update' && choice.candidate?.feed?.investmentGate?.decision === 'pass' });
+  if (investmentGate.decision === 'uncertain') counters.relevanceUncertain += 1;
+  if (investmentGate.effectiveDisposition === 'reject') {
+    counters.relevanceRejected += 1;
+    auditRejectedSource(source, investmentGate);
+    return;
+  }
   const docId = `f_${createHash('sha256').update(`${source.identityKey}|${exactHash}`).digest('hex').slice(0, 24)}`;
   if (candidates.some((candidate) => candidate.doc_id === docId)) return;
   const storyKey = choice.kind === 'update' ? choice.candidate.feed.storyKey : docId;
@@ -131,6 +146,7 @@ function ingestOne(source, candidates) {
     kind: choice.kind, storyKey,
     previousItemId: choice.kind === 'update' ? choice.candidate.doc_id : null,
     fullBodyHash: exactHash, sketch, entityCodes: source.entityCodes, originalFormat: 'text', contentType: source.contentType,
+    investmentGate,
     sourceKey: source.sourceKey, sourceItemId: source.sourceItemId,
     sources: choice.kind === 'update'
       ? [...new Map([...(choice.candidate.feed.sources || []), sourceReference(source)].map((item) => [`${item.sourceKey}|${item.sourceItemId}|${item.url}`, item])).values()]
@@ -157,10 +173,12 @@ async function tagPending() {
   const day = new Date().toISOString().slice(0, 10);
   const usage = loadJson(usageFile, { day, count: 0 });
   if (usage.day !== day) { usage.day = day; usage.count = 0; }
-  const remainingToday = Math.max(0, Number(feedConfig.automation?.maxTagsPerDay || 200) - Number(usage.count || 0));
+  const remainingToday = Math.max(0, Number(feedConfig.automation?.maxTagsPerDay || 500) - Number(usage.count || 0));
   const limit = Math.min(args.maxTags, remainingToday);
   if (!limit) return;
-  const rows = recentFeedRows(loadFeedRows(), Date.now(), args.maxAgeHours)
+  const allRows = loadFeedRows();
+  const byId = new Map(allRows.map((row) => [row.doc_id, row]));
+  const rows = recentFeedRows(allRows, Date.now(), args.maxAgeHours)
     .filter((row) => !args.docId || row.doc_id === args.docId);
   const aliases = queryLocalD1Sql("select alias,code,name from knowledge_stock_aliases where length(alias)>=2", { requiredTable: 'knowledge_stock_aliases' });
   for (const row of rows) {
@@ -168,6 +186,14 @@ async function tagPending() {
     if (!isRecentFeedTime(row.sort_time, Date.now(), args.maxAgeHours)) continue;
     const body = readLocalBody(row.content_key);
     if (!body) continue;
+    if (!currentInvestmentGate(row.feed.investmentGate, { title: row.title, body })) {
+      const previous = byId.get(row.feed.previousItemId);
+      const gate = evaluateGate({ title: row.title, body, kind: row.feed.kind,
+        previousStoryRelevant: !!previous && previous.feed.investmentGate?.decision === 'pass' });
+      writeInvestmentGate(row.doc_id, gate);
+      row.feed.investmentGate = gate;
+    }
+    if (row.feed.investmentGate.effectiveDisposition !== 'pass') continue;
     const fingerprint = feedInputFingerprint(row, body, EXTRACTION_CONTRACT);
     if (!shouldAttemptExtraction(row.extraction, fingerprint, EXTRACTION_CONTRACT)) continue;
     const companyCandidates = feedCompanyCandidates(aliases, row.title, body, feedConfig.companyCandidates);
@@ -198,6 +224,34 @@ async function tagPending() {
       console.error(`[information-feed] extraction failed ${row.doc_id}: ${String(error?.message || error)}`);
     }
   }
+}
+
+function evaluateGate(input) {
+  const gate = evaluateInvestmentRelevance(input);
+  return investmentRelevanceEnabled ? gate
+    : { ...gate, decision: 'pass', effectiveDisposition: 'pass', reasonCodes: ['gate_disabled'] };
+}
+
+function writeInvestmentGate(docId, gate) {
+  executeLocalD1Sql(`update knowledge_docs set metadata_json=json_set(metadata_json,'$.feed.investmentGate',json(${q(JSON.stringify(gate))})),
+    updated_at=${Date.now()} where doc_id=${q(docId)} and source_type='information_feed'
+    and exists (select 1 from knowledge_doc_content_refs c where c.doc_id=knowledge_docs.doc_id and c.content_sha256=${q(gate.bodySha256)});`,
+  { requiredTable: 'knowledge_docs' });
+  const stored = queryLocalD1Sql(`select json_extract(metadata_json,'$.feed.investmentGate') as gate
+    from knowledge_docs where doc_id=${q(docId)}`, { requiredTable: 'knowledge_docs' })[0]?.gate;
+  if (stored !== JSON.stringify(gate)) throw new Error(`investment gate write failed: ${docId}`);
+}
+
+function auditRejectedSource(source, gate) {
+  const file = resolve(ROOT, process.env.INFORMATION_FEED_RELEVANCE_AUDIT_FILE || 'data/local/information-feed-relevance-rejected.jsonl');
+  mkdirSync(dirname(file), { recursive: true });
+  if (existsSync(file) && statSync(file).size > 10 * 1024 * 1024) {
+    if (existsSync(`${file}.1`)) unlinkSync(`${file}.1`);
+    renameSync(file, `${file}.1`);
+  }
+  appendFileSync(file, `${JSON.stringify({ sourceKey: source.sourceKey, sourceItemId: source.sourceItemId,
+    url: source.url, title: source.title, publishedAt: source.publishedAt, checkedAt: new Date().toISOString(),
+    ...gate })}\n`);
 }
 
 function loadFeedRows() {

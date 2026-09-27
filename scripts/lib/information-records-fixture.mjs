@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { FEED_EXTRACTION_CONTRACT } from '../generated/information-records-contract.mjs';
 import { claimExtraction, commitExtraction, readDocument, readDocumentSnapshot, feedInputFingerprint,
   sourceExpectation, sha, inTransaction } from './information-records-store.mjs';
+import { evaluateInvestmentRelevance } from './information-feed-relevance.mjs';
 
 export const contract = FEED_EXTRACTION_CONTRACT;
 export const record = { entity:'中际旭创',informationType:'fact',category:'revenue',period:'2026Q2',
@@ -36,7 +37,8 @@ export function fixture({migrate = true} = {}) {
 export function addDocument(db, {id = `f_${randomUUID().replaceAll('-','').slice(0,24)}`, body = record.statement,
   time = new Date().toISOString(),meta = {}, title = '公司资讯'} = {}) {
   const metadata = {...meta,feed:{version:'v1',originalFormat:'text',sourceKey:'cls_telegraph',sources:[{sourceKey:'cls_telegraph',url:'https://example.invalid/news'}],
-    kind:'new',storyKey:id,contentType:'news',fullBodyHash:sha(body),...meta.feed},
+    kind:'new',storyKey:id,contentType:'news',fullBodyHash:sha(body),
+    investmentGate:evaluateInvestmentRelevance({title,body}),...meta.feed},
     informationExtraction:meta.informationExtraction || {status:'pending',current:null,categoryCandidates:null}};
   db.prepare(`INSERT INTO knowledge_docs (doc_id,source_type,report_type,source_name,title,url,published_at,fetched_at,event_time,
     access_method,summary,content_preview,metadata_json,sort_time,source_name_normalized,updated_at)

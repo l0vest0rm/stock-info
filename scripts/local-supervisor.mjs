@@ -216,6 +216,8 @@ function requestCoreRestart(role) {
 function runOneShot({ command, args, cwd, env }) {
   return new Promise((resolveRun, rejectRun) => {
     const child = spawn(command, args, { cwd, env: { ...env, LOCAL_SUPERVISOR_RUN_ID: runId }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    let stdout = "";
+    child.stdout.on("data", (chunk) => { stdout = (stdout + chunk.toString()).slice(-1_000_000); });
     oneShots.set(child.pid, child);
     attachChildOutput("local-scheduler", child);
     log("local-scheduler", "one_shot_started", { command, child_pid: child.pid });
@@ -223,7 +225,7 @@ function runOneShot({ command, args, cwd, env }) {
     child.once("exit", (code, signal) => {
       oneShots.delete(child.pid);
       log("local-scheduler", "one_shot_exited", { command, child_pid: child.pid, exit_code: code, signal });
-      code === 0 ? resolveRun() : rejectRun(new Error(`${command} exited code=${code ?? "null"} signal=${signal ?? "none"}`));
+      code === 0 ? resolveRun({ stdout }) : rejectRun(new Error(`${command} exited code=${code ?? "null"} signal=${signal ?? "none"}`));
     });
   });
 }

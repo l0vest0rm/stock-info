@@ -50,7 +50,7 @@ chmod +x ./start-local.sh
 ### 资讯信息流
 
 本地页面为 `/news.html`，接口为 `/api/knowledge/feed` 和 `/api/knowledge/feed/facets`。
-`config/information-feed.json` 控制每 15 分钟的财联社采集、腾讯/财联社文件入库、打标上限与远端发布开关；去重只使用工程规则，模型只打公司/主题标签。腾讯原始 JSON 由仓库外的现有采集器提供。手动处理和检查：
+`config/information-feed.json` 控制本地资讯文件变更触发的即时入库/提取、财联社采集、每日 500 次提取上限与远端发布开关。财联社源站无推送接口，因此仅采集仍每 60 秒轮询；无新增或修订内容时不运行入库/提取。腾讯原始 JSON 由仓库外的现有采集器提供，写入共享 news 目录后触发处理。相关性规则先于入库和模型调用执行；生产 Worker 不调用模型，远端发布默认关闭。手动处理和检查：
 
 ```bash
 npm run process:feed -- --max-documents 200 --max-tags 20

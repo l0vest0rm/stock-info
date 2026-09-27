@@ -3,22 +3,34 @@
   "automation": {
     "enabled": true,
     "runOnStart": true,
-    "cron": "*/15 * * * *",
-    "maxDocumentsPerRun": 200,
+    "maxDocumentsPerRun": 10000,
     "maxTagsPerRun": 20,
-    "maxTagsPerDay": 300,
+    "maxTagsPerDay": 500,
     "lookbackDays": 3,
     "maxAgeHours": 48,
-    "publishRemote": false
+    "publishRemote": false,
+    "clsPollSeconds": 60,
+    "changeDebounceMs": 300,
+    "retrySeconds": 30
   },
   "remotePublication": {
-    "cls_telegraph": { "fullTextAllowed": true },
-    "tencent_stock_news": { "fullTextAllowed": true }
+    "cls_telegraph": {
+      "fullTextAllowed": true
+    },
+    "tencent_stock_news": {
+      "fullTextAllowed": true
+    }
   },
   "companyCandidates": {
     "excludedMappings": [
-      { "code": "000660.SZ", "name": "SK海力士" },
-      { "code": "005930.SZ", "name": "三星电子" }
+      {
+        "code": "000660.SZ",
+        "name": "SK海力士"
+      },
+      {
+        "code": "005930.SZ",
+        "name": "三星电子"
+      }
     ]
   }
 }

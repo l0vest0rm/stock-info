@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fetchClsRollPage, mapClsTelegraphItem } from "./lib/cls-news.mjs";
 
@@ -86,8 +86,10 @@ const docs = items
 const outputFile = join(outputDir, `cls-telegraph-${formatDate(now)}.jsonl`);
 const existingDocs = loadJsonLines(outputFile);
 const mergedDocs = docs.length > 0 ? mergeDocs(existingDocs, docs) : existingDocs;
-if (docs.length > 0) {
-  writeFileSync(outputFile, `${mergedDocs.map((doc) => JSON.stringify(doc)).join("\n")}\n`);
+if (JSON.stringify(mergedDocs) !== JSON.stringify(existingDocs)) {
+  const temporary = `${outputFile}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${mergedDocs.map((doc) => JSON.stringify(doc)).join("\n")}\n`);
+  renameSync(temporary, outputFile);
 }
 const latestCtime = Math.max(previousLatestCtime, ...items.map((item) => Number(item.ctime)), 0);
 writeFileSync(stateFile, `${JSON.stringify({
@@ -138,7 +140,9 @@ function mergeDocs(existing, incoming) {
   for (const doc of [...existing, ...incoming]) {
     const docId = String(doc?.docId ?? "").trim();
     if (!docId) throw new Error("CLS output contains a document without docId");
-    byId.set(docId, doc);
+    const previous = byId.get(docId);
+    byId.set(docId, previous && JSON.stringify({ ...previous, fetchedAt: null }) === JSON.stringify({ ...doc, fetchedAt: null })
+      ? previous : doc);
   }
   return [...byId.values()].sort((left, right) =>
     String(left.publishedAt || "").localeCompare(String(right.publishedAt || ""))

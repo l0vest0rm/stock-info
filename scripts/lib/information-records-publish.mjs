@@ -1,6 +1,7 @@
 import { canonicalJson, extractionIsCurrent, INFORMATION_STORAGE_VERSION, sqlText as q,
   tagsForInformationRows } from '../../src/modules/knowledge/domain/information-records.ts';
 import { sha, recordDigest, RECORD_COLUMNS } from './information-records-store.mjs';
+import relevanceConfig from '../../config/information-feed-relevance.json' with { type: 'json' };
 
 export const DOCUMENT_COLUMNS = ['doc_id','source_type','report_type','source_name','title','url','published_at','fetched_at','event_time','access_method',
   'summary','content_preview','metadata_json','sort_time','source_name_normalized','updated_at'];
@@ -11,6 +12,10 @@ export function publicationEligible(snapshot, contract, permissions, categories)
   const state = snapshot.meta.informationExtraction;
   if (snapshot.source_type !== 'information_feed' || snapshot.access_method !== 'markdown' || feed.version !== 'v1'
     || feed.originalFormat !== 'text' || permissions[feed.sourceKey]?.fullTextAllowed !== true || !snapshot.content_key
+    || feed.investmentGate?.policyVersion !== relevanceConfig.version
+    || feed.investmentGate?.effectiveDisposition !== 'pass'
+    || feed.investmentGate?.title !== snapshot.title
+    || feed.investmentGate?.bodySha256 !== snapshot.content_sha256
     || !extractionIsCurrent(state, snapshot, contract) || !Array.isArray(state.categoryCandidates) || state.categoryCandidates.length
     || !snapshot.records.length || state.current.recordCount !== snapshot.records.length
     || snapshot.records.some((record) => !categories.has(record.category))
@@ -31,14 +36,15 @@ export function publicationFingerprint(snapshot) {
     content: { key:snapshot.content_key, sha256:snapshot.content_sha256 },
     feed: snapshot.meta.feed ? { storyKey:snapshot.meta.feed.storyKey, kind:snapshot.meta.feed.kind,
       previousItemId:snapshot.meta.feed.previousItemId, sources:snapshot.meta.feed.sources,
-      originalFormat:snapshot.meta.feed.originalFormat, sourceKey:snapshot.meta.feed.sourceKey } : null,
+      originalFormat:snapshot.meta.feed.originalFormat, sourceKey:snapshot.meta.feed.sourceKey,
+      investmentGate:snapshot.meta.feed.investmentGate } : null,
     current:snapshot.meta.informationExtraction?.current, tags:validSnapshotTags(snapshot) }));
 }
 
 export function remotePublicationMetadata(snapshot, token, fingerprint) {
   const feed = {};
   for (const key of ['version','dedupeVersion','kind','storyKey','previousItemId','fullBodyHash','sketch','entityCodes',
-    'originalFormat','contentType','sourceKey','sourceItemId','sources']) {
+    'originalFormat','contentType','sourceKey','sourceItemId','sources','investmentGate']) {
     if (snapshot.meta.feed?.[key] !== undefined) feed[key] = snapshot.meta.feed[key];
   }
   // Only whitelisted successful provenance reaches production. No candidate

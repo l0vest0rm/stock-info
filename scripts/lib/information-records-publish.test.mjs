@@ -10,7 +10,8 @@ test('publication eligibility checks records, tags, digest, policy and local rev
   const f=fixture();try {const doc=addDocument(f.db);extract(f,doc);const saved=snapshot(f,doc.id);
     assert.equal(publicationEligible(saved,contract,permissions,categories),true);
     for(const mutate of [s=>s.records[0].statement+='tamper',s=>s.tags=[],s=>s.meta.informationExtraction.categoryCandidates=null,
-      s=>s.meta.informationExtraction.status='failed',s=>s.meta.feed.originalFormat='pdf',s=>s.content_sha256='wrong']){
+      s=>s.meta.informationExtraction.status='failed',s=>s.meta.feed.originalFormat='pdf',s=>s.content_sha256='wrong',
+      s=>s.meta.feed.investmentGate.effectiveDisposition='reject',s=>s.meta.feed.investmentGate.policyVersion='old']){
       const bad=structuredClone(saved);mutate(bad);assert.equal(publicationEligible(bad,contract,permissions,categories),false);
     }
   }finally{f.close();}

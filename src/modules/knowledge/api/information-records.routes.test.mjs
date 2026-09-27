@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 if (!process.env.INFORMATION_RECORDS_API_BUNDLE) throw new Error('run npm run test:information-records');
 const { informationFeedRoutes } = await import(process.env.INFORMATION_RECORDS_API_BUNDLE);
 import { fixture,addDocument,extract,record } from '../../../../scripts/lib/information-records-fixture.mjs';
+import { evaluateInvestmentRelevance } from '../../../../scripts/lib/information-feed-relevance.mjs';
 
 function client(f,local=true){
   const app=new Hono().route('/api',informationFeedRoutes);
@@ -55,6 +56,18 @@ test('content type filtering uses the same default as the feed response and face
     const get=client(f);
     assert.equal((await get('/knowledge/feed?content_type=news')).data.list[0].content_type,'news');
     assert.deepEqual((await get('/knowledge/feed/facets')).data.content_types,[{id:'news',count:1}]);
+  }finally{f.close();}
+});
+
+test('rejected investment relevance is absent from feed, facets and entity material',async()=>{
+  const f=fixture();try {
+    const title='中国队获得亚运会篮球铜牌',body='中国队在篮球比赛中获得铜牌。';
+    const rejected=addDocument(f.db,{title,body,meta:{feed:{investmentGate:evaluateInvestmentRelevance({title,body})}}});
+    extract(f,rejected,[{...record,statement:'中国队在篮球比赛中获得铜牌。',entity:'中国队'}]);
+    const get=client(f);
+    assert.equal((await get('/knowledge/feed')).data.list.length,0);
+    assert.deepEqual((await get('/knowledge/feed/facets')).data.entities,[]);
+    assert.equal((await get('/knowledge/information-records?entity='+encodeURIComponent('中国队'))).data.list.length,0);
   }finally{f.close();}
 });
 
