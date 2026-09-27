@@ -82,8 +82,8 @@ export function evaluateInvestmentRelevance({ title, body, stockEntries = [] }) 
   const content = String(body || '');
   const normalizedTitle = fold(heading);
   const text = (heading + '\n' + content.slice(0, 600)).normalize('NFKC');
-  const result = (decision, reasonCodes, evidence = []) => ({ decision, effectiveDisposition: decision,
-    reasonCodes, evidence, policyVersion: INVESTMENT_RELEVANCE_VERSION, title: heading,
+  const result = (decision, reasonCodes, evidence = [], matchedKeywords = []) => ({ decision, effectiveDisposition: decision,
+    reasonCodes, evidence, ...(decision === 'pass' ? { matchedKeywords } : {}), policyVersion: INVESTMENT_RELEVANCE_VERSION, title: heading,
     bodySha256: investmentRelevanceBodyHash(content), stockWhitelistHash: stockWhitelistHash(stockEntries) });
   if (!heading || !content) return result('reject', ['missing_input']);
   if (marketRoundup.test(heading) || (priceOnly.test(heading) && !operationalCue.test(content.slice(0, 600))))
@@ -92,11 +92,16 @@ export function evaluateInvestmentRelevance({ title, body, stockEntries = [] }) 
     && !quoteOnly.factCue.test(text)) return result('reject', ['quote_only']);
 
   const stock = matchedStock(heading, stockEntries);
-  if (stock && companyEvent.test(text)) return result('pass', ['stock'], [stock.code, stock.matched]);
+  const stockEvent = stock && companyEvent.exec(text);
+  if (stock && stockEvent) return result('pass', ['stock'], [stock.code, stock.matched], [stock.matched, stockEvent[0]]);
   const industry = whitelist.industries.find((aliases) => aliases.some((alias) => containsAlias(normalizedTitle, alias)));
-  if (industry && industryEvent.test(text)) return result('pass', ['industry'], [industry[0]]);
+  const industryAlias = industry?.find((alias) => containsAlias(normalizedTitle, alias));
+  const matchedIndustryEvent = industryAlias && industryEvent.exec(text);
+  if (industryAlias && matchedIndustryEvent) return result('pass', ['industry'], [industry[0]], [industryAlias, matchedIndustryEvent[0]]);
   for (const rule of macro) {
-    if (rule.subject.test(heading) && rule.event.test(text)) return result('pass', ['macro_' + rule.name]);
+    const subject = rule.subject.exec(heading);
+    const event = subject && rule.event.exec(text);
+    if (subject && event) return result('pass', ['macro_' + rule.name], [], [subject[0], event[0]]);
   }
   return result('reject', ['whitelist_miss']);
 }

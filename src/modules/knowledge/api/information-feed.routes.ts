@@ -106,11 +106,17 @@ async function mapRow(row: FeedRow, cutoff: string, local: boolean, filters?: Re
   const leadingTags = new Set(orderedRows.length ? [`category:${orderedRows[0].category}`, orderedRows[0].entity_key] : []);
   const rawStatus = extraction?.status || 'pending';
   const status = !valid && row.sort_time < cutoff ? 'expired' : rawStatus === 'complete' && !valid ? 'pending' : rawStatus;
+  const gate = metadata.feed?.investmentGate;
   return {
     doc_id: row.doc_id, title: row.title, url: row.url, source_name: row.source_name,
     published_at: row.published_at, sort_time: row.sort_time, summary: row.summary,
     content_type: metadata.feed?.contentType || 'news', kind: metadata.feed?.kind || 'new', story_key: metadata.feed?.storyKey || row.doc_id,
     tagging_status: status,
+    whitelist_match: gate?.effectiveDisposition === 'pass' ? {
+      reason_code: String(gate.reasonCodes?.[0] || ''),
+      matched_keywords: Array.isArray(gate.matchedKeywords) ? gate.matchedKeywords.filter((value: unknown): value is string => typeof value === 'string') : [],
+      evidence: Array.isArray(gate.evidence) ? gate.evidence.filter((value: unknown): value is string => typeof value === 'string') : [],
+    } : null,
     sources: ((metadata.feed?.sources || []) as Array<{ sourceKey: string }>).map((source) => source.sourceKey),
     tags: tags.sort((a, b) => Number(leadingTags.has(b.tagId)) - Number(leadingTags.has(a.tagId)) || b.weight - a.weight), industries,
     records: orderedRows.map((record) => ({ ...rowToInformation(record), information_id: record.information_id,

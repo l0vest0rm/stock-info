@@ -6,10 +6,11 @@ type FeedRecord = { entity: string; informationType: string; category: string; p
   statement: string; forecastMeasurement?: ForecastMeasurement | null }
 type CategoryCandidate = { entity: string; informationType: string; statement: string; suggestedCategory: string;
   evidence: string; whyNotExisting: string }
+type WhitelistMatch = { reason_code: string; matched_keywords: string[]; evidence: string[] }
 type FeedItem = { doc_id: string; title: string; url: string | null; source_name: string | null; published_at: string | null;
   summary: string | null; kind: string; story_key: string; tagging_status: string; sources: string[];
   tags: Array<{ tagId: string; weight: number }>; industries: string[]; records: FeedRecord[];
-  category_candidates?: CategoryCandidate[] | null }
+  category_candidates?: CategoryCandidate[] | null; whitelist_match: WhitelistMatch | null }
 type FeedPage = { list: FeedItem[]; has_next: boolean; next_cursor: string | null }
 type RejectedItem = { title: string; url: string; sourceKey: string; publishedAt: string; checkedAt: string;
   reasonCodes: string[]; policyVersion: string }
@@ -34,6 +35,7 @@ style.textContent = `
 .feed-card p{color:#53616a;font-size:.86rem;margin:.28rem 0 0;line-height:1.45;overflow-wrap:anywhere}.feed-excerpt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.feed-extra-record{display:none}.feed-card.is-expanded h2,.feed-card.is-expanded .feed-excerpt{display:block}.feed-card.is-expanded .feed-extra-record{display:block}
 .feed-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:.45rem;flex-wrap:wrap;margin-top:.48rem}.feed-tags{display:flex;align-items:center;gap:.3rem;min-width:0;flex-wrap:nowrap;overflow:hidden}.feed-card.is-expanded .feed-tags{flex-wrap:wrap;overflow:visible}.feed-tag,.feed-type-tag,.feed-entity-tag{font-size:.69rem;border-radius:99px;padding:.1rem .47rem;white-space:nowrap}.feed-tag{color:#176356;background:#e7f4f0}.feed-type-tag{color:#3c4fa0;background:#edf0ff}.feed-entity-tag{color:#526578;background:#edf2f5}.feed-tag-extra{display:none}.feed-card.is-expanded .feed-tag-extra{display:inline}.feed-card.is-expanded .feed-tags-more{display:none}.feed-card-actions{display:flex;align-items:center;gap:.7rem;margin-left:auto}.feed-expand,.feed-original{font-size:.77rem;color:#176b5b;text-decoration:none;white-space:nowrap}.feed-expand{border:0;background:none;padding:0}.feed-expand:hover,.feed-original:hover{text-decoration:underline}
 .feed-structured{margin-top:.7rem;padding:.8rem;background:#f7faf9;border:1px solid #dce9e4;border-radius:.65rem}.feed-structured[hidden]{display:none}.feed-structured-heading{font-size:.83rem;font-weight:750;color:#234b43}.feed-structured-note{font-size:.73rem;color:#73848a;margin:.1rem 0 .65rem!important}.feed-structured-empty{font-size:.82rem;margin:.2rem 0!important}.feed-structured-record{background:#fff;border:1px solid #e3ebe9;border-radius:.55rem;padding:.7rem .8rem}.feed-structured-record+.feed-structured-record{margin-top:.55rem}.feed-structured-record-title{display:flex;align-items:center;gap:.5rem;font-size:.82rem;font-weight:750;color:#294a43;margin-bottom:.5rem}.feed-structured-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem .9rem;margin:0}.feed-structured-grid>div{min-width:0}.feed-structured-grid .feed-structured-wide{grid-column:1/-1}.feed-structured-grid dt{font-size:.7rem;color:#77878c;font-weight:500}.feed-structured-grid dd{font-size:.82rem;color:#2f4349;margin:.08rem 0 0;overflow-wrap:anywhere}.feed-structured-subtitle{font-size:.76rem;font-weight:700;color:#45645c;margin:.65rem 0 .4rem;border-top:1px solid #edf1ef;padding-top:.55rem}
+.feed-whitelist{background:#edf7f2;border:1px solid #d4e8dd;border-radius:.55rem;padding:.65rem .8rem;margin-bottom:.7rem}.feed-whitelist .feed-structured-subtitle{margin:0 0 .4rem;padding:0;border:0}
 .feed-update{font-size:.69rem;color:#9c5b00;background:#fff2d9;border-radius:99px;padding:.1rem .46rem}.feed-more{display:block;margin:1.5rem auto}
 .feed-review-switch{display:flex;gap:.5rem;margin:0 0 1rem}.feed-review-controls{display:flex;flex-wrap:wrap;gap:.55rem;margin-bottom:1rem}.feed-review-controls>*{border:1px solid #dce6e8;border-radius:.5rem;padding:.48rem .6rem;background:#fff;font-size:.82rem}.feed-review-controls input{min-width:240px;flex:1}.feed-review-reason{font-size:.72rem;color:#795826;background:#fff4dc;border-radius:99px;padding:.15rem .5rem}
 @media(max-width:600px){.feed-hero{padding:1.4rem}.feed-card{padding:.8rem .85rem}.feed-filter{padding:1rem}.feed-quick-group{display:block}.feed-quick-label{display:block;padding:0 0 .35rem}.feed-filter-menu{flex:1 1 calc(50% - .55rem)}.feed-filter-menu-panel{position:static;width:100%;max-width:none;box-shadow:none;margin-top:.3rem}.feed-filter-menu[open]{flex-basis:100%}.feed-structured-grid{grid-template-columns:1fr}}
@@ -318,6 +320,34 @@ function formatForecastAmount(measurement: ForecastMeasurement) {
   return `${measurement.rawValue} ${unit}`
 }
 
+function whitelistLabel(reason: string) {
+  return ({ stock: '公司事件', industry: '行业事件', macro_central_bank: '央行政策',
+    macro_economic_data: '经济数据', macro_trade_policy: '贸易政策', macro_market_structure: '市场制度',
+    macro_fiscal_policy: '财政政策' } as Record<string, string>)[reason] || reason || '未知规则'
+}
+
+function renderWhitelistMatch(match: WhitelistMatch | null) {
+  const section = el('section', 'feed-whitelist')
+  section.append(el('div', 'feed-structured-subtitle', '白名单保留依据'))
+  if (!match) {
+    section.append(el('p', 'feed-structured-note', '未找到保留依据。'))
+    return section
+  }
+  const fields = el('dl', 'feed-structured-grid')
+  fields.append(structuredField('命中规则', whitelistLabel(match.reason_code)))
+  if (match.matched_keywords.length) {
+    fields.append(structuredField('命中关键词（主体 / 事件）', match.matched_keywords.join('、'), true))
+  } else {
+    const legacySubject = match.reason_code === 'stock' ? match.evidence[1]
+      : match.reason_code === 'industry' ? match.evidence[0] : ''
+    if (legacySubject) fields.append(structuredField('已记录的主体 / 领域', legacySubject, true))
+    fields.append(structuredField('事件关键词', '旧记录未保存具体命中词', true))
+  }
+  if (match.reason_code === 'stock' && match.evidence[0]) fields.append(structuredField('股票代码', match.evidence[0]))
+  section.append(fields)
+  return section
+}
+
 function renderStructuredResult(item: FeedItem) {
   const panel = el('section', 'feed-structured')
   panel.id = `feed-structured-${item.doc_id}`
@@ -325,6 +355,7 @@ function renderStructuredResult(item: FeedItem) {
   panel.hidden = true
   panel.append(el('div', 'feed-structured-heading', `提取记录 · ${item.records.length} 条`),
     el('p', 'feed-structured-note', '结构化摘录仅反映来源表述，未经独立核实。'))
+  panel.append(renderWhitelistMatch(item.whitelist_match))
   if (!item.records.length) {
     panel.append(el('p', 'feed-structured-empty', item.category_candidates?.length
       ? '没有匹配当前类别目录的记录；以下类别候选尚未审核。'
