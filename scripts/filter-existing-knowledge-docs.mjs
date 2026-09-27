@@ -67,7 +67,6 @@ function loadDocuments(database) {
       from knowledge_docs d
       left join knowledge_doc_tags t on t.doc_id = d.doc_id
      where d.source_type != 'information_feed'
-       and not exists (select 1 from knowledge_information_records r where r.doc_id=d.doc_id)
      group by d.doc_id
      order by d.doc_id
   `);
@@ -97,9 +96,8 @@ function deleteDocuments(databaseFile, docIds) {
     writeFileSync(sqlFile, `
       create temp table historical_blacklist_doc_ids (doc_id text primary key);
       ${values}
-      -- Direct document ownership; protect newly extracted data from a stale scan.
-      delete from knowledge_docs where doc_id in (${selectedDocs}) and source_type!='information_feed'
-        and not exists (select 1 from knowledge_information_records r where r.doc_id=knowledge_docs.doc_id);
+      -- Information-feed documents belong to the news pipeline, not this cleanup.
+      delete from knowledge_docs where doc_id in (${selectedDocs}) and source_type!='information_feed';
     `);
     executeLocalD1SqlFile(sqlFile, { root, requiredTable: "knowledge_docs" });
   } finally {

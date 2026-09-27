@@ -20,6 +20,7 @@ try {
     'scripts/lib/information-records-publish.test.mjs',
     'scripts/lib/information-records-reconcile.test.mjs',
     'scripts/information-records-migration.test.mjs',
+    'scripts/knowledge-cleanup-boundary.test.mjs',
     'scripts/check-no-new-tables.test.mjs',
     'src/modules/knowledge/api/information-records.routes.test.mjs'], {
     cwd: root, stdio: 'inherit', env: { ...process.env, INFORMATION_RECORDS_API_BUNDLE: pathToFileURL(bundle).href },

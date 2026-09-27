@@ -20,6 +20,7 @@
 - 行情、财务、基金、宏观、知识、资讯和投资研究各由相应业务模块提供 API。股票 K 线只使用雪球；基金净值历史只使用东方财富。美股财务使用 Yahoo，且本地须经配置的代理；上游失败不静默换源。
 - 知识导入在本地完成清洗、处理和入库；远端 D1/R2 发布是独立步骤。本地处理成功不代表生产可见，须分别通过生产 API 或远端存储验证。
 - 资讯采集后先以 `config/knowledge/information-feed-policy.json` 的 `relevance` 和 `whitelist` 做投资相关性门禁，通过后才进入本地入库和模型提取。拒绝标题、链接与原因只追加至本地 `data/local/information-feed-relevance-rejected.jsonl`；本地资讯页可筛选复核。`config/knowledge/information-feed.json` 控制触发、每日提取上限和远端发布开关。
+- `knowledge_information_records` 仅供资讯页及其提取、发布、回填和对账链路使用，不提供独立实体记录查询 API。通用知识库过期清理和黑名单过滤按 `source_type` 排除 `information_feed`，不读取资讯记录表或提取状态；其它来源不因历史提取记录而豁免清理。历史迁移保留不改写。
 - 公司投资研究区分来源资料、确定性派生观察、模型草稿和用户研究结论。经营公司与上市证券不是同一对象；未经确认的映射不得把证券行情或来源记录升级为共享公司事实。
 
 ## LLM 与发布隔离

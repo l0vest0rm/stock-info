@@ -59,7 +59,7 @@ test('content type filtering uses the same default as the feed response and face
   }finally{f.close();}
 });
 
-test('rejected investment relevance is absent from feed, facets and entity material',async()=>{
+test('rejected investment relevance is absent from feed and facets',async()=>{
   const f=fixture();try {
     const title='中国队获得亚运会篮球铜牌',body='中国队在篮球比赛中获得铜牌。';
     const rejected=addDocument(f.db,{title,body,meta:{feed:{investmentGate:evaluateInvestmentRelevance({title,body})}}});
@@ -67,42 +67,20 @@ test('rejected investment relevance is absent from feed, facets and entity mater
     const get=client(f);
     assert.equal((await get('/knowledge/feed')).data.list.length,0);
     assert.deepEqual((await get('/knowledge/feed/facets')).data.entities,[]);
-    assert.equal((await get('/knowledge/information-records?entity='+encodeURIComponent('中国队'))).data.list.length,0);
   }finally{f.close();}
 });
 
-test('entity query selects only the matching record in a multi-company document',async()=>{
-  const f=fixture();try {const second={...record,entity:'澜起科技',statement:'澜起科技2026Q2收入增长。'},doc=addDocument(f.db,{body:record.statement+second.statement});
-    extract(f,doc,[record,second],[],{companyCandidates:[{name:'中际旭创',matchedAlias:'中际旭创',tagId:'company:300308.SZ'},{name:'澜起科技',matchedAlias:'澜起科技',tagId:'company:688008.SH'}]});
-    const response=await client(f)('/knowledge/information-records?entity_key=company%3A300308.SZ');assert.equal(response.status,200);assert.equal(response.data.list.length,1);
-    assert.equal(response.data.list[0].entity,'中际旭创');assert.ok(response.data.list[0].information_id);assert.ok(response.data.list[0].records_digest);
-  }finally{f.close();}
-});
-
-test('entity material includes historical updates, not only the newest story card or 48 hours',async()=>{
-  const f=fixture();try {const old=addDocument(f.db,{time:new Date(Date.now()-10*86400000).toISOString()});extract(f,old);
-    const update=addDocument(f.db,{meta:{feed:{storyKey:old.id,kind:'update',previousItemId:old.id}}});extract(f,update);
-    const get=client(f);const feed=await get('/knowledge/feed');assert.equal(feed.data.list.length,1);assert.equal(feed.data.list[0].doc_id,update.id);
-    const info=await get('/knowledge/information-records?entity_key=company%3A300308.SZ');assert.equal(info.data.list.length,2);
-    assert.equal(info.data.list[0].previous_item_id,old.id);
-    const page=await get('/knowledge/information-records?entity_key=company%3A300308.SZ&limit=1');
-    const next=await get('/knowledge/information-records?entity_key=company%3A300308.SZ&limit=1&cursor='+encodeURIComponent(page.data.next_cursor));assert.equal(next.data.list[0].doc_id,old.id);
-  }finally{f.close();}
-});
-
-test('digest tampering and source-content changes are excluded from entity summaries',async()=>{
+test('digest tampering hides records from feed cards',async()=>{
   const f=fixture();try {const doc=addDocument(f.db);extract(f,doc);const get=client(f);
-    assert.equal((await get('/knowledge/information-records?entity='+encodeURIComponent(record.entity))).data.list.length,1);
+    assert.equal((await get('/knowledge/feed')).data.list[0].records.length,1);
     f.db.prepare("UPDATE knowledge_information_records SET statement=statement||'changed' WHERE doc_id=?").run(doc.id);
-    assert.equal((await get('/knowledge/information-records?entity='+encodeURIComponent(record.entity))).data.list.length,0);
+    assert.equal((await get('/knowledge/feed')).data.list[0].records.length,0);
   }finally{f.close();}
 });
 
 test('unresolved non-company names remain retrievable without a fabricated entity key',async()=>{
   const f=fixture();try {const item={...record,entity:'测试,市场',statement:'测试,市场2026Q2收入增长。'},doc=addDocument(f.db,{body:item.statement});extract(f,doc,[item]);
     const get=client(f);
-    const response=await get('/knowledge/information-records?entity='+encodeURIComponent(item.entity));
-    assert.equal(response.data.list.length,1);assert.equal(response.data.list[0].entity_key,null);assert.equal(response.data.list[0].entity_resolved,false);
     const facets=(await get('/knowledge/feed/facets')).data.entities;
     assert.deepEqual(facets,[{id:`entity:${encodeURIComponent(item.entity)}`,count:1,label:item.entity}]);
     const feed=await get('/knowledge/feed?entity='+encodeURIComponent(facets[0].id));
@@ -112,12 +90,11 @@ test('unresolved non-company names remain retrievable without a fabricated entit
   }finally{f.close();}
 });
 
-test('review candidates are local-only and exclude the document from default entity material',async()=>{
+test('review candidates are local-only',async()=>{
   const f=fixture();try {const evidence='测试平台发生持续两小时以上的服务中断';const doc=addDocument(f.db,{body:record.statement+evidence});
     const candidate={entity:'测试平台',informationType:'event',statement:evidence+'。',suggestedCategory:'服务中断',evidence,whyNotExisting:'产品研发不涵盖在线服务故障。'};
     extract(f,doc,[record],[candidate]);const get=client(f);
     const feed=await get('/knowledge/feed?status=category_gap');assert.equal(feed.data.list.length,1);assert.equal(feed.data.list[0].records.length,1);assert.equal(feed.data.list[0].category_candidates.length,1);
-    assert.equal((await get('/knowledge/information-records?entity_key=company%3A300308.SZ')).data.list.length,0);
     assert.equal((await client(f,false)('/knowledge/feed')).data.list.length,0);
   }finally{f.close();}
 });
@@ -140,8 +117,10 @@ test('empty successful extraction remains complete and unclassified',async()=>{
   }finally{f.close();}
 });
 
-test('entity endpoint validates ambiguous filters and malformed cursor/date inputs',async()=>{
-  const f=fixture();try {const get=client(f);
-    for(const query of ['', '?entity=A&entity_key=B','?entity=A&cursor=invalid','?entity=A&from=wrong'])assert.equal((await get('/knowledge/information-records'+query)).status,400);
-  }finally{f.close();}
+test('standalone entity records endpoint is removed in both runtimes',async()=>{
+  for (const local of [true,false]) {
+    const app=new Hono().route('/api',informationFeedRoutes);
+    const response=await app.request('/api/knowledge/information-records?entity=A',{}, {APP_RUNTIME:local?'node':'worker'});
+    assert.equal(response.status,404);
+  }
 });

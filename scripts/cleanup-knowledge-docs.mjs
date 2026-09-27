@@ -69,8 +69,7 @@ function cleanupKnowledgeDocs(options) {
   const expiredDocs = querySingleInteger(`
     select count(*) as count
     from knowledge_docs
-    where not exists (select 1 from knowledge_information_records r where r.doc_id=knowledge_docs.doc_id)
-      and json_type(metadata_json,'$.informationExtraction.current') IS NOT 'object'
+    where source_type != 'information_feed'
       and coalesce(event_time, published_at, fetched_at, '') != ''
       and datetime(coalesce(event_time, published_at, fetched_at)) < datetime(${sqlString(cutoffIso)})
   `, options);
@@ -80,8 +79,7 @@ function cleanupKnowledgeDocs(options) {
     where doc_id in (
       select doc_id
       from knowledge_docs
-      where not exists (select 1 from knowledge_information_records r where r.doc_id=knowledge_docs.doc_id)
-      and json_type(metadata_json,'$.informationExtraction.current') IS NOT 'object'
+      where source_type != 'information_feed'
       and coalesce(event_time, published_at, fetched_at, '') != ''
         and datetime(coalesce(event_time, published_at, fetched_at)) < datetime(${sqlString(cutoffIso)})
     )
@@ -90,8 +88,7 @@ function cleanupKnowledgeDocs(options) {
   if (options.apply && expiredDocs > 0) {
     executeSql(`
       delete from knowledge_docs
-      where not exists (select 1 from knowledge_information_records r where r.doc_id=knowledge_docs.doc_id)
-      and json_type(metadata_json,'$.informationExtraction.current') IS NOT 'object'
+      where source_type != 'information_feed'
       and coalesce(event_time, published_at, fetched_at, '') != ''
         and datetime(coalesce(event_time, published_at, fetched_at)) < datetime(${sqlString(cutoffIso)});
     `, options);

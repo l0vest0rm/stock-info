@@ -81,14 +81,11 @@ await check("information feed page and API", async () => {
   }
 });
 
-await check("entity information record API", async () => {
-  const missingEntity = await fetchWithTimeout(`${baseUrl}/api/knowledge/information-records`);
-  assert(missingEntity.status === 400, 'record query must require an explicit entity');
-  const body = await fetchApi('/api/knowledge/information-records?entity_key=company%3A300308.SZ&limit=2');
-  assert(Array.isArray(body.data?.list) && typeof body.data?.has_next === 'boolean', 'record query pagination is missing');
-  assert(body.data.list.every((record) => record.entity_key === 'company:300308.SZ'
-    && record.information_id && record.doc_id && record.statement && record.input_fingerprint
-    && record.records_digest && record.source), 'entity query returned a wrong-owner or untraceable record');
+await check("standalone entity information record API is removed", async () => {
+  for (const query of ['', '?entity_key=company%3A300308.SZ&limit=2']) {
+    const response = await fetchWithTimeout(`${baseUrl}/api/knowledge/information-records${query}`);
+    assert(response.status === 404, 'standalone record query must not be exposed');
+  }
 });
 
 await check("retired information processing surfaces", async () => {

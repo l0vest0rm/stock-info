@@ -230,51 +230,7 @@ informationFeedRoutes.get('/knowledge/feed/story', async (c) => {
   return ok(c, { list: local ? list : list.filter((row) => row.records.length > 0) });
 });
 
-// Record-level input for entity summaries. No latest-card or 48-hour restriction.
-informationFeedRoutes.get('/knowledge/information-records', async (c) => {
-  const local = isLocalDevelopmentRuntime(c.env);
-  const entityKey = c.req.query('entity_key')?.trim();
-  const entity = c.req.query('entity')?.trim();
-  if ((!entityKey && !entity) || (entityKey && entity) || (entityKey || entity || '').length > 200) return fail(c, 400, 'provide exactly one entity_key or entity');
-  const category = c.req.query('category')?.trim();
-  if (category && !categories.has(category)) return fail(c, 400, 'unknown category');
-  const from = c.req.query('from'), to = c.req.query('to');
-  if ([from,to].some((value) => value !== undefined && !Number.isFinite(Date.parse(value)))) return fail(c, 400, 'invalid date range');
-  const cursor = parseCursor(c.req.query('cursor'));
-  if (c.req.query('cursor') && (!cursor || !Number.isSafeInteger(cursor.position) || cursor.position! < 0)) return fail(c, 400, 'invalid cursor');
-  const limit = Math.min(100, Math.max(1, Math.floor(Number(c.req.query('limit') || 50) || 50)));
-  const where = [currentExtractionSql('d', contract), entityKey ? 'r.entity_key=?' : 'r.entity=?'];
-  const values: Array<string | number> = [entityKey || entity!];
-  where.push(ELIGIBLE);
-  if (!local) where.push(TAGGED);
-  if (category) { where.push('r.category=?'); values.push(category); }
-  if (from) { where.push('d.sort_time>=?'); values.push(new Date(from).toISOString()); }
-  if (to) { where.push('d.sort_time<?'); values.push(new Date(to).toISOString()); }
-  if (cursor) { where.push('(d.sort_time<? or (d.sort_time=? and (d.doc_id<? or (d.doc_id=? and r.sort_order>?))))'); values.push(cursor.time,cursor.time,cursor.id,cursor.id,cursor.position!); }
-  const result = await c.env.DB.prepare(`select ${selectFields('d')},r.information_id as selected_information_id,r.sort_order as selected_position
-    from knowledge_information_records r join knowledge_docs d on d.doc_id=r.doc_id where ${where.join(' and ')}
-    order by d.sort_time desc,d.doc_id desc,r.sort_order limit ?`).bind(...values,limit+1).all<FeedRow & { selected_information_id: string; selected_position: number }>();
-  const page = result.results.slice(0,limit);
-  const cache = new Map<string, Promise<InformationRow[] | null>>();
-  const list = [];
-  for (const row of page) {
-    if (!cache.has(row.doc_id)) cache.set(row.doc_id, verifiedRows(row));
-    const selected = (await cache.get(row.doc_id))?.find((record) => record.information_id === row.selected_information_id);
-    if (!selected) continue;
-    const meta = JSON.parse(row.metadata_json);
-    list.push({ ...rowToInformation(selected), information_id: selected.information_id, doc_id: row.doc_id,
-      entity_key: selected.entity_key, entity_resolved: selected.entity_key !== null,
-      source: { title: row.title, url: row.url, source_name: row.source_name, published_at: row.published_at },
-      sort_time: row.sort_time, input_fingerprint: meta.informationExtraction.current.inputFingerprint,
-      records_digest: meta.informationExtraction.current.recordsDigest,
-      story_key: meta.feed?.storyKey ?? null, previous_item_id: meta.feed?.previousItemId ?? null,
-      kind: meta.feed?.kind ?? null });
-  }
-  const hasNext = result.results.length > limit, last = page.at(-1);
-  return ok(c, { list, has_next: hasNext, next_cursor: hasNext && last ? btoa(JSON.stringify({ time:last.sort_time,id:last.doc_id,position:last.selected_position })) : null });
-});
-
-function parseCursor(value: string | undefined): { time: string; id: string; position?: number } | null {
+function parseCursor(value: string | undefined): { time: string; id: string } | null {
   if (!value || value.length > 1024) return null;
   try {
     const result = JSON.parse(atob(value));
