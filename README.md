@@ -60,7 +60,7 @@ npm run test:basic
 ### 资讯信息流
 
 本地页面为 `/news.html`，接口为 `/api/knowledge/feed` 和 `/api/knowledge/feed/facets`。
-`config/knowledge/information-feed.json` 控制本地资讯文件变更触发的即时入库/提取、财联社采集、每日 500 次提取上限与远端发布开关。财联社源站无推送接口，因此仅采集仍每 60 秒轮询；无新增或修订内容时不运行入库/提取。腾讯原始 JSON 由仓库外的现有采集器提供，写入共享 news 目录后触发处理。资讯按 `config/knowledge/information-feed-policy.json` 中的 `relevance` 和 `whitelist` 先过滤再入库、提取；拒绝标题及链接只写本地 JSONL，页面本地环境可筛选复核。生产 Worker 不调用模型，远端发布默认关闭。手动处理和检查：
+`config/knowledge/information-feed.json` 控制本地资讯文件变更触发的即时入库/提取、财联社采集、每日 500 次提取上限与远端发布开关。财联社源站无推送接口，因此仅采集仍每 60 秒轮询；无新增或修订内容时不运行入库/提取。腾讯原始 JSON 由仓库外的现有采集器提供，写入共享 news 目录后触发处理。资讯入库仅允许标题命中本地 `stock.short_name`、`stock_alias.alias` 或市场限定代码变形且具备公司事件线索，或者命中 `config/knowledge/information-feed-policy.json` 中配置的行业／宏观规则；未命中者不入库。拒绝标题及链接只写本地 JSONL，页面本地环境可筛选复核。生产 Worker 不调用模型，远端发布默认关闭。手动处理和检查：
 
 ```bash
 npm run process:feed -- --max-documents 200 --max-tags 20
@@ -88,6 +88,15 @@ npm run dev:cron:once
 
 第一步用 `--omit=optional` 跳过容易卡住的可选依赖构建；第二步补齐
 `rollup` 的平台包，但禁用安装脚本，避免 `fsevents` 之类的可选包拖慢安装。
+
+## 中证 800 + 中证 1000 股票行业与别名
+
+`npm run sync:csi-stock-universe` 从东财 `RPT_INDEX_CONSTITUENT` 获取中证 800（000906）和中证 1000（000852）的完整成分股，再从 `RPT_F10_ORG_BASICINFO.EM2016` 取得三级行业。默认只预览；确认后运行 `npm run sync:csi-stock-universe -- --apply`，原子写入本地 Node SQLite 的 `stock` 和 `stock_alias`。缺失或不完整的接口数据会令整次同步失败，不会部分写入。已有 `stock.short_name` 和 `updated_at` 不覆盖；东财简称作为名称映射写入。代码写在 `stock.code`，不重复存入别名表。可用 `--indexes 000906,000852`、`--db PATH`、`--batch-size` 和 `--concurrency` 复用此脚本；生产 D1 不会被该本地命令修改。
+
+## 港股大市值与活跃股票身份
+
+`npm run sync:hk-popular-stocks` 从东财港股主板行情按总市值取前 200 只、按成交额取前 100 只，合并去重并排除同一股票的 8xxxx 人民币柜台。默认只预览；`npm run sync:hk-popular-stocks -- --apply` 原子写入本地 `stock` 与 `stock_alias`，保留已有规范简称。可用 `--market-cap-count`、`--turnover-count`、`--db` 调整范围。身份记录只增不删，不代表当前或历史指数成员关系。东财港股行业 `f100` 与 A 股 EM2016 三级分类不是同一口径，因此本脚本不填充 `industry_level_1/2/3`；生产 D1 不会被该命令修改。
+
 
 ## 知识处理脚本
 
@@ -130,6 +139,25 @@ npm run dev:cron:once
 ```bash
 LOCAL_DB_PATH=/absolute/path/to/stock-info.sqlite ./process-knowledge-local-full.sh
 ```
+
+### 同步标普 500 股票身份
+
+运行 `npm run db:migrate:local` 后，执行 `npm run sync:sp500-stocks`，从
+`datasets/s-and-p-500-companies` 维护的成分股 CSV 获取最新列表，并将每个证券的
+`SYMBOL.US` 写入 `stock`，将英文证券名写入 `stock_alias`。完整代码和 ticker
+由读取程序根据 `stock.code` 识别，不重复存储为别名。
+可先加 `-- --dry-run` 检查来源与数量；`-- --input /path/to/constituents.csv`
+可使用保存的 CSV 重跑。需要同步生产 D1 时，显式使用
+`npm run sync:sp500-stocks -- --remote`（需先完成远端迁移和 Wrangler 认证）。
+脚本可重复运行，不覆盖已有的规范简称和别名，也不删除退指成分股的股票身份；
+`stock`/`stock_alias` 是身份表，不存储指数成员有效期或历史名单。
+
+韩国三星电子、SK 海力士和精选日本热门股票的身份清单位于
+`config/asia-popular-stocks.json`。运行 `npm run sync:asia-popular-stocks` 写入本地
+`stock`/`stock_alias`；`-- --dry-run` 预览，`-- --remote` 才写入生产 D1。
+可用 `-- --manifest /path/to/stocks.json` 复用脚本处理同一格式的人工核对清单。
+韩国使用 `.KS`，日本东京证交所使用 `.T`；清单只存名称类别名，不存代码变体。这只是股票身份/别名同步，
+不代表当前行情、K 线或研究 API 已支持这些市场。
 
 适合什么时候用：
 

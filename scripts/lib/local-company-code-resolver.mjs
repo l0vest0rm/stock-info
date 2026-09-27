@@ -21,24 +21,25 @@ export function loadLocalCompanyCodeResolver(projectRoot) {
     const output = execFileSync(
       "sqlite3",
       [
+        "-json",
         "-cmd",
         `.timeout ${LOCAL_SQLITE_BUSY_TIMEOUT_MS}`,
         dbPath,
-        `select a.code, a.alias
-           from stock_alias a
-          where (
-              a.code like '%.SH'
-              or a.code like '%.SZ'
-              or a.code like '%.BJ'
-              or a.code like '%.HK'
-              or a.code like '%.US'
-            )
-            and trim(a.alias) != ''
-          order by a.updated_at desc`,
+        `select code, short_name as alias from stock
+          where code like '%.SH' or code like '%.SZ' or code like '%.BJ'
+             or code like '%.HK' or code like '%.US'
+          union all
+          select code, code as alias from stock
+          where code like '%.SH' or code like '%.SZ' or code like '%.BJ'
+             or code like '%.HK' or code like '%.US'
+          union all
+          select a.code, a.alias from stock_alias a
+          where (a.code like '%.SH' or a.code like '%.SZ' or a.code like '%.BJ'
+             or a.code like '%.HK' or a.code like '%.US') and trim(a.alias) != ''`,
       ],
       { encoding: "utf8" }
     );
-    const aliasMap = buildAliasMap(output);
+    const aliasMap = buildAliasMap(JSON.parse(output || "[]"));
     return {
       dbPath,
       loaded: true,
@@ -69,12 +70,9 @@ function discoverLocalD1Path(projectRoot) {
   return existsSync(database) ? database : "";
 }
 
-function buildAliasMap(output) {
+function buildAliasMap(rows) {
   const aliasMap = new Map();
-  for (const line of String(output || "").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const [code, aliasValue] = trimmed.split("|");
+  for (const { code, alias: aliasValue } of rows) {
     if (!code || !aliasValue) continue;
     for (const alias of aliasCandidates(aliasValue)) {
       const existing = aliasMap.get(alias);

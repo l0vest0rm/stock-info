@@ -13,7 +13,7 @@ export function stockAliasStatements(aliases, updatedAt, quote) {
            updated_at=excluded.updated_at
          where excluded.updated_at >= stock.updated_at;`
     ),
-    ...aliases.filter((alias) => stockNames.has(alias.code)).map((alias) =>
+    ...aliases.filter((alias) => stockNames.has(alias.code) && !isDerivedCodeAlias(alias.alias, alias.code)).map((alias) =>
       `insert into stock_alias (alias, code, source, updated_at)
          values (lower(trim(${quote(alias.alias)})), ${quote(alias.code)}, ${quote(alias.source)}, ${updatedAt})
          on conflict(alias, code) do update set
@@ -22,4 +22,14 @@ export function stockAliasStatements(aliases, updatedAt, quote) {
          where excluded.updated_at >= stock_alias.updated_at;`
     ),
   ];
+}
+
+function isDerivedCodeAlias(alias, code) {
+  const normalized = String(alias || "").trim().toLowerCase();
+  const canonical = String(code || "").trim().toLowerCase();
+  const lastDot = canonical.lastIndexOf(".");
+  const firstDot = canonical.indexOf(".");
+  return normalized === canonical
+    || (lastDot > 0 && normalized === canonical.slice(0, lastDot))
+    || (firstDot > 0 && normalized === canonical.slice(0, firstDot));
 }

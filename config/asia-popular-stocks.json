@@ -1,0 +1,19 @@
+{
+  "description": "Curated stock identities, not a complete Korean or Japanese market constituent list",
+  "stocks": [
+    { "code": "005930.KS", "name": "Samsung Electronics", "aliases": ["三星", "三星电子", "三星電子", "삼성전자"] },
+    { "code": "000660.KS", "name": "SK hynix", "aliases": ["SK海力士", "海力士", "SK하이닉스"] },
+    { "code": "7203.T", "name": "Toyota Motor", "aliases": ["丰田", "丰田汽车", "トヨタ自動車"] },
+    { "code": "6758.T", "name": "Sony Group", "aliases": ["索尼集团", "索尼", "ソニーグループ"] },
+    { "code": "7974.T", "name": "Nintendo", "aliases": ["任天堂"] },
+    { "code": "9984.T", "name": "SoftBank Group", "aliases": ["软银", "软银集团", "ソフトバンクグループ"] },
+    { "code": "8035.T", "name": "Tokyo Electron", "aliases": ["东京电子", "東京エレクトロン"] },
+    { "code": "6857.T", "name": "Advantest", "aliases": ["爱德万测试", "アドバンテスト"] },
+    { "code": "6861.T", "name": "Keyence", "aliases": ["基恩士", "キーエンス"] },
+    { "code": "8306.T", "name": "Mitsubishi UFJ Financial Group", "aliases": ["三菱日联金融集团", "三菱UFJフィナンシャル・グループ"] },
+    { "code": "9983.T", "name": "Fast Retailing", "aliases": ["迅销集团", "优衣库母公司", "ファーストリテイリング"] },
+    { "code": "6501.T", "name": "Hitachi", "aliases": ["日立制作所", "日立製作所"] },
+    { "code": "7267.T", "name": "Honda Motor", "aliases": ["本田汽车", "本田技研工業"] },
+    { "code": "7011.T", "name": "Mitsubishi Heavy Industries", "aliases": ["三菱重工", "三菱重工業"] }
+  ]
+}

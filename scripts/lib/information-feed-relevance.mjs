@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import policy from '../../config/knowledge/information-feed-policy.json' with { type: 'json' };
 const config = policy.relevance;
 const whitelist = policy.whitelist;
+if (config.enabled !== true) throw new Error('information feed whitelist must remain enabled');
 
 const pattern = (value) => new RegExp(value, 'iu');
 const quoteOnly = { ...config.quoteOnly, title: pattern(config.quoteOnly.title), body: pattern(config.quoteOnly.body),
@@ -13,8 +14,7 @@ const operationalCue = /(?:财报|业绩|订单|签署|收购|融资|IPO|关税|
 const industryEvent = pattern(whitelist.industryEvent);
 const macro = whitelist.macro.map((rule) => ({ ...rule, subject: pattern(rule.subject), event: pattern(rule.event) }));
 const fold = (value) => String(value || '').normalize('NFKC').toLocaleUpperCase();
-const listed = Object.entries(whitelist.listed).flatMap(([market, entries]) => entries.map((aliases) => ({ market, aliases })));
-const privateCompanies = whitelist.private;
+const stockHashCache = new WeakMap();
 
 function containsAlias(text, alias) {
   const term = fold(alias);
@@ -25,40 +25,74 @@ function containsAlias(text, alias) {
   }
   return text.includes(term);
 }
-function matchedCompany(title, entries) {
-  return entries.find((entry) => entry.aliases.some((alias) => containsAlias(title, alias)));
+/** The caller supplies the current stock/stock_alias snapshot; no stock list is hard-coded here. */
+export function stockWhitelistEntries(rows) {
+  const entries = new Map();
+  for (const row of rows) {
+    const code = fold(row.code).trim();
+    if (!code) continue;
+    const names = entries.get(code) || new Set();
+    for (const value of [row.short_name, row.alias]) {
+      const name = fold(value).trim();
+      if (!name || name === code || /^\d+$/.test(name)) continue;
+      if (/^[A-Z0-9 .-]+$/.test(name) ? name.length >= 3 || (name.length === 2 && /\d/.test(name)) : name.length >= 2)
+        names.add(name);
+    }
+    entries.set(code, names);
+  }
+  return [...entries].sort(([a], [b]) => a.localeCompare(b))
+    .map(([code, names]) => ({ code, names: [...names].sort() }));
+}
+
+function matchedStock(title, entries) {
+  const normalized = fold(title);
+  for (const { code, names } of entries) {
+    const name = names.find((item) => containsAlias(normalized, item));
+    if (name) return { code, matched: name };
+    const match = /^([A-Z0-9.]+)\.(SH|SZ|BJ|HK|US|KS|KQ|T)$/.exec(code);
+    if (!match) continue;
+    const [, ticker, market] = match;
+    if (containsAlias(normalized, code) || containsAlias(normalized, `${market}${ticker}`)) return { code, matched: code };
+    // Bare numeric codes are also prices and dates. Alphabetic tickers need
+    // their original uppercase spelling to avoid matching ordinary words.
+    if (/^[A-Z]{3,}$/.test(ticker) && new RegExp(`(?<![A-Za-z0-9])${ticker}(?![A-Za-z0-9])`, 'u').test(title))
+      return { code, matched: ticker };
+  }
+  return null;
 }
 
 export const INVESTMENT_RELEVANCE_VERSION = config.version;
-export const investmentRelevanceEnabled = config.enabled === true;
 export const investmentRelevanceBodyHash = (body) => createHash('sha256').update(body).digest('hex');
 
-export function currentInvestmentGate(gate, { title, body }) {
-  return gate?.policyVersion === INVESTMENT_RELEVANCE_VERSION && gate.title === title
-    && gate.bodySha256 === investmentRelevanceBodyHash(body)
-    && ['pass', 'reject'].includes(gate.effectiveDisposition)
-    && Boolean(gate.reasonCodes?.includes('gate_disabled')) === !investmentRelevanceEnabled;
+export function stockWhitelistHash(entries) {
+  if (!stockHashCache.has(entries)) stockHashCache.set(entries, createHash('sha256').update(JSON.stringify(entries)).digest('hex'));
+  return stockHashCache.get(entries);
 }
 
-export function evaluateInvestmentRelevance({ title, body, kind = 'new', previousStoryRelevant = false }) {
+export function currentInvestmentGate(gate, { title, body, stockEntries = [] }) {
+  return gate?.policyVersion === INVESTMENT_RELEVANCE_VERSION && gate.title === title
+    && gate.bodySha256 === investmentRelevanceBodyHash(body)
+    && gate.stockWhitelistHash === stockWhitelistHash(stockEntries)
+    && ['pass', 'reject'].includes(gate.effectiveDisposition)
+    && !gate.reasonCodes?.includes('gate_disabled');
+}
+
+export function evaluateInvestmentRelevance({ title, body, stockEntries = [] }) {
   const heading = String(title || '');
   const content = String(body || '');
   const normalizedTitle = fold(heading);
   const text = (heading + '\n' + content.slice(0, 600)).normalize('NFKC');
   const result = (decision, reasonCodes, evidence = []) => ({ decision, effectiveDisposition: decision,
     reasonCodes, evidence, policyVersion: INVESTMENT_RELEVANCE_VERSION, title: heading,
-    bodySha256: investmentRelevanceBodyHash(content) });
+    bodySha256: investmentRelevanceBodyHash(content), stockWhitelistHash: stockWhitelistHash(stockEntries) });
   if (!heading || !content) return result('reject', ['missing_input']);
-  if (kind === 'update' && previousStoryRelevant) return result('pass', ['relevant_story_update']);
   if (marketRoundup.test(heading) || (priceOnly.test(heading) && !operationalCue.test(content.slice(0, 600))))
     return result('reject', ['price_only']);
   if (content.length <= quoteOnly.maxBodyLength && quoteOnly.title.test(heading) && quoteOnly.body.test(content)
     && !quoteOnly.factCue.test(text)) return result('reject', ['quote_only']);
 
-  const company = matchedCompany(normalizedTitle, listed);
-  if (company && companyEvent.test(text)) return result('pass', ['listed_' + company.market], [company.aliases[0]]);
-  const privateCompany = privateCompanies.find((aliases) => aliases.some((alias) => containsAlias(normalizedTitle, alias)));
-  if (privateCompany && companyEvent.test(text)) return result('pass', ['private_company'], [privateCompany[0]]);
+  const stock = matchedStock(heading, stockEntries);
+  if (stock && companyEvent.test(text)) return result('pass', ['stock'], [stock.code, stock.matched]);
   const industry = whitelist.industries.find((aliases) => aliases.some((alias) => containsAlias(normalizedTitle, alias)));
   if (industry && industryEvent.test(text)) return result('pass', ['industry'], [industry[0]]);
   for (const rule of macro) {

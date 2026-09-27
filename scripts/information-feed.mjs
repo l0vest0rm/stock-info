@@ -12,8 +12,8 @@ import { canonicalFeedUrl, classifyFeedItem, feedBodyHash, feedShingleSketch, sk
 import { normalizeFeedSource } from './lib/information-feed-source.mjs';
 import { feedCompanyCandidates } from './lib/information-feed-company-candidates.mjs';
 import { appendRejectedFeed } from './lib/information-feed-rejection-audit.mjs';
-import { currentInvestmentGate, evaluateInvestmentRelevance, investmentRelevanceEnabled,
-  INVESTMENT_RELEVANCE_VERSION } from './lib/information-feed-relevance.mjs';
+import { currentInvestmentGate, evaluateInvestmentRelevance,
+  INVESTMENT_RELEVANCE_VERSION, stockWhitelistEntries, stockWhitelistHash } from './lib/information-feed-relevance.mjs';
 import { feedCategoryCatalog, feedCategoryCatalogHash, parseFeedExtraction } from './lib/information-feed-extraction.mjs';
 import { isRecentFeedTime, recentFeedRows, MAX_FEED_AGE_HOURS } from './lib/information-feed-window.mjs';
 import { INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
@@ -43,6 +43,8 @@ if (args.mode !== 'ingest' && process.env.LLM_RUNTIME !== 'local') throw new Err
 
 const counters = { scanned: 0, accepted: 0, repeat: 0, update: 0, new: 0, relevanceRejected: 0,
   relevanceUncertain: 0, rejected: {}, tagged: 0, tagFailed: 0 };
+const stockEntries = stockWhitelistEntries(queryLocalD1Sql(`select s.code,s.short_name,a.alias
+  from stock s left join stock_alias a on a.code=s.code`, { requiredTable: 'stock_alias' }));
 const releaseLock = acquireLock(resolve(ROOT, process.env.INFORMATION_FEED_LOCK_FILE || 'data/local/information-feed.lock'));
 try {
   if (args.mode === 'ingest' || args.mode === 'run') await ingest();
@@ -52,13 +54,15 @@ try {
 
 async function ingest() {
   const state = loadJson(stateFile, { files: {} });
-  if (state.investmentGateVersion !== INVESTMENT_RELEVANCE_VERSION) {
+  const gateVersion = `${INVESTMENT_RELEVANCE_VERSION}:${stockWhitelistHash(stockEntries)}`;
+  if (state.investmentGateVersion !== gateVersion) {
     state.files = {};
-    state.investmentGateVersion = INVESTMENT_RELEVANCE_VERSION;
+    state.investmentGateVersion = gateVersion;
   }
   const files = args.file ? [resolve(args.file)] : recentSourceFiles(args.lookbackDays);
   const rows = loadFeedRows();
-  const candidates = rows.map((row) => ({ ...row, body: readLocalBody(row.content_key) })).filter((row) => row.body);
+  const candidates = rows.map((row) => ({ ...row, body: readLocalBody(row.content_key) }))
+    .filter((row) => row.body && evaluateGate({ title: row.title, body: row.body }).effectiveDisposition === 'pass');
   const knownSourceVersions = new Map();
   for (const candidate of candidates) for (const ref of candidate.feed.sources || []) {
     const hash = ref.contentHash || (candidate.feed.kind === 'new' ? feedBodyHash(candidate.body) : '');
@@ -112,6 +116,12 @@ async function ingest() {
 
 function ingestOne(source, candidates) {
   counters.accepted += 1;
+  const sourceGate = evaluateGate({ title: source.title, body: source.body });
+  if (sourceGate.effectiveDisposition === 'reject') {
+    counters.relevanceRejected += 1;
+    auditRejectedSource(source, sourceGate);
+    return;
+  }
   const exactHash = feedBodyHash(source.body);
   const sketch = feedShingleSketch(source.body);
   const exact = candidates.find((candidate) => candidate.feed.fullBodyHash === exactHash);
@@ -130,8 +140,7 @@ function ingestOne(source, candidates) {
     return;
   }
   const body = choice.kind === 'update' ? choice.delta : source.body;
-  const investmentGate = evaluateGate({ title: source.title, body, kind: choice.kind,
-    previousStoryRelevant: choice.kind === 'update' && choice.candidate?.feed?.investmentGate?.decision === 'pass' });
+  const investmentGate = body === source.body ? sourceGate : evaluateGate({ title: source.title, body });
   if (investmentGate.decision === 'uncertain') counters.relevanceUncertain += 1;
   if (investmentGate.effectiveDisposition === 'reject') {
     counters.relevanceRejected += 1;
@@ -178,19 +187,17 @@ async function tagPending() {
   const limit = Math.min(args.maxTags, remainingToday);
   if (!limit) return;
   const allRows = loadFeedRows();
-  const byId = new Map(allRows.map((row) => [row.doc_id, row]));
   const rows = recentFeedRows(allRows, Date.now(), args.maxAgeHours)
     .filter((row) => !args.docId || row.doc_id === args.docId);
-  const aliases = queryLocalD1Sql("select a.alias,a.code,s.short_name as name from stock_alias a join stock s on s.code=a.code where length(a.alias)>=2", { requiredTable: 'stock_alias' });
+  const aliases = queryLocalD1Sql(`select s.short_name as alias,s.code,s.short_name as name from stock s
+    union all select a.alias,a.code,s.short_name as name from stock_alias a join stock s on s.code=a.code`, { requiredTable: 'stock_alias' });
   for (const row of rows) {
     if (counters.tagged + counters.tagFailed >= limit) break;
     if (!isRecentFeedTime(row.sort_time, Date.now(), args.maxAgeHours)) continue;
     const body = readLocalBody(row.content_key);
     if (!body) continue;
-    if (!currentInvestmentGate(row.feed.investmentGate, { title: row.title, body })) {
-      const previous = byId.get(row.feed.previousItemId);
-      const gate = evaluateGate({ title: row.title, body, kind: row.feed.kind,
-        previousStoryRelevant: !!previous && previous.feed.investmentGate?.decision === 'pass' });
+    if (!currentInvestmentGate(row.feed.investmentGate, { title: row.title, body, stockEntries })) {
+      const gate = evaluateGate({ title: row.title, body });
       writeInvestmentGate(row.doc_id, gate);
       row.feed.investmentGate = gate;
       if (gate.effectiveDisposition === 'reject') appendRejectedFeed({ sourceKey: row.feed.sourceKey,
@@ -231,9 +238,7 @@ async function tagPending() {
 }
 
 function evaluateGate(input) {
-  const gate = evaluateInvestmentRelevance(input);
-  return investmentRelevanceEnabled ? gate
-    : { ...gate, decision: 'pass', effectiveDisposition: 'pass', reasonCodes: ['gate_disabled'] };
+  return evaluateInvestmentRelevance({ ...input, stockEntries });
 }
 
 function writeInvestmentGate(docId, gate) {

@@ -32,7 +32,8 @@ if (options.apply && !newSchema) { db.close(); throw new Error('apply migration 
 const archiveDir = resolve(options.archiveDir || join(root, 'data/local/information-records-archives'));
 const result = { dryRun: !options.apply, schema: newSchema ? INFORMATION_STORAGE_VERSION : 'legacy',
   scanned: 0, changed: 0, unchanged: 0, records: 0, verified: 0, unverified: 0, quarantined: 0, errors: [], issueCounts: {}, archiveDir: options.apply ? archiveDir : null };
-const aliases = db.prepare('SELECT a.alias,a.code,s.short_name AS name FROM stock_alias a JOIN stock s ON s.code=a.code WHERE length(a.alias)>=2').all();
+const aliases = db.prepare(`SELECT s.short_name AS alias,s.code,s.short_name AS name FROM stock s
+  UNION ALL SELECT a.alias,a.code,s.short_name AS name FROM stock_alias a JOIN stock s ON s.code=a.code`).all();
 const ids = db.prepare(`SELECT doc_id FROM knowledge_docs WHERE
   (source_type='information_feed' OR json_type(metadata_json,'$.informationExtraction') IS NOT NULL
   ${newSchema ? '' : 'OR EXISTS (SELECT 1 FROM knowledge_document_results x WHERE x.version_id=knowledge_docs.doc_id)'})
