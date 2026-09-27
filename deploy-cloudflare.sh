@@ -82,6 +82,9 @@ if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
   exit 1
 fi
 
+echo "Validating local Xueqiu credential before changing the Worker..."
+node scripts/refresh-xueqiu-cookie.mjs --validate-local-credential-store
+
 echo "Syncing account email Worker secrets..."
 CF_WORKER_NAME="$WORKER_NAME" node scripts/sync-mail-secrets.mjs
 
@@ -164,6 +167,24 @@ if (body.data.version !== process.env.EXPECTED_APP_VERSION) {
   throw new Error(`Unexpected deployed version: ${body.data.version}`);
 }
 console.log(`Production health passed: ${body.data.version}`);
+EOF
+
+echo "Verifying production Xueqiu K-line API..."
+PRODUCTION_BASE_URL="https://${PRODUCTION_DOMAIN}" node --input-type=module <<'EOF'
+const url = new URL('/api/kline', process.env.PRODUCTION_BASE_URL);
+url.searchParams.set('code', '002463.SZ');
+url.searchParams.set('period', 'day');
+url.searchParams.set('fq', 'qfq');
+url.searchParams.set('format', 'structured');
+// A future upper bound prevents a fresh R2 snapshot from hiding a rejected
+// Worker secret; Xueqiu still returns the historical bars before that date.
+url.searchParams.set('to', new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10));
+const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+const body = await response.json();
+if (!response.ok || body?.code !== 200 || !Array.isArray(body.data) || body.data.length === 0) {
+  throw new Error(`Production Xueqiu K-line failed: HTTP ${response.status}, ${body?.msg ?? 'invalid response'}`);
+}
+console.log(`Production Xueqiu K-line passed: ${body.data.length} rows`);
 EOF
 
 echo "Cloudflare deploy finished."

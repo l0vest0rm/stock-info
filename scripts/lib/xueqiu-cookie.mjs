@@ -1,4 +1,4 @@
-const XUEQIU_KLINE_URL = "https://stock.xueqiu.com/v5/stock/chart/kline.json";
+export const XUEQIU_KLINE_URL = "https://stock.xueqiu.com/v5/stock/chart/kline.json";
 const XUEQIU_REFERER = "https://xueqiu.com/";
 const XUEQIU_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36";
@@ -34,14 +34,14 @@ export async function validateXueqiuKlineCookie(
     signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`Xueqiu cookie validation request failed: status=${response.status}`);
-  }
   let body;
   try {
     body = JSON.parse(text);
   } catch {
-    throw new Error("Xueqiu cookie validation returned invalid JSON");
+    throw new Error(`Xueqiu cookie validation returned invalid JSON: status=${response.status}`);
+  }
+  if (!response.ok) {
+    throw new Error(`Xueqiu cookie validation request failed: status=${response.status} error_code=${body?.error_code ?? "unknown"}`);
   }
   if (String(body?.error_code ?? "") === "400016"
     || /重新登录|登录.*失效|login/i.test(String(body?.error_description ?? ""))) {

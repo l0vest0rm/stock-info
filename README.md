@@ -395,7 +395,7 @@ npm run preflight:cloudflare:release
 
 ### 本地手动部署
 
-部署前先通过 Chrome DevTools Protocol 生成新的雪球 K 线 Cookie。该命令同时更新本地 `.dev.vars` 和下次部署使用的 `wrangler.jsonc` 生产变量：
+部署前先通过 Chrome DevTools Protocol 生成并验证雪球 K 线 Cookie。该命令更新本地 `.dev.vars` 和忽略的本地 credential store；部署脚本另行上传 Worker secret：
 
 ```bash
 npm run refresh:xueqiu-cookie
@@ -414,9 +414,11 @@ npm run deploy
 - 检查 `wrangler.jsonc` 中配置的 R2 buckets 是否已存在
 - `wrangler d1 migrations apply stock_info --remote`
 - `wrangler deploy`
-- `curl https://tinfo.cc/api/health`
+- 验证生产 `/api/health` 和 `002463.SZ` 的 `/api/kline`
 
 `XUEQIU_COOKIE` 作为 Worker secret 管理，不写入版本化 `wrangler.jsonc`。执行 `npm run refresh:xueqiu-cookie` 从 CDP 刷新并验证后写入忽略的 `.dev.vars` 和本地 credential store；本地调度器默认每 3 小时刷新，失败 5 分钟后重试，不改生产。标准发布在部署前重新通过雪球 K 线验证本地凭据，并经 stdin 上传 Worker secret；不要把 Cookie 放到命令行参数或日志。
+
+雪球网页可匿名查看 K 线；刷新脚本不要求登录。雪球目前只给新开的无头 Chrome 一个防护 Cookie，无法完成匿名 K 线请求；脚本因此默认使用短暂打开的可见 Chrome，在临时 profile 中访问雪球接口以建立匿名 Cookie，按 `stock.xueqiu.com` API 域名提取，并在保存前验证真实 K 线。若本机无法显示 Chrome，可用 `XUEQIU_CDP_URL` 连接已运行的可见 CDP Chrome；`XUEQIU_CHROME_HEADLESS=1` 仅供诊断，不是当前可用的刷新方式。本地刷新不会自动更新生产 Worker secret；可单独执行 `npm run sync:xueqiu-secret`，或通过 `npm run deploy` 更新并验证生产。本地 `/api/health` 只证明服务和数据库存活，不证明雪球会话有效。
 
 发布脚本执行前后端类型检查及 schema、运行时、提示词和发布输入守卫；旧单元／页面 smoke 测试已移除。页面入口与环境策略统一定义在 `config/app/page-manifest.json`；本地构建默认 `WEB_RUNTIME=local`，生产构建使用 `npm run build:web:production`。相邻共享包的 Git revision 和实际 dist 内容由 `config/app/release-inputs.lock.json` 锁定，升级共享包时先构建并审查，再执行 `node scripts/check-release-inputs.mjs --update` 更新锁文件。发布不允许未审查的共享包漂移。
 

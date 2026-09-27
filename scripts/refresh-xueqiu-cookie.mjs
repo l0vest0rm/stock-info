@@ -6,12 +6,16 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
-import { cookieHeaderFromCdp, validateXueqiuKlineCookie } from "./lib/xueqiu-cookie.mjs";
+import { XUEQIU_KLINE_URL, cookieHeaderFromCdp, validateXueqiuKlineCookie } from "./lib/xueqiu-cookie.mjs";
 
-const XUEQIU_URL = "https://xueqiu.com/S/SH600519";
+// The apex API response issues anonymous .xueqiu.com cookies even when this
+// route itself returns 404. Visiting a stock page in fresh headless Chrome no
+// longer reliably initializes these cookies.
+const XUEQIU_URL = "https://xueqiu.com/v5/stock/chart/kline.json";
 const XUEQIU_ACCEPT_LANGUAGE = "zh-CN,zh;q=0.9,en;q=0.8";
 const XUEQIU_PAGE_TIMEOUT_MS = 60_000;
-const XUEQIU_SETTLE_DELAY_MS = 3_000;
+const XUEQIU_COOKIE_POLL_INTERVAL_MS = 2_000;
+const XUEQIU_VALIDATION_RETRY_MS = 10_000;
 const args = new Set(process.argv.slice(2));
 const writeDevVars = args.has("--write-dev-vars");
 if (args.has("--write-wrangler-vars")) throw new Error("Versioned Cookie vars are retired. Use --write-local-credential-store, then npm run deploy to upload the Worker secret.");
@@ -19,6 +23,9 @@ const writeLocalCredentialStore = args.has("--write-local-credential-store");
 const validateLocalCredentialStore = args.has("--validate-local-credential-store");
 const jsonOutput = args.has("--json");
 const cdpUrl = process.env.XUEQIU_CDP_URL?.trim() || "http://127.0.0.1:9222";
+// Xueqiu currently gives a fresh headless profile only an anti-bot cookie;
+// visible Chrome establishes the same anonymous session as an incognito tab.
+const headless = process.env.XUEQIU_CHROME_HEADLESS === "1";
 
 async function openCdpSession(endpoint) {
   if (await isCdpReady(endpoint)) {
@@ -32,7 +39,7 @@ async function openCdpSession(endpoint) {
     `--remote-debugging-port=${port}`,
     "--remote-allow-origins=*",
     `--user-data-dir=${profileDir}`,
-    "--headless=new",
+    ...(headless ? ["--headless=new"] : []),
     "--disable-blink-features=AutomationControlled",
     "--disable-dev-shm-usage",
     "--no-sandbox",
@@ -98,12 +105,36 @@ async function fetchXueqiuCookie(endpoint) {
     await cdp.command("Network.setExtraHTTPHeaders", {
       headers: { "Accept-Language": XUEQIU_ACCEPT_LANGUAGE },
     });
-    await cdp.command("Page.navigate", { url: XUEQIU_URL });
+    const navigation = await cdp.command("Page.navigate", { url: XUEQIU_URL });
+    if (navigation.errorText) throw new Error(`CDP Xueqiu navigation failed: ${navigation.errorText}`);
     await waitForDocumentBody(cdp);
-    await sleep(XUEQIU_SETTLE_DELAY_MS);
-    const pageUrl = await cdp.evaluateString("location.href");
-    const result = await cdp.command("Network.getCookies", { urls: [XUEQIU_URL, pageUrl] });
-    return cookieHeaderFromCdp(Array.isArray(result.cookies) ? result.cookies : []);
+    const deadline = Date.now() + XUEQIU_PAGE_TIMEOUT_MS;
+    let cookie = "";
+    let lastValidatedCookie = "";
+    let lastValidationAt = 0;
+    let lastValidationError = "no API-scoped Xueqiu cookies";
+    while (Date.now() < deadline) {
+      // Request cookies for the API origin, not the page origin: host-only
+      // www.xueqiu.com cookies must not be sent to stock.xueqiu.com.
+      const result = await cdp.command("Network.getCookies", { urls: [XUEQIU_KLINE_URL] });
+      cookie = cookieHeaderFromCdp(Array.isArray(result.cookies) ? result.cookies : []);
+      if (cookie && (cookie !== lastValidatedCookie || Date.now() - lastValidationAt >= XUEQIU_VALIDATION_RETRY_MS)) {
+        lastValidatedCookie = cookie;
+        lastValidationAt = Date.now();
+        try {
+          const validation = await validateXueqiuKlineCookie(cookie);
+          return { cookie, validation };
+        } catch (error) {
+          lastValidationError = error instanceof Error ? error.message : String(error);
+        }
+      }
+      await sleep(XUEQIU_COOKIE_POLL_INTERVAL_MS);
+    }
+    const names = new Set(cookie.split(/;\s*/).map((part) => part.split("=", 1)[0]));
+    const expected = ["xq_a_token", "xq_r_token", "device_id"];
+    const pageCookies = await cdp.command("Network.getCookies", { urls: [XUEQIU_URL] });
+    const pageCookieNames = [...new Set((pageCookies.cookies ?? []).map((item) => item.name))].sort();
+    throw new Error(`CDP Xueqiu anonymous K-line session was not usable within 60 seconds (${expected.map((name) => `${name}=${names.has(name) ? "present" : "missing"}`).join(", ")}; page_cookie_names=${pageCookieNames.join(",") || "none"}): ${lastValidationError}`);
   } finally {
     cdp.close();
     if (typeof target.id === "string") {
@@ -146,15 +177,6 @@ class CdpConnection {
 
   close() {
     this.socket.close();
-  }
-
-  async evaluateString(expression) {
-    const result = await this.command("Runtime.evaluate", {
-      expression,
-      returnByValue: true,
-    });
-    const value = result.result?.value;
-    return typeof value === "string" ? value : "";
   }
 }
 
@@ -276,11 +298,7 @@ async function main() {
   }
   const session = await openCdpSession(cdpUrl);
   try {
-    const cookie = await fetchXueqiuCookie(session.endpoint);
-    if (!cookie) {
-      throw new Error("CDP returned no Xueqiu cookies; sign in to Xueqiu or check the configured Chrome session");
-    }
-    const validation = await validateXueqiuKlineCookie(cookie);
+    const { cookie, validation } = await fetchXueqiuCookie(session.endpoint);
     let localCredentialStore = null;
     if (writeDevVars) {
       await updateDevVars(cookie);
