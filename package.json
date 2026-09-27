@@ -70,7 +70,7 @@
     "publish:feed:dry-run": "node scripts/publish-information-feed.mjs",
     "backfill:information-records": "node scripts/backfill-information-records.mjs",
     "test:information-records": "node scripts/test-information-records.mjs",
-    "test:feed": "node --test scripts/lib/information-feed-company-candidates.test.mjs scripts/lib/information-feed-dedupe.test.mjs scripts/lib/information-feed-source.test.mjs scripts/lib/information-feed-extraction.test.mjs scripts/lib/information-feed-relevance.test.mjs scripts/lib/information-feed-window.test.mjs scripts/information-feed-relevance-gate.test.mjs scripts/information-feed-scheduler.test.mjs scripts/information-feed-import-guard.test.mjs scripts/information-feed-publish-guard.test.mjs && npm run test:information-records",
+    "test:feed": "node --test scripts/lib/information-feed-company-candidates.test.mjs scripts/lib/information-feed-dedupe.test.mjs scripts/lib/information-feed-source.test.mjs scripts/lib/information-feed-extraction.test.mjs scripts/lib/information-feed-relevance.test.mjs scripts/lib/information-feed-rejection-audit.test.mjs scripts/lib/information-feed-window.test.mjs scripts/information-feed-relevance-gate.test.mjs scripts/information-feed-scheduler.test.mjs scripts/information-feed-import-guard.test.mjs scripts/information-feed-publish-guard.test.mjs && npm run test:information-records",
     "process:knowledge:local:full": "npm run build:prompts && node scripts/process-knowledge-local-full.mjs",
     "stats:knowledge:storage": "node scripts/report-knowledge-storage.mjs",
     "check:cloudflare:token": "node scripts/verify-cloudflare-token.mjs",

@@ -3,7 +3,7 @@
 // Local-only ingest/tag runner. The production Worker never invokes a model.
 import { createHash, randomUUID } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildContentOptions, prepareKnowledgeContent } from './knowledge-content-r2.mjs';
@@ -11,6 +11,7 @@ import { executeLocalD1Sql, queryLocalD1Sql } from './lib/local-d1-sqlite.mjs';
 import { canonicalFeedUrl, classifyFeedItem, feedBodyHash, feedShingleSketch, sketchesOverlap, FEED_DEDUPE_VERSION } from './lib/information-feed-dedupe.mjs';
 import { normalizeFeedSource } from './lib/information-feed-source.mjs';
 import { feedCompanyCandidates } from './lib/information-feed-company-candidates.mjs';
+import { appendRejectedFeed } from './lib/information-feed-rejection-audit.mjs';
 import { currentInvestmentGate, evaluateInvestmentRelevance, investmentRelevanceEnabled,
   INVESTMENT_RELEVANCE_VERSION } from './lib/information-feed-relevance.mjs';
 import { feedCategoryCatalog, feedCategoryCatalogHash, parseFeedExtraction } from './lib/information-feed-extraction.mjs';
@@ -192,6 +193,9 @@ async function tagPending() {
         previousStoryRelevant: !!previous && previous.feed.investmentGate?.decision === 'pass' });
       writeInvestmentGate(row.doc_id, gate);
       row.feed.investmentGate = gate;
+      if (gate.effectiveDisposition === 'reject') appendRejectedFeed({ sourceKey: row.feed.sourceKey,
+        sourceItemId: row.feed.sourceItemId, url: row.url, title: row.title,
+        publishedAt: row.published_at, ...gate });
     }
     if (row.feed.investmentGate.effectiveDisposition !== 'pass') continue;
     const fingerprint = feedInputFingerprint(row, body, EXTRACTION_CONTRACT);
@@ -243,15 +247,8 @@ function writeInvestmentGate(docId, gate) {
 }
 
 function auditRejectedSource(source, gate) {
-  const file = resolve(ROOT, process.env.INFORMATION_FEED_RELEVANCE_AUDIT_FILE || 'data/local/information-feed-relevance-rejected.jsonl');
-  mkdirSync(dirname(file), { recursive: true });
-  if (existsSync(file) && statSync(file).size > 10 * 1024 * 1024) {
-    if (existsSync(`${file}.1`)) unlinkSync(`${file}.1`);
-    renameSync(file, `${file}.1`);
-  }
-  appendFileSync(file, `${JSON.stringify({ sourceKey: source.sourceKey, sourceItemId: source.sourceItemId,
-    url: source.url, title: source.title, publishedAt: source.publishedAt, checkedAt: new Date().toISOString(),
-    ...gate })}\n`);
+  appendRejectedFeed({ sourceKey: source.sourceKey, sourceItemId: source.sourceItemId,
+    url: source.url, title: source.title, publishedAt: source.publishedAt, ...gate });
 }
 
 function loadFeedRows() {

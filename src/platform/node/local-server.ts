@@ -9,6 +9,8 @@ const { createKnowledgeContentServer } = await import(pathToFileURL(resolve(proc
 
 // @ts-expect-error Node-only review adapter is bundled from JavaScript.
 import { createLocalReportHandler } from "../../../scripts/lib/featured-report-local.mjs";
+// @ts-expect-error Node-only local audit adapter is JavaScript.
+import { readRejectedFeed } from "../../../scripts/lib/information-feed-rejection-audit.mjs";
 
 const host = process.env.HOST || "127.0.0.1";
 const port = positivePort(process.env.PORT || "8000");
@@ -55,6 +57,17 @@ function closeServers(): void {
 }
 
 async function handle(incoming: IncomingMessage, outgoing: ServerResponse): Promise<void> {
+  const url = new URL(incoming.url || "/", `http://${incoming.headers.host || `${host}:${port}`}`);
+  if (url.pathname === "/api/local/information-feed/rejected") {
+    if (incoming.method !== "GET") {
+      outgoing.writeHead(405, { "content-type": "application/json; charset=utf-8" });
+      outgoing.end(JSON.stringify({ code: 405, msg: "method not allowed", data: null }));
+      return;
+    }
+    outgoing.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+    outgoing.end(JSON.stringify({ code: 200, msg: "OK", data: readRejectedFeed(Object.fromEntries(url.searchParams)) }));
+    return;
+  }
   if (await localReportHandler(incoming, outgoing)) return;
   const request = toWebRequest(incoming);
   const context = { waitUntil(promise: Promise<unknown>) { void promise.catch((error) => localRuntimeError("wait_until_failed", error)); }, passThroughOnException() {} } as unknown as ExecutionContext;

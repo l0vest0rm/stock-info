@@ -1,6 +1,6 @@
 # 资讯投资相关性前置过滤方案（本地已实现）
 
-> 2026-09-27：本地门禁已接入 `config/information-feed-relevance.json`、`scripts/lib/information-feed-relevance.mjs`、资讯入库/提取调度、API 可见性和发布资格检查；存量本地资讯已用 `npm run backfill:feed:relevance` 重评估并归档原元数据。规则采取不确定时放行，不能声称所有放行内容已人工确认投资价值。远端发布仍关闭，生产未部署。
+> 历史 v4 方案；当前已切换为默认拒绝的白名单，见 [information-feed-whitelist.md](information-feed-whitelist.md)。以下“不确定时放行”规则不再适用。
 
 本地运维：先运行 `npm run backfill:feed:relevance:dry-run` 查看数量与样例，再运行 `npm run backfill:feed:relevance`。每次 apply 会将原 `metadata_json` 归档到忽略提交的 `data/local/backups/`；新来源拒绝记录写入 `data/local/information-feed-relevance-rejected.jsonl`，按 10 MiB 滚动保留当前文件及上一份。规则调整必须递增 `config/information-feed-relevance.json` 的 `version` 并重跑 backfill；紧急回滚可关闭 `enabled`、重跑 backfill、重新构建/启动本地服务，不直接删除已提取记录。
 

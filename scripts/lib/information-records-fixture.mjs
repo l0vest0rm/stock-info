@@ -35,7 +35,7 @@ export function fixture({migrate = true} = {}) {
   return {db,file,directory,options:{path:file},close(){db.close();rmSync(directory,{recursive:true,force:true});}};
 }
 export function addDocument(db, {id = `f_${randomUUID().replaceAll('-','').slice(0,24)}`, body = record.statement,
-  time = new Date().toISOString(),meta = {}, title = '公司资讯'} = {}) {
+  time = new Date().toISOString(),meta = {}, title = '中际旭创营收资讯'} = {}) {
   const metadata = {...meta,feed:{version:'v1',originalFormat:'text',sourceKey:'cls_telegraph',sources:[{sourceKey:'cls_telegraph',url:'https://example.invalid/news'}],
     kind:'new',storyKey:id,contentType:'news',fullBodyHash:sha(body),
     investmentGate:evaluateInvestmentRelevance({title,body}),...meta.feed},

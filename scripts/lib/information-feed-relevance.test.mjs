@@ -2,45 +2,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { currentInvestmentGate, evaluateInvestmentRelevance as decide } from './information-feed-relevance.mjs';
 
-test('clear social news is rejected before extraction', () => {
-  for (const [title, body] of [
-    ['中国队获得亚运会女子篮球铜牌', '中国队在女子篮球比赛中获得铜牌。'],
-    ['大熊猫平平已启程赴美', '大熊猫平平已启程赴美。'],
-    ['韩正会见塞浦路斯总统', '韩正会见塞浦路斯总统，双方强调友好关系。'],
-    ['四川某地发生地震', '四川某地发生地震，暂未发现人员伤亡。'],
-    ['巴基斯坦发生爆炸致人遇难', '巴基斯坦西北部发生爆炸，造成11人遇难。'],
-    ['南部战区组织海空联合演训', '南部战区在相关海域组织海空联合演训。'],
-    ['我国著名音乐家刘欢病逝', '学校发布讣告，音乐家刘欢病逝，享年63岁。'],
-    ['上海市气象台发布中心城区雷电黄色预警', '气象台提醒市民防范雷电天气。'],
-    ['欧盟向撒哈拉以南非洲提供人道主义援助', '援助用于难民、流离失所者的卫生保健。预算获批后实施。'],
-    ['俄称控制多个居民点 乌称发动多次进攻', '俄乌军方分别通报战区进展。'],
-    ['古巴外长：美持续对古封锁是集体惩罚', '外长在联合国谴责封锁造成的人道主义危机。'],
-  ]) assert.equal(decide({ title, body }).effectiveDisposition, 'reject', title);
+test('listed companies across four markets require a business event', () => {
+  for (const [title, body, reason] of [
+    ['宁德时代发布新一代电池', '公司发布新产品并扩产。', 'listed_a_share'],
+    ['腾讯控股上半年营收增长', '公司营收同比增长。', 'listed_hong_kong'],
+    ['英伟达宣布新GPU订单', 'NVIDIA订单增长。', 'listed_us'],
+    ['SK海力士HBM订单增长', 'SK海力士订单同比增长。', 'listed_korea'],
+  ]) {
+    const result = decide({ title, body });
+    assert.equal(result.decision, 'pass', title);
+    assert.deepEqual(result.reasonCodes, [reason]);
+  }
 });
 
-test('economic facts override superficially irrelevant headlines', () => {
-  for (const [title, body] of [
-    ['某公司厂房发生火灾', '某公司厂房发生火灾后停产，产能暂时下降。'],
-    ['油气管道停运', '天然气管道关闭，供应中断。'],
-    ['中美会见', '中美会见后达成关税下调安排。'],
-    ['央行宣布降息', '央行下调利率。'],
-    ['霍尔木兹海峡关闭', '霍尔木兹海峡关闭，原油运输受阻。'],
-    ['中国香港消费者价格指数上涨', '中国香港8月消费者价格指数同比上涨1.7%。'],
-    ['OpenAI扩大网络访问权限', 'OpenAI扩大对乌克兰的网络访问权限，用于民用防御。'],
-    ['微软股价上涨3%', '微软股价上涨3%，公司推出新版Copilot。'],
-    ['巴斯夫股价下跌', '巴斯夫提出合并方案后股价下跌。'],
-    ['Dropbox股价下跌', '花旗将Dropbox评级从中性下调至卖出，股价盘前下跌。'],
-    ['美元指数上涨', '初请失业金数据公布后美元指数上涨。'],
-    ['某上市公司厂房遭台风袭击', '公司被迫停产，预计本季度产能下降。'],
-    ['对非洲出口企业的关税调整', '欧盟下调相关商品进口关税，企业订单预计增长。'],
-    ['俄称击落无人机 多处工业设施遭袭受损', '军方称多处工业设施受损，影响尚待评估。'],
-  ]) assert.equal(decide({ title, body }).effectiveDisposition, 'pass', title);
+test('private stars, strategic industries and macro decisions are admitted', () => {
+  for (const [title, body, reason] of [
+    ['Anthropic完成新一轮融资', '公司融资150亿美元。', 'private_company'],
+    ['宇树科技推出新款人形机器人', '公司发布新产品。', 'private_company'],
+    ['光模块出货量同比增长', '800G光模块出货量增长。', 'industry'],
+    ['阿曼：霍尔木兹海峡通航安排谈判推进', '霍尔木兹海峡通航谈判取得进展。', 'industry'],
+    ['国产火箭总装周期缩至15天', '商业火箭总装周期缩短，生产效率提高。', 'industry'],
+    ['中国工商银行承销熊猫债', '中国工商银行牵头承销新一期熊猫债。', 'industry'],
+    ['美联储宣布加息', '美联储加息25个基点。', 'macro_central_bank'],
+    ['美国CPI同比增长', '美国CPI公布后同比增长。', 'macro_economic_data'],
+  ]) assert.deepEqual(decide({ title, body }).reasonCodes, [reason], title);
 });
 
-test('price-only dispatch is rejected; unknown and long mixed content fail open', () => {
-  assert.equal(decide({ title: '国际原油期货结算价收跌', body: '国际原油期货结算价收跌2%。' }).decision, 'reject');
-  assert.equal(decide({ title: '新型技术获得进展', body: '一项新型技术获得进展。' }).decision, 'uncertain');
-  assert.equal(decide({ title: '比赛结果', body: '球队战胜对手。' + '这篇长文还可能有未识别的重要信息。'.repeat(60) }).decision, 'uncertain');
+test('whitelist misses and price-only news are rejected even for long articles', () => {
+  for (const [title, body] of [
+    ['中国队获得亚运会篮球铜牌', '篮球比赛夺冠。'],
+    ['某公司宣布重大合同', '未指明白名单公司。'],
+    ['新型技术获得进展', '技术进展。'.repeat(300)],
+    ['Meta股价上涨3%', 'Meta股价上涨3%，总市值报1.9万亿美元。'],
+    ['全国铁路预计发送旅客1300万人次', '旅客量增长。'],
+    ['布伦特原油期货跌超3%', '布伦特原油期货价格跌3%，报97美元。'],
+  ]) assert.equal(decide({ title, body }).decision, 'reject', title);
 });
 
 test('relevant story updates stay eligible and decisions bind to exact inputs', () => {

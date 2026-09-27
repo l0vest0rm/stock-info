@@ -11,6 +11,10 @@ type FeedItem = { doc_id: string; title: string; url: string | null; source_name
   tags: Array<{ tagId: string; weight: number }>; industries: string[]; records: FeedRecord[];
   category_candidates?: CategoryCandidate[] | null }
 type FeedPage = { list: FeedItem[]; has_next: boolean; next_cursor: string | null }
+type RejectedItem = { title: string; url: string; sourceKey: string; publishedAt: string; checkedAt: string;
+  reasonCodes: string[]; policyVersion: string }
+type RejectedPage = { list: RejectedItem[]; has_next: boolean; next_offset: number | null; total: number;
+  sources: Facet[]; reasons: Facet[] }
 
 const root = document.getElementById('information-feed-root')!
 const style = document.createElement('style')
@@ -31,6 +35,7 @@ style.textContent = `
 .feed-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:.45rem;flex-wrap:wrap;margin-top:.48rem}.feed-tags{display:flex;align-items:center;gap:.3rem;min-width:0;flex-wrap:nowrap;overflow:hidden}.feed-card.is-expanded .feed-tags{flex-wrap:wrap;overflow:visible}.feed-tag,.feed-type-tag,.feed-entity-tag{font-size:.69rem;border-radius:99px;padding:.1rem .47rem;white-space:nowrap}.feed-tag{color:#176356;background:#e7f4f0}.feed-type-tag{color:#3c4fa0;background:#edf0ff}.feed-entity-tag{color:#526578;background:#edf2f5}.feed-tag-extra{display:none}.feed-card.is-expanded .feed-tag-extra{display:inline}.feed-card.is-expanded .feed-tags-more{display:none}.feed-card-actions{display:flex;align-items:center;gap:.7rem;margin-left:auto}.feed-expand,.feed-original{font-size:.77rem;color:#176b5b;text-decoration:none;white-space:nowrap}.feed-expand{border:0;background:none;padding:0}.feed-expand:hover,.feed-original:hover{text-decoration:underline}
 .feed-structured{margin-top:.7rem;padding:.8rem;background:#f7faf9;border:1px solid #dce9e4;border-radius:.65rem}.feed-structured[hidden]{display:none}.feed-structured-heading{font-size:.83rem;font-weight:750;color:#234b43}.feed-structured-note{font-size:.73rem;color:#73848a;margin:.1rem 0 .65rem!important}.feed-structured-empty{font-size:.82rem;margin:.2rem 0!important}.feed-structured-record{background:#fff;border:1px solid #e3ebe9;border-radius:.55rem;padding:.7rem .8rem}.feed-structured-record+.feed-structured-record{margin-top:.55rem}.feed-structured-record-title{display:flex;align-items:center;gap:.5rem;font-size:.82rem;font-weight:750;color:#294a43;margin-bottom:.5rem}.feed-structured-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem .9rem;margin:0}.feed-structured-grid>div{min-width:0}.feed-structured-grid .feed-structured-wide{grid-column:1/-1}.feed-structured-grid dt{font-size:.7rem;color:#77878c;font-weight:500}.feed-structured-grid dd{font-size:.82rem;color:#2f4349;margin:.08rem 0 0;overflow-wrap:anywhere}.feed-structured-subtitle{font-size:.76rem;font-weight:700;color:#45645c;margin:.65rem 0 .4rem;border-top:1px solid #edf1ef;padding-top:.55rem}
 .feed-update{font-size:.69rem;color:#9c5b00;background:#fff2d9;border-radius:99px;padding:.1rem .46rem}.feed-more{display:block;margin:1.5rem auto}
+.feed-review-switch{display:flex;gap:.5rem;margin:0 0 1rem}.feed-review-controls{display:flex;flex-wrap:wrap;gap:.55rem;margin-bottom:1rem}.feed-review-controls>*{border:1px solid #dce6e8;border-radius:.5rem;padding:.48rem .6rem;background:#fff;font-size:.82rem}.feed-review-controls input{min-width:240px;flex:1}.feed-review-reason{font-size:.72rem;color:#795826;background:#fff4dc;border-radius:99px;padding:.15rem .5rem}
 @media(max-width:600px){.feed-hero{padding:1.4rem}.feed-card{padding:.8rem .85rem}.feed-filter{padding:1rem}.feed-quick-group{display:block}.feed-quick-label{display:block;padding:0 0 .35rem}.feed-filter-menu{flex:1 1 calc(50% - .55rem)}.feed-filter-menu-panel{position:static;width:100%;max-width:none;box-shadow:none;margin-top:.3rem}.feed-filter-menu[open]{flex-basis:100%}.feed-structured-grid{grid-template-columns:1fr}}
 `
 document.head.append(style)
@@ -40,6 +45,13 @@ root.append(shell)
 const hero = el('section', 'feed-hero')
 hero.append(el('h1', '', '资讯'), el('p', 'mb-0', '按时间阅读来源表述的独有信息与后续进展；仅自动提取最近 48 小时的资讯，提取记录未经独立核实。'))
 shell.append(hero)
+const reviewSwitch = el('div', 'feed-review-switch')
+const feedTab = el('button', 'feed-filter-chip is-active', '已保留') as HTMLButtonElement
+const rejectedTab = el('button', 'feed-filter-chip', '已过滤（本地）') as HTMLButtonElement
+feedTab.type = rejectedTab.type = 'button'
+reviewSwitch.append(feedTab, rejectedTab)
+reviewSwitch.hidden = true
+shell.append(reviewSwitch)
 const filterPanel = el('section', 'feed-filter')
 const filterHead = el('div', 'feed-filter-head')
 const filterHeading = el('div')
@@ -53,6 +65,16 @@ const activeFilters = el('div', 'feed-filter-active')
 activeFilters.hidden = true
 filterPanel.append(filterHead, quickFilters, advancedFilters, activeFilters)
 shell.append(filterPanel)
+const reviewControls = el('div', 'feed-review-controls')
+const reviewSearch = document.createElement('input')
+reviewSearch.type = 'search'; reviewSearch.placeholder = '搜索已过滤标题'; reviewSearch.setAttribute('aria-label', '搜索已过滤标题')
+const reviewSource = document.createElement('select')
+reviewSource.setAttribute('aria-label', '已过滤来源')
+const reviewReason = document.createElement('select')
+reviewReason.setAttribute('aria-label', '过滤原因')
+reviewControls.append(reviewSearch, reviewSource, reviewReason)
+reviewControls.hidden = true
+shell.append(reviewControls)
 const statusLine = el('p', 'text-muted small')
 statusLine.setAttribute('role', 'status')
 shell.append(statusLine)
@@ -66,6 +88,8 @@ const selected = new Map<string, Set<string>>()
 let facets: FeedFacets = { sources: [], content_types: [], entities: [], companies: [], categories: [], industries: [] }
 let cursor: string | null = null
 let generation = 0
+let reviewMode = false
+let reviewOffset = 0
 
 function el(tag: string, className = '', text = ''): HTMLElement {
   const node = document.createElement(tag)
@@ -453,6 +477,76 @@ function renderItem(item: FeedItem) {
   return card
 }
 
+function renderRejectedItem(item: RejectedItem) {
+  const card = el('article', 'feed-card')
+  const header = el('div', 'feed-card-header')
+  header.append(el('h2', '', item.title), el('span', 'feed-meta', item.publishedAt ? formatFeedTime(item.publishedAt) : ''))
+  card.append(header)
+  const bottom = el('div', 'feed-card-bottom')
+  bottom.append(el('span', 'feed-review-reason', item.reasonCodes.join('、') || '未命中白名单'))
+  bottom.append(el('span', 'feed-meta', item.sourceKey || '未知来源'))
+  if (item.url) {
+    const link = el('a', 'feed-original', '原文 ↗') as HTMLAnchorElement
+    link.href = item.url; link.target = '_blank'; link.rel = 'noopener noreferrer'
+    bottom.append(link)
+  }
+  card.append(bottom)
+  return card
+}
+
+function reviewQuery() {
+  const params = new URLSearchParams({ offset: String(reviewOffset), limit: '30' })
+  if (reviewSearch.value.trim()) params.set('q', reviewSearch.value.trim())
+  if (reviewSource.value) params.set('source', reviewSource.value)
+  if (reviewReason.value) params.set('reason', reviewReason.value)
+  return params.toString()
+}
+
+function setSelectOptions(select: HTMLSelectElement, items: Facet[], allLabel: string) {
+  const previous = select.value
+  select.replaceChildren(new Option(allLabel, ''))
+  for (const item of items) select.append(new Option(`${item.id}（${item.count}）`, item.id))
+  select.value = previous
+}
+
+async function loadRejected(append: boolean) {
+  const current = ++generation
+  statusLine.textContent = '正在加载已过滤标题…'
+  more.disabled = true
+  try {
+    const page = await getData<RejectedPage>(`/api/local/information-feed/rejected?${reviewQuery()}`)
+    if (current !== generation) return
+    if (!append) list.replaceChildren()
+    for (const item of page.list) list.append(renderRejectedItem(item))
+    reviewOffset = page.next_offset ?? reviewOffset
+    setSelectOptions(reviewSource, page.sources, '全部来源')
+    setSelectOptions(reviewReason, page.reasons, '全部原因')
+    more.hidden = !page.has_next
+    statusLine.textContent = `共 ${page.total} 条已过滤标题${page.total ? '，仅保存在本地文件，未提交大模型。' : '。'}`
+  } catch (error) { statusLine.textContent = error instanceof Error ? error.message : String(error) }
+  finally { if (current === generation) more.disabled = false }
+}
+
+function switchReview(value: boolean) {
+  reviewMode = value
+  feedTab.classList.toggle('is-active', !value)
+  rejectedTab.classList.toggle('is-active', value)
+  filterPanel.hidden = value
+  reviewControls.hidden = !value
+  list.replaceChildren()
+  more.hidden = true
+  reviewOffset = 0
+  cursor = null
+  if (value) void loadRejected(false)
+  else void load(false)
+}
+feedTab.addEventListener('click', () => switchReview(false))
+rejectedTab.addEventListener('click', () => switchReview(true))
+for (const input of [reviewSearch, reviewSource, reviewReason]) input.addEventListener('change', () => {
+  reviewOffset = 0
+  void loadRejected(false)
+})
+
 async function load(append: boolean) {
   const current = ++generation
   statusLine.textContent = '正在加载资讯…'
@@ -469,8 +563,8 @@ async function load(append: boolean) {
   finally { if (current === generation) more.disabled = false }
 }
 
-more.addEventListener('click', () => void load(true))
+more.addEventListener('click', () => { if (reviewMode) void loadRejected(true); else void load(true) })
 void (async () => {
-  try { facets = await getData<FeedFacets>('/api/knowledge/feed/facets'); renderFilters(); await load(false) }
+  try { facets = await getData<FeedFacets>('/api/knowledge/feed/facets'); renderFilters(); reviewSwitch.hidden = !facets.statuses; await load(false) }
   catch (error) { statusLine.textContent = error instanceof Error ? error.message : String(error) }
 })()

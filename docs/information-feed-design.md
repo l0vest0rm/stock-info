@@ -15,7 +15,7 @@
 ```text
 采集来源 + 原始格式/权限门禁
   → 工程去重：repeat 丢弃正文；new 保存全文；update 仅保存新增/修正段落
-  → 本地投资相关性门禁：确定无关者仅留审计、不入库、不调用模型；不确定者保守放行
+  → 本地投资白名单门禁：未命中者仅留标题/链接审计、不入库、不调用模型；不确定者默认拒绝
   → 本地 gpt-6-luna 单次提取 records 与待审 categoryCandidates（使用资讯流 system/user 提示词和现有 category 目录）
   → Schema/类别/期间/候选原文证据/模型身份/内容指纹校验
   → 正式记录存入 knowledge_information_records，以 doc_id 关联文章；记录级 entity_key 由公司名称/别名唯一精确匹配生成

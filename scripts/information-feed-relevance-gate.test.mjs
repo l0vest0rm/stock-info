@@ -12,6 +12,7 @@ test('rejected source never becomes a document or an extraction request', () => 
     const audit = join(f.directory,'rejected.jsonl');
     writeFileSync(input, JSON.stringify({ sourceKey:'cls_telegraph', sourceItemId:'sports-1',
       title:'中国队获得亚运会篮球铜牌', body:'中国队在亚运会篮球比赛中获得铜牌。',
+      url:'https://example.test/sports',
       publishedAt:new Date().toISOString() }));
     const env = { ...process.env, LOCAL_DB_PATH:f.file, KNOWLEDGE_CONTENT_LOCAL_DIR:join(f.directory,'content'),
       INFORMATION_FEED_STATE_FILE:join(f.directory,'state.json'),
@@ -27,7 +28,10 @@ test('rejected source never becomes a document or an extraction request', () => 
     assert.equal(counters.relevanceRejected,1);
     assert.equal(counters.tagged,0);
     assert.equal(f.db.prepare("select count(*) n from knowledge_docs where source_type='information_feed'").get().n,0);
-    assert.equal(JSON.parse(readFileSync(audit,'utf8').trim()).reasonCodes[0],'sports_result');
+    const rejectedEntry = JSON.parse(readFileSync(audit,'utf8').trim());
+    assert.equal(rejectedEntry.reasonCodes[0],'whitelist_miss');
+    assert.equal(rejectedEntry.title,'中国队获得亚运会篮球铜牌');
+    assert.equal(rejectedEntry.url,'https://example.test/sports');
 
     writeFileSync(input, JSON.stringify({ sourceKey:'cls_telegraph', sourceItemId:'rate-1',
       title:'央行宣布降息', body:'央行宣布下调利率。',publishedAt:new Date().toISOString() }));
