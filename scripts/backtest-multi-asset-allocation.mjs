@@ -31,7 +31,7 @@ const to = args.to ?? '2026-07-31';
 const horizon = Number(args['horizon-days'] ?? '252');
 const cost = Number(args['one-way-cost-bp'] ?? '15') / 10_000;
 const baseUrl = args['base-url'] ?? 'https://tinfo.cc';
-const output = path.resolve(args.output ?? 'docs/research/多资产配置回测.md');
+const output = path.resolve(args.output ?? 'reports/research/多资产配置回测.md');
 const csvOutput = output.replace(/\.md$/i, '.csv');
 const eventsOutput = output.replace(/\.md$/i, '-调仓明细.csv');
 

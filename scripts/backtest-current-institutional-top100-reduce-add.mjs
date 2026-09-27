@@ -21,7 +21,7 @@ Other useful options:
   --stock-limit 300 --from 2021-07-31 --to 2026-07-31
   --analysis-cohort triggered          report only windows where the first reduction actually occurred
   --rules config/institutional-top300-reduce-add-grid.json
-  --output docs/research/report.md`);
+  --output reports/research/report.md`);
   process.exit(0);
 }
 
@@ -38,7 +38,7 @@ const concurrency = Number(args.concurrency ?? "6");
 const analysisCohort = String(args["analysis-cohort"] ?? "all");
 const strategy = String(args.strategy ?? "reduce-add");
 const cashBaseline = String(args["cash-baseline"] ?? "static-cash");
-const output = path.resolve(args.output ?? "docs/research/当前机构持股Top100-逐股减仓加仓回测.md");
+const output = path.resolve(args.output ?? "reports/research/当前机构持股Top100-逐股减仓加仓回测.md");
 const csvOutput = output.replace(/\.md$/i, ".csv");
 const stockSummaryOutput = output.replace(/\.md$/i, "-逐股汇总.csv");
 const industrySummaryOutput = output.replace(/\.md$/i, "-行业汇总.csv");

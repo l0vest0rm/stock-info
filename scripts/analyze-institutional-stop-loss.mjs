@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const args = parseArgs(process.argv.slice(2));
@@ -8,7 +8,7 @@ const baseUrl = args["base-url"] ?? "https://tinfo.cc";
 const reportDate = args["report-date"] ?? "2026-06-30";
 const asOf = args["as-of"] ?? new Date().toISOString().slice(0, 10);
 const from = args.from ?? shiftYear(asOf, -1);
-const output = path.resolve(args.output ?? `docs/research/机构重仓股止损分析-${reportDate}.md`);
+const output = path.resolve(args.output ?? `reports/research/机构重仓股止损分析-${reportDate}.md`);
 const csvOutput = output.replace(/\.md$/i, ".csv");
 
 const holdings = (
@@ -42,6 +42,7 @@ const analyzed = await mapConcurrent(holdings, 6, async (holding, index) => {
 });
 
 const report = renderReport(analyzed);
+await mkdir(path.dirname(output), { recursive: true });
 await writeFile(output, report, "utf8");
 await writeFile(csvOutput, renderCsv(analyzed), "utf8");
 console.log(JSON.stringify({ output, csvOutput, holdings: analyzed.length, reportDate, asOf }, null, 2));

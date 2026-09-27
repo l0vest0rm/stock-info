@@ -1,5 +1,7 @@
 # stock-info
 
+项目整体设计见 [架构文档](docs/architecture.md)；AI 产业标的研究见 [赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)。
+
 Cloudflare Workers 股票信息站。当前知识链路已收敛到固定形态：
 
 - D1：文档索引库，只负责列表、筛选、排序、搜索、正文引用
@@ -50,7 +52,7 @@ chmod +x ./start-local.sh
 ### 资讯信息流
 
 本地页面为 `/news.html`，接口为 `/api/knowledge/feed` 和 `/api/knowledge/feed/facets`。
-`config/information-feed.json` 控制本地资讯文件变更触发的即时入库/提取、财联社采集、每日 500 次提取上限与远端发布开关。财联社源站无推送接口，因此仅采集仍每 60 秒轮询；无新增或修订内容时不运行入库/提取。腾讯原始 JSON 由仓库外的现有采集器提供，写入共享 news 目录后触发处理。资讯按[投资白名单](docs/information-feed-whitelist.md)先过滤再入库、提取；拒绝标题及链接只写本地 JSONL，页面本地环境可筛选复核。生产 Worker 不调用模型，远端发布默认关闭。手动处理和检查：
+`config/information-feed.json` 控制本地资讯文件变更触发的即时入库/提取、财联社采集、每日 500 次提取上限与远端发布开关。财联社源站无推送接口，因此仅采集仍每 60 秒轮询；无新增或修订内容时不运行入库/提取。腾讯原始 JSON 由仓库外的现有采集器提供，写入共享 news 目录后触发处理。资讯按 `config/information-feed-whitelist.json` 和 `config/information-feed-relevance.json` 先过滤再入库、提取；拒绝标题及链接只写本地 JSONL，页面本地环境可筛选复核。生产 Worker 不调用模型，远端发布默认关闭。手动处理和检查：
 
 ```bash
 npm run process:feed -- --max-documents 200 --max-tags 20
@@ -59,7 +61,7 @@ npm run publish:feed:dry-run
 npm run test:feed
 ```
 
-腾讯自选股、财联社采集全文已获远端发布许可，但 `publishRemote` 开关仍关闭；手动执行发布器的 `--apply` 也会跳过远端操作。先验收本地采集、去重与打标效果，之后再应用远端 D1 迁移、验证批量发布与生产只读 API，并单独开启发布开关。设计、门禁及剩余验收见 [资讯信息流方案](docs/information-feed-design.md)。
+腾讯自选股、财联社采集全文已获远端发布许可，但 `publishRemote` 开关仍关闭；手动执行发布器的 `--apply` 也会跳过远端操作。先验收本地采集、去重与打标效果，之后再应用远端 D1 迁移、验证批量发布与生产只读 API，并单独开启发布开关。链路边界见 [架构文档](docs/architecture.md)。
 
 `start-local.sh` 最终以前台 `local-supervisor` 运行，并管理 `local-http` 与
 `local-scheduler` 两个常驻角色。`local-http` 同时监听 8000 API

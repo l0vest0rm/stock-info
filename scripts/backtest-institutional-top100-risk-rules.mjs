@@ -19,7 +19,7 @@ const baseUrl = args["base-url"] ?? "https://tinfo.cc";
 const to = args.to ?? "2026-07-31";
 const from = args.from ?? "2023-12-01";
 const oneWayCost = Number(args["one-way-cost-bp"] ?? "15") / 10_000;
-const output = path.resolve(args.output ?? "docs/research/机构持仓Top100-风控规则回测.md");
+const output = path.resolve(args.output ?? "reports/research/机构持仓Top100-风控规则回测.md");
 const portfolioSizes = parsePortfolioSizes(args["portfolio-sizes"] ?? "100");
 const holdingType = String(args["holding-type"] ?? "0");
 const industryExperiments = args["industry-experiments"] === "true";

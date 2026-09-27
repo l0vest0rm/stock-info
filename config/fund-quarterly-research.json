@@ -1,7 +1,7 @@
 {
   "version": 1,
   "baseUrl": "http://127.0.0.1:8000",
-  "outputDir": "docs/research/funds",
+  "outputDir": "reports/research/funds",
   "stateDir": "data/fund-quarterly-research",
   "ranking": {
     "fundType": "all",

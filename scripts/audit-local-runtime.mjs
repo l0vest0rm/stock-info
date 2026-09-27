@@ -13,7 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 const root = resolve(new URL("..", import.meta.url).pathname);
 const now = new Date();
 const stamp = now.toISOString().replaceAll(":", "").replace(/\.\d{3}Z$/, "Z");
-const output = resolve(readArg("--output") || join(root, "docs/runtime-audits", `local-runtime-${stamp}.md`));
+const output = resolve(readArg("--output") || join(root, "data/local/runtime-audits", `local-runtime-${stamp}.md`));
 const jsonOutput = output.replace(/\.md$/i, ".json");
 const localPath = resolve(process.env.LOCAL_DB_PATH || join(root, process.env.LOCAL_DATA_DIR || "data/local", "stock-info.sqlite"));
 const miniflareRoot = resolve(root, ".wrangler/state/v3/d1/miniflare-D1DatabaseObject");

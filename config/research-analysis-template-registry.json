@@ -1,7 +1,6 @@
 {
   "registryVersion": "research-analysis-template-registry.v2",
   "description": "公司经营与行业产业分析模板。A 股行业边界采用东方财富 F10 的 EM2016 三级分类；经营特征仍按业务经济性、核心公式、经营指标和估值方法确认，不把行业标签单独误作经营模型。",
-  "sourceDocument": "docs/公司经营与行业产业分析框架_修订版.md",
   "templateAliases": {
     "optical-transceiver-ai-interconnect.v1": "technology-equipment.v1"
   },
