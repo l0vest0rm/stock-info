@@ -1,5 +1,19 @@
 [
   {
+    "contractVersion": "feed-tag-v9",
+    "promptHash": "8b23ecf0d844e1ba47909a20bd018843aaa949eb82476f3b3f04bb4db2099866",
+    "categoryCatalogHash": "6aad3a10b7d2e062d0fc909a0b5622f0686d363f395c15fc6e856ca846f7ec47",
+    "candidatePolicyHash": "29d36b3b9f528557d66372aaa67b9de7ef5145e48f4e1b0f00231c7337571ddb",
+    "model": "gpt-6-luna"
+  },
+  {
+    "contractVersion": "feed-tag-v8",
+    "promptHash": "cefba73a82ef31052bcd10598e25c8f4bf25423dfdea01e24829663cbf000667",
+    "categoryCatalogHash": "6aad3a10b7d2e062d0fc909a0b5622f0686d363f395c15fc6e856ca846f7ec47",
+    "candidatePolicyHash": "29d36b3b9f528557d66372aaa67b9de7ef5145e48f4e1b0f00231c7337571ddb",
+    "model": "gpt-6-luna"
+  },
+  {
     "contractVersion": "feed-tag-v5",
     "promptHash": "714ea1d937cdaa08092f6eb7ca5c66858d1299f736626cc284277e484b2eb94c",
     "categoryCatalogHash": "31390c312c0ea91d28aeac6f4637f8af87cebdac0991c0b3af39e2e8c2b02cdb",

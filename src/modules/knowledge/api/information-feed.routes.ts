@@ -9,7 +9,7 @@ import feedConfig from '../../../../config/knowledge/information-feed.json';
 import feedPolicy from '../../../../config/knowledge/information-feed-policy.json';
 import { FEED_EXTRACTION_CONTRACT, LEGACY_FEED_EXTRACTION_CONTRACTS } from '../../../generated/information-records-contract';
 import { currentExtractionSql, informationRowsJsonSql, recordsDigestInput, rowToInformation,
-  sha256Text, sqlText, type InformationRow, type ExtractionState } from '../domain/information-records';
+  MAX_EXTRACTION_ATTEMPTS, contractMatches, sha256Text, sqlText, type InformationRow, type ExtractionState } from '../domain/information-records';
 
 export const informationFeedRoutes = new Hono<AppEnv>();
 const relevanceConfig = feedPolicy.relevance;
@@ -116,6 +116,9 @@ async function mapRow(row: FeedRow, cutoff: string, local: boolean, filters?: Re
     published_at: row.published_at, sort_time: row.sort_time, summary: row.summary,
     content_type: metadata.feed?.contentType || 'news', kind: metadata.feed?.kind || 'new', story_key: metadata.feed?.storyKey || row.doc_id,
     tagging_status: status,
+    ...(local ? { retry_exhausted: status === 'failed'
+      && contractMatches(extraction?.lastAttempt, FEED_EXTRACTION_CONTRACT)
+      && Number(extraction?.lastAttempt?.attempts || 0) >= MAX_EXTRACTION_ATTEMPTS } : {}),
     whitelist_match: gate?.effectiveDisposition === 'pass' ? {
       reason_code: gateReason,
       matched_keywords: Array.isArray(gate.matchedKeywords) ? gate.matchedKeywords.filter((value: unknown): value is string => typeof value === 'string') : [],

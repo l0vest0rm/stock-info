@@ -1,11 +1,11 @@
 {
-  "tagContract": "feed-tag-v8",
+  "tagContract": "feed-tag-v10",
   "automation": {
     "enabled": true,
     "runOnStart": true,
     "maxDocumentsPerRun": 10000,
     "maxTagsPerRun": 20,
-    "maxTagsPerDay": 500,
+    "maxTagsPerDay": 1000,
     "lookbackDays": 3,
     "maxAgeHours": 48,
     "publishRemote": false,

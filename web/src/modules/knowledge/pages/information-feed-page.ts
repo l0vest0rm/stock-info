@@ -9,7 +9,7 @@ type CategoryCandidate = { entity: string; informationType: string; statement: s
 type WhitelistMatch = { reason_code: string; matched_keywords: string[]; evidence: string[];
   company_name?: string | null; stock_code?: string | null; industry?: string | null }
 type FeedItem = { doc_id: string; title: string; url: string | null; source_name: string | null; published_at: string | null;
-  summary: string | null; kind: string; story_key: string; tagging_status: string; sources: string[];
+  summary: string | null; kind: string; story_key: string; tagging_status: string; retry_exhausted?: boolean; sources: string[];
   tags: Array<{ tagId: string; weight: number }>; industries: string[]; records: FeedRecord[];
   category_candidates?: CategoryCandidate[] | null; whitelist_match: WhitelistMatch | null }
 type FeedPage = { list: FeedItem[]; has_next: boolean; next_cursor: string | null }
@@ -460,7 +460,7 @@ function renderItem(item: FeedItem) {
   for (const label of identityLabels(item)) tags.append(el('span', 'feed-entity-tag', label))
   if (item.kind === 'update') tags.append(el('span', 'feed-update', '更新'))
   if (item.tagging_status === 'expired') tags.append(el('span', 'feed-update', '超过48小时未提取'))
-  else if (item.tagging_status === 'failed') tags.append(el('span', 'feed-update', '提取失败，等待重试'))
+  else if (item.tagging_status === 'failed') tags.append(el('span', 'feed-update', item.retry_exhausted ? '提取失败，已达重试上限' : '提取失败，等待重试'))
   else if (item.tagging_status === 'processing') tags.append(el('span', 'feed-update', '提取中'))
   else if (item.tagging_status !== 'complete') tags.append(el('span', 'feed-update', '待提取'))
   else if (item.category_candidates?.length) tags.append(el('span', 'feed-update', '待审类别'))

@@ -1,4 +1,5 @@
 // Shared by the Node extractor and the Worker read model. No Node dependencies.
+export const MAX_EXTRACTION_ATTEMPTS = 5;
 export const INFORMATION_STORAGE_VERSION = 'information-records-v1';
 
 export type InformationRecord = {

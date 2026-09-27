@@ -104,8 +104,43 @@ function parseMeasurement(value, period) {
   return Object.fromEntries(keys.map((key) => [key, value[key]]));
 }
 
+// Date ranges must be copied from the source: never infer missing years from
+// publication time. A yearless range cannot establish a cross-year interval.
+function isDateRange(value, sourceContent) {
+  if (!String(sourceContent || '').includes(value)) return false;
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})\s*[-–—至]\s*(\d{4})-(\d{2})-(\d{2})$/);
+  const chinese = value.match(/^(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*[-–—至]\s*(?:(\d{4})年)?(?:(\d{1,2})月)?(\d{1,2})日$/);
+  const match = iso || chinese;
+  if (!match || (Boolean(match[4]) && !match[1])) return false;
+  const parts = [1, 4].map((offset) => [Number(match[offset] || (offset === 4 ? match[1] : '') || 2000), Number(match[offset + 1] || match[2]), Number(match[offset + 2])]);
+  const valid = ([year, month, day]) => {
+    const date = new Date(0);
+    date.setUTCFullYear(year, month - 1, day);
+    return year > 0 && date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  };
+  return parts.every(valid)
+    && (parts[0][0] * 10000 + parts[0][1] * 100 + parts[0][2]) <= (parts[1][0] * 10000 + parts[1][1] * 100 + parts[1][2]);
+}
+
+// Preserve source granularity (including omitted year/month and approximate
+// dates); these values must not become exact fiscal forecast measurements.
+function isSourcePeriod(value, sourceContent) {
+  if (!String(sourceContent || '').includes(value)) return false;
+  const months = value.match(/^(?:(\d{4})年)?(\d{1,2})月(?:份)?(?:[-–—至](?:(\d{4})年)?(\d{1,2})月(?:份)?)?$/);
+  if (months) {
+    const [, year, month, endYear, endMonth] = months;
+    if ((year && Number(year) === 0) || (endYear && (!year || Number(endYear) === 0))) return false;
+    return Number(month) >= 1 && Number(month) <= 12
+      && (!endMonth || (Number(endMonth) >= 1 && Number(endMonth) <= 12
+        && Number(year || 2000) * 12 + Number(month) <= Number(endYear || year || 2000) * 12 + Number(endMonth)));
+  }
+  return /^(?:[1-9]\d{3}年(?:前后|底|初|末)?|上半年|下半年|全年|第[一二三四1-4]季度|[一二三四五六七八九十两]{1,3}(?:至[一二三四五六七八九十两]{1,3})?(?:天|个?交易日|周|个月|月|季度|年)(?:内|期间|以来)?)$/.test(value);
+}
+
 function isPeriod(value, sourceContent) {
-  return value.length <= 24 && (/^\d{4}(?:Q[1-4]|H[12]|FY)$/.test(value)
+  return value.length <= 32 && (isDateRange(value, sourceContent)
+    || isSourcePeriod(value, sourceContent)
+    || /^\d{4}(?:Q[1-4]|H[12]|FY)$/.test(value)
     || /^\d{4}-(?:0[1-9]|1[0-2])(?:-(?:0[1-9]|[12]\d|3[01]))?$/.test(value)
     || /^\d{4}年(?:[1-9]|1[0-2])月$/.test(value)
     || /^截至\d{4}-\d{2}-\d{2}$/.test(value)
@@ -113,7 +148,7 @@ function isPeriod(value, sourceContent) {
     || /^\d{4}年(?:第?[一二三四1-4]季度|上半年|下半年|全年|前\d{1,2}个月)$/.test(value)
     // Preserve an explicit source-relative period rather than inventing a
     // numeric interval. Measurement parsing still requires an exact fiscal year.
-    || (/^(?:(?:近|最近|过去|未来)(?:几|数)(?:天|周|个月|月|季度|年)|\d{1,2}(?:[-—–至]\d{1,2})?(?:天|周|个月|月|季度|年)(?:内|期间|以来)?|今年|明年|去年|本财年|下一财年|上个月|本月|下个月|本季度|上季度|下季度)$/.test(value)
+    || (/^(?:(?:近|最近|过去|未来)(?:几|数)(?:天|周|个月|月|季度|年)|\d{1,2}(?:[-—–至]\d{1,2})?(?:天|周|个月|月|季度|年)(?:内|期间|以来)?|本周|上周|下周|今年|明年|去年|本财年|下一财年|上个月|本月|下个月|本季度|上季度|下季度)$/.test(value)
       && String(sourceContent || '').includes(value)));
 }
 

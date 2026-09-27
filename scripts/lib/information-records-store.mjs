@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { resolveExistingLocalD1Database, LOCAL_SQLITE_BUSY_TIMEOUT_MS } from './local-d1-sqlite.mjs';
 import { entityKeyForRecord, parseFeedExtraction } from './information-feed-extraction.mjs';
 import {
-  INFORMATION_STORAGE_VERSION, canonicalJson, rowToInformation, recordsDigestInput,
+  MAX_EXTRACTION_ATTEMPTS, INFORMATION_STORAGE_VERSION, canonicalJson, rowToInformation, recordsDigestInput,
   contractMatches, extractionOutcome, tagsForInformationRows,
 } from '../../src/modules/knowledge/domain/information-records.ts';
 
@@ -89,7 +89,7 @@ export function shouldAttemptExtraction(state, fingerprint, contract, now = Date
   const attempt = state.lastAttempt || {};
   if (state.status === 'processing' && Number(attempt.leaseUntil || 0) > now) return false;
   if (state.status === 'failed' && attempt.inputFingerprint === fingerprint && contractMatches(attempt, contract)
-    && (Number(attempt.attempts || 0) >= 5 || Number(attempt.nextRetryAt || 0) > now)) return false;
+    && (Number(attempt.attempts || 0) >= MAX_EXTRACTION_ATTEMPTS || Number(attempt.nextRetryAt || 0) > now)) return false;
   const current = state.current;
   return !(state.status === 'complete' && current?.storageVersion === INFORMATION_STORAGE_VERSION
     && current.provenanceStatus === 'verified' && current.inputFingerprint === fingerprint

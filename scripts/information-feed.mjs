@@ -21,7 +21,7 @@ import { INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
 import { requestLocalDirectLlmText } from '../src/shared/local-direct-llm.ts';
 import { claimExtraction, commitExtraction, failExtraction, feedInputFingerprint, sourceExpectation,
   shouldAttemptExtraction, mergeStorySourceReference } from './lib/information-records-store.mjs';
-import { FEED_EXTRACTION_CONTRACT } from './generated/information-records-contract.mjs';
+import { FEED_EXTRACTION_CONTRACT, LEGACY_FEED_EXTRACTION_CONTRACTS } from './generated/information-records-contract.mjs';
 import { INFORMATION_STORAGE_VERSION, contractMatches } from '../src/modules/knowledge/domain/information-records.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -42,7 +42,7 @@ if (!contractMatches(FEED_EXTRACTION_CONTRACT, EXTRACTION_CONTRACT)) throw new E
 if (args.mode !== 'ingest' && process.env.LLM_RUNTIME !== 'local') throw new Error('information feed tagging requires LLM_RUNTIME=local from the local launch script');
 
 const counters = { scanned: 0, accepted: 0, repeat: 0, update: 0, new: 0, relevanceRejected: 0,
-  relevanceUncertain: 0, rejected: {}, tagged: 0, tagFailed: 0 };
+  relevanceUncertain: 0, rejected: {}, tagged: 0, tagFailed: 0, quotaExhausted: false };
 const stockEntries = stockWhitelistEntries(queryLocalD1Sql(`select s.code,s.short_name,a.alias
   from stock s left join stock_alias a on a.code=s.code
   where s.information_feed_focus=1`, { requiredTable: 'stock_alias' }));
@@ -186,15 +186,15 @@ async function tagPending() {
   if (usage.day !== day) { usage.day = day; usage.count = 0; }
   const remainingToday = Math.max(0, Number(feedConfig.automation?.maxTagsPerDay || 500) - Number(usage.count || 0));
   const limit = Math.min(args.maxTags, remainingToday);
-  if (!limit) return;
+  if (!limit) { counters.quotaExhausted = true; return; }
   const allRows = loadFeedRows();
-  const rows = recentFeedRows(allRows, Date.now(), args.maxAgeHours)
+  const rows = (args.retryFailed ? allRows.filter((row) => row.extraction?.status === 'failed') : recentFeedRows(allRows, Date.now(), args.maxAgeHours))
     .filter((row) => !args.docId || row.doc_id === args.docId);
   const aliases = queryLocalD1Sql(`select s.short_name as alias,s.code,s.short_name as name from stock s
     union all select a.alias,a.code,s.short_name as name from stock_alias a join stock s on s.code=a.code`, { requiredTable: 'stock_alias' });
   for (const row of rows) {
     if (counters.tagged + counters.tagFailed >= limit) break;
-    if (!isRecentFeedTime(row.sort_time, Date.now(), args.maxAgeHours)) continue;
+    if (!args.retryFailed && !isRecentFeedTime(row.sort_time, Date.now(), args.maxAgeHours)) continue;
     const body = readLocalBody(row.content_key);
     if (!body) continue;
     if (!currentInvestmentGate(row.feed.investmentGate, { title: row.title, body, stockEntries })) {
@@ -206,6 +206,11 @@ async function tagPending() {
         publishedAt: row.published_at, ...gate });
     }
     if (row.feed.investmentGate.effectiveDisposition !== 'pass') continue;
+    // Frozen, successful contracts remain usable. A prompt release must not
+    // spend the daily quota re-extracting every already accepted document.
+    const current = row.extraction?.current;
+    if (!args.docId && current && [EXTRACTION_CONTRACT, ...LEGACY_FEED_EXTRACTION_CONTRACTS].some((contract) => contractMatches(current, contract))
+      && !shouldAttemptExtraction(row.extraction, feedInputFingerprint(row, body, current), current)) continue;
     const fingerprint = feedInputFingerprint(row, body, EXTRACTION_CONTRACT);
     if (!shouldAttemptExtraction(row.extraction, fingerprint, EXTRACTION_CONTRACT)) continue;
     const companyCandidates = feedCompanyCandidates(aliases, row.title, body, feedConfig.companyCandidates);
@@ -218,6 +223,7 @@ async function tagPending() {
       usage.count += 1;
       saveJson(usageFile, usage);
       const promptValues = { CATEGORY_CATALOG: feedCategoryCatalog(), ENTITY_TYPES: feedEntityTypes(), TITLE: row.title, SOURCE_TYPE: row.source_type,
+        VALIDATION_ERROR: JSON.stringify(row.extraction?.lastAttempt?.error || null),
         REPORT_TYPE: row.feed.contentType || '', PUBLISHED_AT: row.published_at || '', CONTENT: body.slice(0, 12000) };
       const input = INFORMATION_FEED_DOCUMENT_ANALYSIS_USER_PROMPT.replace(/\{\{([A-Z_]+)\}\}/g,
         (_match, key) => promptValues[key] ?? '');
@@ -353,10 +359,11 @@ function acquireLock(file) {
 }
 
 function parseArgs(argv) {
-  const result = { mode: 'run', file: '', docId: '', maxDocuments: 200, maxTags: 20, lookbackDays: 3, maxAgeHours: MAX_FEED_AGE_HOURS };
+  const result = { mode: 'run', file: '', docId: '', retryFailed: false, maxDocuments: 200, maxTags: 20, lookbackDays: 3, maxAgeHours: MAX_FEED_AGE_HOURS };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--mode') result.mode = argv[++i];
     else if (argv[i] === '--file') result.file = argv[++i];
+    else if (argv[i] === '--retry-failed') result.retryFailed = true;
     else if (argv[i] === '--doc-id') result.docId = argv[++i];
     else if (argv[i] === '--max-documents') result.maxDocuments = Number(argv[++i]);
     else if (argv[i] === '--max-tags') result.maxTags = Number(argv[++i]);
@@ -364,7 +371,7 @@ function parseArgs(argv) {
     else if (argv[i] === '--max-age-hours') result.maxAgeHours = Number(argv[++i]);
     else throw new Error(`unknown argument: ${argv[i]}`);
   }
-  if (!['run', 'ingest', 'tag'].includes(result.mode) || (result.docId && (result.mode !== 'tag' || !/^f_[a-f0-9]{24}$/.test(result.docId)))
+  if ((result.retryFailed && (!result.docId || result.mode !== 'tag')) || !['run', 'ingest', 'tag'].includes(result.mode) || (result.docId && (result.mode !== 'tag' || !/^f_[a-f0-9]{24}$/.test(result.docId)))
     || !Number.isInteger(result.maxDocuments) || result.maxDocuments < 1
     || !Number.isInteger(result.maxTags) || result.maxTags < 1 || !Number.isInteger(result.lookbackDays) || result.lookbackDays < 1
     || !Number.isInteger(result.maxAgeHours) || result.maxAgeHours < 1 || result.maxAgeHours > MAX_FEED_AGE_HOURS) throw new Error('invalid information feed arguments');

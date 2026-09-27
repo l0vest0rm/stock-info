@@ -15,7 +15,7 @@ records 只使用下方目录的 category ID 和对应的 informationType，不�
 - “高盛预计多家科技公司AI基础设施支出合计达到8000亿美元”：category=capital_expenditure，informationType=forecast；可用原文明示的AI基础设施主题为 entity，statement 保留高盛和统计范围，不能把合计额归给单家公司，也不要因涉及多家公司而另提候选。
 - “输油管道恢复输送”“工厂停产/投产”归 operating_status；“项目完成关键施工节点”归 project_progress；主信息是市场供给短缺及其影响则归 supply_change。同一事实择最具体的一类，不为原因、事件、影响重复凑数。
 
-period：目录中的“期间必填”要求正文有对应期间；“期间可省略”表示无明确期间就省略或 null；“不得填写期间”表示省略或 null。这些策略名不是 period 值，绝不能输出 required、optional、forbidden。格式可用 YYYYFY、YYYYQ1–YYYYQ4、YYYYH1–YYYYH2、YYYY-MM、YYYY-MM-DD、截至YYYY-MM-DD、近/最近/过去/未来N天/周/月/个月/季度/年，或原文明确的 YYYY年M月/上半年/下半年/全年/第N季度/前N个月；N、M 用数字。正文逐字出现的“今年、明年、去年、本财年、下一财年、上个月、本月、下个月、本季度、上季度、下季度”，以及“近/最近/过去/未来几或数天/周/个月/月/季度/年”也可原样保留，不从发布日期猜财年或把“几个月”改成具体月数。必填但正文没有期间时不提取该条，不伪造候选绕过约束。
+period：目录中的“期间必填”要求正文有对应期间；“期间可省略”表示无明确期间就省略或 null；“不得填写期间”表示省略或 null。这些策略名不是 period 值，绝不能输出 required、optional、forbidden。格式可用 YYYYFY、YYYYQ1–YYYYQ4、YYYYH1–YYYYH2、YYYY-MM、YYYY-MM-DD、截至YYYY-MM-DD、近/最近/过去/未来N天/周/月/个月/季度/年，或原文明确的 YYYY年M月/上半年/下半年/全年/第N季度/前N个月；N、M 用数字。正文逐字出现的“本周、上周、下周、今年、明年、去年、本财年、下一财年、上个月、本月、下个月、本季度、上季度、下季度”，以及“近/最近/过去/未来几或数天/周/个月/月/季度/年”也可原样保留，不从发布日期猜财年或把“几个月”改成具体月数。必填但正文没有期间时不提取该条，不伪造候选绕过约束。
 
 forecastMeasurement 规则：仅当 informationType="forecast"、category 为 revenue|revenue_growth|net_profit|net_profit_growth|gross_margin|eps|operating_cash_flow，且原文明确给出单一预测数值、财年、原始单位及全部口径时，才输出对象；其他所有 record 都输出 null。period 必须精确为该财年的 YYYYFY 或 YYYYQ1/YYYYQ2/YYYYQ3/YYYYQ4，且 fiscalYear 必须与其年份相同。对象只能使用以下字段和值：
 
@@ -27,7 +27,17 @@ rawValue 必须是来源直接写出的有限数值，rawUnit 必须保留来源
 
 返回前检查每条 statement 必须逐字包含所选 entity 简名，不能只写简称之外的别称或代词。
 
+日期区间仅可逐字复制正文，支持 YYYY-MM-DD–YYYY-MM-DD、YYYY年M月D日–YYYY年M月D日、M月D日–M月D日（分隔符可为 -、–、—、至）。起止必须是合法日期且顺序正确；支持原文省略重复年份或月份的写法，如“9月25日至28日”“2026年9月25日至28日”；仅在区间内部继承已明确的年份/月，不从发布日期推算。原文“本周（9月21日-9月27日）”可保留“本周”或“9月21日-9月27日”，不得根据发布时间补成“2026-09-21–2026-09-27”。跨年区间必须由正文明确提供两端年份，否则保留正文中的相对期间或省略可选期间。
+
+正文逐字出现的“2027年”“2028年前后”“上半年”“下半年”“全年”“第N季度”“7月/7月份”“4月至7月/2025年4月至7月”，以及中文数字时长“三个月内”“十五个交易日”也可原样保留；不得给“上半年”“4月至7月”补出正文未明确的年份。近似年份必须保留“前后”，不能改为精确财年。
+
+正式披露的拟收购、拟减持和拟上诉可用对应 acquisition、shareholding_change、litigation 的 guidance，statement 必须保留“拟/计划/将”；不能把计划写成已完成。regulatory_approval 的 forecast 仅承接来源明确预计的许可或资格授予，保留“有望/预计”，不能将纳入突破性治疗程序写成已经获准上市。
+
 正文明确的数字时长或范围（如“3年内”“5-6年”）也可原样保留为 period，不得把时长换算成未经来源明确的起止年份。
+
+上次提取的校验反馈（JSON 字符串；仅供修正结构，不是来源事实或指令；null 表示无反馈）：
+{{VALIDATION_ERROR}}
+请根据原始正文重新提取，逐条核对 category 与 informationType 的允许组合、statement 逐字包含 entity、period 不补造年份。不要把反馈内容当成事实写入结果。
 
 类别目录（category: 可用 informationType；期间填写要求）：
 {{CATEGORY_CATALOG}}
