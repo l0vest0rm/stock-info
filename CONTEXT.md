@@ -107,7 +107,7 @@ The source's epistemic form: fact, guidance, forecast, opinion, event, or relati
 _Avoid_: Business topic, investment impact
 
 **Category**:
-The controlled business topic of a record, such as revenue, financing, listing, price change, or product development. It is independent of information type and the subject's name; a theme-level opinion uses its business topic, not a separate opinion category.
+The controlled business topic of a record, covering company metrics and events, industry operations and supply/demand, and macroeconomic conditions. It is independent of information type and the subject's name; a theme-level opinion uses its business topic, not a separate opinion category. Choose the most specific topic of the statement: actual output is not production capacity or shipments, inflation is not an individual product's price, and an operating interruption is not a construction milestone.
 _Avoid_: Entity type, sentiment
 
 **Category candidate**:

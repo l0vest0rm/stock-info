@@ -12,5 +12,12 @@
     "categoryCatalogHash": "7c1f7c8975777207d1cc3bf534fd42b673ce83ecd3fa18da72570252facf7a9c",
     "candidatePolicyHash": "29d36b3b9f528557d66372aaa67b9de7ef5145e48f4e1b0f00231c7337571ddb",
     "model": "gpt-6-luna"
+  },
+  {
+    "contractVersion": "feed-tag-v7",
+    "promptHash": "154e0ca6ba54114d7dffcbdc9d98e029065fb75c3b04ce395bcacdcff299ba8f",
+    "categoryCatalogHash": "0934312261762a319adfc24c0fadc0391535190068fcfe71cad984ed9f74556e",
+    "candidatePolicyHash": "29d36b3b9f528557d66372aaa67b9de7ef5145e48f4e1b0f00231c7337571ddb",
+    "model": "gpt-6-luna"
   }
 ]

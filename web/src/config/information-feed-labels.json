@@ -55,6 +55,19 @@
     "loan_loss_reserve_coverage_ratio": "拨备覆盖率",
     "credit_cost_ratio": "信用成本率",
     "capital_adequacy_ratio": "资本充足率",
-    "common_equity_tier1_capital_ratio": "核心一级资本充足率"
+    "common_equity_tier1_capital_ratio": "核心一级资本充足率",
+    "production_volume": "产量",
+    "demand_change": "需求变化",
+    "supply_change": "供给变化",
+    "inventory": "库存",
+    "operating_status": "运营状态",
+    "project_progress": "项目进展",
+    "inflation": "通胀",
+    "economic_activity": "经济运行",
+    "fiscal_position": "财政状况",
+    "exchange_rate": "汇率",
+    "liquidity": "流动性",
+    "resource_discovery": "资源发现",
+    "trading_status": "交易状态"
   }
 }

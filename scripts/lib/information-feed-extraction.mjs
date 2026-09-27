@@ -13,7 +13,8 @@ const ownershipBases = new Set(['attributable_to_parent', 'consolidated', 'commo
 const shareBases = new Set(['basic', 'diluted', 'unspecified']);
 
 export function feedCategoryCatalog() {
-  return Object.entries(categoryRules).map(([id, rule]) => `${id}（${rule.label}）: ${rule.informationTypes.join('|')}；period=${rule.periodPolicy}${rule.description ? `；${rule.description}` : ''}`).join('\n');
+  const periods = { required: '期间必填', optional: '期间可省略', forbidden: '不得填写期间' };
+  return Object.entries(categoryRules).map(([id, rule]) => `${id}（${rule.label}）: ${rule.informationTypes.join('|')}；${periods[rule.periodPolicy]}${rule.description ? `；${rule.description}` : ''}`).join('\n');
 }
 
 export function feedEntityTypes() {
@@ -36,7 +37,7 @@ export function parseFeedExtraction(text, sourceContent) {
     || response.records.length + response.categoryCandidates.length > 3) {
     throw new Error('invalid feed extraction response');
   }
-  const records = response.records.map(parseRecord);
+  const records = response.records.map((value) => parseRecord(value, sourceContent));
   const categoryCandidates = response.categoryCandidates.map((value) => parseCategoryCandidate(value, sourceContent));
   if (categoryCandidates.some((candidate) => records.some((record) => record.statement === candidate.statement))) {
     throw new Error('feed category candidate duplicates a record');
@@ -64,7 +65,7 @@ function parseCategoryCandidate(value, sourceContent) {
   return candidate;
 }
 
-function parseRecord(value) {
+function parseRecord(value, sourceContent) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).some((key) => !['entity', 'informationType', 'category', 'period', 'statement', 'forecastMeasurement'].includes(key))) {
     throw new Error('invalid feed record');
@@ -78,11 +79,11 @@ function parseRecord(value) {
   const issues = [];
   if (!entity || entity.length > 120) issues.push('entity must contain 1–120 characters');
   if (!statement || statement.length > 120) issues.push('statement must contain 1–120 characters');
-  if (!statement.includes(entity)) issues.push('statement must include entity');
+  if (!statement.includes(entity)) issues.push(`statement must include entity ${JSON.stringify(entity)}`);
   if (!informationTypes.has(informationType) || !rule?.informationTypes.includes(informationType)) {
     issues.push(`unsupported category/informationType: ${String(category)}/${String(informationType)}`);
   }
-  if (period !== null && (typeof period !== 'string' || !isPeriod(period))) issues.push(`invalid period: ${JSON.stringify(period)}`);
+  if (period !== null && (typeof period !== 'string' || !isPeriod(period, sourceContent))) issues.push(`invalid period: ${JSON.stringify(period)}`);
   if (rule?.periodPolicy === 'required' && !period) issues.push(`period required for ${category}`);
   if (rule?.periodPolicy === 'forbidden' && period) issues.push(`period forbidden for ${category}`);
   if (issues.length) throw new Error(`invalid feed record fields: ${issues.join('; ')}`);
@@ -103,11 +104,17 @@ function parseMeasurement(value, period) {
   return Object.fromEntries(keys.map((key) => [key, value[key]]));
 }
 
-function isPeriod(value) {
+function isPeriod(value, sourceContent) {
   return value.length <= 24 && (/^\d{4}(?:Q[1-4]|H[12]|FY)$/.test(value)
+    || /^\d{4}-(?:0[1-9]|1[0-2])(?:-(?:0[1-9]|[12]\d|3[01]))?$/.test(value)
+    || /^\d{4}年(?:[1-9]|1[0-2])月$/.test(value)
     || /^截至\d{4}-\d{2}-\d{2}$/.test(value)
     || /^(?:近|最近|过去|未来)\d{1,2}(?:天|周|个月|月|季度|年)$/.test(value)
-    || /^\d{4}年(?:第?[一二三四1-4]季度|上半年|下半年|全年|前\d{1,2}个月)$/.test(value));
+    || /^\d{4}年(?:第?[一二三四1-4]季度|上半年|下半年|全年|前\d{1,2}个月)$/.test(value)
+    // Preserve an explicit source-relative period rather than inventing a
+    // numeric interval. Measurement parsing still requires an exact fiscal year.
+    || (/^(?:(?:近|最近|过去|未来)(?:几|数)(?:天|周|个月|月|季度|年)|\d{1,2}(?:[-—–至]\d{1,2})?(?:天|周|个月|月|季度|年)(?:内|期间|以来)?|今年|明年|去年|本财年|下一财年|上个月|本月|下个月|本季度|上季度|下季度)$/.test(value)
+      && String(sourceContent || '').includes(value)));
 }
 
 export function entityKeyForRecord(record, candidates) {
