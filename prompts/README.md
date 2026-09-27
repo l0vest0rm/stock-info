@@ -16,14 +16,26 @@
 
 | Prompt 文件 | 页面/功能 | 调用入口 | 调用方式 |
 | --- | --- | --- | --- |
-| `company/report-analyze-system.md` + `company/report-analyze-user.md` | 公司研报页：读取研报正文后补充年度业绩预测和单一目标价；知识库新闻命中估值/评级关键词后也复用这套提取模板 | `src/modules/company/api/company.routes.ts` 的 `extractCompanyReportAnalysisByLlm()`；`extractCompanyNewsReportByLlm()` 在代码侧关键词粗筛通过后复用该模板 | 直接 LLM |
-| `company/report-discovery.md` | 公司研报页“搜索近期公开研报” | `src/modules/company/api/company.routes.ts` 的 `submitCompanyReportDiscoveryTask()`；前端入口为 `web/src/modules/company/pages/company-report-page.ts` | taskd ChatGPT |
+| `company/report-analyze-system.md` + `company/report-analyze-user.md` | 公司研报页：读取研报正文后补充年度业绩预测和单一目标价；知识库新闻命中估值/评级关键词后也复用这套提取模板 | `src/modules/company/application/analyze-company-report.ts` 的 `extractCompanyReportAnalysisByLlm()`；`extractCompanyNewsReportByLlm()` 在代码侧关键词粗筛通过后复用该模板 | 直接 LLM |
+| `company/report-discovery.md` | 公司研报页“搜索近期公开研报” | `src/modules/company/application/company-reports.ts` 的 `enqueueCompanyReportDiscovery()`；前端入口为 `web/src/modules/company/pages/company-report-page.ts` | taskd ChatGPT |
 | `knowledge/topic-batch-system.md` + `knowledge/topic-batch-user.md` | 知识库导入：标题级 AI 产业链主题筛选，只有不确定批次才调用 | `scripts/process-knowledge-once.mjs` 的 `reviewTopicBatchWithLlm()` | 直接 LLM |
 | `information-feed/document-analysis-system.md` + `information-feed/document-analysis-user.md` | 资讯流正文提取正式记录与待审类别候选 | `scripts/information-feed.mjs` 的本地资讯流处理入口 | 直接 LLM |
 | `fund-quarterly-research-system.md` + `fund-quarterly-research-user.md` | 基金季度研究 CLI：把单只基金结构化证据写成 Markdown 报告 | `scripts/fund-quarterly-research.mjs` | 直接 LLM |
 | `research/financial-analysis.md` | 公司财务页“深入财务分析” | `src/modules/research/application/research-financial-analysis.ts`；页面组件为 `web/src/modules/company/pages/company-finance-page.ts` | taskd ChatGPT |
 | `research/operating-analysis.md` | 公司研究页“完整投资研究” | `src/modules/research/application/research-investment-analysis.ts`；页面为 `web/src/modules/research/pages/investment-analysis-page.ts` | taskd ChatGPT |
 | `earnings-recommendation.md` | 业绩候选研究 CLI 的最终提示词模板；当前只写入输出目录的 `prompt.md` | `scripts/earnings-research.mjs` | 无自动调用 |
+| `macro.md` | 宏观分析页：中美宏观与跨资产研究 | `src/modules/macro/application/macro-analysis.ts` 的 `enqueueMacroAnalysis()` | taskd ChatGPT |
+| `featured-report-whole.md` | 精选研报：单批全文翻译与总结 | `scripts/prepare-featured-report.mjs` → `scripts/lib/featured-report-batches.mjs` 的 `translateReport()` | 直接 LLM |
+| `featured-report-glossary.md` + `featured-report-translate.md` + `featured-report-summary.md` | 精选研报：多批术语统一、分块翻译、提要汇总 | 同上，按 `kind` 动态读取文件 | 直接 LLM |
+
+## 维护与验收
+
+- 调整前先核对调用方输入、输出解析器和缓存键，不仅检查提示词措辞。保持占位符、JSON 字段、ID 和已约定标题；缺失值遵循消费者契约，不统一改成空字符串或零。
+- 抽取和翻译只使用输入；财务、基金及业绩候选只解释已提供证据；研报发现、完整投资研究与宏观研究允许公开检索，但须标明时点与来源。
+- `information-feed` 提示词参与持久化记录的 `promptHash`。修改需协调 `tagContract` 与历史契约登记，不能仅重建文本而忽略已有记录的可见性；本轮复核保留其现有规则，不改变提取契约。
+- 基金模板由配置指定、业绩候选模板由 CLI 直接读取、精选研报模板按阶段动态读取，不在 `build:prompts` 文本导出清单内，并非未使用文件。
+- Prompt 修改不自动重跑历史报告。精选研报已有 `content.json` 默认保留；需要完整新译文时使用新的 `--out` 目录，避免覆盖人工修改。
+- 本轮逐项复核记录与人工验收样例见 [提示词复核](../docs/prompt-review-2026-09-27.md)。
 
 ## 已清理
 
