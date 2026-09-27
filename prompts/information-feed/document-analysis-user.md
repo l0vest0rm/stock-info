@@ -1,14 +1,23 @@
 仅返回严格 JSON，不要 Markdown、代码围栏或说明文字。返回以下结构；两个数组都必须出现，合计最多 3 条彼此独立的信息：
 
-{"records":[{"entity":"具体对象名称","informationType":"fact|guidance|forecast|opinion|event|relationship","category":"受控类别 ID","period":"期间（可选）","statement":"包含 entity 名称的一句自足陈述","forecastMeasurement":null}],"categoryCandidates":[{"entity":"具体对象名称","informationType":"fact|guidance|forecast|opinion|event|relationship","statement":"包含 entity 名称的一句自足陈述","suggestedCategory":"简短、具体的中文候选类别名","evidence":"从正文原样复制的连续片段","whyNotExisting":"与最接近的现有类别的具体区别"}]}
+{"records":[{"entity":"明确主体名称（公司或非公司均可）","informationType":"fact|guidance|forecast|opinion|event|relationship","category":"受控类别 ID","period":"期间（可选）","statement":"包含 entity 名称的一句自足陈述","forecastMeasurement":null}],"categoryCandidates":[{"entity":"明确主体名称","informationType":"fact|guidance|forecast|opinion|event|relationship","statement":"包含 entity 名称的一句自足陈述","suggestedCategory":"简短、具体的中文候选类别名","evidence":"从正文原样复制的连续片段","whyNotExisting":"与最接近的现有类别的具体区别"}]}
 
-先判断正文报道的主信息是否值得提取。常规盘中涨跌、成交额、资金流、技术面描述、标题党复述、重复背景和泛泛解读不进入任何数组。文章为了说明股价或行情而回顾的上市、融资、业绩、合作等背景不能单独提取。不要判断信息是否新增、重复、修正或已经被其他来源证实。对年度、半年度或季度等定期披露，优先保留原文直接披露、带明确期间且能归入指定细粒度类别的指标；若泛化财务摘要与专属经营或监管指标同时存在，优先后者。不要为凑数拆分同一事件。
+主体类型参考（不输出 entityType 字段）：{{ENTITY_TYPES}}。此列表说明主体不限于公司，不是让你输出类型名代替主体。
 
-records 只使用下方目录中的 category ID，不得创造同义词或硬套近似类别。entity 必须是事实、计划或行为实际涉及的一个稳定具体对象名称；不能填写“营收”“半导体”“业绩表现”等主题词、行业标签或类别名。公司融资、上市、评级、经营等事项默认填写公司或发行人的简洁稳定名称，不要拼接“股份有限公司”、H股、股票代码、全球发售或其他交易限定语；关系信息只填一个主要实体，另一方写在 statement。只有原文未给出可识别公司或组织时，才可填写明确命名的项目、产品、市场或联盟。statement 不超过 120 字，不要以“来源称”“报道指出”“文章提到”开头，也不要使用无法脱离上下文理解的“其”“该公司”。informationType 表示资料如何描述该信息：fact 是已发生事实或数据，guidance 是管理层/官方目标或计划，forecast 是第三方预测，opinion 是观点，event 是已经发生、计划发生或可能发生的事件，relationship 是供应、客户、竞争或控制等关系。period 只在目录要求或允许时填写，且只能是一段时间表达；优先使用 2026Q1、2026H1、2026FY、截至2026-06-30、近3个月、未来3个月等简短写法，不要输出日期对象。目录要求 period 时，原文没有明确期间就不要提取该条。尤其 category=listing 只在本文主要报道上市、招股、挂牌或上市进程本身时才可保留；“上市首日破发导致股价回调”一类行情解读不应提取上市事实。
+records 只使用下方目录的 category ID 和对应的 informationType，不创造类别或输出中文标签代替 ID。示例仅说明规则，不得提取正文没有的信息：
+- “机构看好海外涨价提升国产光刻胶导入动力”：entity=光刻胶，category=price_change，informationType=opinion；statement 保留机构归属和涨价影响，不杜撰具体公司。
+- “国产光刻胶验证周期由1–2年缩短至6–12个月”：entity=光刻胶，category=product_development，informationType=fact；保留周期变化。“验证周期”是研发信息，不是财务 period。
+- “美联储某官员认为应保持限制性货币政策”：entity=美联储，category=policy_change，informationType=opinion；保留官员的判断归属，不写成美联储已决定加息。
+- 同文出现“这家公司产品已通过客户验证”，却未给公司名：不猜公司、不把该公司事项泛化为行业事实；前述明确主题信息仍可提取。
+- “某股下跌，回顾其上市首日破发”：不单独提取 listing；若没有其他合格主信息则返回空数组。
+- “某机构认为资本支出给通胀带来压力”：这不是企业资本开支计划、具体商品调价或政策变动，不能归 capital_expenditure、price_change 或 policy_change；重要且有正文证据时放 categoryCandidates，例如 suggestedCategory=通胀驱动因素，whyNotExisting 说明其是一般物价压力判断而非具体价格或政策事项。文章其他部分有合格政策观点时仍放 records，不互相替代。
+- “某公司近几个月实际产量提高10倍”：产量不等于产能或出货量，不能借 production_capacity 或 shipment_volume 绕过目录缺口；符合重要性要求时保留为待审产量候选。不能把“近几个月”臆造为“近3个月”。
+
+period：required 必须有来源明确给出的期间，optional 无明确期间就省略或 null，forbidden 必须省略或 null。不从发布日期猜财年。格式只用 YYYYFY、YYYYQ1–YYYYQ4、YYYYH1–YYYYH2、截至YYYY-MM-DD、近/最近/过去/未来N天/周/月/个月/季度/年，或原文明确的 YYYY年上半年/下半年/全年/第N季度/前N个月；N 用数字。required 且期间无法确定时，不提取该条，也不得伪造候选绕过约束。
 
 forecastMeasurement 规则：仅当 informationType="forecast"、category 为 revenue|revenue_growth|net_profit|net_profit_growth|gross_margin|eps|operating_cash_flow，且原文明确给出单一预测数值、财年、原始单位及全部口径时，才输出对象；其他所有 record 都输出 null。period 必须精确为该财年的 YYYYFY 或 YYYYQ1/YYYYQ2/YYYYQ3/YYYYQ4，且 fiscalYear 必须与其年份相同。对象只能使用以下字段和值：
 
-{"fiscalYear":2027,"rawValue":0,"rawUnit":"currency|ten_thousand_currency|million_currency|hundred_million_currency|billion_currency|percent|currency_per_share","currency":"CNY|null","accountingBasis":"gaap|non_gaap|adjusted|unspecified","ownershipBasis":"attributable_to_parent|consolidated|common_shareholders|unspecified","shareBasis":"basic|diluted|unspecified"}
+{"fiscalYear":2027,"rawValue":0,"rawUnit":"currency|ten_thousand_currency|million_currency|hundred_million_currency|billion_currency|percent|currency_per_share","currency":"原文明示的三位币种代码，缺失时为 null","accountingBasis":"gaap|non_gaap|adjusted|unspecified","ownershipBasis":"attributable_to_parent|consolidated|common_shareholders|unspecified","shareBasis":"basic|diluted|unspecified"}
 
 rawValue 必须是来源直接写出的有限数值，rawUnit 必须保留来源的原始缩放单位；currency 仅在原文明确时填写，否则为 null。不得从标题、发布日期、机构名称、区间上下限、同比增速、文本推断或外部知识猜测任一字段。只要财年、数值、原始单位、会计口径、归属口径或每股口径任一项不明确，forecastMeasurement 必须为 null；不要因此丢弃其他仍合格的 record。
 

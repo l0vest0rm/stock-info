@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const ontologyText = readFileSync(new URL('../../config/knowledge/knowledge-ontology.json', import.meta.url), 'utf8');
-const ontology = JSON.parse(ontologyText).informationExtraction;
+const ontologyConfig = JSON.parse(ontologyText);
+const ontology = ontologyConfig.informationExtraction;
 const categoryRules = ontology.categories;
 const informationTypes = new Set(ontology.informationTypes);
 const forecastCategories = new Set(['revenue', 'revenue_growth', 'net_profit', 'net_profit_growth', 'gross_margin', 'eps', 'operating_cash_flow']);
@@ -12,7 +13,11 @@ const ownershipBases = new Set(['attributable_to_parent', 'consolidated', 'commo
 const shareBases = new Set(['basic', 'diluted', 'unspecified']);
 
 export function feedCategoryCatalog() {
-  return Object.entries(categoryRules).map(([id, rule]) => `${id}: ${rule.informationTypes.join('|')}；period=${rule.periodPolicy}`).join('\n');
+  return Object.entries(categoryRules).map(([id, rule]) => `${id}（${rule.label}）: ${rule.informationTypes.join('|')}；period=${rule.periodPolicy}${rule.description ? `；${rule.description}` : ''}`).join('\n');
+}
+
+export function feedEntityTypes() {
+  return ontologyConfig.entityTypes.join('|');
 }
 
 // Display-only labels must not invalidate existing extraction fingerprints. Strip
@@ -69,13 +74,18 @@ function parseRecord(value) {
   const category = value.category;
   const informationType = value.informationType;
   const period = value.period === undefined || value.period === null || value.period === '' ? null : value.period;
-  const rule = categoryRules[category];
-  if (!entity || entity.length > 120 || !statement || statement.length > 120 || !statement.includes(entity)
-    || !informationTypes.has(informationType) || !rule?.informationTypes.includes(informationType)
-    || (period !== null && (typeof period !== 'string' || !isPeriod(period)))
-    || (rule.periodPolicy === 'required' && !period) || (rule.periodPolicy === 'forbidden' && period)) {
-    throw new Error('invalid feed record fields');
+  const rule = typeof category === 'string' && Object.hasOwn(categoryRules, category) ? categoryRules[category] : undefined;
+  const issues = [];
+  if (!entity || entity.length > 120) issues.push('entity must contain 1–120 characters');
+  if (!statement || statement.length > 120) issues.push('statement must contain 1–120 characters');
+  if (!statement.includes(entity)) issues.push('statement must include entity');
+  if (!informationTypes.has(informationType) || !rule?.informationTypes.includes(informationType)) {
+    issues.push(`unsupported category/informationType: ${String(category)}/${String(informationType)}`);
   }
+  if (period !== null && (typeof period !== 'string' || !isPeriod(period))) issues.push(`invalid period: ${JSON.stringify(period)}`);
+  if (rule?.periodPolicy === 'required' && !period) issues.push(`period required for ${category}`);
+  if (rule?.periodPolicy === 'forbidden' && period) issues.push(`period forbidden for ${category}`);
+  if (issues.length) throw new Error(`invalid feed record fields: ${issues.join('; ')}`);
   const forecastMeasurement = informationType === 'forecast' && forecastCategories.has(category)
     ? parseMeasurement(value.forecastMeasurement, period) : null;
   return { entity, informationType, category, period, statement, forecastMeasurement };

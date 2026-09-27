@@ -70,13 +70,18 @@ export function contractMatches(current: Partial<ExtractionContract> | null | un
   return !!current && (Object.keys(contract) as Array<keyof ExtractionContract>).every((key) => current[key] === contract[key]);
 }
 
+function acceptedContracts(contract: ExtractionContract | readonly ExtractionContract[]): readonly ExtractionContract[] {
+  return Array.isArray(contract) ? contract : [contract as ExtractionContract];
+}
+
 export function extractionIsCurrent(state: ExtractionState | null | undefined, row: {
   title: string; published_at: string | null; content_sha256: string | null;
-}, contract: ExtractionContract, allowReview = false): boolean {
+}, contract: ExtractionContract | readonly ExtractionContract[], allowReview = false): boolean {
   const current = state?.current;
   return !!current && state?.status === 'complete'
     && current.storageVersion === INFORMATION_STORAGE_VERSION && current.provenanceStatus === 'verified'
-    && contractMatches(current, contract) && !!current.inputFingerprint && !!current.recordsDigest
+    && acceptedContracts(contract).some((accepted) => contractMatches(current, accepted))
+    && !!current.inputFingerprint && !!current.recordsDigest
     && !!row.content_sha256 && current.contentSha256 === row.content_sha256
     && current.title === row.title && current.publishedAt === row.published_at
     && (allowReview || (current.outcome === 'extracted' && current.categoryCandidateCount === 0));
@@ -97,13 +102,15 @@ function safeAlias(alias: string): string {
 
 // Keep all API filters on the same success/content/contract gate. The complete
 // row set is also verified against recordsDigest when reading/publishing it.
-export function currentExtractionSql(alias: string, contract: ExtractionContract, allowReview = false): string {
+export function currentExtractionSql(alias: string, contract: ExtractionContract | readonly ExtractionContract[], allowReview = false): string {
   const d = safeAlias(alias);
   const field = (key: string) => `json_extract(${d}.metadata_json,'$.informationExtraction.current.${key}')`;
+  const contractChecks = acceptedContracts(contract).map((accepted) =>
+    `(${Object.entries(accepted).map(([key, value]) => `${field(key)}=${sqlText(value)}`).join(' AND ')})`).join(' OR ');
   return `coalesce((json_extract(${d}.metadata_json,'$.informationExtraction.status')='complete'
     AND ${field('storageVersion')}=${sqlText(INFORMATION_STORAGE_VERSION)}
     AND ${field('provenanceStatus')}='verified'
-    AND ${Object.entries(contract).map(([key, value]) => `${field(key)}=${sqlText(value)}`).join(' AND ')}
+    AND (${contractChecks})
     AND length(${field('inputFingerprint')})>0 AND length(${field('recordsDigest')})>0
     AND ${field('title')}=${d}.title AND ${field('publishedAt')} IS ${d}.published_at
     AND EXISTS (SELECT 1 FROM knowledge_doc_content_refs ic WHERE ic.doc_id=${d}.doc_id

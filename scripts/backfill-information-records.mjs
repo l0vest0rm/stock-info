@@ -3,7 +3,7 @@
 // Offline, local-only migration. No model calls and no remote requests.
 import { mkdirSync, readFileSync, writeFileSync, openSync, writeSync, fsyncSync, closeSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { FEED_EXTRACTION_CONTRACT } from './generated/information-records-contract.mjs';
+import { LEGACY_FEED_EXTRACTION_CONTRACT } from './generated/information-records-contract.mjs';
 import { INFORMATION_STORAGE_VERSION, canonicalJson } from '../src/modules/knowledge/domain/information-records.ts';
 import { openInformationDatabase, inTransaction, readDocument, readDocumentSnapshot, readInformationRows,
   clearLegacyFeedExtraction, sha } from './lib/information-records-store.mjs';
@@ -53,7 +53,7 @@ try {
       const body = readInformationBody(snapshot.content_key, options.contentDir);
       let plan;
       try {
-        plan = planInformationBackfill(snapshot, { body, aliases, contract: FEED_EXTRACTION_CONTRACT, companyPolicy: feedConfig.companyCandidates });
+        plan = planInformationBackfill(snapshot, { body, aliases, contract: LEGACY_FEED_EXTRACTION_CONTRACT, companyPolicy: feedConfig.companyCandidates });
       } catch (error) {
         // Conflicting sources/active writers must never be overridden by quarantine.
         if (!options.quarantine || /conflicting|active legacy|changed/.test(String(error.message))) throw error;

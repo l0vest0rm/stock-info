@@ -1,5 +1,5 @@
 {
-  "tagContract": "feed-tag-v5",
+  "tagContract": "feed-tag-v7",
   "automation": {
     "enabled": true,
     "runOnStart": true,

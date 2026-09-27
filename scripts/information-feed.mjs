@@ -14,7 +14,7 @@ import { feedCompanyCandidates } from './lib/information-feed-company-candidates
 import { appendRejectedFeed } from './lib/information-feed-rejection-audit.mjs';
 import { currentInvestmentGate, evaluateInvestmentRelevance,
   INVESTMENT_RELEVANCE_VERSION, stockWhitelistEntries, stockWhitelistHash } from './lib/information-feed-relevance.mjs';
-import { feedCategoryCatalog, feedCategoryCatalogHash, parseFeedExtraction } from './lib/information-feed-extraction.mjs';
+import { feedCategoryCatalog, feedEntityTypes, feedCategoryCatalogHash, parseFeedExtraction } from './lib/information-feed-extraction.mjs';
 import { isRecentFeedTime, recentFeedRows, MAX_FEED_AGE_HOURS } from './lib/information-feed-window.mjs';
 import { INFORMATION_FEED_DOCUMENT_ANALYSIS_SYSTEM_PROMPT,
   INFORMATION_FEED_DOCUMENT_ANALYSIS_USER_PROMPT } from './generated/prompt-text.mjs';
@@ -44,7 +44,8 @@ if (args.mode !== 'ingest' && process.env.LLM_RUNTIME !== 'local') throw new Err
 const counters = { scanned: 0, accepted: 0, repeat: 0, update: 0, new: 0, relevanceRejected: 0,
   relevanceUncertain: 0, rejected: {}, tagged: 0, tagFailed: 0 };
 const stockEntries = stockWhitelistEntries(queryLocalD1Sql(`select s.code,s.short_name,a.alias
-  from stock s left join stock_alias a on a.code=s.code`, { requiredTable: 'stock_alias' }));
+  from stock s left join stock_alias a on a.code=s.code
+  where s.information_feed_focus=1`, { requiredTable: 'stock_alias' }));
 const releaseLock = acquireLock(resolve(ROOT, process.env.INFORMATION_FEED_LOCK_FILE || 'data/local/information-feed.lock'));
 try {
   if (args.mode === 'ingest' || args.mode === 'run') await ingest();
@@ -216,7 +217,7 @@ async function tagPending() {
       if (!claimed) continue;
       usage.count += 1;
       saveJson(usageFile, usage);
-      const promptValues = { CATEGORY_CATALOG: feedCategoryCatalog(), TITLE: row.title, SOURCE_TYPE: row.source_type,
+      const promptValues = { CATEGORY_CATALOG: feedCategoryCatalog(), ENTITY_TYPES: feedEntityTypes(), TITLE: row.title, SOURCE_TYPE: row.source_type,
         REPORT_TYPE: row.feed.contentType || '', PUBLISHED_AT: row.published_at || '', CONTENT: body.slice(0, 12000) };
       const input = INFORMATION_FEED_DOCUMENT_ANALYSIS_USER_PROMPT.replace(/\{\{([A-Z_]+)\}\}/g,
         (_match, key) => promptValues[key] ?? '');

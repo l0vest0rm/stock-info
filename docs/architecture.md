@@ -19,9 +19,18 @@
 
 - 行情、财务、基金、宏观、知识、资讯和投资研究各由相应业务模块提供 API。股票 K 线只使用雪球；基金净值历史只使用东方财富。美股财务使用 Yahoo，且本地须经配置的代理；上游失败不静默换源。
 - 知识导入在本地完成清洗、处理和入库；远端 D1/R2 发布是独立步骤。本地处理成功不代表生产可见，须分别通过生产 API 或远端存储验证。
-- 资讯采集后先以 `config/knowledge/information-feed-policy.json` 的 `relevance` 和 `whitelist` 做投资相关性门禁，通过后才进入本地入库和模型提取。通过的门禁在 `feed.investmentGate` 中保存命中的主体／领域与事件关键词，资讯卡片的提取详情展示保留依据；旧记录若未保存完整命中词，需通过本地相关性回填补齐。拒绝标题、链接与原因只追加至本地 `data/local/information-feed-relevance-rejected.jsonl`；本地资讯页可筛选复核。`config/knowledge/information-feed.json` 控制触发、每日提取上限和远端发布开关。
+- 资讯采集后先以 `config/knowledge/information-feed-policy.json` 的 `relevance` 和 `whitelist` 做投资相关性门禁，通过后才进入本地入库和模型提取。行业与宏观规则独立放行；公司规则只使用 `stock.information_feed_focus=1` 的证券及其 `stock_alias`，且仍须命中公司事件。新增股票默认不属于资讯重点公司，不能仅凭“净利润”等事件词放行。该标记由人工按证券代码维护，例如 `update stock set information_feed_focus=1 where code='300308.SZ'`；调整后运行 `npm run backfill:feed:relevance:dry-run` 检查影响，再运行 `npm run backfill:feed:relevance` 重评已有资讯。通过的门禁在 `feed.investmentGate` 中保存命中的主体／领域与事件关键词，资讯卡片展示记录主体，提取详情展示保留依据。提取允许以来源明确谈论的产品、技术或行业主题为主体记录有归属的行业观点，但白名单放行不强制模型产出记录。新提取合同保留旧合同的读取与发布兼容，避免既有记录因提示词变更而从资讯页消失。拒绝标题、链接与原因只追加至本地 `data/local/information-feed-relevance-rejected.jsonl`；本地资讯页可筛选复核。`config/knowledge/information-feed.json` 控制触发、每日提取上限和远端发布开关。
 - `knowledge_information_records` 仅供资讯页及其提取、发布、回填和对账链路使用，不提供独立实体记录查询 API。通用知识库过期清理和黑名单过滤按 `source_type` 排除 `information_feed`，不读取资讯记录表或提取状态；其它来源不因历史提取记录而豁免清理。历史迁移保留不改写。
 - 公司投资研究区分来源资料、确定性派生观察、模型草稿和用户研究结论。经营公司与上市证券不是同一对象；未经确认的映射不得把证券行情或来源记录升级为共享公司事实。
+
+### 资讯提取合同
+
+- `config/knowledge/knowledge-ontology.json` 是主体类型、信息类型、业务类别和期间约束的唯一目录。模型输入包含主体类型、类别中文名及必要的语义边界；`npm run build:prompts` 同时从该目录生成前端类别标签，不能单独维护另一套类别。
+- 主体、信息类型、业务类别是三个独立维度。公司专属事项仍以公司为主体；行业层面的事实或判断可以“光刻胶”等明确主题为主体，不要求整篇文章没有公司名，也不另建“行业观点”类别。匿名公司的具体事项不能改挂到产品主题上。
+- 现有 `price_change`、`product_development`、`policy_change` 支持有来源归属的 `opinion`，`policy_change` 也支持第三方 `forecast`。具体商品价格判断与一般通胀评论、官员主张与正式政策决定必须区分。仅扩展这些已有业务事项的信息类型，不扩增类别目录。
+- 白名单是相关性门禁，不是强制产出要求。提取保留原文已有的有价值分析，不生成自己的推论；无法归类的重要信息保存在待审候选中，候选不自动成为正式类别。确无有效信息才返回空结果。
+- 提示词与解析器共同约束期间、类型和字段。解析失败保留失败状态及具体字段原因，不静默丢掉不合规条目或硬改类别；数值预测的原始单位、期间和口径约束保持不变。
+- 当前提取合同为 `feed-tag-v7`；`information-feed-legacy-contracts.json` 冻结已产生数据的 v5/v6 合同，读取和发布预览接受显式列出的历史合同。本地旧存储回填只验证 v5，不把历史结果冒充新提示词产物。远端发布仍受原有独立的上线门禁约束。
 
 ## LLM 与发布隔离
 

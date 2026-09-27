@@ -1,6 +1,6 @@
 {
   "relevance": {
-    "version": "investment-relevance-v8",
+    "version": "investment-relevance-v9",
     "enabled": true,
     "positive": [
       {
@@ -135,7 +135,7 @@
     }
   },
   "whitelist": {
-    "version": "investment-whitelist-v4",
+    "version": "investment-whitelist-v5",
     "companyEvent": "(?:财报|业绩|营收|收入|利润|亏损|毛利率|财测|指引|订单|合同|中标|签约|签署|合作|协议|收购|并购|出售|融资|估值|上市|IPO|回购|分红|增持|减持|股东|持股|停产|投产|扩产|产能|出货|销量|量产|发布.{0,20}(?:产品|模型|芯片|GPU|机器人)|推出|升级|研发|获批|许可|专利|诉讼|处罚|罚款|召回|破产|违约|裁员|投资|建设|供应|需求|涨价|降价|客户|数据中心建设|算力投资|评级|目标价)",
     "industries": [
       [
@@ -283,8 +283,8 @@
       },
       {
         "name": "market_structure",
-        "subject": "(?:IPO|债券|熊猫债|国债|汇率|人民币|美债收益率|证券交易所|港交所)",
-        "event": "(?:发行|承销|上市|回购|利率|收益率|规则|调整|改革|汇率|融资|违约)"
+        "subject": "(?:熊猫债|国债|汇率|人民币|美债收益率|证券交易所|港交所)",
+        "event": "(?:发行|承销|利率|收益率|规则|调整|改革|汇率|融资|违约)"
       },
       {
         "name": "fiscal_policy",

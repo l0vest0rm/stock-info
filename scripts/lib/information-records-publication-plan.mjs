@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { withInformationDatabase, assertInformationSchema, readDocumentSnapshot } from './information-records-store.mjs';
 import { publicationEligible, publicationFingerprint } from './information-records-publish.mjs';
-import { FEED_EXTRACTION_CONTRACT } from '../generated/information-records-contract.mjs';
+import { FEED_EXTRACTION_CONTRACT, LEGACY_FEED_EXTRACTION_CONTRACTS } from '../generated/information-records-contract.mjs';
 
 export function informationPublicationPlan(options = {}) {
   const root = resolve(new URL('../..', import.meta.url).pathname);
@@ -17,7 +17,7 @@ export function informationPublicationPlan(options = {}) {
     for (const snapshot of snapshots) latest.set(snapshot.meta.feed?.storyKey || snapshot.doc_id,snapshot);
     let eligible = 0, remove = 0;
     for (const snapshot of snapshots) {
-      const valid = publicationEligible(snapshot,FEED_EXTRACTION_CONTRACT,config.remotePublication || {},categories);
+      const valid = publicationEligible(snapshot,[FEED_EXTRACTION_CONTRACT,...LEGACY_FEED_EXTRACTION_CONTRACTS],config.remotePublication || {},categories);
       if (!valid && snapshot.meta.feed?.publishedFingerprint) { remove += 1; continue; }
       if (valid && latest.get(snapshot.meta.feed?.storyKey || snapshot.doc_id) === snapshot
         && snapshot.meta.feed.publishedFingerprint !== publicationFingerprint(snapshot)) eligible += 1;

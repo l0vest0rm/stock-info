@@ -7,7 +7,7 @@ import companyProfiles from '../../../../config/generated/eastmoney-company-em20
 import informationLabels from '../../../../web/src/config/information-feed-labels.json';
 import feedConfig from '../../../../config/knowledge/information-feed.json';
 import feedPolicy from '../../../../config/knowledge/information-feed-policy.json';
-import { FEED_EXTRACTION_CONTRACT } from '../../../generated/information-records-contract';
+import { FEED_EXTRACTION_CONTRACT, LEGACY_FEED_EXTRACTION_CONTRACTS } from '../../../generated/information-records-contract';
 import { currentExtractionSql, informationRowsJsonSql, recordsDigestInput, rowToInformation,
   sha256Text, sqlText, type InformationRow, type ExtractionState } from '../domain/information-records';
 
@@ -18,8 +18,9 @@ type FeedRow = {
   published_at: string | null; sort_time: string; summary: string | null;
   metadata_json: string; tags_json: string; records_json: string; current_valid: number;
 };
-const contract = FEED_EXTRACTION_CONTRACT;
+const contracts = [FEED_EXTRACTION_CONTRACT, ...LEGACY_FEED_EXTRACTION_CONTRACTS];
 const categories = new Set(Object.keys(ontology.informationExtraction.categories));
+const companyByCode = new Map(companyProfiles.profiles.map((item) => [item.code, item]));
 const nameByCompany = new Map(companyProfiles.profiles.map((item) => [`company:${item.code}`, item.name]));
 const industryByCompany = new Map(companyProfiles.profiles.filter((item) => item.availability === 'available' && item.industry)
   .map((item) => [`company:${item.code}`, item.industry]));
@@ -31,7 +32,7 @@ const tagsJson = (alias: 'v' | 'd') => `(select coalesce(json_group_array(json_o
   from knowledge_doc_tags t where t.doc_id=${alias}.doc_id and (t.tag like 'company:%' or t.tag like 'category:%')
   and t.tagging_input_fingerprint=json_extract(${alias}.metadata_json,'${currentPath}.inputFingerprint')
   and t.contract_version=json_extract(${alias}.metadata_json,'${currentPath}.contractVersion')
-  and t.contract_version=${sqlText(contract.contractVersion)})`;
+  and t.contract_version in (${contracts.map((contract) => sqlText(contract.contractVersion)).join(',')}))`;
 const ELIGIBLE = `d.source_type='information_feed' and d.access_method='markdown'
   and json_extract(d.metadata_json,'$.feed.version')='v1'
   and json_extract(d.metadata_json,'$.feed.originalFormat')='text'
@@ -40,7 +41,7 @@ const ELIGIBLE = `d.source_type='information_feed' and d.access_method='markdown
   and json_extract(d.metadata_json,'$.feed.investmentGate.title')=d.title
   and exists (select 1 from knowledge_doc_content_refs c where c.doc_id=d.doc_id and c.content_key is not null
     and c.content_sha256=json_extract(d.metadata_json,'$.feed.investmentGate.bodySha256'))`;
-const TAGGED = `${currentExtractionSql('d', contract)}
+const TAGGED = `${currentExtractionSql('d', contracts)}
   and json_extract(d.metadata_json,'$.feed.publishAllowed')=1
   and exists (select 1 from knowledge_information_records r where r.doc_id=d.doc_id)
   and not exists (select 1 from knowledge_information_records r where r.doc_id=d.doc_id
@@ -50,7 +51,7 @@ const TAGGED = `${currentExtractionSql('d', contract)}
 const selectFields = (alias: 'v' | 'd') => `${alias}.doc_id,${alias}.title,${alias}.url,${alias}.source_name,
   ${alias}.published_at,${alias}.sort_time,${alias}.summary,${alias}.metadata_json,
   ${tagsJson(alias)} as tags_json,${informationRowsJsonSql(alias)} as records_json,
-  ${currentExtractionSql(alias, contract, true)} as current_valid`;
+  ${currentExtractionSql(alias, contracts, true)} as current_valid`;
 
 function visibleCte(local: boolean) {
   return `with ranked as (
@@ -107,15 +108,21 @@ async function mapRow(row: FeedRow, cutoff: string, local: boolean, filters?: Re
   const rawStatus = extraction?.status || 'pending';
   const status = !valid && row.sort_time < cutoff ? 'expired' : rawStatus === 'complete' && !valid ? 'pending' : rawStatus;
   const gate = metadata.feed?.investmentGate;
+  const gateReason = String(gate?.reasonCodes?.[0] || '');
+  const gateEvidence = Array.isArray(gate?.evidence) ? gate.evidence.filter((value: unknown): value is string => typeof value === 'string') : [];
+  const matchedCompany = gateReason === 'stock' ? companyByCode.get(gateEvidence[0]) : undefined;
   return {
     doc_id: row.doc_id, title: row.title, url: row.url, source_name: row.source_name,
     published_at: row.published_at, sort_time: row.sort_time, summary: row.summary,
     content_type: metadata.feed?.contentType || 'news', kind: metadata.feed?.kind || 'new', story_key: metadata.feed?.storyKey || row.doc_id,
     tagging_status: status,
     whitelist_match: gate?.effectiveDisposition === 'pass' ? {
-      reason_code: String(gate.reasonCodes?.[0] || ''),
+      reason_code: gateReason,
       matched_keywords: Array.isArray(gate.matchedKeywords) ? gate.matchedKeywords.filter((value: unknown): value is string => typeof value === 'string') : [],
-      evidence: Array.isArray(gate.evidence) ? gate.evidence.filter((value: unknown): value is string => typeof value === 'string') : [],
+      evidence: gateEvidence,
+      company_name: matchedCompany?.name || (gateReason === 'stock' && gateEvidence[1] !== gateEvidence[0] ? gateEvidence[1] : null),
+      stock_code: gateReason === 'stock' ? gateEvidence[0] || null : null,
+      industry: gateReason === 'industry' ? gateEvidence[0] || null : null,
     } : null,
     sources: ((metadata.feed?.sources || []) as Array<{ sourceKey: string }>).map((source) => source.sourceKey),
     tags: tags.sort((a, b) => Number(leadingTags.has(b.tagId)) - Number(leadingTags.has(a.tagId)) || b.weight - a.weight), industries,
@@ -145,7 +152,7 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
   if (c.req.query('cursor') && !cursor) return fail(c, 400, 'invalid cursor');
   const conditions = ['v.rn=1'];
   const binds: Array<string | number> = [];
-  const valid = currentExtractionSql('v', contract, true);
+  const valid = currentExtractionSql('v', contracts, true);
   const extractionStatus = `coalesce(json_extract(v.metadata_json,'$.informationExtraction.status'),'pending')`;
   if (local && !status) { conditions.push(`not (v.sort_time < ? and not (${valid}))`); binds.push(cutoff); }
   if (sources.length) {

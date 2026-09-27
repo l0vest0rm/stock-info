@@ -3,10 +3,11 @@ type FeedFacets = { sources: Facet[]; content_types: Facet[]; entities: Facet[];
 type ForecastMeasurement = { fiscalYear: number; rawValue: number; rawUnit: string; currency: string | null;
   accountingBasis: string; ownershipBasis: string; shareBasis: string }
 type FeedRecord = { entity: string; informationType: string; category: string; period: string | null;
-  statement: string; forecastMeasurement?: ForecastMeasurement | null }
+  statement: string; entity_key?: string | null; forecastMeasurement?: ForecastMeasurement | null }
 type CategoryCandidate = { entity: string; informationType: string; statement: string; suggestedCategory: string;
   evidence: string; whyNotExisting: string }
-type WhitelistMatch = { reason_code: string; matched_keywords: string[]; evidence: string[] }
+type WhitelistMatch = { reason_code: string; matched_keywords: string[]; evidence: string[];
+  company_name?: string | null; stock_code?: string | null; industry?: string | null }
 type FeedItem = { doc_id: string; title: string; url: string | null; source_name: string | null; published_at: string | null;
   summary: string | null; kind: string; story_key: string; tagging_status: string; sources: string[];
   tags: Array<{ tagId: string; weight: number }>; industries: string[]; records: FeedRecord[];
@@ -20,25 +21,26 @@ type RejectedPage = { list: RejectedItem[]; has_next: boolean; next_offset: numb
 const root = document.getElementById('information-feed-root')!
 const style = document.createElement('style')
 style.textContent = `
-.feed-shell{max-width:1020px;margin:auto}.feed-hero{background:linear-gradient(125deg,#0b3b2e,#123a67);color:white;border-radius:1.2rem;padding:2rem;margin-bottom:1.5rem}
-.feed-hero h1{font-weight:750}.feed-filter{background:#fff;border:1px solid #dce6e8;border-radius:1rem;padding:1.2rem 1.35rem;margin-bottom:1.3rem;box-shadow:0 8px 26px rgba(12,52,61,.055)}
+.feed-shell{max-width:1280px;margin:auto}.feed-layout{display:grid;grid-template-columns:minmax(220px,260px) minmax(0,1fr);align-items:start;gap:1.25rem}.feed-sidebar,.feed-content{min-width:0}.feed-hero{background:linear-gradient(125deg,#0b3b2e,#123a67);color:white;border-radius:1.2rem;padding:2rem;margin-bottom:1.5rem}
+.feed-hero h1{font-weight:750}.feed-filter{background:#fff;border:1px solid #dce6e8;border-radius:1rem;padding:1.2rem;box-shadow:0 8px 26px rgba(12,52,61,.055);position:sticky;top:1rem;max-height:calc(100vh - 2rem);overflow-y:auto}
 .feed-filter-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}.feed-filter-head h2{font-size:1rem;font-weight:750;margin:0;color:#173b39}.feed-filter-head p{font-size:.78rem;color:#71818b;margin:.2rem 0 0}
 .feed-filter-reset{border:0;background:none;color:#176d62;font-size:.82rem;font-weight:650;padding:.35rem;white-space:nowrap}.feed-filter-reset:disabled{color:#a7b3b9;cursor:default}
-.feed-filter-quick{display:grid;gap:.85rem}.feed-quick-group{display:flex;align-items:flex-start;gap:.7rem}.feed-quick-label{flex:0 0 3.4rem;padding-top:.43rem;color:#697b82;font-size:.8rem;font-weight:650}.feed-quick-options{display:flex;flex-wrap:wrap;gap:.42rem}
+.feed-filter-quick{display:grid;gap:.85rem}.feed-quick-group{display:grid;gap:.35rem}.feed-quick-label{color:#697b82;font-size:.8rem;font-weight:650}.feed-quick-options{display:flex;flex-wrap:wrap;gap:.42rem}
 .feed-filter-chip{border:1px solid #dce6e8;background:#f7faf9;color:#35535a;border-radius:999px;padding:.36rem .77rem;font-size:.82rem;line-height:1.3;transition:background .15s,border-color .15s,color .15s}.feed-filter-chip:hover{border-color:#8ab9ac;background:#ecf6f2}.feed-filter-chip.is-active{background:#176b5b;border-color:#176b5b;color:white}.feed-filter-chip.is-active:hover{background:#105747}.feed-filter-chip small{opacity:.7;margin-left:.2rem}
-.feed-filter-advanced{display:flex;flex-wrap:wrap;gap:.55rem;border-top:1px solid #edf1f2;margin-top:1rem;padding-top:1rem}.feed-filter-menu{position:relative;min-width:145px}.feed-filter-menu[open]{z-index:5}.feed-filter-menu summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:.7rem;padding:.57rem .8rem;border:1px solid #dce6e8;border-radius:.58rem;color:#36515a;font-size:.82rem;background:#fff;min-height:2.35rem}.feed-filter-menu summary::-webkit-details-marker{display:none}.feed-filter-menu summary:hover,.feed-filter-menu[open] summary{border-color:#7db5a8;background:#f8fcfa}.feed-filter-menu summary::after{content:'⌄';font-size:1rem;color:#6b8588;line-height:1}.feed-filter-menu[open] summary::after{transform:rotate(180deg)}.feed-filter-menu-count{background:#dff1eb;color:#126451;border-radius:99px;padding:.08rem .38rem;font-size:.7rem;font-weight:750}
-.feed-filter-menu-panel{position:absolute;top:calc(100% + .35rem);left:0;width:270px;max-width:calc(100vw - 2rem);background:#fff;border:1px solid #dce6e8;border-radius:.72rem;box-shadow:0 12px 30px rgba(19,57,61,.16);padding:.65rem}.feed-filter-menu-search{width:100%;border:1px solid #dce6e8;border-radius:.48rem;padding:.48rem .6rem;font-size:.82rem;margin-bottom:.45rem}.feed-filter-menu-options{max-height:225px;overflow:auto}.feed-filter-option{display:flex;align-items:center;gap:.55rem;border-radius:.42rem;padding:.48rem .4rem;color:#344b52;font-size:.82rem;cursor:pointer}.feed-filter-option:hover{background:#f2f8f5}.feed-filter-option input{accent-color:#176b5b;margin:0}.feed-filter-option span{flex:1}.feed-filter-option small{color:#84949a}.feed-filter-empty{font-size:.8rem;color:#89979a;margin:.45rem}.feed-filter-menu-clear{border:0;background:none;color:#176d62;font-size:.78rem;padding:.4rem .25rem .1rem}
+.feed-filter-advanced{display:grid;gap:.55rem;border-top:1px solid #edf1f2;margin-top:1rem;padding-top:1rem}.feed-filter-menu{min-width:0}.feed-filter-menu[open]{z-index:5}.feed-filter-menu summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:.7rem;padding:.57rem .8rem;border:1px solid #dce6e8;border-radius:.58rem;color:#36515a;font-size:.82rem;background:#fff;min-height:2.35rem}.feed-filter-menu summary::-webkit-details-marker{display:none}.feed-filter-menu summary:hover,.feed-filter-menu[open] summary{border-color:#7db5a8;background:#f8fcfa}.feed-filter-menu summary::after{content:'⌄';font-size:1rem;color:#6b8588;line-height:1}.feed-filter-menu[open] summary::after{transform:rotate(180deg)}.feed-filter-menu-count{background:#dff1eb;color:#126451;border-radius:99px;padding:.08rem .38rem;font-size:.7rem;font-weight:750}
+.feed-filter-menu-panel{width:100%;background:#fff;border:1px solid #dce6e8;border-radius:.72rem;margin-top:.35rem;padding:.65rem}.feed-filter-menu-search{width:100%;border:1px solid #dce6e8;border-radius:.48rem;padding:.48rem .6rem;font-size:.82rem;margin-bottom:.45rem}.feed-filter-menu-options{max-height:225px;overflow:auto}.feed-filter-option{display:flex;align-items:center;gap:.55rem;border-radius:.42rem;padding:.48rem .4rem;color:#344b52;font-size:.82rem;cursor:pointer}.feed-filter-option:hover{background:#f2f8f5}.feed-filter-option input{accent-color:#176b5b;margin:0}.feed-filter-option span{flex:1}.feed-filter-option small{color:#84949a}.feed-filter-empty{font-size:.8rem;color:#89979a;margin:.45rem}.feed-filter-menu-clear{border:0;background:none;color:#176d62;font-size:.78rem;padding:.4rem .25rem .1rem}
 .feed-filter-active{display:flex;align-items:center;flex-wrap:wrap;gap:.42rem;border-top:1px solid #edf1f2;margin-top:1rem;padding-top:.85rem}.feed-filter-active-label{font-size:.77rem;color:#73848a;margin-right:.2rem}.feed-active-chip{border:0;border-radius:99px;background:#e8f4f0;color:#176151;padding:.28rem .6rem;font-size:.77rem}.feed-active-chip:hover{background:#d8ece5}.feed-active-chip span{font-size:.9rem;margin-left:.4rem}
 .feed-filter [hidden]{display:none!important}
 .feed-filter button:focus-visible,.feed-filter summary:focus-visible,.feed-filter input:focus-visible,.feed-card button:focus-visible,.feed-card a:focus-visible{outline:2px solid #15816b;outline-offset:2px}.feed-card{background:white;border:1px solid #e4e9ef;border-radius:.8rem;padding:.85rem 1rem;margin-bottom:.55rem;box-shadow:0 .3rem .8rem rgba(20,35,50,.035)}
 .feed-card-header{display:flex;align-items:baseline;justify-content:space-between;gap:.65rem}.feed-meta{flex:none;font-size:.69rem;color:#89959e;font-weight:400;white-space:nowrap;text-align:right}.feed-meta time{margin-left:.4rem}.feed-card h2{flex:1;min-width:0;font-size:1.02rem;line-height:1.4;margin:0;font-weight:700;color:#243643;max-height:2.8em;overflow:hidden}.feed-card.is-expanded h2{max-height:none}
 .feed-card p{color:#53616a;font-size:.86rem;margin:.28rem 0 0;line-height:1.45;overflow-wrap:anywhere}.feed-excerpt{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.feed-extra-record{display:none}.feed-card.is-expanded h2,.feed-card.is-expanded .feed-excerpt{display:block}.feed-card.is-expanded .feed-extra-record{display:block}
-.feed-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:.45rem;flex-wrap:wrap;margin-top:.48rem}.feed-tags{display:flex;align-items:center;gap:.3rem;min-width:0;flex-wrap:nowrap;overflow:hidden}.feed-card.is-expanded .feed-tags{flex-wrap:wrap;overflow:visible}.feed-tag,.feed-type-tag,.feed-entity-tag{font-size:.69rem;border-radius:99px;padding:.1rem .47rem;white-space:nowrap}.feed-tag{color:#176356;background:#e7f4f0}.feed-type-tag{color:#3c4fa0;background:#edf0ff}.feed-entity-tag{color:#526578;background:#edf2f5}.feed-tag-extra{display:none}.feed-card.is-expanded .feed-tag-extra{display:inline}.feed-card.is-expanded .feed-tags-more{display:none}.feed-card-actions{display:flex;align-items:center;gap:.7rem;margin-left:auto}.feed-expand,.feed-original{font-size:.77rem;color:#176b5b;text-decoration:none;white-space:nowrap}.feed-expand{border:0;background:none;padding:0}.feed-expand:hover,.feed-original:hover{text-decoration:underline}
+.feed-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:.45rem;flex-wrap:wrap;margin-top:.48rem}.feed-tags{display:flex;align-items:center;gap:.3rem;min-width:0;max-width:100%;flex-wrap:wrap}.feed-tag,.feed-type-tag,.feed-entity-tag{font-size:.69rem;border-radius:99px;padding:.1rem .47rem;white-space:nowrap}.feed-tag{color:#176356;background:#e7f4f0}.feed-type-tag{color:#3c4fa0;background:#edf0ff}.feed-entity-tag{color:#526578;background:#edf2f5}.feed-tag-extra{display:none}.feed-card.is-expanded .feed-tag-extra{display:inline}.feed-card.is-expanded .feed-tags-more{display:none}.feed-card-actions{display:flex;align-items:center;gap:.7rem;margin-left:auto}.feed-expand,.feed-original{font-size:.77rem;color:#176b5b;text-decoration:none;white-space:nowrap}.feed-expand{border:0;background:none;padding:0}.feed-expand:hover,.feed-original:hover{text-decoration:underline}
 .feed-structured{margin-top:.7rem;padding:.8rem;background:#f7faf9;border:1px solid #dce9e4;border-radius:.65rem}.feed-structured[hidden]{display:none}.feed-structured-heading{font-size:.83rem;font-weight:750;color:#234b43}.feed-structured-note{font-size:.73rem;color:#73848a;margin:.1rem 0 .65rem!important}.feed-structured-empty{font-size:.82rem;margin:.2rem 0!important}.feed-structured-record{background:#fff;border:1px solid #e3ebe9;border-radius:.55rem;padding:.7rem .8rem}.feed-structured-record+.feed-structured-record{margin-top:.55rem}.feed-structured-record-title{display:flex;align-items:center;gap:.5rem;font-size:.82rem;font-weight:750;color:#294a43;margin-bottom:.5rem}.feed-structured-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem .9rem;margin:0}.feed-structured-grid>div{min-width:0}.feed-structured-grid .feed-structured-wide{grid-column:1/-1}.feed-structured-grid dt{font-size:.7rem;color:#77878c;font-weight:500}.feed-structured-grid dd{font-size:.82rem;color:#2f4349;margin:.08rem 0 0;overflow-wrap:anywhere}.feed-structured-subtitle{font-size:.76rem;font-weight:700;color:#45645c;margin:.65rem 0 .4rem;border-top:1px solid #edf1ef;padding-top:.55rem}
 .feed-whitelist{background:#edf7f2;border:1px solid #d4e8dd;border-radius:.55rem;padding:.65rem .8rem;margin-bottom:.7rem}.feed-whitelist .feed-structured-subtitle{margin:0 0 .4rem;padding:0;border:0}
 .feed-update{font-size:.69rem;color:#9c5b00;background:#fff2d9;border-radius:99px;padding:.1rem .46rem}.feed-more{display:block;margin:1.5rem auto}
-.feed-review-switch{display:flex;gap:.5rem;margin:0 0 1rem}.feed-review-controls{display:flex;flex-wrap:wrap;gap:.55rem;margin-bottom:1rem}.feed-review-controls>*{border:1px solid #dce6e8;border-radius:.5rem;padding:.48rem .6rem;background:#fff;font-size:.82rem}.feed-review-controls input{min-width:240px;flex:1}.feed-review-reason{font-size:.72rem;color:#795826;background:#fff4dc;border-radius:99px;padding:.15rem .5rem}
-@media(max-width:600px){.feed-hero{padding:1.4rem}.feed-card{padding:.8rem .85rem}.feed-filter{padding:1rem}.feed-quick-group{display:block}.feed-quick-label{display:block;padding:0 0 .35rem}.feed-filter-menu{flex:1 1 calc(50% - .55rem)}.feed-filter-menu-panel{position:static;width:100%;max-width:none;box-shadow:none;margin-top:.3rem}.feed-filter-menu[open]{flex-basis:100%}.feed-structured-grid{grid-template-columns:1fr}}
+.feed-review-switch{display:flex;gap:.5rem;margin:0 0 1rem}.feed-review-controls{display:grid;gap:.55rem}.feed-review-controls>*{min-width:0;width:100%;border:1px solid #dce6e8;border-radius:.5rem;padding:.48rem .6rem;background:#fff;font-size:.82rem}.feed-review-switch[hidden],.feed-review-controls[hidden],.feed-more[hidden]{display:none!important}.feed-review-reason{font-size:.72rem;color:#795826;background:#fff4dc;border-radius:99px;padding:.15rem .5rem}
+@media(max-width:800px){.feed-layout{grid-template-columns:minmax(0,1fr)}.feed-filter{position:static;max-height:none}.feed-filter-quick,.feed-filter-advanced{grid-template-columns:repeat(2,minmax(0,1fr))}.feed-review-controls{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.feed-hero{padding:1.4rem}.feed-card{padding:.8rem .85rem}.feed-filter{padding:1rem}.feed-filter-quick,.feed-filter-advanced,.feed-review-controls{grid-template-columns:minmax(0,1fr)}.feed-structured-grid{grid-template-columns:1fr}}
 `
 document.head.append(style)
 
@@ -54,6 +56,11 @@ feedTab.type = rejectedTab.type = 'button'
 reviewSwitch.append(feedTab, rejectedTab)
 reviewSwitch.hidden = true
 shell.append(reviewSwitch)
+const layout = el('div', 'feed-layout')
+const sidebar = el('aside', 'feed-sidebar')
+const content = el('div', 'feed-content')
+layout.append(sidebar, content)
+shell.append(layout)
 const filterPanel = el('section', 'feed-filter')
 const filterHead = el('div', 'feed-filter-head')
 const filterHeading = el('div')
@@ -66,7 +73,7 @@ const advancedFilters = el('div', 'feed-filter-advanced')
 const activeFilters = el('div', 'feed-filter-active')
 activeFilters.hidden = true
 filterPanel.append(filterHead, quickFilters, advancedFilters, activeFilters)
-shell.append(filterPanel)
+sidebar.append(filterPanel)
 const reviewControls = el('div', 'feed-review-controls')
 const reviewSearch = document.createElement('input')
 reviewSearch.type = 'search'; reviewSearch.placeholder = '搜索已过滤标题'; reviewSearch.setAttribute('aria-label', '搜索已过滤标题')
@@ -76,15 +83,15 @@ const reviewReason = document.createElement('select')
 reviewReason.setAttribute('aria-label', '过滤原因')
 reviewControls.append(reviewSearch, reviewSource, reviewReason)
 reviewControls.hidden = true
-shell.append(reviewControls)
+sidebar.append(reviewControls)
 const statusLine = el('p', 'text-muted small')
 statusLine.setAttribute('role', 'status')
-shell.append(statusLine)
+content.append(statusLine)
 const list = el('div', 'feed-list')
-shell.append(list)
+content.append(list)
 const more = el('button', 'btn btn-outline-secondary feed-more', '加载更多') as HTMLButtonElement
 more.hidden = true
-shell.append(more)
+content.append(more)
 
 const selected = new Map<string, Set<string>>()
 let facets: FeedFacets = { sources: [], content_types: [], entities: [], companies: [], categories: [], industries: [] }
@@ -405,6 +412,28 @@ function renderStructuredResult(item: FeedItem) {
   return panel
 }
 
+function identityLabels(item: FeedItem) {
+  const labels = new Set<string>()
+  const otherEntities = new Set<string>()
+  const companies = new Map<string, string>()
+  for (const record of item.records) {
+    const name = record.entity.trim()
+    if (record.entity_key?.startsWith('company:')) companies.set(record.entity_key.slice('company:'.length), name)
+    else if (name) otherEntities.add(name)
+  }
+  const match = item.whitelist_match
+  if (match?.stock_code) {
+    const name = match.company_name || companies.get(match.stock_code) || ''
+    labels.add(name ? `${name}（${match.stock_code}）` : match.stock_code)
+    companies.delete(match.stock_code)
+  }
+  else if (match?.company_name) labels.add(match.company_name)
+  if (match?.reason_code === 'industry' && match.industry) labels.add(match.industry)
+  for (const [code, name] of companies) labels.add(name ? `${name}（${code}）` : code)
+  for (const name of otherEntities) labels.add(name)
+  return [...labels]
+}
+
 function renderItem(item: FeedItem) {
   const card = el('article', 'feed-card')
   const header = el('div', 'feed-card-header')
@@ -428,6 +457,7 @@ function renderItem(item: FeedItem) {
   } else if (item.summary) card.append(el('p', 'feed-excerpt', item.summary))
   const bottom = el('div', 'feed-card-bottom')
   const tags = el('div', 'feed-tags')
+  for (const label of identityLabels(item)) tags.append(el('span', 'feed-entity-tag', label))
   if (item.kind === 'update') tags.append(el('span', 'feed-update', '更新'))
   if (item.tagging_status === 'expired') tags.append(el('span', 'feed-update', '超过48小时未提取'))
   else if (item.tagging_status === 'failed') tags.append(el('span', 'feed-update', '提取失败，等待重试'))
@@ -438,7 +468,8 @@ function renderItem(item: FeedItem) {
   else if (!item.records?.length) tags.append(el('span', 'feed-update', '无可提取信息'))
   const categories = item.tags.filter((tag) => tag.tagId.startsWith('category:')).map((tag) => tagLabel(tag.tagId))
   const types = [...new Set(item.records.map((record) => recordTypeLabel(record.informationType)))]
-  const others = [...item.tags.filter((tag) => !tag.tagId.startsWith('category:')).map((tag) => tagLabel(tag.tagId)), ...item.industries]
+  const others = item.tags.filter((tag) => !tag.tagId.startsWith('category:') && !tag.tagId.startsWith('company:'))
+    .map((tag) => tagLabel(tag.tagId))
   if (categories[0]) tags.append(el('span', 'feed-tag', categories[0]))
   if (types[0]) tags.append(el('span', 'feed-type-tag', types[0]))
   const extras = [

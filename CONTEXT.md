@@ -99,15 +99,15 @@ One compact, source-bound statement extracted from a document. It records an ent
 _Avoid_: Claim graph, investment conclusion, quote snippet
 
 **Entity**:
-The one stable, concrete real-world object that an information record is about. For issuer activity, use the issuer's concise stable name, not a legal suffix, ticker, share class, offering name, or a combined relationship phrase. Keep counterparties and transaction qualifiers in the statement.
-_Avoid_: Article topic, category label, `中际旭创H股`, `中际旭创H股全球发售`, `甲公司与乙公司`
+The explicit subject that an information record is about: a concrete issuer for company activity, or a named product, technology, industry, region, or theme for a source-bound fact or opinion. Choose the subject per statement, independently of whether the article also names companies. Use an issuer's concise stable name for issuer activity; keep counterparties and transaction qualifiers in the statement.
+_Avoid_: Unnamed company guess, generic category label, `中际旭创H股`, `中际旭创H股全球发售`, `甲公司与乙公司`
 
 **Information type**:
 The source's epistemic form: fact, guidance, forecast, opinion, event, or relationship.
 _Avoid_: Business topic, investment impact
 
 **Category**:
-The controlled business topic of a record, such as revenue, financing, listing, or product development. It is independent of information type.
+The controlled business topic of a record, such as revenue, financing, listing, price change, or product development. It is independent of information type and the subject's name; a theme-level opinion uses its business topic, not a separate opinion category.
 _Avoid_: Entity type, sentiment
 
 **Category candidate**:
@@ -119,8 +119,8 @@ A consumer-visible unit of unique information or a material update from a text-o
 _Avoid_: Verified fact, model analysis result
 
 **Information-feed record**:
-A source-bound statement extracted from a text-origin feed item using the information-feed record contract. It describes what the source says, not an independently verified fact.
-_Avoid_: Article-level topic, investment conclusion
+A source-bound statement about a concrete issuer or explicitly named theme extracted from a text-origin feed item. It describes a specific fact or attributed viewpoint from the source, not an independently verified conclusion.
+_Avoid_: Bare article-topic label, inferred company identity, investment conclusion
 
 **Semantic feed tag**:
 A deterministic index derived from an information-feed record: its controlled category or an unambiguously resolved company. Industry is derived only from an existing confirmed company classification; it is not model-generated.
