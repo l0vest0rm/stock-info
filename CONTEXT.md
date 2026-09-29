@@ -94,6 +94,14 @@ A candidate whose valuation, evidence, buy plan, cash, and company/theme/industr
 An immutable captured version of an original news item, announcement, research report, or other source material. It is the source record, not a verified conclusion.
 _Avoid_: Fact, research conclusion
 
+**External import**:
+An authenticated handoff of a source document version into stock-info. The external party owns collection and source selection; stock-info owns validation, version identity, storage, and serving. Import is not an assertion that the source's statements are true.
+_Avoid_: Local collection, verified extraction, arbitrary database write
+
+**Inline content**:
+The complete, short text of a document stored with its D1 document row instead of an R2 object. A preview or summary is not inline content.
+_Avoid_: Truncated preview, duplicate R2 copy
+
 **Information record**:
 One compact, source-bound statement extracted from a document. It records an entity, information type, category, optional period, and self-contained statement; it is not a verified conclusion or article rewrite.
 _Avoid_: Claim graph, investment conclusion, quote snippet

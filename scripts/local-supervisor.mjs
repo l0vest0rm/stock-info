@@ -8,7 +8,6 @@ import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { startKnowledgeIngestScheduler } from "./knowledge-ingest-scheduler.mjs";
-import { startInformationFeedScheduler } from "./information-feed-scheduler.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = resolve(new URL("..", import.meta.url).pathname);
@@ -72,13 +71,8 @@ async function main() {
       onEvent: (event, details) => log("local-scheduler", `knowledge_ingest_${event}`, details),
     });
   if (process.env.KNOWLEDGE_INGEST_SCHEDULER === "0") log("local-scheduler", "knowledge_ingest_disabled", { reason: "environment" });
-  const feed = process.env.INFORMATION_FEED_SCHEDULER === "0"
-    ? { stop() {} }
-    : startInformationFeedScheduler({
-      configPath: resolve(process.env.LOCAL_INFORMATION_FEED_CONFIG || "config/knowledge/information-feed.json"),
-      runChild: runOneShot,
-      onEvent: (event, details) => log("local-scheduler", `information_feed_${event}`, details),
-    });
+  // External import owns ingestion; the JSONL watcher is retained only for manual legacy jobs.
+  const feed = { stop() {} };
   installShutdown({ cron, ingest, feed });
   scheduleHealthChecks();
   scheduleCookieRefreshAfter(cookieReady ? cookieRefreshIntervalMs : cookieRefreshRetryMs);

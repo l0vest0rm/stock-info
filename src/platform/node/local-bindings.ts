@@ -85,10 +85,15 @@ export class LocalD1PreparedStatement implements PreparedStatement {
 }
 
 export class LocalR2Bucket implements ObjectBucket {
-  constructor(private readonly root: string) {}
+  constructor(private readonly root: string, private readonly stripPrefix = "") {}
+
+  private objectPath(key: string): string {
+    return localObjectPath(this.root, this.stripPrefix && key.startsWith(this.stripPrefix)
+      ? key.slice(this.stripPrefix.length) : key);
+  }
 
   async get(key: string): Promise<ObjectBody | null> {
-    const path = localObjectPath(this.root, key);
+    const path = this.objectPath(key);
     try {
       const bytes = await readFile(path);
       const file = await stat(path);
@@ -107,7 +112,7 @@ export class LocalR2Bucket implements ObjectBucket {
   }
 
   async put(key: string, value: ReadableStream | ArrayBuffer | ArrayBufferView | string | Blob, options?: { httpMetadata?: R2HTTPMetadata }): Promise<ObjectInfo> {
-    const path = localObjectPath(this.root, key);
+    const path = this.objectPath(key);
     const bytes = await objectBytes(value);
     await mkdir(dirname(path), { recursive: true });
     await atomicWrite(path, bytes);
@@ -175,7 +180,7 @@ export function createLocalBindings(root = process.cwd()): Bindings {
     DB: new LocalD1Database(databaseFile),
     MARKET_DATA_BUCKET: new LocalR2Bucket(resolve(process.env.LOCAL_MARKET_DATA_DIR || join(dataRoot, "market-data"))),
     RAW_BUCKET: new LocalR2Bucket(resolve(process.env.LOCAL_RAW_DATA_DIR || join(dataRoot, "raw"))),
-    KNOWLEDGE_CONTENT_BUCKET: new LocalR2Bucket(knowledgeRoot),
+    KNOWLEDGE_CONTENT_BUCKET: new LocalR2Bucket(knowledgeRoot, "knowledge-content/"),
     ASSETS: new LocalAssets(resolve(process.env.LOCAL_ASSETS_DIR || join(root, "web/dist"))),
   };
   Object.defineProperty(bindings, "XUEQIU_COOKIE", {

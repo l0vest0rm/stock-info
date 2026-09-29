@@ -177,7 +177,9 @@ knowledgeRoutes.get("/knowledge/doc", async (c) => {
     return fail(c, 404, `knowledge document not found: ${id}`);
   }
   const item = mapKnowledgeDocListItem(row, knowledgeContentUrlContext(c));
-  return ok(c, item);
+  const inline = await c.env.DB.prepare("select inline_content from knowledge_docs where doc_id = ?")
+    .bind(id).first<{ inline_content: string | null }>();
+  return ok(c, { ...item, content: inline?.inline_content || null });
 });
 
 knowledgeRoutes.post("/knowledge/report-analysis", async (c) => {

@@ -1,7 +1,7 @@
 {
   "tagContract": "feed-tag-v10",
   "automation": {
-    "enabled": true,
+    "enabled": false,
     "runOnStart": true,
     "maxDocumentsPerRun": 10000,
     "maxTagsPerRun": 20,

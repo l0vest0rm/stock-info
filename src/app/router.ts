@@ -10,6 +10,7 @@ import { fundRoutes } from "../modules/fund/api/fund.routes";
 import { healthRoutes } from "../modules/health/api/health.routes";
 import { knowledgeRoutes } from "../modules/knowledge/api/knowledge.routes";
 import { informationFeedRoutes } from "../modules/knowledge/api/information-feed.routes";
+import { knowledgeImportRoutes } from "../modules/knowledge/api/knowledge-import.routes";
 import { localDataRoutes } from "../modules/local-data/api/local-data.routes";
 import { macroRoutes } from "../modules/macro/api/macro.routes";
 import { marketRoutes } from "../modules/market/api/market.routes";
@@ -50,6 +51,7 @@ export function createRouter(): Hono<AppEnv> {
   app.route("/api", thirteenFRoutes);
   app.route("/api", knowledgeRoutes);
   app.route("/api", informationFeedRoutes);
+  app.route("/api", knowledgeImportRoutes);
   app.route("/api", localDataRoutes);
   app.route("/api", macroRoutes);
 

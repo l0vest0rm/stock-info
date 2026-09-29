@@ -1,11 +1,12 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join, resolve } from "node:path";
 import { mapClsTelegraphItem } from "./cls-news.mjs";
 
 const DEFAULT_INPUT_DIR = "/Users/terry/git/data/news";
 
-export function createSub2meCallbackHandler({ token, task = "cls-telegraph", inputDir = DEFAULT_INPUT_DIR } = {}) {
+export function createSub2meCallbackHandler({ task = "cls-telegraph", inputDir = DEFAULT_INPUT_DIR } = {}) {
+  const token = randomBytes(32).toString("base64url");
   const seenByFile = new Map();
   const storeRecord = (record) => {
     const doc = mapClsTelegraphItem(record);
@@ -29,7 +30,6 @@ export function createSub2meCallbackHandler({ token, task = "cls-telegraph", inp
     const pathname = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`).pathname;
     if (pathname !== "/api/local/sub2me/callback") return false;
     if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
-    if (!token) return reply(response, 503, { error: "SUB2ME_CALLBACK_TOKEN is not configured" });
     const supplied = request.headers.authorization?.replace(/^Bearer /i, "") || "";
     const expectedBytes = Buffer.from(token);
     const suppliedBytes = Buffer.from(supplied);
@@ -57,7 +57,7 @@ export function createSub2meCallbackHandler({ token, task = "cls-telegraph", inp
     catch (error) { return reply(response, 422, { error: String(error) }); }
     return reply(response, 200, result);
   };
-  return { handle, storeRecord };
+  return { handle, storeRecord, token };
 }
 
 export async function registerSub2meSubscription({ baseUrl, callbackUrl, token, task = "cls-telegraph", onRecord }) {

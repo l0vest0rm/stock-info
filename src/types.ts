@@ -7,6 +7,7 @@ export type Bindings = {
   MARKET_DATA_BUCKET: ObjectBucket;
   RAW_BUCKET?: ObjectBucket;
   KNOWLEDGE_CONTENT_BUCKET?: ObjectBucket;
+  KNOWLEDGE_IMPORT_TOKEN?: string;
   AUTH_LOGIN_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
   AUTH_RESET_LIMITER?: { limit(options: { key: string }): Promise<{ success: boolean }> };
   MAIL_SMTP_HOST?: string;
@@ -36,7 +37,6 @@ export type Bindings = {
   /** Local-only Sub2Me callback integration. */
   SUB2ME_BASE_URL?: string;
   SUB2ME_CALLBACK_URL?: string;
-  SUB2ME_CALLBACK_TOKEN?: string;
   SUB2ME_TASK?: string;
   /** Local-only destination for publishing validated, completed report read models. */
   PRODUCTION_REPORT_SYNC_URL?: string;

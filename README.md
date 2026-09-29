@@ -60,7 +60,7 @@ npm run test:basic
 ### 资讯信息流
 
 本地页面为 `/news.html`，接口为 `/api/knowledge/feed` 和 `/api/knowledge/feed/facets`。
-`config/knowledge/information-feed.json` 控制本地资讯文件变更触发的即时入库/提取、财联社采集、每日 500 次提取上限与远端发布开关。财联社源站无推送接口，因此仅采集仍每 60 秒轮询；无新增或修订内容时不运行入库/提取。腾讯原始 JSON 由仓库外的现有采集器提供，写入共享 news 目录后触发处理。资讯入库仅允许标题命中本地 `stock.short_name`、`stock_alias.alias` 或市场限定代码变形且具备公司事件线索，或者命中 `config/knowledge/information-feed-policy.json` 中配置的行业／宏观规则；未命中者不入库。拒绝标题及链接只写本地 JSONL，页面本地环境可筛选复核。生产 Worker 不调用模型，远端发布默认关闭。手动处理和检查：
+新资讯由外部订阅或导入方调用带 Bearer secret 的 `POST /api/internal/knowledge/import`，stock-info 不再监听 JSONL 目录采集。短纯文本（不超过 4 KiB）直接存 D1/本地 SQLite，长正文存 R2/本地对象目录，详见 [外部知识导入设计](docs/knowledge-import.md)。外部导入展示为来源原文，不冒充旧提取链路的语义记录。旧文件处理与模型提取脚本仅保留供手工历史回填；生产 Worker 不调用模型。历史链路的手动处理和检查：
 
 ```bash
 npm run process:feed -- --max-documents 200 --max-tags 20
@@ -114,7 +114,7 @@ npm run dev:cron:once
 
 ### 资讯流信息提取
 
-资讯流由本地 Node 运行时处理。启动 `./start-local.sh` 后使用 `npm run process:feed`；生产 Worker 不调用模型。旧“信息整理”页面和知识文档单篇信息预处理入口已停用，历史数据库表保留供已有数据读取或归档。
+历史资讯提取仅由本地 Node 运行时处理；`npm run process:feed` 是手工回填旧文件的入口，不再是新资讯的默认采集入口。生产 Worker 不调用模型。旧“信息整理”页面和知识文档单篇信息预处理入口已停用，历史数据库表保留供已有数据读取或归档。
 
 ### `./process-knowledge-local-full.sh`
 

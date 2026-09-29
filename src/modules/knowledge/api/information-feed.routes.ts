@@ -33,7 +33,7 @@ const tagsJson = (alias: 'v' | 'd') => `(select coalesce(json_group_array(json_o
   and t.tagging_input_fingerprint=json_extract(${alias}.metadata_json,'${currentPath}.inputFingerprint')
   and t.contract_version=json_extract(${alias}.metadata_json,'${currentPath}.contractVersion')
   and t.contract_version in (${contracts.map((contract) => sqlText(contract.contractVersion)).join(',')}))`;
-const ELIGIBLE = `d.source_type='information_feed' and d.access_method='markdown'
+const LEGACY_ELIGIBLE = `d.source_type='information_feed' and d.access_method='markdown'
   and json_extract(d.metadata_json,'$.feed.version')='v1'
   and json_extract(d.metadata_json,'$.feed.originalFormat')='text'
   and json_extract(d.metadata_json,'$.feed.investmentGate.policyVersion')=${sqlText(relevanceConfig.version)}
@@ -41,13 +41,22 @@ const ELIGIBLE = `d.source_type='information_feed' and d.access_method='markdown
   and json_extract(d.metadata_json,'$.feed.investmentGate.title')=d.title
   and exists (select 1 from knowledge_doc_content_refs c where c.doc_id=d.doc_id and c.content_key is not null
     and c.content_sha256=json_extract(d.metadata_json,'$.feed.investmentGate.bodySha256'))`;
-const TAGGED = `${currentExtractionSql('d', contracts)}
+const IMPORTED = `d.source_type='information_feed' and d.access_method='markdown'
+  and json_extract(d.metadata_json,'$.feed.version')='v2'
+  and json_extract(d.metadata_json,'$.feed.importVersion')='api-v1'
+  and json_extract(d.metadata_json,'$.feed.originalFormat')='text'
+  and json_extract(d.metadata_json,'$.feed.publishAllowed')=1
+  and ((d.inline_content is not null and d.inline_content_sha256=json_extract(d.metadata_json,'$.feed.fullBodyHash'))
+    or exists (select 1 from knowledge_doc_content_refs c where c.doc_id=d.doc_id and c.content_key is not null
+      and c.content_sha256=json_extract(d.metadata_json,'$.feed.fullBodyHash')))`;
+const ELIGIBLE = `(${LEGACY_ELIGIBLE}) or (${IMPORTED})`;
+const TAGGED = `(${currentExtractionSql('d', contracts)}
   and json_extract(d.metadata_json,'$.feed.publishAllowed')=1
   and exists (select 1 from knowledge_information_records r where r.doc_id=d.doc_id)
   and not exists (select 1 from knowledge_information_records r where r.doc_id=d.doc_id
     and not exists (select 1 from knowledge_doc_tags t where t.doc_id=d.doc_id and t.tag='category:'||r.category
       and t.tagging_input_fingerprint=json_extract(d.metadata_json,'${currentPath}.inputFingerprint')
-      and t.contract_version=json_extract(d.metadata_json,'${currentPath}.contractVersion')))`;
+      and t.contract_version=json_extract(d.metadata_json,'${currentPath}.contractVersion')))) or (${IMPORTED})`;
 const selectFields = (alias: 'v' | 'd') => `${alias}.doc_id,${alias}.title,${alias}.url,${alias}.source_name,
   ${alias}.published_at,${alias}.sort_time,${alias}.summary,${alias}.metadata_json,
   ${tagsJson(alias)} as tags_json,${informationRowsJsonSql(alias)} as records_json,
@@ -57,7 +66,7 @@ function visibleCte(local: boolean) {
   return `with ranked as (
     select d.doc_id,d.title,d.url,d.source_name,d.published_at,d.sort_time,d.summary,d.metadata_json,
       row_number() over (partition by json_extract(d.metadata_json,'$.feed.storyKey') order by d.sort_time desc,d.doc_id desc) as rn
-    from knowledge_docs d where ${ELIGIBLE} ${local ? '' : `and ${TAGGED}`}
+    from knowledge_docs d where (${ELIGIBLE}) ${local ? '' : `and (${TAGGED})`}
   ), visible as (select * from ranked where rn=1)`;
 }
 function parseCsv(value: string | undefined) {
@@ -98,6 +107,7 @@ function matchesRecord(record: InformationRow, filters: RecordFilters): boolean 
 async function mapRow(row: FeedRow, cutoff: string, local: boolean, filters?: RecordFilters) {
   const metadata = JSON.parse(row.metadata_json || '{}');
   const extraction = metadata.informationExtraction as ExtractionState | undefined;
+  const imported = metadata.feed?.importVersion === 'api-v1';
   const rows = await verifiedRows(row);
   const valid = rows !== null;
   const tags = (valid ? JSON.parse(row.tags_json || '[]') : []) as Array<{ tagId: string; weight: number }>;
@@ -106,7 +116,7 @@ async function mapRow(row: FeedRow, cutoff: string, local: boolean, filters?: Re
     ? [...(rows || [])].sort((a, b) => Number(matchesRecord(b, filters)) - Number(matchesRecord(a, filters))) : rows || [];
   const leadingTags = new Set(orderedRows.length ? [`category:${orderedRows[0].category}`, orderedRows[0].entity_key] : []);
   const rawStatus = extraction?.status || 'pending';
-  const status = !valid && row.sort_time < cutoff ? 'expired' : rawStatus === 'complete' && !valid ? 'pending' : rawStatus;
+  const status = imported ? 'source_only' : !valid && row.sort_time < cutoff ? 'expired' : rawStatus === 'complete' && !valid ? 'pending' : rawStatus;
   const gate = metadata.feed?.investmentGate;
   const gateReason = String(gate?.reasonCodes?.[0] || '');
   const gateEvidence = Array.isArray(gate?.evidence) ? gate.evidence.filter((value: unknown): value is string => typeof value === 'string') : [];
@@ -157,7 +167,8 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
   const binds: Array<string | number> = [];
   const valid = currentExtractionSql('v', contracts, true);
   const extractionStatus = `coalesce(json_extract(v.metadata_json,'$.informationExtraction.status'),'pending')`;
-  if (local && !status) { conditions.push(`not (v.sort_time < ? and not (${valid}))`); binds.push(cutoff); }
+  if (local && !status) { conditions.push(`not (v.sort_time < ? and not (${valid})
+    and coalesce(json_extract(v.metadata_json,'$.feed.importVersion'),'')!='api-v1')`); binds.push(cutoff); }
   if (sources.length) {
     conditions.push(`exists (select 1 from json_each(v.metadata_json,'$.feed.sources') src where json_extract(src.value,'$.sourceKey') in (${placeholders(sources.length)}))`);
     binds.push(...sources);
@@ -195,7 +206,7 @@ informationFeedRoutes.get('/knowledge/feed', async (c) => {
   const hasNext = rows.results.length > pageSize;
   const mapped = await Promise.all(page.map((row) => mapRow(row, cutoff, local,
     { categories: selectedCategories, entities, companies: companyKeys, industries: industryKeys })));
-  const list = local ? mapped : mapped.filter((row) => row.records.length > 0);
+  const list = local ? mapped : mapped.filter((row) => row.records.length > 0 || row.tagging_status === 'source_only');
   const last = page.at(-1);
   return ok(c, { list, has_next: hasNext, next_cursor: hasNext && last ? btoa(JSON.stringify({ time: last.sort_time, id: last.doc_id })) : null });
 });
@@ -209,7 +220,7 @@ informationFeedRoutes.get('/knowledge/feed/facets', async (c) => {
   const categoryCounts = new Map<string, number>(), industries = new Map<string, number>();
   const items = await Promise.all(rows.results.map((row) => mapRow(row, cutoff, local)));
   for (const item of items) {
-    if ((local && item.tagging_status === 'expired') || (!local && !item.records.length)) continue;
+    if ((local && item.tagging_status === 'expired') || (!local && !item.records.length && item.tagging_status !== 'source_only')) continue;
     contentTypes.set(item.content_type, (contentTypes.get(item.content_type) || 0) + 1);
     for (const source of new Set(item.sources)) sources.set(source, (sources.get(source) || 0) + 1);
     for (const tag of item.tags) { const target = tag.tagId.startsWith('company:') ? companies : categoryCounts; target.set(tag.tagId, (target.get(tag.tagId) || 0) + 1); }
@@ -239,11 +250,11 @@ informationFeedRoutes.get('/knowledge/feed/story', async (c) => {
   if (!/^f_[a-f0-9]{24}$/.test(storyKey)) return fail(c, 400, 'invalid story key');
   const local = isLocalDevelopmentRuntime(c.env);
   const cutoff = new Date(Date.now() - (feedConfig.automation.maxAgeHours || 48) * 3600000).toISOString();
-  const rows = await c.env.DB.prepare(`select ${selectFields('d')} from knowledge_docs d where ${ELIGIBLE}
-    and json_extract(d.metadata_json,'$.feed.storyKey')=? ${local ? '' : `and ${TAGGED}`}
+  const rows = await c.env.DB.prepare(`select ${selectFields('d')} from knowledge_docs d where (${ELIGIBLE})
+    and json_extract(d.metadata_json,'$.feed.storyKey')=? ${local ? '' : `and (${TAGGED})`}
     order by d.sort_time,d.doc_id limit 100`).bind(storyKey).all<FeedRow>();
   const list = await Promise.all(rows.results.map((row) => mapRow(row, cutoff, local)));
-  return ok(c, { list: local ? list : list.filter((row) => row.records.length > 0) });
+  return ok(c, { list: local ? list : list.filter((row) => row.records.length > 0 || row.tagging_status === 'source_only') });
 });
 
 function parseCursor(value: string | undefined): { time: string; id: string } | null {

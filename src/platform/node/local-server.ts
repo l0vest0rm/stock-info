@@ -21,7 +21,7 @@ const localReportHandler = createLocalReportHandler(port);
 const bindings = createLocalBindings();
 const app = createRouter();
 const sub2meTask = bindings.SUB2ME_TASK || "cls-telegraph";
-const sub2meCallback = createSub2meCallbackHandler({ token: bindings.SUB2ME_CALLBACK_TOKEN, task: sub2meTask,
+const sub2meCallback = createSub2meCallbackHandler({ task: sub2meTask,
   inputDir: process.env.INFORMATION_FEED_INPUT_DIR });
 let sub2meTimer: ReturnType<typeof setInterval> | null = null;
 let sub2meRegistering = false;
@@ -48,10 +48,10 @@ const server = createServer((request, response) => {
 
 server.listen(port, host, () => {
   localRuntimeLog("ready", { http_url: `http://${host}:${port}` });
-  if (bindings.SUB2ME_BASE_URL && bindings.SUB2ME_CALLBACK_TOKEN) {
+  if (bindings.SUB2ME_BASE_URL) {
     void registerSubscription();
     sub2meTimer = setInterval(() => { void registerSubscription(); }, 60_000);
-  } else localRuntimeLog("sub2me_subscription_disabled", { reason: "SUB2ME_BASE_URL or SUB2ME_CALLBACK_TOKEN missing" });
+  } else localRuntimeLog("sub2me_subscription_disabled", { reason: "SUB2ME_BASE_URL missing" });
 });
 const contentServer = createKnowledgeContentServer();
 contentServer.listen(contentPort, host, () => localRuntimeLog("content_ready", { content_url: `http://${host}:${contentPort}` }));
@@ -100,7 +100,7 @@ async function registerSubscription(): Promise<void> {
     const result = await registerSub2meSubscription({
       baseUrl: bindings.SUB2ME_BASE_URL,
       callbackUrl: bindings.SUB2ME_CALLBACK_URL || `http://127.0.0.1:${port}/api/local/sub2me/callback`,
-      token: bindings.SUB2ME_CALLBACK_TOKEN,
+      token: sub2meCallback.token,
       task: sub2meTask,
       onRecord: sub2meCallback.storeRecord,
     });
