@@ -1,8 +1,8 @@
 import { watch, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// Ingestion is driven by source-file changes. CLS has no push endpoint, so only
-// its collection remains a bounded poll; an unchanged fetch does not run the feed.
+// Ingestion is driven by source-file changes. Sub2Me owns collection and writes
+// subscribed records through the local callback, so this scheduler only processes.
 export function startInformationFeedScheduler({
   configPath = resolve('config/knowledge/information-feed.json'), runChild, onEvent = () => {},
   watchFiles = watch, setTimer = setInterval, clearTimer = clearInterval,
@@ -49,16 +49,7 @@ export function startInformationFeedScheduler({
     } finally { active = false; }
   };
 
-  const collect = async (reason) => {
-    if (stopping) return;
-    try {
-      await runChild({ command: 'node', args: ['scripts/fetch-cls-news.mjs'], cwd: resolve('.'), env: process.env });
-    } catch (error) { onEvent('cls_fetch_failed', { reason, error: String(error) }); }
-  };
-  const runNow = async (reason = 'manual') => {
-    await collect(reason);
-    return processChanges(reason);
-  };
+  const runNow = async (reason = 'manual') => processChanges(reason);
   function scheduleQuotaReset() {
     const usageFile = resolve(process.env.INFORMATION_FEED_TAG_USAGE_FILE || 'data/local/information-feed-tag-usage.json');
     if (!existsSync(usageFile)) return;
@@ -77,13 +68,11 @@ export function startInformationFeedScheduler({
     debounce = setTimeout(() => { debounce = null; void processChanges('source_changed'); }, config.changeDebounceMs || 300);
   });
   watcher.on?.('error', (error) => onEvent('watch_failed', { error: String(error) }));
-  const collector = setTimer(() => { void collect('poll'); }, (config.clsPollSeconds || 60) * 1000);
   if (config.runOnStart) void runNow('startup');
-  onEvent('watching', { inputDir, clsPollSeconds: config.clsPollSeconds || 60, publishRemote: config.publishRemote === true });
+  onEvent('watching', { inputDir, publishRemote: config.publishRemote === true });
   return { runNow, stop() {
     stopping = true;
     watcher.close();
-    clearTimer(collector);
     if (debounce) clearTimeout(debounce);
     if (retry) clearTimeout(retry);
     if (quotaReset) clearTimeout(quotaReset);

@@ -11,6 +11,8 @@ const { createKnowledgeContentServer } = await import(pathToFileURL(resolve(proc
 import { createLocalReportHandler } from "../../../scripts/lib/featured-report-local.mjs";
 // @ts-expect-error Node-only local audit adapter is JavaScript.
 import { readRejectedFeed } from "../../../scripts/lib/information-feed-rejection-audit.mjs";
+// @ts-expect-error Node-only Sub2Me callback adapter is JavaScript.
+import { createSub2meCallbackHandler, registerSub2meSubscription } from "../../../scripts/lib/sub2me-callback.mjs";
 
 const host = process.env.HOST || "127.0.0.1";
 const port = positivePort(process.env.PORT || "8000");
@@ -18,6 +20,11 @@ const contentPort = positivePort(process.env.KNOWLEDGE_CONTENT_LOCAL_PORT || "87
 const localReportHandler = createLocalReportHandler(port);
 const bindings = createLocalBindings();
 const app = createRouter();
+const sub2meTask = bindings.SUB2ME_TASK || "cls-telegraph";
+const sub2meCallback = createSub2meCallbackHandler({ token: bindings.SUB2ME_CALLBACK_TOKEN, task: sub2meTask,
+  inputDir: process.env.INFORMATION_FEED_INPUT_DIR });
+let sub2meTimer: ReturnType<typeof setInterval> | null = null;
+let sub2meRegistering = false;
 
 function localRuntimeLog(event: string, details: Record<string, unknown> = {}): void {
   process.stdout.write(`${JSON.stringify({
@@ -39,7 +46,13 @@ const server = createServer((request, response) => {
   });
 });
 
-server.listen(port, host, () => localRuntimeLog("ready", { http_url: `http://${host}:${port}` }));
+server.listen(port, host, () => {
+  localRuntimeLog("ready", { http_url: `http://${host}:${port}` });
+  if (bindings.SUB2ME_BASE_URL && bindings.SUB2ME_CALLBACK_TOKEN) {
+    void registerSubscription();
+    sub2meTimer = setInterval(() => { void registerSubscription(); }, 60_000);
+  } else localRuntimeLog("sub2me_subscription_disabled", { reason: "SUB2ME_BASE_URL or SUB2ME_CALLBACK_TOKEN missing" });
+});
 const contentServer = createKnowledgeContentServer();
 contentServer.listen(contentPort, host, () => localRuntimeLog("content_ready", { content_url: `http://${host}:${contentPort}` }));
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -47,6 +60,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 function closeServers(): void {
+  if (sub2meTimer) clearInterval(sub2meTimer);
   let remaining = 2;
   const closed = () => {
     remaining -= 1;
@@ -58,6 +72,7 @@ function closeServers(): void {
 
 async function handle(incoming: IncomingMessage, outgoing: ServerResponse): Promise<void> {
   const url = new URL(incoming.url || "/", `http://${incoming.headers.host || `${host}:${port}`}`);
+  if (await sub2meCallback.handle(incoming, outgoing)) return;
   if (url.pathname === "/api/local/information-feed/rejected") {
     if (incoming.method !== "GET") {
       outgoing.writeHead(405, { "content-type": "application/json; charset=utf-8" });
@@ -76,6 +91,22 @@ async function handle(incoming: IncomingMessage, outgoing: ServerResponse): Prom
   for (const [name, value] of response.headers) outgoing.setHeader(name, value);
   if (!response.body) return void outgoing.end();
   Readable.fromWeb(response.body as unknown as import("node:stream/web").ReadableStream).pipe(outgoing);
+}
+
+async function registerSubscription(): Promise<void> {
+  if (sub2meRegistering) return;
+  sub2meRegistering = true;
+  try {
+    const result = await registerSub2meSubscription({
+      baseUrl: bindings.SUB2ME_BASE_URL,
+      callbackUrl: bindings.SUB2ME_CALLBACK_URL || `http://127.0.0.1:${port}/api/local/sub2me/callback`,
+      token: bindings.SUB2ME_CALLBACK_TOKEN,
+      task: sub2meTask,
+      onRecord: sub2meCallback.storeRecord,
+    });
+    localRuntimeLog("sub2me_subscribed", { subscription_id: result.id, task: sub2meTask, backfilled: result.stored });
+  } catch (error) { localRuntimeError("sub2me_subscription_failed", error); }
+  finally { sub2meRegistering = false; }
 }
 
 function toWebRequest(request: IncomingMessage): Request {

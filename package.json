@@ -41,7 +41,6 @@
     "report:cloudflare:observability": "node scripts/report-cloudflare-observability.mjs",
     "refresh:eastmoney-cookie": "node scripts/refresh-eastmoney-cookie.mjs --write-dev-vars --write-wrangler-vars",
     "refresh:xueqiu-cookie": "node scripts/refresh-xueqiu-cookie.mjs --write-dev-vars --write-local-credential-store",
-    "fetch:cls-news": "node scripts/fetch-cls-news.mjs",
     "research:earnings": "node scripts/earnings-research.mjs",
     "research:fund-quarterly": "node scripts/fund-quarterly-research.mjs",
     "analyze:buy-point": "node scripts/analyze-buy-point.mjs",

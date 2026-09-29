@@ -9,7 +9,6 @@
     "lookbackDays": 3,
     "maxAgeHours": 48,
     "publishRemote": false,
-    "clsPollSeconds": 60,
     "changeDebounceMs": 300,
     "retrySeconds": 30
   },

@@ -33,6 +33,11 @@ export type Bindings = {
   TASKD_CALLER_TOKEN?: string;
   /** Shared only through ignored local vars and the production Worker secret. */
   REPORT_SYNC_TOKEN?: string;
+  /** Local-only Sub2Me callback integration. */
+  SUB2ME_BASE_URL?: string;
+  SUB2ME_CALLBACK_URL?: string;
+  SUB2ME_CALLBACK_TOKEN?: string;
+  SUB2ME_TASK?: string;
   /** Local-only destination for publishing validated, completed report read models. */
   PRODUCTION_REPORT_SYNC_URL?: string;
   LLM_DAILY_LIMIT?: string;
