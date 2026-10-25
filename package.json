@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.5.0"
+    "node": "26.10.0"
   },
   "scripts": {
     "build:prompts": "node scripts/build-prompts.mjs",

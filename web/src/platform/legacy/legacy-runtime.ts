@@ -2176,7 +2176,8 @@ async function codeInit() {
       const data = await fetchKline(currentCode, '') as number[][]
       if (!Array.isArray(data) || data.length === 0 || !Array.isArray(data[data.length - 1])) {
         console.warn('Kline data unavailable for current price', { code: currentCode, data })
-        alert(`无法加载${currentCode}的K线数据`)
+        const reason = legacyDataServices.getKlineError(currentCode)
+        alert(`无法加载${currentCode}的K线数据${reason ? `：${reason}` : ''}`)
         return
       }
       const currentPrice = data[data.length-1][1]

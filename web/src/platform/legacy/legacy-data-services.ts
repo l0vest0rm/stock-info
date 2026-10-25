@@ -17,6 +17,7 @@ export function createLegacyDataServices(context: DataServicesContext) {
   const { cache, codeNameMap, klineCodes, markPoints, server, usCodeMap, fetchRequest } = context
   const klineInflight = new Map<string, Promise<unknown>>()
   const klineCacheRanges = new Map<string, string>()
+  const klineErrors = new Map<string, string>()
 
   function fetchCodesData(codes: string[], fn: (code: string, succ: (code: string) => void) => void, callback: CodesCallback): void {
     const should = codes.length
@@ -117,8 +118,10 @@ export function createLegacyDataServices(context: DataServicesContext) {
         delete cache[cacheKey]
         delete cache[requestCacheKey]
         console.warn(`Kline unavailable for ${code}:`, data)
+        klineErrors.set(cacheKey, String(data.error))
         return undefined
       }
+      klineErrors.delete(cacheKey)
       cache[cacheKey] = data
       klineCacheRanges.set(cacheKey, requestCacheKey)
       return data
@@ -379,6 +382,7 @@ export function createLegacyDataServices(context: DataServicesContext) {
     fetchFinanceBalance,
     fetchFinanceCashflow,
     fetchKline,
+    getKlineError: (code: string, fq = '') => klineErrors.get(`${code}${fq}`),
     fetchKlines,
     fetchFundPosition,
     fetchShareChanges,

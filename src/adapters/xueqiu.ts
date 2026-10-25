@@ -2,7 +2,7 @@ import type { Database } from "../platform/contracts";
 import {
   normalizeSecurityCode,
 } from "../shared/codes";
-import { cachedFetchText, numberOrNull, parseJsonOrJsonp } from "../shared/http";
+import { cachedFetchText, numberOrNull } from "../shared/http";
 import type { ExternalHttpOptions } from "../shared/http";
 import type { KlineBar } from "../types";
 
@@ -50,15 +50,41 @@ export async function fetchXueqiuStockKline(
   }, 10 * 60 * 1000, {
     ...httpOptions,
     cacheKey: `xueqiu:kline:v1:${normalized}:${period}:${fq}:${to}`,
+    validateResponseText: (text) => { parseXueqiuKlineResponse(text); },
   });
-  const body = parseJsonOrJsonp(rawResponseText) as XueqiuKlineResponse;
-
-  if (isXueqiuAuthError(body)) {
-    throw new Error(`Xueqiu cookie expired or rejected: ${body.error_description ?? body.error_code}`);
-  }
+  const body = parseXueqiuKlineResponse(rawResponseText);
   const now = Date.now();
   const rows = mapXueqiuKlineRows(body, { code: normalized, period, fq, updatedAt: now });
   return { rows, rawResponseText };
+}
+
+export function parseXueqiuKlineResponse(text: string): XueqiuKlineResponse {
+  if (/^\s*</.test(text)) {
+    if (/人机验证|访问触发保护|service\/captcha/.test(text)) {
+      throw new Error("雪球访问触发保护，K线暂不可用。请在当前网络的浏览器打开 https://www.xueqiu.com/service/captcha 完成人机验证，再刷新本地雪球 Cookie 后重试。");
+    }
+    throw new Error("雪球K线接口返回了 HTML 而非行情数据，请检查雪球访问状态后重试。");
+  }
+  let body: XueqiuKlineResponse;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error("雪球K线接口返回了无效 JSON，请稍后重试。");
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("雪球K线接口返回了无效数据结构。");
+  }
+  if (isXueqiuAuthError(body)) {
+    throw new Error("雪球 Cookie 已失效或被拒绝，请刷新本地雪球 Cookie 后重试。");
+  }
+  if (body.error_code != null && String(body.error_code) !== "0") {
+    throw new Error(`雪球K线请求失败：${body.error_description || body.error_code}`);
+  }
+  if (!Array.isArray(body.data?.column) || !Array.isArray(body.data?.item)
+    || !["timestamp", "open", "high", "low", "close"].every((column) => body.data!.column!.includes(column))) {
+    throw new Error("雪球K线接口返回的数据缺少行情字段，请稍后重试。");
+  }
+  return body;
 }
 
 export function createXueqiuKlineRequest(

@@ -14,6 +14,8 @@ export type ExternalHttpOptions = {
   cacheTtlMs?: number;
   /** Do not attempt to store a response larger than this D1-safe byte size. */
   cacheMaxBytes?: number;
+  /** Validate provider payloads before reuse or persistence; throw on failure. */
+  validateResponseText?: (text: string) => void;
   resolveCacheTtlMs?: (response: { status: number; headers: Record<string, string>; text: string }) => number;
 };
 
@@ -85,9 +87,16 @@ export async function cachedFetchText(
   const cacheTtlMs = options?.cacheTtlMs ?? ttlMs;
   const cached = await getHttpCache(db, cacheKey);
   if (cached) {
-    return cached.bodyText;
+    try {
+      options?.validateResponseText?.(cached.bodyText);
+      return cached.bodyText;
+    } catch {
+      // Old HTTP-200 challenge/error pages must not survive credential recovery.
+      await db.prepare("delete from http_cache where cache_key = ?").bind(cacheKey).run();
+    }
   }
   const { status, headers, text } = await fetchTextResponse(url, init, options);
+  options?.validateResponseText?.(text);
   const now = Date.now();
   const resolvedTtlMs = options?.resolveCacheTtlMs?.({ status, headers, text });
   const finalCacheTtlMs = Number.isFinite(resolvedTtlMs) && resolvedTtlMs && resolvedTtlMs > 0
