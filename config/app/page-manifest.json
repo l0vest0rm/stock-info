@@ -213,5 +213,11 @@
     "entry": "src/modules/featured-reports/pages/featured-report-page.ts",
     "runtime": "all",
     "legacy": false
+  },
+  {
+    "path": "/investment-universe.html",
+    "entry": "src/modules/companies/pages/investment-universe-page.ts",
+    "runtime": "all",
+    "legacy": false
   }
 ]

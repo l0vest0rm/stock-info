@@ -425,6 +425,13 @@
       "少数股东损益"
     ],
     [
+      "depreciationAmortization",
+      "折旧与摊销",
+      "",
+      "折旧及摊销",
+      "折旧与摊销"
+    ],
+    [
       "deductParentNetprofit",
       "扣除非经常性损益后的净利润",
       "DEDUCT_PARENT_NETPROFIT"

@@ -1,0 +1,361 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-10-27",
+  "notPartOfDailyCoverage": true,
+  "reason": "从主动日常观察池移出，服务A股为主的研究范围；不等于负面评级或卖出建议。原公司ID已预留。",
+  "originalSource": "docs/宽基式优质公司组合_细分赛道与98家观察池_2026-10-27.md",
+  "retiredCandidates": [
+    {
+      "id": "co-0007",
+      "displayName": "应用材料",
+      "primaryTrackId": "IT-03",
+      "securities": [
+        {
+          "ticker": "AMAT",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0020",
+      "displayName": "甲骨文",
+      "primaryTrackId": "IT-07",
+      "securities": [
+        {
+          "ticker": "ORCL",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0022",
+      "displayName": "新思科技",
+      "primaryTrackId": "IT-08",
+      "securities": [
+        {
+          "ticker": "SNPS",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0023",
+      "displayName": "楷登电子",
+      "primaryTrackId": "IT-08",
+      "securities": [
+        {
+          "ticker": "CDNS",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0024",
+      "displayName": "Palo Alto Networks",
+      "primaryTrackId": "IT-09",
+      "securities": [
+        {
+          "ticker": "PANW",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0025",
+      "displayName": "CrowdStrike",
+      "primaryTrackId": "IT-09",
+      "securities": [
+        {
+          "ticker": "CRWD",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0030",
+      "displayName": "T-Mobile US",
+      "primaryTrackId": "COM-02",
+      "securities": [
+        {
+          "ticker": "TMUS",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0032",
+      "displayName": "特斯拉",
+      "primaryTrackId": "CD-01",
+      "securities": [
+        {
+          "ticker": "TSLA",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0033",
+      "displayName": "吉利汽车",
+      "primaryTrackId": "CD-01",
+      "securities": [
+        {
+          "ticker": "00175.HK",
+          "market": "HK"
+        }
+      ]
+    },
+    {
+      "id": "co-0039",
+      "displayName": "拼多多",
+      "primaryTrackId": "CD-03",
+      "securities": [
+        {
+          "ticker": "PDD",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0045",
+      "displayName": "宝洁",
+      "primaryTrackId": "CS-02",
+      "securities": [
+        {
+          "ticker": "PG",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0048",
+      "displayName": "艾伯维",
+      "primaryTrackId": "HC-01",
+      "securities": [
+        {
+          "ticker": "ABBV",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0053",
+      "displayName": "HCA Healthcare",
+      "primaryTrackId": "HC-03",
+      "securities": [
+        {
+          "ticker": "HCA",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0055",
+      "displayName": "摩根大通",
+      "primaryTrackId": "FIN-01",
+      "securities": [
+        {
+          "ticker": "JPM",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0059",
+      "displayName": "Progressive",
+      "primaryTrackId": "FIN-02",
+      "securities": [
+        {
+          "ticker": "PGR",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0061",
+      "displayName": "CME Group",
+      "primaryTrackId": "FIN-03",
+      "securities": [
+        {
+          "ticker": "CME",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0063",
+      "displayName": "Mastercard",
+      "primaryTrackId": "FIN-04",
+      "securities": [
+        {
+          "ticker": "MA",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0065",
+      "displayName": "Rockwell Automation",
+      "primaryTrackId": "IND-01",
+      "securities": [
+        {
+          "ticker": "ROK",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0066",
+      "displayName": "ABB",
+      "primaryTrackId": "IND-01",
+      "securities": [
+        {
+          "ticker": "ABB",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0068",
+      "displayName": "GE Vernova",
+      "primaryTrackId": "IND-02",
+      "securities": [
+        {
+          "ticker": "GEV",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0071",
+      "displayName": "LG Energy Solution",
+      "primaryTrackId": "IND-03",
+      "securities": [
+        {
+          "ticker": "373220.KS",
+          "market": "KR"
+        }
+      ]
+    },
+    {
+      "id": "co-0076",
+      "displayName": "卡特彼勒",
+      "primaryTrackId": "IND-05",
+      "securities": [
+        {
+          "ticker": "CAT",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0078",
+      "displayName": "Union Pacific",
+      "primaryTrackId": "IND-06",
+      "securities": [
+        {
+          "ticker": "UNP",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0080",
+      "displayName": "Vertiv",
+      "primaryTrackId": "IND-07",
+      "securities": [
+        {
+          "ticker": "VRT",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0085",
+      "displayName": "Freeport-McMoRan",
+      "primaryTrackId": "MAT-01",
+      "securities": [
+        {
+          "ticker": "FCX",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0088",
+      "displayName": "林德",
+      "primaryTrackId": "MAT-02",
+      "securities": [
+        {
+          "ticker": "LIN",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0090",
+      "displayName": "埃克森美孚",
+      "primaryTrackId": "EN-01",
+      "securities": [
+        {
+          "ticker": "XOM",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0094",
+      "displayName": "NextEra Energy",
+      "primaryTrackId": "UTIL-01",
+      "securities": [
+        {
+          "ticker": "NEE",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0095",
+      "displayName": "新奥能源",
+      "primaryTrackId": "UTIL-02",
+      "securities": [
+        {
+          "ticker": "02688.HK",
+          "market": "HK"
+        }
+      ]
+    },
+    {
+      "id": "co-0096",
+      "displayName": "华润燃气",
+      "primaryTrackId": "UTIL-02",
+      "securities": [
+        {
+          "ticker": "01193.HK",
+          "market": "HK"
+        }
+      ]
+    },
+    {
+      "id": "co-0097",
+      "displayName": "Equinix",
+      "primaryTrackId": "RE-01",
+      "securities": [
+        {
+          "ticker": "EQIX",
+          "market": "US"
+        }
+      ]
+    },
+    {
+      "id": "co-0098",
+      "displayName": "Prologis",
+      "primaryTrackId": "RE-01",
+      "securities": [
+        {
+          "ticker": "PLD",
+          "market": "US"
+        }
+      ]
+    }
+  ]
+}

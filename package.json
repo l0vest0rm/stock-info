@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build:prompts": "node scripts/build-prompts.mjs",
+    "check:investment-universe": "node scripts/validate-investment-universe.mjs && node scripts/validate-investment-daily-report.mjs",
     "dev": "npm run dev:local",
     "build:local": "npm run build:prompts && npm run build:web && npm run build:node",
     "serve:local": "node scripts/local-supervisor.mjs",

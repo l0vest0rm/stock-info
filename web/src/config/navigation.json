@@ -3,6 +3,7 @@
     {"href": "/", "text": "首页"},
     {"href": "macro.html", "text": "宏观"},
     {"href": "companies-filter.html", "text": "公司"},
+    {"href": "investment-universe.html", "text": "观察池"},
     {"href": "funds.html", "text": "基金"},
     {"href": "featured-report.html", "text": "研报精选"},
     {"href": "news.html", "text": "资讯", "runtime": "local"},
@@ -15,6 +16,7 @@
     {"href": "sector-flow.html", "text": "板块资金流"},
     {"href": "companies-holding.html", "text": "机构持仓"},
     {"href": "institutional-tracks.html", "text": "机构赛道"},
+    {"href": "investment-universe.html", "text": "行业观察池"},
     {"href": "companies-follow.html", "text": "我关注的"}
   ],
   "companyNav": [

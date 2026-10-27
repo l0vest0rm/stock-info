@@ -1,0 +1,3258 @@
+{
+  "schemaVersion": 1,
+  "universeId": "diversified-quality-equities",
+  "asOf": "2026-10-27",
+  "sourceDocument": "docs/宽基式优质公司组合_细分赛道与98家观察池_2026-10-27.md",
+  "sourceRole": "2026-10-27 first watchlist Markdown is a frozen historical snapshot; JSON now reflects A-share-first v2",
+  "scope": {
+    "primaryClassification": "proposed_research_track_not_official_GICS",
+    "companyIdentity": "operating_company_not_security",
+    "watchlistLimit": 100,
+    "targetHoldings": {
+      "min": 20,
+      "illustrative": 25,
+      "max": 30
+    },
+    "baselineCounts": {
+      "sectors": 11,
+      "tracks": 37,
+      "companies": 98,
+      "securities": 117
+    },
+    "automaticMonitoringEnabled": false,
+    "privateHoldingsIncluded": false,
+    "sourceSnapshotMatchExpected": false
+  },
+  "riskGuidelinesIllustrative": {
+    "singleCompanyTypicalWeightPct": [
+      2,
+      6
+    ],
+    "singleCompanySoftLimitPct": 6,
+    "singleCompanyHardLimitPct": 8,
+    "singleTrackLimitPct": 8,
+    "singleSectorLimitPct": 25,
+    "aiCapexSharedFactorReferencePct": [
+      25,
+      30
+    ],
+    "note": "参考风控预算；并非交易信号，不应自动建仓或卖出"
+  },
+  "sectors": [
+    {
+      "id": "IT",
+      "name": "信息技术",
+      "description": "半导体、光通信、PCB、软件等通常具有较强技术壁垒，但AI基础设施链条共用资本开支驱动；跨子赛道并不天然等于分散。",
+      "portfolioIllustration": {
+        "targetSlots": 6,
+        "targetEquityWeightPct": 23,
+        "selectionNote": "AI芯片、存储、光通信、PCB及软件合计，按风险桶再约束"
+      }
+    },
+    {
+      "id": "COM",
+      "name": "通信服务",
+      "description": "数字平台通常更偏广告与用户变现，运营商更偏现金流、资本开支和分红；不是同一种增长模型。",
+      "portfolioIllustration": {
+        "targetSlots": 2,
+        "targetEquityWeightPct": 8,
+        "selectionNote": "互联网平台与运营商有不同利润驱动"
+      }
+    },
+    {
+      "id": "CD",
+      "name": "可选消费",
+      "description": "强调品牌、渠道、成本优势与消费景气；电商平台不应与食品零售按同一估值模型打分。",
+      "portfolioIllustration": {
+        "targetSlots": 3,
+        "targetEquityWeightPct": 12,
+        "selectionNote": "汽车、家电、电商渠道"
+      }
+    },
+    {
+      "id": "CS",
+      "name": "必选消费",
+      "description": "偏防御的业务也需审视品牌实际定价力、渠道库存和估值，不能只凭高股息或老品牌选入。",
+      "portfolioIllustration": {
+        "targetSlots": 2,
+        "targetEquityWeightPct": 10,
+        "selectionNote": "品牌消费及稳定现金流"
+      }
+    },
+    {
+      "id": "HC",
+      "name": "医疗保健",
+      "description": "医疗创新、器械和服务的利润驱动显著不同；估值必须分别使用研发管线、设备销售或医疗服务模型。",
+      "portfolioIllustration": {
+        "targetSlots": 3,
+        "targetEquityWeightPct": 12,
+        "selectionNote": "药品、器械、服务"
+      }
+    },
+    {
+      "id": "FIN",
+      "name": "金融",
+      "description": "金融企业不能机械套用工业企业的营收、EBITDA、净现金等口径，必须采用银行、保险、交易所和支付的不同分析模板。",
+      "portfolioIllustration": {
+        "targetSlots": 3,
+        "targetEquityWeightPct": 12,
+        "selectionNote": "银行、保险、市场基础设施/支付择优"
+      }
+    },
+    {
+      "id": "IND",
+      "name": "工业",
+      "description": "设备、自动化、电网和物流彼此利润驱动不同，是降低科技硬件集中度的重要备选来源；但数据中心电力/温控仍属于AI资本开支相关风险桶。",
+      "portfolioIllustration": {
+        "targetSlots": 3,
+        "targetEquityWeightPct": 11,
+        "selectionNote": "自动化、电网及物流等，避免全部买AI配套"
+      }
+    },
+    {
+      "id": "MAT",
+      "name": "原材料",
+      "description": "资源公司必须区分商品价格带来的盈利弹性与可持续的企业竞争力，避免用景气高点利润估值。",
+      "portfolioIllustration": {
+        "targetSlots": 1,
+        "targetEquityWeightPct": 4,
+        "selectionNote": "以成本优势和周期归一化利润择优"
+      }
+    },
+    {
+      "id": "EN",
+      "name": "能源",
+      "description": "能源可对冲部分科技成长风险，但油价和煤价波动本身不可忽视，也要考虑绿色转型和长期供需。",
+      "portfolioIllustration": {
+        "targetSlots": 1,
+        "targetEquityWeightPct": 4,
+        "selectionNote": "油气或煤炭二选一，控制商品因子"
+      }
+    },
+    {
+      "id": "UTIL",
+      "name": "公用事业",
+      "description": "稳态现金流并不等于低风险：监管定价、资本开支、财务杠杆与利率敏感性同样重要。",
+      "portfolioIllustration": {
+        "targetSlots": 1,
+        "targetEquityWeightPct": 4,
+        "selectionNote": "水电/电力或燃气，关注分红覆盖"
+      }
+    },
+    {
+      "id": "RE",
+      "name": "房地产",
+      "description": "观察但不要求配置；若选择，应区分以租金和FFO驱动的REIT与高杠杆地产开发商。",
+      "portfolioIllustration": {
+        "targetSlots": 0,
+        "targetEquityWeightPct": 0,
+        "selectionNote": "先观察；若以后配置，须从其他席位腾挪"
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "IT-01",
+      "sectorId": "IT",
+      "name": "AI计算芯片与ASIC",
+      "researchFocus": "软件生态、客户锁定、产品代际、量产与自由现金流",
+      "risksToReview": "大客户集中、出口管制、估值与技术替代"
+    },
+    {
+      "id": "IT-02",
+      "sectorId": "IT",
+      "name": "晶圆代工",
+      "researchFocus": "先进制程、良率、产能利用率、资本开支回报",
+      "risksToReview": "地缘与设备限制、周期性资本开支"
+    },
+    {
+      "id": "IT-03",
+      "sectorId": "IT",
+      "name": "半导体制造设备",
+      "researchFocus": "设备验证、订单转交付、服务复购、技术壁垒",
+      "risksToReview": "下游扩产周期、限制政策、客户集中"
+    },
+    {
+      "id": "IT-04",
+      "sectorId": "IT",
+      "name": "存储芯片",
+      "researchFocus": "不同存储品类分别跟踪价格、位元供需、库存、成本曲线",
+      "risksToReview": "DRAM与NAND周期不同；HBM与NOR不能直接类比"
+    },
+    {
+      "id": "IT-05",
+      "sectorId": "IT",
+      "name": "光通信与光互连",
+      "researchFocus": "800G/1.6T放量、客户结构、毛利率；光纤另看供需与产能",
+      "risksToReview": "模块和光纤不是同一利润池；AI资本开支关联"
+    },
+    {
+      "id": "IT-06",
+      "sectorId": "IT",
+      "name": "高速PCB与覆铜板",
+      "researchFocus": "高层数/高速材料良率、客户认证、真实利润兑现",
+      "risksToReview": "PCB与CCL材料经济性不同；同受AI服务器需求影响"
+    },
+    {
+      "id": "IT-07",
+      "sectorId": "IT",
+      "name": "云与企业生产力软件",
+      "researchFocus": "经常性收入、留存、单客价值、资本开支转化率",
+      "risksToReview": "AI商业化不及预期、云资本开支和竞争"
+    },
+    {
+      "id": "IT-08",
+      "sectorId": "IT",
+      "name": "EDA软件与芯片设计工具",
+      "researchFocus": "研发效率、订阅续约、设计复杂度和客户粘性",
+      "risksToReview": "出口许可、并购整合、估值"
+    },
+    {
+      "id": "IT-09",
+      "sectorId": "IT",
+      "name": "网络安全",
+      "researchFocus": "ARR、净收入留存、自由现金流、股权激励摊薄",
+      "risksToReview": "估值、技术范式变化、平台竞争"
+    },
+    {
+      "id": "COM-01",
+      "sectorId": "COM",
+      "name": "数字平台、广告与社交",
+      "researchFocus": "流量护城河、广告定价、AI对搜索/社交的影响、现金回报",
+      "risksToReview": "监管、内容生态变化、AI投入和竞争"
+    },
+    {
+      "id": "COM-02",
+      "sectorId": "COM",
+      "name": "电信运营商",
+      "researchFocus": "ARPU、资本开支、用户留存、自由现金流及股东回报",
+      "risksToReview": "资费竞争、监管、债务与技术迭代"
+    },
+    {
+      "id": "CD-01",
+      "sectorId": "CD",
+      "name": "汽车整车与电动化",
+      "researchFocus": "单车盈利、价格竞争、海外扩张、现金流与产品周期",
+      "risksToReview": "价格战、关税、技术路线与库存"
+    },
+    {
+      "id": "CD-02",
+      "sectorId": "CD",
+      "name": "家电与家庭耐用品",
+      "researchFocus": "品牌与渠道效率、海外利润、ROIC、现金分红",
+      "risksToReview": "地产周期、渠道价格与海外贸易壁垒"
+    },
+    {
+      "id": "CD-03",
+      "sectorId": "CD",
+      "name": "电商平台与零售服务",
+      "researchFocus": "平台变现率、履约效率、商家生态、现金流；云业务需拆分",
+      "risksToReview": "平台竞争、反垄断、补贴与云资本开支"
+    },
+    {
+      "id": "CS-01",
+      "sectorId": "CS",
+      "name": "高端白酒",
+      "researchFocus": "终端动销、批价、渠道库存、利润与现金分配",
+      "risksToReview": "消费环境、渠道价差、集中消费场景"
+    },
+    {
+      "id": "CS-02",
+      "sectorId": "CS",
+      "name": "大众食品饮料与日化",
+      "researchFocus": "复购、品牌、渠道渗透、现金转化和提价能力",
+      "risksToReview": "原料成本、消费降级和新品竞争；细分经济性需分别分析"
+    },
+    {
+      "id": "HC-01",
+      "sectorId": "HC",
+      "name": "创新药与生物制药",
+      "researchFocus": "临床成功率、专利周期、药品销售与研发回报",
+      "risksToReview": "研发失败、专利悬崖、定价与医保政策"
+    },
+    {
+      "id": "HC-02",
+      "sectorId": "HC",
+      "name": "医疗器械与手术设备",
+      "researchFocus": "装机量、耗材复购、医院资本开支、全球渠道",
+      "risksToReview": "采购和医保政策、技术升级、设备招标周期"
+    },
+    {
+      "id": "HC-03",
+      "sectorId": "HC",
+      "name": "医疗服务",
+      "researchFocus": "同店业务、医生资源、资本效率、现金回款",
+      "risksToReview": "医保/支付方议价、监管、区域扩张"
+    },
+    {
+      "id": "FIN-01",
+      "sectorId": "FIN",
+      "name": "商业银行",
+      "researchFocus": "息差、不良率、拨备、资本充足率、ROE和分红",
+      "risksToReview": "信用周期、利率、地产及监管敞口"
+    },
+    {
+      "id": "FIN-02",
+      "sectorId": "FIN",
+      "name": "保险",
+      "researchFocus": "保单价值、新业务价值/综合成本率、资本回报",
+      "risksToReview": "利率、赔付、代理人渠道与资本市场波动"
+    },
+    {
+      "id": "FIN-03",
+      "sectorId": "FIN",
+      "name": "交易所与金融市场基础设施",
+      "researchFocus": "成交量、产品结构、清算优势、资本轻重",
+      "risksToReview": "交易活跃度、监管、交易费率调整"
+    },
+    {
+      "id": "FIN-04",
+      "sectorId": "FIN",
+      "name": "支付网络",
+      "researchFocus": "支付量、跨境交易、净收入留存、网络效应",
+      "risksToReview": "监管与手续费争议、新支付技术替代"
+    },
+    {
+      "id": "IND-01",
+      "sectorId": "IND",
+      "name": "工业自动化与控制",
+      "researchFocus": "工业订单、售后服务、渗透率、现金转化",
+      "risksToReview": "制造业资本开支、订单周期、区域景气"
+    },
+    {
+      "id": "IND-02",
+      "sectorId": "IND",
+      "name": "电网设备与电气化",
+      "researchFocus": "电网投资、订单交付、产品毛利和回款",
+      "risksToReview": "招投标周期、原材料、订单/回款错配"
+    },
+    {
+      "id": "IND-03",
+      "sectorId": "IND",
+      "name": "动力电池与电芯制造",
+      "researchFocus": "良率、单位成本、客户结构、资本开支和技术路线",
+      "risksToReview": "价格竞争、产能过剩、技术替代、贸易壁垒"
+    },
+    {
+      "id": "IND-04",
+      "sectorId": "IND",
+      "name": "储能逆变器与电力电子",
+      "researchFocus": "装机与出货、渠道库存、海外毛利、项目回款",
+      "risksToReview": "政策变化、光伏景气、渠道去库存"
+    },
+    {
+      "id": "IND-05",
+      "sectorId": "IND",
+      "name": "工程机械",
+      "researchFocus": "设备利用率、海外份额、售后复购、资金周转",
+      "risksToReview": "基建/矿业周期、汇率、库存"
+    },
+    {
+      "id": "IND-06",
+      "sectorId": "IND",
+      "name": "运输物流与航运",
+      "researchFocus": "运价、成本结构、运输网络壁垒和资本回报",
+      "risksToReview": "物流、铁路和海运不可用同一运价模型；宏观/贸易周期"
+    },
+    {
+      "id": "IND-07",
+      "sectorId": "IND",
+      "name": "数据中心供电与热管理",
+      "researchFocus": "订单积压、交付、服务利润、液冷真实收入",
+      "risksToReview": "AI机柜建设节奏、产能爬坡和竞争"
+    },
+    {
+      "id": "MAT-01",
+      "sectorId": "MAT",
+      "name": "铜金等金属矿业",
+      "researchFocus": "矿山品位、单位现金成本、储量、扩产及资本纪律",
+      "risksToReview": "金铜价格驱动不同；资源国政策及资本开支"
+    },
+    {
+      "id": "MAT-02",
+      "sectorId": "MAT",
+      "name": "化工与工业气体",
+      "researchFocus": "成本优势、长约比例、ROIC、周期中枢利润",
+      "risksToReview": "产品价差、能源价格和装置投产周期"
+    },
+    {
+      "id": "EN-01",
+      "sectorId": "EN",
+      "name": "石油天然气上游",
+      "researchFocus": "储量、单位开采成本、产量增长、资本分红",
+      "risksToReview": "油气价格、地缘风险和项目执行"
+    },
+    {
+      "id": "EN-02",
+      "sectorId": "EN",
+      "name": "煤炭与高股息资源",
+      "researchFocus": "成本曲线、长协、现金流、分红可持续性",
+      "risksToReview": "煤价周期、政策、长期需求变化"
+    },
+    {
+      "id": "UTIL-01",
+      "sectorId": "UTIL",
+      "name": "发电与电力公用事业",
+      "researchFocus": "电量、单位成本、资产负债、分红覆盖",
+      "risksToReview": "水文、电力市场与利率政策；水电与新能源不同"
+    },
+    {
+      "id": "UTIL-02",
+      "sectorId": "UTIL",
+      "name": "城市燃气",
+      "researchFocus": "居民/工商业销量、购销价差、现金回收",
+      "risksToReview": "监管定价、需求弹性、资本开支"
+    },
+    {
+      "id": "RE-01",
+      "sectorId": "RE",
+      "name": "权益型REIT与不动产运营",
+      "researchFocus": "入住率、租金增长、FFO/AFFO、债务期限",
+      "risksToReview": "利率、再融资、资本开支；数据中心与仓储用途不同"
+    }
+  ],
+  "companies": [
+    {
+      "id": "co-0003",
+      "displayName": "寒武纪",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-01",
+      "positioning": "国产AI加速器",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688256.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688256.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688256.SH"
+    },
+    {
+      "id": "co-0099",
+      "displayName": "海光信息",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-01",
+      "positioning": "国产CPU、DCU与计算平台",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688041.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688041.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688041.SH"
+    },
+    {
+      "id": "co-0005",
+      "displayName": "中芯国际",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-02",
+      "positioning": "中国晶圆代工",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688981.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688981.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "00981.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "00981.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688981.SH"
+    },
+    {
+      "id": "co-0008",
+      "displayName": "北方华创",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-03",
+      "positioning": "国产刻蚀及薄膜设备",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002371.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002371.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002371.SZ"
+    },
+    {
+      "id": "co-0100",
+      "displayName": "中微公司",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-03",
+      "positioning": "国产刻蚀与薄膜设备",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688012.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688012.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688012.SH"
+    },
+    {
+      "id": "co-0012",
+      "displayName": "兆易创新",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-04",
+      "positioning": "NOR/MCU及利基存储",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "603986.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "603986.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "03986.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "03986.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "603986.SH"
+    },
+    {
+      "id": "co-0013",
+      "displayName": "中际旭创",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-05",
+      "positioning": "高速光模块",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300308.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300308.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300308.SZ"
+    },
+    {
+      "id": "co-0014",
+      "displayName": "新易盛",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-05",
+      "positioning": "高速光模块",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300502.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300502.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300502.SZ"
+    },
+    {
+      "id": "co-0015",
+      "displayName": "长飞光纤",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-05",
+      "positioning": "光纤光缆与相关材料",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601869.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601869.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "06869.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "06869.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601869.SH"
+    },
+    {
+      "id": "co-0101",
+      "displayName": "天孚通信",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-05",
+      "positioning": "光通信精密器件与光引擎",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300394.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300394.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300394.SZ"
+    },
+    {
+      "id": "co-0016",
+      "displayName": "胜宏科技",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-06",
+      "positioning": "高多层PCB",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300476.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300476.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300476.SZ"
+    },
+    {
+      "id": "co-0017",
+      "displayName": "沪电股份",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-06",
+      "positioning": "高端PCB",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002463.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002463.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002463.SZ"
+    },
+    {
+      "id": "co-0018",
+      "displayName": "生益科技",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-06",
+      "positioning": "覆铜板与电子材料",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600183.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600183.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600183.SH"
+    },
+    {
+      "id": "co-0021",
+      "displayName": "金山办公",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-07",
+      "positioning": "办公软件与国产生态",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688111.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688111.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688111.SH"
+    },
+    {
+      "id": "co-0102",
+      "displayName": "科大讯飞",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-07",
+      "positioning": "人工智能应用与企业软件",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002230.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002230.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002230.SZ"
+    },
+    {
+      "id": "co-0103",
+      "displayName": "华大九天",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-08",
+      "positioning": "国产EDA设计工具",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "301269.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "301269.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "301269.SZ"
+    },
+    {
+      "id": "co-0104",
+      "displayName": "深信服",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-09",
+      "positioning": "网络安全与云基础设施",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300454.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300454.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300454.SZ"
+    },
+    {
+      "id": "co-0105",
+      "displayName": "启明星辰",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-09",
+      "positioning": "网络安全运营与平台",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002439.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002439.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002439.SZ"
+    },
+    {
+      "id": "co-0001",
+      "displayName": "英伟达",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-01",
+      "positioning": "GPU及软件生态",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "NVDA",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "NVDA",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "NVDA"
+    },
+    {
+      "id": "co-0002",
+      "displayName": "博通",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-01",
+      "positioning": "定制ASIC和网络芯片",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "AVGO",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "AVGO",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "AVGO"
+    },
+    {
+      "id": "co-0004",
+      "displayName": "台积电",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-02",
+      "positioning": "先进逻辑与封装",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "TSM",
+          "market": "US",
+          "exchange": null,
+          "securityType": "ADR",
+          "sourceCode": "TSM（ADR）",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "TSM"
+    },
+    {
+      "id": "co-0006",
+      "displayName": "ASML",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-03",
+      "positioning": "光刻机",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "ASML",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "ASML",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "ASML"
+    },
+    {
+      "id": "co-0009",
+      "displayName": "美光",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-04",
+      "positioning": "DRAM/HBM/NAND",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "MU",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "MU",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "MU"
+    },
+    {
+      "id": "co-0010",
+      "displayName": "SK海力士",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-04",
+      "positioning": "HBM和DRAM",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "SKHY",
+          "market": "US",
+          "exchange": null,
+          "securityType": "ADR",
+          "sourceCode": "SKHY（ADR）",
+          "identityVerified": false
+        },
+        {
+          "ticker": "000660.KS",
+          "market": "KR",
+          "exchange": "KRX",
+          "securityType": "unverified",
+          "sourceCode": "000660.KS",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "SKHY"
+    },
+    {
+      "id": "co-0011",
+      "displayName": "闪迪",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-04",
+      "positioning": "NAND/闪存产品",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "SNDK",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "SNDK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "SNDK"
+    },
+    {
+      "id": "co-0019",
+      "displayName": "微软",
+      "primarySectorId": "IT",
+      "primaryTrackId": "IT-07",
+      "positioning": "云及企业软件",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "MSFT",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "MSFT",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "MSFT"
+    },
+    {
+      "id": "co-0106",
+      "displayName": "分众传媒",
+      "primarySectorId": "COM",
+      "primaryTrackId": "COM-01",
+      "positioning": "线下广告网络与媒体",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002027.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002027.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002027.SZ"
+    },
+    {
+      "id": "co-0107",
+      "displayName": "三七互娱",
+      "primarySectorId": "COM",
+      "primaryTrackId": "COM-01",
+      "positioning": "游戏研发运营与数字内容",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002555.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002555.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002555.SZ"
+    },
+    {
+      "id": "co-0029",
+      "displayName": "中国移动",
+      "primarySectorId": "COM",
+      "primaryTrackId": "COM-02",
+      "positioning": "移动通信及政企服务",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600941.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600941.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "00941.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "00941.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600941.SH"
+    },
+    {
+      "id": "co-0108",
+      "displayName": "中国电信",
+      "primarySectorId": "COM",
+      "primaryTrackId": "COM-02",
+      "positioning": "通信服务、政企云及网络",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601728.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601728.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601728.SH"
+    },
+    {
+      "id": "co-0026",
+      "displayName": "Alphabet",
+      "primarySectorId": "COM",
+      "primaryTrackId": "COM-01",
+      "positioning": "搜索与广告",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "GOOGL",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "GOOGL",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "GOOGL"
+    },
+    {
+      "id": "co-0027",
+      "displayName": "Meta",
+      "primarySectorId": "COM",
+      "primaryTrackId": "COM-01",
+      "positioning": "社交广告",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "META",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "META",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "META"
+    },
+    {
+      "id": "co-0028",
+      "displayName": "腾讯控股",
+      "primarySectorId": "COM",
+      "primaryTrackId": "COM-01",
+      "positioning": "社交、游戏与数字服务",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "00700.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "00700.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "HK",
+      "preferredTicker": "00700.HK"
+    },
+    {
+      "id": "co-0031",
+      "displayName": "比亚迪",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-01",
+      "positioning": "整车及垂直整合",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002594.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002594.SZ",
+          "identityVerified": false
+        },
+        {
+          "ticker": "01211.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "01211.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002594.SZ"
+    },
+    {
+      "id": "co-0109",
+      "displayName": "长城汽车",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-01",
+      "positioning": "汽车品牌与海外整车业务",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601633.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601633.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601633.SH"
+    },
+    {
+      "id": "co-0034",
+      "displayName": "美的集团",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-02",
+      "positioning": "多品类家电",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "000333.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "000333.SZ",
+          "identityVerified": false
+        },
+        {
+          "ticker": "00300.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "00300.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "000333.SZ"
+    },
+    {
+      "id": "co-0035",
+      "displayName": "海尔智家",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-02",
+      "positioning": "全球家电品牌",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600690.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600690.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "06690.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "06690.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600690.SH"
+    },
+    {
+      "id": "co-0036",
+      "displayName": "格力电器",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-02",
+      "positioning": "空调及渠道",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "000651.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "000651.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "000651.SZ"
+    },
+    {
+      "id": "co-0110",
+      "displayName": "焦点科技",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-03",
+      "positioning": "跨境B2B平台与外贸服务",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002315.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002315.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002315.SZ"
+    },
+    {
+      "id": "co-0111",
+      "displayName": "小商品城",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-03",
+      "positioning": "商贸服务与跨境贸易平台",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600415.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600415.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600415.SH"
+    },
+    {
+      "id": "co-0037",
+      "displayName": "亚马逊",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-03",
+      "positioning": "电商与AWS",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "AMZN",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "AMZN",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "AMZN"
+    },
+    {
+      "id": "co-0038",
+      "displayName": "阿里巴巴",
+      "primarySectorId": "CD",
+      "primaryTrackId": "CD-03",
+      "positioning": "中国电商与阿里云",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "09988.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "09988.HK",
+          "identityVerified": false
+        },
+        {
+          "ticker": "BABA",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "BABA",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "HK",
+      "preferredTicker": "09988.HK"
+    },
+    {
+      "id": "co-0040",
+      "displayName": "贵州茅台",
+      "primarySectorId": "CS",
+      "primaryTrackId": "CS-01",
+      "positioning": "高端品牌与渠道",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600519.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600519.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600519.SH"
+    },
+    {
+      "id": "co-0041",
+      "displayName": "五粮液",
+      "primarySectorId": "CS",
+      "primaryTrackId": "CS-01",
+      "positioning": "高端浓香白酒",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "000858.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "000858.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "000858.SZ"
+    },
+    {
+      "id": "co-0042",
+      "displayName": "泸州老窖",
+      "primarySectorId": "CS",
+      "primaryTrackId": "CS-01",
+      "positioning": "高端及次高端白酒",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "000568.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "000568.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "000568.SZ"
+    },
+    {
+      "id": "co-0043",
+      "displayName": "伊利股份",
+      "primarySectorId": "CS",
+      "primaryTrackId": "CS-02",
+      "positioning": "乳制品",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600887.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600887.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600887.SH"
+    },
+    {
+      "id": "co-0112",
+      "displayName": "海天味业",
+      "primarySectorId": "CS",
+      "primaryTrackId": "CS-02",
+      "positioning": "调味品品牌与渠道",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "603288.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "603288.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "603288.SH"
+    },
+    {
+      "id": "co-0113",
+      "displayName": "东鹏饮料",
+      "primarySectorId": "CS",
+      "primaryTrackId": "CS-02",
+      "positioning": "功能饮料品牌与渠道",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "605499.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "605499.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "605499.SH"
+    },
+    {
+      "id": "co-0044",
+      "displayName": "农夫山泉",
+      "primarySectorId": "CS",
+      "primaryTrackId": "CS-02",
+      "positioning": "包装饮用水与饮料",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "09633.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "09633.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "HK",
+      "preferredTicker": "09633.HK"
+    },
+    {
+      "id": "co-0047",
+      "displayName": "恒瑞医药",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-01",
+      "positioning": "创新药管线",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600276.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600276.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "01276.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "01276.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600276.SH"
+    },
+    {
+      "id": "co-0114",
+      "displayName": "百济神州",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-01",
+      "positioning": "肿瘤创新药及全球商业化",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688235.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688235.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688235.SH"
+    },
+    {
+      "id": "co-0049",
+      "displayName": "迈瑞医疗",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-02",
+      "positioning": "综合医疗器械",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300760.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300760.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300760.SZ"
+    },
+    {
+      "id": "co-0051",
+      "displayName": "联影医疗",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-02",
+      "positioning": "医学影像设备",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688271.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688271.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688271.SH"
+    },
+    {
+      "id": "co-0115",
+      "displayName": "爱博医疗",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-02",
+      "positioning": "眼科医疗器械与耗材",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688050.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688050.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688050.SH"
+    },
+    {
+      "id": "co-0052",
+      "displayName": "爱尔眼科",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-03",
+      "positioning": "眼科医疗服务",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300015.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300015.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300015.SZ"
+    },
+    {
+      "id": "co-0116",
+      "displayName": "通策医疗",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-03",
+      "positioning": "口腔医疗服务与医院网络",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600763.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600763.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600763.SH"
+    },
+    {
+      "id": "co-0046",
+      "displayName": "礼来",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-01",
+      "positioning": "创新药研发商业化",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "LLY",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "LLY",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "LLY"
+    },
+    {
+      "id": "co-0050",
+      "displayName": "直觉外科",
+      "primarySectorId": "HC",
+      "primaryTrackId": "HC-02",
+      "positioning": "手术机器人平台",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "ISRG",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "ISRG",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "ISRG"
+    },
+    {
+      "id": "co-0054",
+      "displayName": "招商银行",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-01",
+      "positioning": "零售银行与财富管理",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600036.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600036.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "03968.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "03968.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600036.SH"
+    },
+    {
+      "id": "co-0056",
+      "displayName": "宁波银行",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-01",
+      "positioning": "区域及企业金融",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002142.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002142.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002142.SZ"
+    },
+    {
+      "id": "co-0117",
+      "displayName": "兴业银行",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-01",
+      "positioning": "全国性股份制银行",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601166.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601166.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601166.SH"
+    },
+    {
+      "id": "co-0057",
+      "displayName": "中国平安",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-02",
+      "positioning": "寿险及综合金融",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601318.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601318.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "02318.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "02318.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601318.SH"
+    },
+    {
+      "id": "co-0118",
+      "displayName": "中国太保",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-02",
+      "positioning": "寿险与财险综合经营",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601601.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601601.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601601.SH"
+    },
+    {
+      "id": "co-0119",
+      "displayName": "拉卡拉",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-04",
+      "positioning": "商户收单与支付服务，非银行卡组织",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300773.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300773.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300773.SZ"
+    },
+    {
+      "id": "co-0062",
+      "displayName": "Visa",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-04",
+      "positioning": "全球支付网络",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "V",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "V",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "V"
+    },
+    {
+      "id": "co-0058",
+      "displayName": "友邦保险",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-02",
+      "positioning": "亚洲寿险",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "01299.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "01299.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "HK",
+      "preferredTicker": "01299.HK"
+    },
+    {
+      "id": "co-0060",
+      "displayName": "香港交易所",
+      "primarySectorId": "FIN",
+      "primaryTrackId": "FIN-03",
+      "positioning": "交易与上市平台",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "00388.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "00388.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "HK",
+      "preferredTicker": "00388.HK"
+    },
+    {
+      "id": "co-0064",
+      "displayName": "汇川技术",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-01",
+      "positioning": "工控及自动化",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300124.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300124.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300124.SZ"
+    },
+    {
+      "id": "co-0120",
+      "displayName": "中控技术",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-01",
+      "positioning": "工业自动化控制与工业软件",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "688777.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "688777.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "688777.SH"
+    },
+    {
+      "id": "co-0067",
+      "displayName": "国电南瑞",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-02",
+      "positioning": "电网自动化",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600406.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600406.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600406.SH"
+    },
+    {
+      "id": "co-0069",
+      "displayName": "特变电工",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-02",
+      "positioning": "变压器及电力设备",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600089.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600089.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600089.SH"
+    },
+    {
+      "id": "co-0121",
+      "displayName": "平高电气",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-02",
+      "positioning": "高压开关与电网设备",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600312.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600312.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600312.SH"
+    },
+    {
+      "id": "co-0070",
+      "displayName": "宁德时代",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-03",
+      "positioning": "动力与储能电池",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300750.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300750.SZ",
+          "identityVerified": false
+        },
+        {
+          "ticker": "03750.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "03750.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300750.SZ"
+    },
+    {
+      "id": "co-0072",
+      "displayName": "亿纬锂能",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-03",
+      "positioning": "锂电池及储能电芯",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300014.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300014.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300014.SZ"
+    },
+    {
+      "id": "co-0073",
+      "displayName": "阳光电源",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-04",
+      "positioning": "逆变器及储能系统",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300274.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300274.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300274.SZ"
+    },
+    {
+      "id": "co-0074",
+      "displayName": "锦浪科技",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-04",
+      "positioning": "光伏并网逆变器",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "300763.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "300763.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "300763.SZ"
+    },
+    {
+      "id": "co-0075",
+      "displayName": "三一重工",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-05",
+      "positioning": "工程机械",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600031.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600031.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600031.SH"
+    },
+    {
+      "id": "co-0122",
+      "displayName": "徐工机械",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-05",
+      "positioning": "工程机械与全球设备服务",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "000425.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "000425.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "000425.SZ"
+    },
+    {
+      "id": "co-0077",
+      "displayName": "顺丰控股",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-06",
+      "positioning": "综合快递物流",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002352.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002352.SZ",
+          "identityVerified": false
+        },
+        {
+          "ticker": "06936.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "06936.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002352.SZ"
+    },
+    {
+      "id": "co-0079",
+      "displayName": "中远海控",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-06",
+      "positioning": "集装箱航运",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601919.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601919.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "01919.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "01919.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601919.SH"
+    },
+    {
+      "id": "co-0123",
+      "displayName": "京沪高铁",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-06",
+      "positioning": "高速铁路运营与运输服务",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601816.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601816.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601816.SH"
+    },
+    {
+      "id": "co-0082",
+      "displayName": "英维克",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-07",
+      "positioning": "温控与液冷",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002837.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002837.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002837.SZ"
+    },
+    {
+      "id": "co-0124",
+      "displayName": "科华数据",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-07",
+      "positioning": "数据中心供配电及储能设备",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "002335.SZ",
+          "market": "CN",
+          "exchange": "SZSE",
+          "securityType": "A_share",
+          "sourceCode": "002335.SZ",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "002335.SZ"
+    },
+    {
+      "id": "co-0081",
+      "displayName": "伊顿",
+      "primarySectorId": "IND",
+      "primaryTrackId": "IND-07",
+      "positioning": "电力管理",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "ETN",
+          "market": "US",
+          "exchange": null,
+          "securityType": "unverified",
+          "sourceCode": "ETN",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "US",
+      "preferredTicker": "ETN"
+    },
+    {
+      "id": "co-0083",
+      "displayName": "紫金矿业",
+      "primarySectorId": "MAT",
+      "primaryTrackId": "MAT-01",
+      "positioning": "多金属矿业",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601899.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601899.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "02899.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "02899.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601899.SH"
+    },
+    {
+      "id": "co-0084",
+      "displayName": "洛阳钼业",
+      "primarySectorId": "MAT",
+      "primaryTrackId": "MAT-01",
+      "positioning": "铜钴及矿业",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "603993.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "603993.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "03993.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "03993.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "603993.SH"
+    },
+    {
+      "id": "co-0125",
+      "displayName": "江西铜业",
+      "primarySectorId": "MAT",
+      "primaryTrackId": "MAT-01",
+      "positioning": "铜矿、冶炼及铜加工",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600362.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600362.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600362.SH"
+    },
+    {
+      "id": "co-0086",
+      "displayName": "万华化学",
+      "primarySectorId": "MAT",
+      "primaryTrackId": "MAT-02",
+      "positioning": "聚氨酯等化工",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600309.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600309.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600309.SH"
+    },
+    {
+      "id": "co-0087",
+      "displayName": "华鲁恒升",
+      "primarySectorId": "MAT",
+      "primaryTrackId": "MAT-02",
+      "positioning": "煤化工与化学品",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600426.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600426.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600426.SH"
+    },
+    {
+      "id": "co-0089",
+      "displayName": "中国海油",
+      "primarySectorId": "EN",
+      "primaryTrackId": "EN-01",
+      "positioning": "油气勘探开采",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600938.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600938.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "00883.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "00883.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600938.SH"
+    },
+    {
+      "id": "co-0091",
+      "displayName": "中国神华",
+      "primarySectorId": "EN",
+      "primaryTrackId": "EN-02",
+      "positioning": "煤炭及电力一体化",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601088.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601088.SH",
+          "identityVerified": false
+        },
+        {
+          "ticker": "01088.HK",
+          "market": "HK",
+          "exchange": "HKEX",
+          "securityType": "unverified",
+          "sourceCode": "01088.HK",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601088.SH"
+    },
+    {
+      "id": "co-0092",
+      "displayName": "陕西煤业",
+      "primarySectorId": "EN",
+      "primaryTrackId": "EN-02",
+      "positioning": "煤炭生产",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601225.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601225.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601225.SH"
+    },
+    {
+      "id": "co-0093",
+      "displayName": "长江电力",
+      "primarySectorId": "UTIL",
+      "primaryTrackId": "UTIL-01",
+      "positioning": "水电资产",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600900.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600900.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600900.SH"
+    },
+    {
+      "id": "co-0126",
+      "displayName": "华能水电",
+      "primarySectorId": "UTIL",
+      "primaryTrackId": "UTIL-01",
+      "positioning": "水电发电资产",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600025.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600025.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600025.SH"
+    },
+    {
+      "id": "co-0127",
+      "displayName": "深圳燃气",
+      "primarySectorId": "UTIL",
+      "primaryTrackId": "UTIL-02",
+      "positioning": "城市燃气及能源服务",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "601139.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "601139.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "601139.SH"
+    },
+    {
+      "id": "co-0128",
+      "displayName": "新奥股份",
+      "primarySectorId": "UTIL",
+      "primaryTrackId": "UTIL-02",
+      "positioning": "天然气经营及基础设施，非新奥能源同一上市公司",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600803.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600803.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600803.SH"
+    },
+    {
+      "id": "co-0129",
+      "displayName": "张江高科",
+      "primarySectorId": "RE",
+      "primaryTrackId": "RE-01",
+      "positioning": "产业园区开发与资产运营",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600895.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600895.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600895.SH"
+    },
+    {
+      "id": "co-0130",
+      "displayName": "陆家嘴",
+      "primarySectorId": "RE",
+      "primaryTrackId": "RE-01",
+      "positioning": "商办地产与园区运营",
+      "classificationStatus": "proposed",
+      "watchStatus": "research",
+      "researchPriority": "L1",
+      "securities": [
+        {
+          "ticker": "600663.SH",
+          "market": "CN",
+          "exchange": "SSE",
+          "securityType": "A_share",
+          "sourceCode": "600663.SH",
+          "identityVerified": false
+        }
+      ],
+      "themeTags": [],
+      "factorExposures": [],
+      "evidenceRefs": [],
+      "lastEvidenceDate": null,
+      "valuationAsOf": null,
+      "preferredMarket": "CN",
+      "preferredTicker": "600663.SH"
+    }
+  ],
+  "strategyPreferences": {
+    "version": 1,
+    "universeFocus": "A_share_first",
+    "marketClassification": "preferred_security_market_one_per_operating_company",
+    "preferredMarkets": [
+      "CN",
+      "US",
+      "HK"
+    ],
+    "universeGuardrails": {
+      "minimumAshareCompanies": 75,
+      "maximumUSPreferredCompanies": 18,
+      "maximumHKPreferredCompanies": 8,
+      "maximumObservedCompanies": 100
+    },
+    "illustrative25HoldingSlots": {
+      "CN": 21,
+      "US": 3,
+      "HK": 1
+    },
+    "illustrativeEquityAllocationPct": {
+      "CN": 84,
+      "US": 12,
+      "HK": 4
+    },
+    "holdingSlotsRange": {
+      "min": 20,
+      "max": 30
+    },
+    "qualityAndValuationBeforeSectorFilling": true,
+    "noAutomaticTrading": true,
+    "reviewCadence": "user_requested_daily",
+    "riskBudgetPrinciple": "Markets and accounts are not interchangeable. Separately confirm available funds and trading access before any rotation.",
+    "priorities": [
+      "primary_disclosures",
+      "financial_quality",
+      "competitive_advantage",
+      "expectation_gap",
+      "valuation_safety_margin",
+      "factor_concentration",
+      "execution_cost"
+    ],
+    "note": "比例为参考仓位预算，不是必须买满或自动执行的交易指令"
+  }
+}

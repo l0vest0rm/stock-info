@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "type": "public_research_review",
+  "status": "not_reviewed",
+  "reportDate": null,
+  "generatedAt": null,
+  "universeAsOf": "2026-10-27",
+  "marketFocus": "A_share_first",
+  "coverage": {
+    "checkedCompanyIds": [],
+    "checks": [],
+    "unavailableCompanyIds": [],
+    "notes": "尚未执行首轮覆盖核验；98家公司未被标记为已经检查。"
+  },
+  "summary": "",
+  "materialChanges": [],
+  "assessments": [],
+  "rotationComparisons": [],
+  "gaps": [
+    "尚未完成首轮基于当日公告、财报、估值和实际持仓约束的每日复盘。"
+  ],
+  "restrictions": {
+    "containsOwnerHoldings": false,
+    "automaticTrading": false,
+    "snapshotOnly": true
+  },
+  "definition": "This file is an evidence-based public research snapshot. It is not a user portfolio, a live data feed, or an automatic trading engine."
+}

@@ -1,6 +1,6 @@
 # stock-info
 
-项目整体设计见 [架构文档](docs/architecture.md)；AI 产业标的研究见 [赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)。
+项目整体设计见 [架构文档](docs/architecture.md)；AI 产业标的研究见 [赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)；宽基式投资的[初版历史赛道图谱](docs/宽基式优质公司组合_细分赛道与98家观察池_2026-10-27.md)保留作对照。当前[观察池主数据](config/investment-universe.json)已调整为**A股优先**（A股78、美股15、港股5家）；[每日复盘规则](docs/investment-daily-review-playbook.md)、[维护指南](docs/investment-universe-usage.md)规定证据与策略判断要求。交互页面为 [`/investment-universe.html`](web/src/investment-universe.html)（顶栏「观察池」）。首次每日行情与估值核验尚未执行，不代表已经形成买入或换仓建议。
 
 Cloudflare Workers 股票信息站。当前知识链路已收敛到固定形态：
 

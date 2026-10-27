@@ -1,0 +1,27 @@
+.ivu-daily{border:1px solid #d9e6e0;background:#fff;border-radius:14px;padding:20px 24px;margin:0 0 22px;box-shadow:0 2px 14px rgba(26,62,49,.04)}
+.ivu-daily-top{display:flex;align-items:start;justify-content:space-between;gap:16px}
+.ivu-daily-top h2{font-size:1.18rem;font-weight:740;margin:6px 0 0;color:#244a43}
+.ivu-daily-status{border-radius:20px;padding:5px 11px;font-size:.73rem;font-weight:690;background:#f0f3f2;color:#788d8a;white-space:nowrap}
+.ivu-daily-status.is-reviewed{background:#e5f3eb;color:#216b52}
+.ivu-daily-metrics{display:flex;flex-wrap:wrap;gap:12px 22px;margin:15px 0;padding:12px 0;border-top:1px solid #eef3ef;border-bottom:1px solid #eef3ef;color:#788986;font-size:.75rem}
+.ivu-daily-metrics strong{font-variant-numeric:tabular-nums;color:#27584c;font-weight:760}
+.ivu-daily-empty,.ivu-daily-summary{font-size:.81rem;color:#607571;line-height:1.8;margin:0 0 13px}
+.ivu-daily-empty strong{font-weight:750;color:#3b5950}
+.ivu-daily-disclaimer{font-size:.72rem;color:#8c9996;line-height:1.65;margin-top:13px}
+.ivu-daily-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.ivu-daily-card{border:1px solid #e6ece8;border-radius:10px;padding:13px;background:#fafcfb}
+.ivu-daily-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.ivu-daily-company{border:0;padding:0;background:transparent;color:#156f55;font-size:.83rem;font-weight:750;text-decoration:underline;text-decoration-color:#b4d8ca;text-underline-offset:4px;text-align:left}
+.ivu-daily-card p{font-size:.8rem;line-height:1.65;margin:0 0 8px;color:#3b5550}
+.ivu-daily-fact{font-size:.72rem;line-height:1.65;color:#73847f;margin-bottom:4px}
+.ivu-daily-action{background:#e9efee;color:#617b72;font-size:.68rem;font-weight:710;padding:5px 9px;border-radius:16px;white-space:nowrap}
+.ivu-daily-action.ivu-opportunity{color:#126846;background:#e2f4e9}
+.ivu-daily-action.ivu-warning{color:#9b572a;background:#fff0de}
+.ivu-daily-sources{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
+.ivu-daily-sources a,.ivu-daily-updates a{font-size:.7rem;color:#3d7c70;text-decoration:underline}
+.ivu-daily-updates{border-top:1px solid #e6ede9;padding-top:12px;margin-top:14px}
+.ivu-daily-updates>strong{display:block;font-size:.78rem;color:#4f6862;margin-bottom:7px}
+.ivu-daily-updates p{font-size:.76rem;color:#607572;line-height:1.6;margin:0 0 6px}
+.ivu-daily-footnote{font-size:.73rem;color:#98704f;background:#fcf8f0;border-radius:8px;padding:10px 12px;line-height:1.6;margin-top:14px}
+.ivu-market-chip.is-preferred{background:#dff3e9;color:#12654c}
+@media(max-width:767px){.ivu-daily{padding:15px;margin-bottom:16px}.ivu-daily-top{display:block}.ivu-daily-status{display:inline-block;margin-top:10px}.ivu-daily-cards{grid-template-columns:1fr}.ivu-daily-metrics{gap:8px 16px}}

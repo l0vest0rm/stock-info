@@ -9,6 +9,8 @@
 | `research/` | 有代码消费方的投研规则、注册表和任务参数 | 投研模块和脚本 |
 | `backtest/` | 各自独立的回测策略与参数 | 回测脚本 |
 | `generated/` | 东方财富公司行业画像快照 | `sync-eastmoney-company-em2016-profiles.mjs` |
+| `investment-universe.json` | A股优先：78 A / 15 美 / 5 港的98家公司观察池，非个人持仓 | `scripts/validate-investment-universe.mjs`；[维护说明](../docs/investment-universe-usage.md) |
+| `investment-daily-report.json` | 按需更新的非个人化研究日报与策略候选，无真实持仓/成本 | `scripts/validate-investment-daily-report.mjs`；[每日复盘流程](../docs/investment-daily-review-playbook.md) |
 
 原来的两份资讯门禁配置合并为 `knowledge/information-feed-policy.json`：`relevance` 保留门禁版本和规则，`whitelist` 保留独立版本的白名单。调度与发布设置仍在 `knowledge/information-feed.json`。
 
