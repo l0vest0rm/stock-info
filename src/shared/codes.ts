@@ -142,3 +142,26 @@ export function bareCode(code: string): string {
 export function securitySuffix(code: string): string {
   return normalizeSecurityCode(code).split(".")[1] ?? "";
 }
+
+/**
+ * Do two security strings name the same listing?
+ *
+ * The watchlist stores the exchange's own symbol (`NVDA`) while the internal
+ * API stores a normalized code (`NVDA.US`); other codes are already suffixed on
+ * both sides (`600036.SH`).  Comparing them literally is therefore wrong in one
+ * direction only, and it fails silently: `companyValuationArchetype("NVDA.US")`
+ * returned `null`, so all 15 US companies fell through to the generic `other`
+ * profile and lost their method-specific bands.
+ *
+ * The rule is deliberately narrow — an unsuffixed symbol only equals the `.US`
+ * form, because that is the one market whose native symbols carry no suffix.
+ * An A-share or HK code is never inferred from a bare number here; that would
+ * turn `00700` into an A-share and make a listing comparison a guess.
+ */
+export function sameSecurity(left: string, right: string): boolean {
+  const a = normalizeSecurityCode(left);
+  const b = normalizeSecurityCode(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return a === `${b}.US` || b === `${a}.US`;
+}

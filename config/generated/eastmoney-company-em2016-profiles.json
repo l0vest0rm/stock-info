@@ -1,15 +1,15 @@
 {
   "schemaVersion": "eastmoney-company-em2016-profiles.v1",
   "taxonomy": "eastmoney-em2016.v1",
-  "generatedAt": "2026-08-11T09:26:00.402Z",
+  "generatedAt": "2026-10-27T15:17:03.964Z",
   "source": {
     "endpoint": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO",
     "field": "EM2016",
     "inputPath": "web/src/config/institutional-track-snapshot.json"
   },
   "coverage": {
-    "total": 302,
-    "available": 302,
+    "total": 325,
+    "available": 325,
     "unavailable": 0
   },
   "profiles": [
@@ -684,6 +684,42 @@
       ]
     },
     {
+      "code": "002315.SZ",
+      "name": "焦点科技",
+      "availability": "available",
+      "industry": "互联网-互联网商务-电子商务B2B",
+      "industryLevels": [
+        "互联网",
+        "互联网商务",
+        "电子商务B2B"
+      ],
+      "mainBusiness": "全链路外贸服务综合平台、跨境电子商务业务、线上线下融合的保险代理业务以及与各平台业务相关联的综合服务。",
+      "products": [
+        "网络信息技术服务",
+        "在线平台服务、保险经纪服务、跨境B2B电商、跨境电商"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22002315.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.354Z"
+    },
+    {
+      "code": "002335.SZ",
+      "name": "科华数据",
+      "availability": "available",
+      "industry": "电气设备-电源设备-储能设备",
+      "industryLevels": [
+        "电气设备",
+        "电源设备",
+        "储能设备"
+      ],
+      "mainBusiness": "经营项目包括UPS电源系统、数据中心、新能源、电力自动化系统和智慧能源管理系统的设计生产和销售、数据中心建设及运营和光伏电站的建设及运营",
+      "products": [
+        "新能源产品",
+        "光伏逆变器、IDC数据中心服务、IDC数据中心服务、UPS电源"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22002335.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.636Z"
+    },
+    {
       "code": "002352.SZ",
       "name": "顺丰控股",
       "availability": "available",
@@ -843,6 +879,24 @@
       ]
     },
     {
+      "code": "002439.SZ",
+      "name": "启明星辰",
+      "availability": "available",
+      "industry": "信息技术-计算机软件-其他软件服务",
+      "industryLevels": [
+        "信息技术",
+        "计算机软件",
+        "其他软件服务"
+      ],
+      "mainBusiness": "信息安全产品的研发、生产、销售与提供专业安全服务,为客户提供系列信息安全产品、安全管理平台和专业安全服务,在政府、电信、金融、能源、军队、教育、军工等领域得到广泛运用,现已发展成为国内最具技术创新和产品开发实力的信息安全市场的领导厂商之一。",
+      "products": [
+        "安全产品",
+        "安全软件、信息科技应用服务"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22002439.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.126Z"
+    },
+    {
       "code": "002460.SZ",
       "name": "赣锋锂业",
       "availability": "available",
@@ -921,6 +975,24 @@
         "电容器",
         "电解电容器、薄膜电容器、超级电容器、电极箔"
       ]
+    },
+    {
+      "code": "002555.SZ",
+      "name": "三七互娱",
+      "availability": "available",
+      "industry": "互联网-互联网服务-游戏娱乐",
+      "industryLevels": [
+        "互联网",
+        "互联网服务",
+        "游戏娱乐"
+      ],
+      "mainBusiness": "网络游戏的研发、发行和运营,主要为移动游戏业务与网页游戏业务",
+      "products": [
+        "移动游戏",
+        "移动终端网络游戏、网页游戏"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22002555.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.355Z"
     },
     {
       "code": "002558.SZ",
@@ -1098,6 +1170,24 @@
       ]
     },
     {
+      "code": "002837.SZ",
+      "name": "英维克",
+      "availability": "available",
+      "industry": "机械设备-专用设备-其他专用机械",
+      "industryLevels": [
+        "机械设备",
+        "专用设备",
+        "其他专用机械"
+      ],
+      "mainBusiness": "精密温控节能解决方案和产品提供商,致力于为云计算数据中心、服务器机房、通信网络、电力电网、储能系统、电源转换等领域提供设备散热解决方案,为客车、重卡、冷藏车、地铁等车辆提供相关车用的空调、冷机等产品及服务,并为人居健康空气环境推出系列的空气环境机",
+      "products": [
+        "机房温控节能设备",
+        "机房精密空调、机柜空调、汽车空调、轨道交通车辆空调设备"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22002837.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.618Z"
+    },
+    {
       "code": "002850.SZ",
       "name": "科达利",
       "availability": "available",
@@ -1192,6 +1282,24 @@
         "锂离子电池",
         "动力电池系统、储能电池系统、消费类锂离子电池"
       ]
+    },
+    {
+      "code": "300015.SZ",
+      "name": "爱尔眼科",
+      "availability": "available",
+      "industry": "医药生物-医疗服务-医疗服务",
+      "industryLevels": [
+        "医药生物",
+        "医疗服务",
+        "医疗服务"
+      ],
+      "mainBusiness": "主要从事各类眼科疾病诊疗、手术服务与医学验光配镜",
+      "products": [
+        "医疗服务-准分子手术",
+        "眼科医疗服务、眼科医疗服务、眼科医疗服务、眼科医疗服务、眼科医疗服务"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22300015.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.473Z"
     },
     {
       "code": "300033.SZ",
@@ -1466,6 +1574,24 @@
       ]
     },
     {
+      "code": "300454.SZ",
+      "name": "深信服",
+      "availability": "available",
+      "industry": "信息技术-计算机软件-行业应用软件",
+      "industryLevels": [
+        "信息技术",
+        "计算机软件",
+        "行业应用软件"
+      ],
+      "mainBusiness": "从事软件和信息技术服务行业,向企业级用户提供企业级网络安全、云计算及AI基础设施领域相关的产品、服务和解决方案",
+      "products": [
+        "安全业务",
+        "云计算服务、安全软件、无线通信设备"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22300454.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.126Z"
+    },
+    {
       "code": "300475.SZ",
       "name": "香农芯创",
       "availability": "available",
@@ -1721,6 +1847,42 @@
       ]
     },
     {
+      "code": "300763.SZ",
+      "name": "锦浪科技",
+      "availability": "available",
+      "industry": "电气设备-输变电设备-其他输变电设备",
+      "industryLevels": [
+        "电气设备",
+        "输变电设备",
+        "其他输变电设备"
+      ],
+      "mainBusiness": "从事组串式逆变器的研发、生产、销售和服务",
+      "products": [
+        "逆变器",
+        "光伏逆变器、储能逆变器、光伏电站EPC、光伏发电、储能逆变器"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22300763.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.617Z"
+    },
+    {
+      "code": "300773.SZ",
+      "name": "拉卡拉",
+      "availability": "available",
+      "industry": "互联网-互联网金融-第三方支付",
+      "industryLevels": [
+        "互联网",
+        "互联网金融",
+        "第三方支付"
+      ],
+      "mainBusiness": "数字支付业务、科技服务业务",
+      "products": [
+        "个人支付业务",
+        "互联网支付、信息科技应用服务"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22300773.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.543Z"
+    },
+    {
       "code": "300776.SZ",
       "name": "帝尔激光",
       "availability": "available",
@@ -1767,6 +1929,24 @@
         "零食",
         "零食、食用菌、食用菌、食用菌、农业废料"
       ]
+    },
+    {
+      "code": "301269.SZ",
+      "name": "华大九天",
+      "availability": "available",
+      "industry": "信息技术-计算机软件-行业应用软件",
+      "industryLevels": [
+        "信息技术",
+        "计算机软件",
+        "行业应用软件"
+      ],
+      "mainBusiness": "从事用于集成电路设计、制造和封装的EDA工具软件开发、销售及相关服务业务",
+      "products": [
+        "技术开发服务",
+        "EDA软件、技术服务、软件零售"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22301269.SZ%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.121Z"
     },
     {
       "code": "301308.SZ",
@@ -1911,6 +2091,24 @@
         "电子元器件",
         "电子元件、电子元件、电子精密结构件"
       ]
+    },
+    {
+      "code": "600025.SH",
+      "name": "华能水电",
+      "availability": "available",
+      "industry": "公用事业-电力-水电",
+      "industryLevels": [
+        "公用事业",
+        "电力",
+        "水电"
+      ],
+      "mainBusiness": "水力和新能源发电项目的开发、建设、运营与管理",
+      "products": [
+        "电力销售",
+        "水力发电、光伏发电、风力发电、储能系统"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600025.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.805Z"
     },
     {
       "code": "600028.SH",
@@ -2230,6 +2428,24 @@
       ]
     },
     {
+      "code": "600312.SH",
+      "name": "平高电气",
+      "availability": "available",
+      "industry": "电气设备-输变电设备-其他输变电设备",
+      "industryLevels": [
+        "电气设备",
+        "输变电设备",
+        "其他输变电设备"
+      ],
+      "mainBusiness": "涵盖输配电设备及其核心零部件的研发、设计、制造、销售、检测、相关设备成套、服务与工程总承包,并积极发展运维检修、新能源、GIL、充电桩、智能终端、电锅炉及热储能、海上风电并网装备、智慧电网装备等新业务。核心业务为高压、超高压、特高压交直流开关设备的研发、制造、销售和服务",
+      "products": [
+        "输配电设备",
+        "高压开关柜、输配电设备、电站运维服务"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600312.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.566Z"
+    },
+    {
       "code": "600323.SH",
       "name": "瀚蓝环境",
       "availability": "available",
@@ -2244,6 +2460,60 @@
         "固废处理业务",
         "固废治理、天然气供应、环卫服务、供水、环境治理、给排水工程、环境治理"
       ]
+    },
+    {
+      "code": "600362.SH",
+      "name": "江西铜业",
+      "availability": "available",
+      "industry": "有色金属-基本金属-铜",
+      "industryLevels": [
+        "有色金属",
+        "基本金属",
+        "铜"
+      ],
+      "mainBusiness": "主要业务涵盖了铜和黄金的采选、冶炼与加工;稀散金属的提取与加工;硫化工以及贸易等领域,并且在铜以及相关有色金属领域建立了集勘探、采矿、选矿、冶炼、加工于一体的完整产业链",
+      "products": [
+        "阴极铜",
+        "电解铜、铜杆线、黄金、铜矿、白银、铜加工产品、硫酸"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600362.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.768Z"
+    },
+    {
+      "code": "600406.SH",
+      "name": "国电南瑞",
+      "availability": "available",
+      "industry": "电气设备-输变电设备-电气自控设备",
+      "industryLevels": [
+        "电气设备",
+        "输变电设备",
+        "电气自控设备"
+      ],
+      "mainBusiness": "电网智能、数能融合、能源低碳、轨道交通及工业自动化设备的研发、设计、制造、销售、工程服务与总承包业务",
+      "products": [
+        "电网智能",
+        "电网自动化设备、电网自动化设备、电网自动化设备、电网自动化设备、电网自动化设备"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600406.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.543Z"
+    },
+    {
+      "code": "600415.SH",
+      "name": "小商品城",
+      "availability": "available",
+      "industry": "商贸零售-贸易-贸易",
+      "industryLevels": [
+        "商贸零售",
+        "贸易",
+        "贸易"
+      ],
+      "mainBusiness": "公司致力于为全球中小微企业搭建共享式贸易服务平台,锚定“全球一流国际贸易综合服务商”战略定位,不断丰富和完善三大生态系统:商品展示交易生态、贸易服务生态、配套服务生态,以此降低贸易成本、缩短贸易链条、提升贸易效率,持续为小商品流通创造价值,加强、巩固我国日用消费品供应链在全球贸易中的优势地位,服务国内国际双循环新发展格局。商品展示交易生态包括线下市场经营和自营贸易商品销售,贸易服务生态包括chinagoods线上服务平台、仓储物流和支付、征信、保理等业务,配套服务生态包括会展板块和酒店板块",
+      "products": [
+        "市场经营",
+        "商品贸易、商业地产经营、房地产开发、酒店"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600415.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.474Z"
     },
     {
       "code": "600426.SH",
@@ -2438,6 +2708,24 @@
       ]
     },
     {
+      "code": "600663.SH",
+      "name": "陆家嘴",
+      "availability": "available",
+      "industry": "房地产-房地产开发-房地产开发",
+      "industryLevels": [
+        "房地产",
+        "房地产开发",
+        "房地产开发"
+      ],
+      "mainBusiness": "城市综合开发与服务,特色金融服务,商旅服务",
+      "products": [
+        "非金融业务",
+        "房地产经营、信托、证券"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600663.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.946Z"
+    },
+    {
       "code": "600674.SH",
       "name": "川投能源",
       "availability": "available",
@@ -2468,6 +2756,42 @@
         "电冰箱",
         "冰箱、洗衣机、空调、厨房电器、家用电器零售、热水器"
       ]
+    },
+    {
+      "code": "600763.SH",
+      "name": "通策医疗",
+      "availability": "available",
+      "industry": "医药生物-医疗服务-医疗服务",
+      "industryLevels": [
+        "医药生物",
+        "医疗服务",
+        "医疗服务"
+      ],
+      "mainBusiness": "医疗服务",
+      "products": [
+        "医疗服务",
+        "口腔医疗服务、口腔正畸材料及制品、建筑与工程"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600763.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.497Z"
+    },
+    {
+      "code": "600803.SH",
+      "name": "新奥股份",
+      "availability": "available",
+      "industry": "公用事业-燃气-燃气",
+      "industryLevels": [
+        "公用事业",
+        "燃气",
+        "燃气"
+      ],
+      "mainBusiness": "天然气销售、基础设施运营、工程建造及安装、泛能业务、智家业务",
+      "products": [
+        "天然气",
+        "天然气供应、综合能源服务、综合能源服务、其他基础建设、煤炭、油气仓储"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600803.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.894Z"
     },
     {
       "code": "600809.SH",
@@ -2548,6 +2872,23 @@
         "航空发动机制造及衍生产品",
         "航空发动机、航空发动机零部件、燃气轮机"
       ]
+    },
+    {
+      "code": "600895.SH",
+      "name": "张江高科",
+      "availability": "available",
+      "industry": "房地产-房地产开发-房地产开发",
+      "industryLevels": [
+        "房地产",
+        "房地产开发",
+        "房地产开发"
+      ],
+      "mainBusiness": "受让地块内的土地开发与土地使用权经营,商业化高科技项目投资与经营等。",
+      "products": [
+        "园区地产开发、园区地产经营"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22600895.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.875Z"
     },
     {
       "code": "600900.SH",
@@ -2821,6 +3162,24 @@
       ]
     },
     {
+      "code": "601139.SH",
+      "name": "深圳燃气",
+      "availability": "available",
+      "industry": "公用事业-燃气-燃气",
+      "industryLevels": [
+        "公用事业",
+        "燃气",
+        "燃气"
+      ],
+      "mainBusiness": "城市燃气、燃气资源(上游资源)、综合能源、智慧服务。",
+      "products": [
+        "城市燃气",
+        "燃气、燃气供应、其他能源发电、燃气灶具"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22601139.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.708Z"
+    },
+    {
       "code": "601166.SH",
       "name": "兴业银行",
       "availability": "available",
@@ -3076,6 +3435,24 @@
       ]
     },
     {
+      "code": "601633.SH",
+      "name": "长城汽车",
+      "availability": "available",
+      "industry": "交运设备-汽车-乘用车",
+      "industryLevels": [
+        "交运设备",
+        "汽车",
+        "乘用车"
+      ],
+      "mainBusiness": "整车及主要汽车零部件的研发、生产、销售",
+      "products": [
+        "汽车",
+        "汽车制造、汽车零件与设备、汽车模具、维修服务"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22601633.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.390Z"
+    },
+    {
       "code": "601665.SH",
       "name": "齐鲁银行",
       "availability": "available",
@@ -3154,6 +3531,23 @@
         "煤炭",
         "煤炭、焦炭"
       ]
+    },
+    {
+      "code": "601728.SH",
+      "name": "中国电信",
+      "availability": "available",
+      "industry": "信息技术-通信运营-通信运营",
+      "industryLevels": [
+        "信息技术",
+        "通信运营",
+        "通信运营"
+      ],
+      "mainBusiness": "大型全业务综合智能信息服务运营商,为个人(ToC)、家庭(ToH)和政企(ToB/G)客户提供综合智能信息服务",
+      "products": [
+        "综合电信业务、通信设备零售"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22601728.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.278Z"
     },
     {
       "code": "601816.SH",
@@ -3826,6 +4220,24 @@
         "高功率单管系列",
         "光通信器件、光芯片、光通信器件"
       ]
+    },
+    {
+      "code": "688050.SH",
+      "name": "爱博医疗",
+      "availability": "available",
+      "industry": "医药生物-医疗器械-医疗器械",
+      "industryLevels": [
+        "医药生物",
+        "医疗器械",
+        "医疗器械"
+      ],
+      "mainBusiness": "专注于眼科医疗器械的自主研发、生产、销售及相关服务",
+      "products": [
+        "手术类产品",
+        "人工晶体、眼镜、眼科器械、眼科医疗服务、眼科器械、眼科医疗服务"
+      ],
+      "sourceUrl": "https://datacenter.eastmoney.com/securities/api/data/v1/get?reportName=RPT_F10_ORG_BASICINFO&columns=SECUCODE%2CSECURITY_NAME_ABBR%2CEM2016%2CMAIN_BUSINESS%2CMAXPROFIT_PRODUCT%2CPRODUCT_NAME&quoteColumns=&filter=%28SECUCODE%3D%22688050.SH%22%29&pageNumber=1&pageSize=1&sortTypes=&sortColumns=&source=HSF10&client=PC",
+      "updatedAt": "2026-10-27T15:17:03.432Z"
     },
     {
       "code": "688072.SH",

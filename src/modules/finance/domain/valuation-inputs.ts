@@ -12,8 +12,24 @@ import type { FinancialStatement } from "../../../types";
  * simply does not appear and its dependent metric becomes `null` instead of a
  * guessed number.
  */
-export type StatementRole = "latest" | "prior_year_same_period";
-export type StatementRows = { latest: FinancialStatement | null; priorYearSamePeriod: FinancialStatement | null };
+export type StatementRole = "latest" | "prior_year_same_period" | "prior_fiscal_year" | "current_fiscal_year_same_period";
+export type StatementRows = {
+  latest: FinancialStatement | null;
+  priorYearSamePeriod: FinancialStatement | null;
+  /**
+   * Prior fiscal-year-end statement.  Depreciation must roll on year ends
+   * because Eastmoney publishes the cash-flow supplement block (FA_IR_DEPR and
+   * friends) only for annual and half-year reports — never for Q1 or Q3.
+   */
+  priorFiscalYear?: FinancialStatement | null;
+  /**
+   * The same fiscal endpoint one year before `latest`, which is the
+   * half-year/9M/annual row the TTM subtraction needs.  Equal to
+   * `priorYearSamePeriod` for most periods, but kept explicit because the
+   * annual case subtracts nothing.
+   */
+  currentFiscalYearSamePeriod?: FinancialStatement | null;
+};
 
 export type ValuationInputLine = {
   key: string;
@@ -41,6 +57,7 @@ export type ValuationInputsReadModel = {
   balanceReportDate: string | null;
   cashflowReportDate: string | null;
   periods: Array<{
+    statement: "income" | "balance" | "cashflow";
     role: StatementRole;
     reportDate: string;
     fiscalPeriod: string | null;
@@ -54,6 +71,8 @@ export type ValuationInputsReadModel = {
   enterpriseValueApplicable: boolean;
   /** Historical revenue multiples are not meaningful for financials awaiting a dedicated revenue metric. */
   evRevenueApplicable: boolean;
+  /** Latest row is a provisional pre-disclosure estimate; keep it visible but not trade-ready. */
+  provisional: boolean;
   limitations: string[];
 };
 
@@ -72,6 +91,18 @@ const CASH_FIELDS: Array<[string, string[]]> = [
 const OCF_FIELDS = ["NETCASH_OPERATE", "netcashOperate", "netCashOperate"];
 
 /**
+ * Depreciation and amortization, taken from the cash-flow supplement block.
+ *
+ * `FA_IR_DEPR` is the reported "固定资产折旧、油气资产折耗、生产性生物资产折旧"
+ * line.  `OILGAS_BIOLOGY_DEPR` repeats the same figure to within 1e-5 on every
+ * issuer sampled, so the two are alternate labels and must never be summed.
+ * `IA_AMORTIZE` / `LPE_AMORTIZE` / `USERIGHT_ASSET_AMORTIZE` are the remaining
+ * amortization lines of the same block and are additive.
+ */
+const DEPRECIATION_FIELDS = ["FA_IR_DEPR", "faIrDepr"];
+const AMORTIZATION_FIELDS = ["IA_AMORTIZE", "LPE_AMORTIZE", "USERIGHT_ASSET_AMORTIZE"];
+
+/**
  * Builds dated valuation inputs from three primary statements.  The caller
  * supplies the rows; this function never fetches, adjusts for FX or blends
  * A/H/ADR securities.
@@ -82,6 +113,7 @@ export function buildValuationInputs(input: {
   balance: StatementRows;
   cashflow: StatementRows;
   balanceSheetArchetype?: BalanceSheetRevenueArchetype;
+  provisional?: boolean;
 }): ValuationInputsReadModel {
   const archetype = input.balanceSheetArchetype ?? "non_financial";
   const periodRows = [
@@ -89,16 +121,25 @@ export function buildValuationInputs(input: {
     ["balance", input.balance],
     ["cashflow", input.cashflow],
   ] as const;
-  const periods = periodRows.flatMap(([statement, rows]) =>
-    ([rows.latest, rows.priorYearSamePeriod] as const)
-      .filter((row): row is FinancialStatement => Boolean(row))
-      .map((row) => ({
-        role: row === rows.latest ? "latest" as const : "prior_year_same_period" as const,
-        reportDate: `${statement}:${row.reportDate}`,
+  const periods = periodRows.flatMap(([statement, rows]) => {
+    const entries: Array<[StatementRole, FinancialStatement | null | undefined]> = [
+      ["latest", rows.latest],
+      ["prior_year_same_period", rows.priorYearSamePeriod],
+      ["prior_fiscal_year", rows.priorFiscalYear],
+      ["current_fiscal_year_same_period", rows.currentFiscalYearSamePeriod],
+    ];
+    return entries
+      .filter((entry): entry is [StatementRole, FinancialStatement] => Boolean(entry[1]))
+      // A row can serve two roles (e.g. prior FY doubles as prior-year same
+      // period for a December report); report it once per role it occupies.
+      .map(([role, row]) => ({
+        statement,
+        role,
+        reportDate: row.reportDate,
         fiscalPeriod: row.fiscalPeriod ?? fiscalString(row, "FISCAL_PERIOD"),
         currency: fiscalString(row, "REPORTING_CURRENCY") ?? fiscalString(row, "CURRENCY"),
-      }))
-  );
+      }));
+  });
 
   const lines: ValuationInputLine[] = [];
   const gaps: ValuationInputGap[] = [];
@@ -146,16 +187,22 @@ export function buildValuationInputs(input: {
   }
 
   if (debtParts.length > 0) {
-    // Only an explicit partial sum when at least one debt line is disclosed;
-    // missing debt lines are recorded as gaps rather than treated as zero.
+    // Eastmoney omits a balance-sheet key entirely when the issuer has no such
+    // line ("no short-term lease liability" simply does not appear), while it
+    // returns an explicit `null` when the line exists but the value was not
+    // supplied.  Only the second case is a data gap; treating an absent key as
+    // missing would flag every issuer that legitimately carries no bonds.
     const debt = sum(debtParts);
     lines.push({ key: "grossDebtDisclosed", label: "已披露有息负债合计", value: debt, sourceFields: debtParts.flatMap((item) => item.sourceFields), statement: "balance" });
-    const missingDebt = DEBT_FIELDS.filter(([key]) => !debtParts.some((part) => part.key === key));
-    for (const [key] of missingDebt) {
+    const unsuppliedDebt = DEBT_FIELDS.filter(([key, candidates]) =>
+      !debtParts.some((part) => part.key === key)
+      && candidates.some((field) => field in latestBalance && latestBalance[field] === null)
+    );
+    for (const [key] of unsuppliedDebt) {
       gaps.push({ key, label: `有息负债科目 ${key}`, reason: "field_not_reported" });
     }
-    if (missingDebt.length > 0) {
-      limitations.push("有息负债合计只包含已披露科目，缺失科目未被当作零；净负债与EV需人工补齐后再用。");
+    if (unsuppliedDebt.length > 0) {
+      limitations.push("有息负债合计只包含已披露科目；有科目存在但未返回数值的项已列出，未当作零，净负债与EV需补齐后再用。");
     }
   } else {
     gaps.push({ key: "grossDebtDisclosed", label: "有息负债", reason: "field_not_reported" });
@@ -170,8 +217,19 @@ export function buildValuationInputs(input: {
   if (ocf) lines.push(line("operatingCashFlow", "经营活动现金流净额", ocf, "cashflow"));
   else gaps.push({ key: "operatingCashFlow", label: "经营现金流", reason: "field_not_reported" });
 
-  const depreciation = pick(latestIncome, ["DEPRECIATION_AMORTIZATION", "depreciationAmortization"])
-    ?? pick(latestCashflow, ["DEPRECIATION_AMORTIZATION", "depreciationAmortization"]);
+  // Depreciation & amortization come from the cash-flow supplement block, which
+  // Eastmoney only publishes for annual and half-year reports.  Rolling it on
+  // year ends is therefore the only honest path: a Q1/Q3 statement still has to
+  // borrow the prior year end instead of reporting a hard zero.
+  const depreciation = deprivationSchedule(
+    latestCashflow,
+    payload(input.cashflow.priorFiscalYear ?? null),
+    payload(input.cashflow.currentFiscalYearSamePeriod ?? null),
+    input.cashflow.latest?.reportDate ?? null,
+  );
+  if (depreciation.basis === "unavailable") {
+    gaps.push({ key: "depreciationAmortization", label: "折旧摊销", reason: "field_not_reported" });
+  }
 
   // EBIT proxy.  Eastmoney exposes operating profit tax-inclusive-of-non-
   // operating items; subtracting investment and fair-value income keeps a
@@ -190,18 +248,25 @@ export function buildValuationInputs(input: {
       sourceFields: [...operatingIncome.sourceFields, ...(investIncome?.sourceFields ?? []), ...(fairValueChange?.sourceFields ?? [])],
       statement: "income",
     });
-    if (depreciation) {
+    if (depreciation.basis !== "unavailable") {
+      lines.push({
+        key: "depreciationAmortization",
+        label: "折旧摊销（现金流量表补充资料）",
+        value: depreciation.value,
+        sourceFields: depreciation.sourceFields,
+        statement: "cashflow",
+      });
       lines.push({
         key: "ebitda",
         label: "EBITDA（EBIT + 折旧摊销）",
         value: ebit + depreciation.value,
-        sourceFields: [...(depreciation.sourceFields), "derived:ebit"],
-        statement: "income",
+        sourceFields: [...depreciation.sourceFields, "derived:ebit"],
+        statement: "cashflow",
       });
-      lines.push(line("depreciationAmortization", "折旧摊销", depreciation, "income"));
+      limitations.push(`折旧摊销口径：${depreciation.note}`);
     } else {
       gaps.push({ key: "ebitda", label: "折旧摊销", reason: "field_not_reported" });
-      limitations.push("折旧摊销不在标准三表字段中，EBITDA不可计算；不得用资本开支或猜测值代替。");
+      limitations.push("现金流量表补充资料未提供折旧摊销，EBITDA 不可计算；不得用资本开支或猜测值代替。");
     }
   } else if (!enterpriseValueApplicable) {
     limitations.push(`${archetype} 属资产负债表驱动业务，EBIT/EBITDA/EV 口径不适用。`);
@@ -233,6 +298,7 @@ export function buildValuationInputs(input: {
     gaps,
     enterpriseValueApplicable,
     evRevenueApplicable: archetype === "non_financial",
+    provisional: input.provisional ?? false,
     limitations,
   };
 }
@@ -244,6 +310,83 @@ function revenueArchetypeFor(archetype: BalanceSheetRevenueArchetype): RevenueAr
     case "broker": return "broker_net_revenue";
     default: return "operating_revenue";
   }
+}
+
+/**
+ * Basis of a depreciation/amortization value, always exposed so a consumer
+ * cannot mistake a rolled figure for the period's own disclosure.
+ *
+ * - `annual`: the statement itself is a fiscal-year-end report.
+ * - `trailing_twelve_months`: prior FY + current half-year/YTD − prior-year same
+ *   period, all from the supplement block.
+ * - `prior_fiscal_year`: the latest report is a Q1/Q3 with no supplement block,
+ *   so the prior year end is used and labelled as such.
+ * - `unavailable`: no supplement block anywhere in the window.
+ */
+type DepreciationBasis = "annual" | "trailing_twelve_months" | "prior_fiscal_year" | "unavailable";
+
+type DepreciationSchedule = {
+  value: number;
+  sourceFields: string[];
+  basis: DepreciationBasis;
+  note: string;
+};
+
+function deprivationSchedule(
+  latest: Record<string, unknown>,
+  priorFiscalYear: Record<string, unknown>,
+  currentFiscalYearSamePeriod: Record<string, unknown>,
+  latestReportDate: string | null,
+): DepreciationSchedule {
+  const empty: DepreciationSchedule = { value: 0, sourceFields: [], basis: "unavailable", note: "" };
+  const reportMonth = latestReportDate ? Number(latestReportDate.slice(5, 7)) : 0;
+
+  const fromAnnual = depreciationFromRow(priorFiscalYear, "priorFY");
+  if (reportMonth === 12) {
+    const own = depreciationFromRow(latest, "latest");
+    if (own) {
+      return { ...own, basis: "annual", note: `取 ${latestReportDate} 年报补充资料。` };
+    }
+  }
+
+  const ownCurrent = depreciationFromRow(latest, "latest");
+  const priorSame = depreciationFromRow(currentFiscalYearSamePeriod, "priorSame");
+  if (fromAnnual && ownCurrent && priorSame && (reportMonth === 6 || reportMonth === 9)) {
+    const value = fromAnnual.value + ownCurrent.value - priorSame.value;
+    return {
+      value,
+      sourceFields: [...new Set([...fromAnnual.sourceFields, ...ownCurrent.sourceFields, ...priorSame.sourceFields])],
+      basis: "trailing_twelve_months",
+      note: `上年报 + 本期（${latestReportDate}） − 上年同期，均为现金流量表补充资料口径。`,
+    };
+  }
+
+  if (fromAnnual) {
+    return {
+      ...fromAnnual,
+      basis: "prior_fiscal_year",
+      note: `${latestReportDate ?? "最新期"} 无补充资料（一季报/三季报不披露），沿用最近年报口径。`,
+    };
+  }
+  return empty;
+}
+
+function depreciationFromRow(payloadOfRow: Record<string, unknown>, tag: string): DepreciationSchedule | null {
+  const depreciation = pick(payloadOfRow, DEPRECIATION_FIELDS);
+  const amortizations = AMORTIZATION_FIELDS
+    .map((field) => pick(payloadOfRow, [field]))
+    .filter((item): item is Matched => item !== null);
+  if (!depreciation && amortizations.length === 0) return null;
+  const value = (depreciation?.value ?? 0) + amortizations.reduce((total, item) => total + item.value, 0);
+  return {
+    value,
+    sourceFields: [
+      ...(depreciation ? depreciation.sourceFields.map((field) => `${tag}.${field}`) : []),
+      ...amortizations.flatMap((item) => item.sourceFields.map((field) => `${tag}.${field}`)),
+    ],
+    basis: "annual",
+    note: "",
+  };
 }
 
 type Matched = { value: number; sourceFields: string[] };

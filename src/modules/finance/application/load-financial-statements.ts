@@ -48,12 +48,14 @@ export async function loadFinancialStatements(
     && snapshotRows.some((row) => !hasYahooReportingMetadata(row));
   // Old A-share income snapshots contain only the quarterized `*INCOMEQC`
   // family.  A 12-31 QC row is Q4, so it cannot stand in for the annual
-  // `*INCOME` primary statement.  Refresh once from Eastmoney rather than
-  // relabelling cached Q4 data as FY.
+  // `*INCOME` primary statement, and without the cumulative family the
+  // quarterly series loses every year-to-date value.  Refresh once from
+  // Eastmoney rather than relabelling or back-filling cached data.
   const aShareIncomeSnapshotNeedsAnnualSource = isCnExchangeCode(code)
     && statementType === "income"
     && snapshotRows.length > 0
-    && !snapshotRows.some(isEastmoneyAnnualIncomeStatement);
+    && (!snapshotRows.some(isEastmoneyAnnualIncomeStatement)
+      || !snapshotRows.some(isEastmoneyCumulativeIncomeStatement));
   if (snapshotRows.length > 0 && !hongKongSnapshotNeedsSourceMetadata && !usSnapshotNeedsSourceMetadata && !aShareIncomeSnapshotNeedsAnnualSource) {
     const now = Date.now();
     const latest = snapshotRows[0];
@@ -83,15 +85,19 @@ export async function loadFinancialStatements(
   const formalRows = await fetchEastmoneyFinance(env.DB, code, statementType, options?.httpOptions);
   let rows = ensureFinancialSourceMetadata(formalRows);
   if (statementType === "income") {
-    const annualRows = rows.filter(isEastmoneyAnnualIncomeStatement);
-    const quarterizedRows = formalRows.filter((row) => !isEastmoneyAnnualIncomeStatement(row));
-    const cachedQuarterizedRows = snapshotRows.filter((row) => !isEastmoneyAnnualIncomeStatement(row));
-    rows = [...annualRows, ...mergeProvisionalFinancialStatements(
+    // `*INCOME` cumulative rows (一季报/中报/三季报/年报) are kept as their own
+    // series: they answer "year to date", while `*INCOMEQC` answers "this
+    // quarter".  Only the quarterized family goes through the provisional
+    // merge, because that merge rewrites rows into single-quarter values.
+    const cumulativeRows = rows.filter((row) => isEastmoneyCumulativeIncomeStatement(row));
+    const quarterizedRows = formalRows.filter((row) => !isEastmoneyCumulativeIncomeStatement(row));
+    const cachedQuarterizedRows = snapshotRows.filter((row) => !isEastmoneyCumulativeIncomeStatement(row));
+    rows = [...cumulativeRows, ...mergeProvisionalFinancialStatements(
       [...quarterizedRows, ...cachedQuarterizedRows],
       pendingProvisional?.performanceRows ?? [],
       pendingProvisional?.forecastRows ?? []
     )].sort((left, right) => right.reportDate.localeCompare(left.reportDate)
-      || Number(isEastmoneyAnnualIncomeStatement(right)) - Number(isEastmoneyAnnualIncomeStatement(left)));
+      || Number(isEastmoneyCumulativeIncomeStatement(right)) - Number(isEastmoneyCumulativeIncomeStatement(left)));
   }
   if (rows.length > 0) {
     const latestFormalized = pendingProvisional
@@ -159,6 +165,13 @@ function hasYahooReportingMetadata(row: FinancialStatement): boolean {
   return payload.FINANCIAL_SOURCE_CONTRACT === "yahoo_finance_timeseries.v3"
     && typeof payload.REPORTING_CURRENCY === "string" && payload.REPORTING_CURRENCY.trim().length > 0
     && typeof payload.FISCAL_PERIOD === "string" && payload.FISCAL_PERIOD.trim().length > 0;
+}
+
+function isEastmoneyCumulativeIncomeStatement(row: FinancialStatement): boolean {
+  if (row.statementType !== "income" || row.source !== "eastmoney") return false;
+  const payload = row.payload && typeof row.payload === "object" ? row.payload as Record<string, unknown> : {};
+  return payload.FINANCIAL_SOURCE_CONTRACT === "eastmoney_f10_annual_income.v1"
+    || payload.FINANCIAL_SOURCE_CONTRACT === "eastmoney_f10_income.v1";
 }
 
 function isEastmoneyAnnualIncomeStatement(row: FinancialStatement): boolean {

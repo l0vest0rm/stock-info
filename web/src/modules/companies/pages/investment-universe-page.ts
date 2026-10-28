@@ -10,6 +10,20 @@ type Security = {
   sourceCode: string
   identityVerified: boolean
 }
+type EvidenceRecord = {
+  source: string
+  kind: 'primary'
+  security: string
+  documentId: string
+  title: string
+  publishedAt: string
+  url: string
+}
+type FactorExposure = {
+  factor: string
+  weight: 'primary' | 'secondary'
+  direction: 'positive' | 'negative' | 'mixed'
+}
 type Company = {
   id: string
   displayName: string
@@ -19,14 +33,19 @@ type Company = {
   classificationStatus: string
   watchStatus: string
   researchPriority: string
+  /** Derived by scripts/sync-investment-universe-valuation.mjs. */
+  researchBasis?: string[]
   preferredMarket: 'CN' | 'US' | 'HK'
   preferredTicker: string
   securities: Security[]
   themeTags: string[]
-  factorExposures: string[]
-  evidenceRefs: string[]
+  /** Derived by scripts/sync-investment-universe-valuation.mjs. */
+  factorExposures: FactorExposure[]
+  evidenceRefs: EvidenceRecord[]
   lastEvidenceDate: string | null
   valuationAsOf: string | null
+  /** Derived by scripts/sync-investment-universe-valuation.mjs; see src/modules/research/domain/valuation-coverage.ts. */
+  valuationArchetype: string
 }
 type Track = { id: string; sectorId: string; name: string; researchFocus: string; risksToReview: string }
 type Sector = {
@@ -57,6 +76,19 @@ const sectorsById = new Map(universe.sectors.map((sector) => [sector.id, sector]
 const tracksById = new Map(universe.tracks.map((track) => [track.id, track]))
 const marketLabels: Record<string, string> = { CN: 'A股', HK: '港股', US: '美股', KR: '韩股' }
 const statusLabels: Record<string, string> = { research: '研究观察', priority: '重点观察', paused: '暂停观察', excluded: '不再观察' }
+const factorLabels: Record<string, string> = {
+  ai_capex: 'AI 算力资本开支', semiconductor_cycle: '半导体资本开支周期', memory_price_cycle: '存储价格周期',
+  china_consumption: '中国消费与内需', commodity_price: '商品价格周期', interest_rate: '利率',
+  policy_regulation: '政策与合规周期', fx: '汇率', platform_regulation: '平台监管与广告周期', property_cycle: '地产与租金周期',
+  new_energy_price_war: '新能源价格战', grid_capex: '电网资本开支', medicare_pricing: '医保谈判与集采',
+  geopolitical_export_control: '出口管制',
+}
+const archetypeLabels: Record<string, string> = {
+  bank: '银行（PB-ROE 驱动）', insurer: '保险（P/EV 驱动）', exchange: '交易所（成交驱动）', payment: '支付（支付量驱动）',
+  property_operator: '不动产运营（NAV 驱动）', cyclical_commodity: '资源周期（中枢利润）', stable_cash_dividend: '稳定现金流与分红',
+  growth_manufacturing: '成长制造', software_platform: '软件与平台', pre_profit_milestone: '里程碑型（管线药物）',
+  healthcare_services: '医疗服务与器械', other: '待归类',
+}
 const priorityLabels: Record<string, string> = { L0: 'L0 · 基础身份', L1: 'L1 · 常规观察', L2: 'L2 · 深度研究', L3: 'L3 · 候选复核' }
 const params = new URLSearchParams(window.location.search)
 
@@ -83,14 +115,78 @@ function selectControl(label: string, value: string, options: Array<[string, str
 function codeText(company: Company): string {
   return [company.preferredTicker, ...company.securities.filter((security) => security.ticker !== company.preferredTicker).map((security) => security.ticker)].join(' / ')
 }
+
+/**
+ * P2-3 research tiering.
+ *
+ * Priority is a function of three things we already model, so it is computed
+ * rather than hand-assigned (the old file had every company at L1, which is the
+ * same as having no tiering):
+ *
+ * - archetype: an archetype whose method set is narrow (P/EV, NAV, mid-cycle) is
+ *   harder to get right, so it needs deeper work than a plain PE name;
+ * - factor exposure: companies whose earnings are driven by a single external
+ *   price are the ones that can move most between reviews;
+ * - data readiness: a company whose securities are identity-verified can be
+ *   researched now, while an unverified one needs its filings located first.
+ *
+ * `watchStatus` follows the same inputs: `research` when evidence is missing,
+ * `priority` when it is a concentrated-exposure or hard-to-value name with
+ * evidence, `research` (plain) otherwise. It never means "buy".
+ */
+const TIER_BY_ARCHETYPE: Record<string, number> = {
+  insurer: 3, property_operator: 3, pre_profit_milestone: 3, cyclical_commodity: 3,
+  bank: 2, exchange: 2, stable_cash_dividend: 2, payment: 2,
+  growth_manufacturing: 1, software_platform: 1, healthcare_services: 1, other: 1,
+}
+
+type TieredCompany = Company & { priority: string; watchStatus: string; basis: string[] }
+
+type TierInput = Pick<Company, 'valuationArchetype' | 'factorExposures' | 'securities' | 'evidenceRefs'>
+
+/**
+ * The tiering rule lives in `src/modules/research/domain/valuation-coverage.ts`
+ * and is written into the universe by the sync script.  The page reads those
+ * fields and only falls back to the same rule locally for an older build, so the
+ * page and the file can never disagree about why a company is L3.
+ */
+function researchTier(company: Company): { priority: string; watchStatus: string; basis: string[] } {
+  if (company.researchPriority && company.watchStatus && Array.isArray(company.researchBasis)) {
+    return { priority: company.researchPriority, watchStatus: company.watchStatus, basis: company.researchBasis }
+  }
+  return localTier(company)
+}
+
+function localTier(company: TierInput): { priority: string; watchStatus: string; basis: string[] } {
+  const basis: string[] = []
+  let tier = TIER_BY_ARCHETYPE[company.valuationArchetype] ?? 1
+  basis.push('原型 ' + company.valuationArchetype)
+  const primaryFactors = company.factorExposures.filter((exposure) => exposure.weight === 'primary')
+  if (company.factorExposures.some((exposure) => exposure.direction === 'mixed') && primaryFactors.length === 1) {
+    // A single factor with no fixed sign means the earnings direction cannot be
+    // read off the factor — that is a research question before it is a value.
+    tier = Math.min(3, tier + 1)
+    basis.push('唯一主导因子方向不确定')
+  }
+  // `every` on an empty list is `true`; a company with no listed security has
+  // no identity evidence either, so the check must be explicit.
+  const verified = company.securities.length > 0 && company.securities.every((security) => security.identityVerified)
+  if (!verified) {
+    return { priority: 'L1', watchStatus: 'research', basis: [...basis, '身份未核验，先补一手文件'] }
+  }
+  basis.push('全部证券身份已核验')
+  if (company.evidenceRefs.length === 0) return { priority: 'L1', watchStatus: 'research', basis }
+  const priority = tier >= 3 ? 'L3' : tier === 2 ? 'L2' : 'L1'
+  return { priority, watchStatus: tier >= 2 ? 'priority' : 'research', basis }
+}
 function stripCsvFormula(value: string): string {
   return /^[\s]*[=+\-@]/.test(value) ? "'" + value : value
 }
 function csvCell(value: string): string {
   return '"' + stripCsvFormula(value).replaceAll('"', '""') + '"'
 }
-function downloadCsv(companies: Company[]): void {
-  const header = ['公司ID', '公司', '一级行业', '细分赛道', '首选研究市场', '首选研究证券', '其他上市证券', '观察状态', '优先级', '分类核验状态', '定位']
+function downloadCsv(companies: TieredCompany[]): void {
+  const header = ['公司ID', '公司', '一级行业', '细分赛道', '首选研究市场', '首选研究证券', '其他上市证券', '观察状态', '优先级', '分类核验状态', '分级依据', '定位']
   const rows = companies.map((company) => [
     company.id,
     company.displayName,
@@ -100,8 +196,9 @@ function downloadCsv(companies: Company[]): void {
     company.preferredTicker,
     company.securities.filter((security) => security.ticker !== company.preferredTicker).map((security) => security.ticker).join(' / '),
     statusLabels[company.watchStatus] || company.watchStatus,
-    company.researchPriority,
+    company.priority,
     company.classificationStatus === 'verified' ? '已核验' : '待核验',
+    company.basis.join('；'),
     company.positioning,
   ])
   const csv = '\uFEFF' + [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
@@ -132,14 +229,20 @@ const InvestmentUniversePage = defineComponent({
     const trackOptions = computed(() =>
       universe.tracks.filter((track) => !sectorId.value || track.sectorId === sectorId.value),
     )
+    // Priority and watch status are derived, not read from the file: the file
+    // carries one uniform value, which is the same as having no tiering at all.
+    const tierById = new Map(universe.companies.map((company) => [company.id, researchTier(company)]))
+    const tierOf = (company: Company): TieredCompany =>
+      tierById.get(company.id) ?? { priority: 'L1', watchStatus: 'research', basis: [] }
+    const tieredCompanies = computed<TieredCompany[]>(() => universe.companies.map((company) => ({ ...company, ...tierOf(company) })))
     const filteredCompanies = computed(() => {
       const keyword = normalized(query.value)
-      const companies = universe.companies.filter((company) => {
+      const companies = tieredCompanies.value.filter((company) => {
         if (sectorId.value && company.primarySectorId !== sectorId.value) return false
         if (trackId.value && company.primaryTrackId !== trackId.value) return false
         if (market.value && company.preferredMarket !== market.value) return false
         if (status.value && company.watchStatus !== status.value) return false
-        if (priority.value && company.researchPriority !== priority.value) return false
+        if (priority.value && company.priority !== priority.value) return false
         if (!keyword) return true
         const matchText = [
           company.id, company.displayName, company.positioning,
@@ -154,7 +257,7 @@ const InvestmentUniversePage = defineComponent({
         return companies.sort((a, b) => a.displayName.localeCompare(b.displayName, 'zh-CN'))
       }
       if (sort.value === 'priority') {
-        return companies.sort((a, b) => b.researchPriority.localeCompare(a.researchPriority) || a.id.localeCompare(b.id))
+        return companies.sort((a, b) => b.priority.localeCompare(a.priority) || a.id.localeCompare(b.id))
       }
       return companies
     })
@@ -163,7 +266,10 @@ const InvestmentUniversePage = defineComponent({
       return companies.length ? [{ track, companies }] : []
     }))
     const visibleTracks = computed(() => new Set(filteredCompanies.value.map((company) => company.primaryTrackId)).size)
-    const selected = computed(() => universe.companies.find((company) => company.id === selectedId.value) || null)
+    const selected = computed<TieredCompany | null>(() => {
+      const company = universe.companies.find((item) => item.id === selectedId.value) || null
+      return company ? { ...company, ...tierOf(company) } : null
+    })
     const sectorCounts = new Map(universe.sectors.map((sector) => [
       sector.id,
       universe.companies.filter((company) => company.primarySectorId === sector.id).length,
@@ -226,6 +332,23 @@ const InvestmentUniversePage = defineComponent({
     const linkForSecurity = (security: Security) =>
       security.market === 'KR' ? '' : 'company.html?code=' + encodeURIComponent(security.ticker)
 
+    // Evidence is now a record, so the page can link to the primary document
+    // instead of printing a string nobody can check.
+    const evidenceLink = (company: Company) => {
+      const latest = [...company.evidenceRefs].sort((left, right) => right.publishedAt.localeCompare(left.publishedAt))[0]
+      return latest
+        ? h('a', { href: latest.url, target: '_blank', rel: 'noopener noreferrer' }, '一手文件：' + latest.title.slice(0, 24))
+        : h('span', '一手文件：待接入')
+    }
+
+    // Weight and direction belong in the label: two companies sharing 利率 do
+    // not move the same way, and a bare factor name hides that.
+    const directionLabels: Record<string, string> = { positive: '正相关', negative: '负相关', mixed: '双向' }
+    const describeFactors = (factors: FactorExposure[]) =>
+      factors
+        .map((item) => `${factorLabels[item.factor] || item.factor}（${directionLabels[item.direction] || item.direction}${item.weight === 'secondary' ? '，次要' : ''}）`)
+        .join('、')
+
     const renderCompanyToken = (company: Company) => h('button', {
       key: company.id,
       type: 'button',
@@ -238,7 +361,7 @@ const InvestmentUniversePage = defineComponent({
       h('span', { class: 'ivu-token-arrow', 'aria-hidden': 'true' }, '↗'),
     ])
 
-    const renderDetail = (company: Company) => {
+    const renderDetail = (company: TieredCompany) => {
       const track = tracksById.get(company.primaryTrackId)
       const sector = sectorsById.get(company.primarySectorId)
       return h('section', {
@@ -256,9 +379,9 @@ const InvestmentUniversePage = defineComponent({
         h('p', { class: 'ivu-description' }, company.positioning),
         h('div', { class: 'ivu-tag-row' }, [
           h('span', { class: 'ivu-tag' }, statusLabels[company.watchStatus] || company.watchStatus),
-          h('span', { class: 'ivu-tag' }, priorityLabels[company.researchPriority] || company.researchPriority),
+          h('span', { class: 'ivu-tag' }, priorityLabels[company.priority] || company.priority),
           h('span', { class: 'ivu-tag' }, '首选：' + (marketLabels[company.preferredMarket] || company.preferredMarket) + ' ' + company.preferredTicker),
-          h('span', { class: 'ivu-tag ivu-tag-muted' }, company.classificationStatus === 'verified' ? '主营分类已核验' : '主营分类待核验'),
+          h('span', { class: 'ivu-tag ivu-tag-muted' }, company.classificationStatus === 'verified' ? '全部证券身份已核验' : '证券身份待核验'),
         ]),
         h('div', { class: 'ivu-detail-grid' }, [
           h('div', [
@@ -285,9 +408,12 @@ const InvestmentUniversePage = defineComponent({
         ]),
         h('div', { class: 'ivu-detail-bottom' }, [
           h('span', '最新证据日期：' + (company.lastEvidenceDate || '待补充')),
+          evidenceLink(company),
+          h('span', '估值原型：' + (archetypeLabels[company.valuationArchetype] || company.valuationArchetype || '待归类')),
           h('span', '估值日期：' + (company.valuationAsOf || '未录入')),
+          h('span', '风险因子：' + (company.factorExposures.length ? describeFactors(company.factorExposures) : '待补充证据')),
           h('span', '主题标签：' + (company.themeTags.length ? company.themeTags.join('、') : '待补充证据')),
-          h('span', '风险因子：' + (company.factorExposures.length ? company.factorExposures.join('、') : '待补充证据')),
+          h('span', '分级依据：' + (company.basis.join('；') || '待补充')),
         ]),
       ])
     }
@@ -318,10 +444,10 @@ const InvestmentUniversePage = defineComponent({
                   h('span', { class: 'ivu-market-chip', key: item }, marketLabels[item] || item),
                 )],
             )]),
-            h('td', h('span', { class: 'ivu-priority' }, company.researchPriority)),
+            h('td', h('span', { class: 'ivu-priority' }, company.priority)),
             h('td', [
               h('span', { class: 'ivu-status' }, statusLabels[company.watchStatus] || company.watchStatus),
-              h('span', { class: 'ivu-ticker-line' }, company.classificationStatus === 'verified' ? '分类已核验' : '分类待核验'),
+              h('span', { class: 'ivu-ticker-line' }, company.classificationStatus === 'verified' ? '证券身份已核验' : '证券身份待核验'),
             ]),
             h('td', { class: 'ivu-action-col' }, [
               h('button', {

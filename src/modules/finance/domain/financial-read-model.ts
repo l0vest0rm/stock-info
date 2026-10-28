@@ -21,6 +21,12 @@ export type FinancialStatementReadModel = {
   revisionStatuses: string[];
   fieldAvailability: { rows: number; nonEmptyPayloadRows: number; status: "available" | "unavailable" };
   sourceHealth: FinancialStatementSourceHealth;
+  /**
+   * Machine-readable contract problems that the row count cannot express,
+   * e.g. an A-share income snapshot that predates the cumulative `*INCOME`
+   * family.  An empty array means "no known contract violation".
+   */
+  warnings: FinancialStatementWarning[];
   rows: FinancialStatement[];
   /** Source-preserving canonical metrics for consumers; raw rows remain available for detail views. */
   normalizedRows: NormalizedFinancialStatement[];
@@ -50,6 +56,19 @@ export type FinancialStatementFailureCode =
   | "invalid_provider_response"
   | "no_primary_data"
   | "unexpected_error";
+
+export type FinancialStatementWarningCode =
+  /** A-share income snapshot has `*INCOMEQC` rows but no `*INCOME` cumulative rows. */
+  | "missing_cumulative_income_family"
+  /** A-share income snapshot has no explicit fiscal-year-end (`12M`) statement. */
+  | "missing_annual_income_statement";
+
+export type FinancialStatementWarning = {
+  code: FinancialStatementWarningCode;
+  message: string;
+  /** Families actually present in the returned rows. */
+  families: { cumulative: boolean; annual: boolean; quarterized: boolean };
+};
 
 export type FinancialStatementSourceHealth = {
   status: "healthy" | "degraded" | "failed";
@@ -99,6 +118,9 @@ export function buildFinancialStatementReadModel(input: {
   const originProviders = values(rows.map((row) => row.source));
   const updatedAt = rows.map((row) => Number(row.updatedAt)).filter(Number.isFinite).sort((a, b) => b - a)[0] ?? null;
   const unavailable = rows.length === 0;
+  const warnings = input.statementType === "income" && /\.(SH|SZ|BJ)$/.test(input.code)
+    ? aShareIncomeWarnings(rows)
+    : [];
   return {
     code: input.code,
     statementType: input.statementType,
@@ -119,6 +141,7 @@ export function buildFinancialStatementReadModel(input: {
     sourceHealth: unavailable
       ? { status: "degraded", reason: "no_primary_data", message: "primary financial provider returned no statement rows" }
       : { status: "healthy", reason: null, message: null },
+    warnings,
     rows,
     normalizedRows: normalizeFinancialStatements(rows),
   };
@@ -130,8 +153,41 @@ export function failedFinancialStatementReadModel(code: string, statementType: S
     code, statementType, sourcePolicy: financialStatementSourcePolicy(code), delivery: null,
     reportingCurrencies: [], accountingStandards: [], periods: [], latestReportDate: null, dataAsOf: null,
     revisionStatuses: [], fieldAvailability: { rows: 0, nonEmptyPayloadRows: 0, status: "unavailable" },
-    sourceHealth: { status: "failed", ...failure }, rows: [], normalizedRows: [],
+    sourceHealth: { status: "failed", ...failure }, warnings: [], rows: [], normalizedRows: [],
   };
+}
+
+/**
+ * A-share income rows come from two independent Eastmoney families.  Losing
+ * either one degrades valuation silently, so report it instead of letting the
+ * row count look healthy.
+ */
+function aShareIncomeWarnings(rows: FinancialStatement[]): FinancialStatementWarning[] {
+  const contracts = new Set(rows.map((row) => {
+    const contract = payload(row).FINANCIAL_SOURCE_CONTRACT;
+    return typeof contract === "string" ? contract : "";
+  }));
+  const families = {
+    cumulative: contracts.has("eastmoney_f10_income.v1"),
+    annual: contracts.has("eastmoney_f10_annual_income.v1"),
+    quarterized: contracts.has("eastmoney_f10_incomeqc.v1"),
+  };
+  const warnings: FinancialStatementWarning[] = [];
+  if (rows.length > 0 && !families.cumulative && !families.annual) {
+    warnings.push({
+      code: "missing_cumulative_income_family",
+      message: "A股利润表只有单季度家族（*INCOMEQC），缺少累计家族（*INCOME）；TTM 与 PE(TTM) 不可用，需刷新快照。",
+      families,
+    });
+  }
+  if (rows.length > 0 && !families.annual) {
+    warnings.push({
+      code: "missing_annual_income_statement",
+      message: "A股利润表没有年报（12M）行；TTM 基期缺失，不得用四季度冒充全年。",
+      families,
+    });
+  }
+  return warnings;
 }
 
 function payload(row: FinancialStatement): Record<string, unknown> {

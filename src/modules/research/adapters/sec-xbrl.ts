@@ -84,13 +84,20 @@ export type SecXbrlDisclosureCollection = {
 type SecTickerRecord = { ticker?: string; cik_str?: number | string; title?: string };
 type SecSubmissionsPayload = {
   cik?: string | number;
-  filings?: { recent?: {
-    accessionNumber?: string[];
-    primaryDocument?: string[];
-    filingDate?: string[];
-    reportDate?: string[];
-    form?: string[];
-  } };
+  filings?: {
+    recent?: {
+      accessionNumber?: string[];
+      primaryDocument?: string[];
+      filingDate?: string[];
+      reportDate?: string[];
+      form?: string[];
+    };
+    /**
+     * Older filings are not in `recent`: the API keeps the most recent slice
+     * inline (~1000 entries) and points at one JSON file per additional year.
+     */
+    files?: Array<{ name?: string; filingCount?: number; filingFrom?: string; filingTo?: string }>;
+  };
 };
 
 type MetricConcept = { namespace: "us-gaap" | "ifrs-full" | "dei"; name: string; instant: boolean };
@@ -135,43 +142,88 @@ export async function loadSecRegistrantXbrl(
   rawSecurityCode: string,
   httpOptions?: ExternalHttpOptions,
 ): Promise<SecRegistrantXbrl> {
-  const securityCode = requireUsSecurity(rawSecurityCode);
-  const ticker = securityCode.slice(0, -3);
-  const registrant = await resolveSecRegistrant(db, ticker, httpOptions);
-  const cik = padCik(registrant.cik);
-  const [companyFacts, submissions] = await Promise.all([
-    cachedFetchJson(
-      db,
-      `${SEC_DATA_ORIGIN}/api/xbrl/companyfacts/CIK${cik}.json`,
-      secRequestInit(),
-      SEC_COMPANY_FACTS_TTL_MS,
-      // SEC companyfacts can exceed D1's safe value size for large issuers.
-      // It is still fetched from the single official source; a future R2
-      // source-cache can own large-object persistence without weakening this
-      // adapter's no-fallback policy.
-      { ...httpOptions, cacheKey: `sec.companyfacts.v1.${cik}`, cacheMaxBytes: 1_500_000 },
-    ) as Promise<SecCompanyFactsPayload>,
-    cachedFetchJson(
-      db,
-      `${SEC_DATA_ORIGIN}/submissions/CIK${cik}.json`,
-      secRequestInit(),
-      SEC_SUBMISSIONS_TTL_MS,
-      // Large issuers' filing indexes can also exceed a D1 cache value.  The
-      // index is required for the in-flight verification, but cache failure
-      // must not turn an otherwise valid SEC response into a failed research
-      // job.  As with companyfacts above, large-object persistence belongs in
-      // a dedicated R2 contract rather than this small HTTP cache.
-      { ...httpOptions, cacheKey: `sec.submissions.v1.${cik}`, cacheMaxBytes: 1_500_000 },
-    ) as Promise<SecSubmissionsPayload>,
-  ]);
+  const { securityCode, ticker, cik, registrant, submissions } = await resolveSecRegistrantWithIndex(db, rawSecurityCode, httpOptions);
+  const companyFacts = await cachedFetchJson(
+    db,
+    `${SEC_DATA_ORIGIN}/api/xbrl/companyfacts/CIK${cik}.json`,
+    secRequestInit(),
+    SEC_COMPANY_FACTS_TTL_MS,
+    // SEC companyfacts can exceed D1's safe value size for large issuers.
+    // It is still fetched from the single official source; a future R2
+    // source-cache can own large-object persistence without weakening this
+    // adapter's no-fallback policy.
+    { ...httpOptions, cacheKey: `sec.companyfacts.v1.${cik}`, cacheMaxBytes: 1_500_000 },
+  ) as SecCompanyFactsPayload;
   return {
     securityCode,
     ticker,
     cik,
     entityName: text(companyFacts.entityName) ?? text(registrant.title),
     companyFacts,
-    filingsByAccession: indexSecFilings(submissions),
+    // The full index (recent + per-year overflow).  XBRL facts are matched back
+    // to their filing through this map, so an accession that lives in an
+    // overflow file must be present or the fact loses its evidence pointer.
+    filingsByAccession: await loadSecFilingIndex(db, cik, submissions, httpOptions),
   };
+}
+
+/**
+ * Filing index only — the ticker registry and the submissions document.
+ *
+ * Identity evidence needs the registrant's own filings and nothing else.
+ * Company facts are a bulk XBRL document that routinely exceeds the small HTTP
+ * cache's value limit, so loading them just to learn which forms were filed
+ * means re-downloading megabytes on every call.
+ *
+ * The returned `filingsByAccession` includes the per-year overflow files, not
+ * just `filings.recent`: for a frequent filer the last 10-K/20-F is older than
+ * the newest ~1000 entries, and reading only `recent` made an annually-filing
+ * company look like it had never filed a periodic report.
+ */
+export async function loadSecRegistrantIndex(
+  db: Database,
+  rawSecurityCode: string,
+  httpOptions?: ExternalHttpOptions,
+): Promise<SecRegistrantXbrl> {
+  const { securityCode, ticker, cik, registrant, submissions } = await resolveSecRegistrantWithIndex(db, rawSecurityCode, httpOptions);
+  return {
+    securityCode,
+    ticker,
+    cik,
+    entityName: text(registrant.title),
+    companyFacts: { facts: {} },
+    filingsByAccession: await loadSecFilingIndex(db, cik, submissions, httpOptions),
+  };
+}
+
+async function resolveSecRegistrantWithIndex(
+  db: Database,
+  rawSecurityCode: string,
+  httpOptions?: ExternalHttpOptions,
+): Promise<{
+  securityCode: string;
+  ticker: string;
+  cik: string;
+  registrant: { ticker: string; cik: string | number; title?: string };
+  submissions: SecSubmissionsPayload;
+}> {
+  const securityCode = requireUsSecurity(rawSecurityCode);
+  const ticker = securityCode.slice(0, -3);
+  const registrant = await resolveSecRegistrant(db, ticker, httpOptions);
+  const cik = padCik(registrant.cik);
+  const submissions = await cachedFetchJson(
+    db,
+    `${SEC_DATA_ORIGIN}/submissions/CIK${cik}.json`,
+    secRequestInit(),
+    SEC_SUBMISSIONS_TTL_MS,
+    // Large issuers' filing indexes can also exceed a D1 cache value.  The
+    // index is required for the in-flight verification, but cache failure
+    // must not turn an otherwise valid SEC response into a failed research
+    // job.  As with companyfacts above, large-object persistence belongs in
+    // a dedicated R2 contract rather than this small HTTP cache.
+    { ...httpOptions, cacheKey: `sec.submissions.v1.${cik}`, cacheMaxBytes: 1_500_000 },
+  ) as SecSubmissionsPayload;
+  return { securityCode, ticker, cik, registrant, submissions };
 }
 
 /** Official SEC filing pointers for document-level research extraction.
@@ -180,7 +232,7 @@ export function secRegistrantDocuments(registrant: SecRegistrantXbrl): SecRegist
   return [...registrant.filingsByAccession.values()]
     .filter((filing) => /^(10-K|10-Q)(?:\/A)?$/i.test(filing.form))
     .flatMap((filing) => {
-      const documentUrl = filingDocumentUrl(registrant.cik, filing);
+      const documentUrl = secFilingUrl(registrant.cik, filing);
       if (!documentUrl) return [];
       return [{
         documentId: filing.accessionNumber,
@@ -246,7 +298,7 @@ export function collectSecXbrlDisclosure(
       });
     }
     const filing = selected.point.accn ? registrant.filingsByAccession.get(selected.point.accn) : undefined;
-    const disclosureUrl = filing ? filingDocumentUrl(registrant.cik, filing) : null;
+    const disclosureUrl = filing ? secFilingUrl(registrant.cik, filing) : null;
     if (!filing || !disclosureUrl) {
       return unavailable(registrant, normalizedFact, ["sec_filing_document_not_resolved"], {
         ...baseMetadata,
@@ -457,21 +509,77 @@ function compareSecPoints(left: SecCompanyFactsPoint, right: SecCompanyFactsPoin
 }
 
 function indexSecFilings(payload: SecSubmissionsPayload): Map<string, SecRegistrantFiling> {
-  const recent = payload.filings?.recent;
   const result = new Map<string, SecRegistrantFiling>();
+  for (const filing of recentFilings(payload.filings?.recent)) result.set(filing.accessionNumber, filing);
+  return result;
+}
+
+/**
+ * One submission index page: `filings.recent` and the per-year overflow files
+ * share the same columnar shape, so both go through this.
+ */
+function recentFilings(recent: NonNullable<NonNullable<SecSubmissionsPayload["filings"]>["recent"]> | undefined): SecRegistrantFiling[] {
+  const result: SecRegistrantFiling[] = [];
   for (let index = 0; index < (recent?.accessionNumber?.length ?? 0); index += 1) {
     const accessionNumber = text(recent?.accessionNumber?.[index]);
     const primaryDocument = text(recent?.primaryDocument?.[index]);
     const filingDate = date(recent?.filingDate?.[index]);
     const reportDate = date(recent?.reportDate?.[index]);
     const form = text(recent?.form?.[index]);
-    if (!accessionNumber || !primaryDocument || !filingDate || !reportDate || !form) continue;
-    result.set(accessionNumber, { accessionNumber, primaryDocument, filingDate, reportDate, form });
+    // `reportDate` is legitimately empty for forms that cover no period (Form 4,
+    // Form 144).  Requiring it dropped every such filing from the index — and
+    // for a registrar whose recent filings are mostly Form 4, the whole index.
+    if (!accessionNumber || !primaryDocument || !filingDate || !form) continue;
+    result.push({ accessionNumber, primaryDocument, filingDate, reportDate: reportDate ?? "", form });
   }
   return result;
 }
 
-function filingDocumentUrl(cik: string, filing: SecRegistrantFiling): string | null {
+/**
+ * The full filing index, including the older per-year overflow files.
+ *
+ * `filings.recent` holds only the newest slice, so a registrant that files
+ * often (NVIDIA, Apple) has no annual report inside it at all — the whole
+ * identity query came back `no_documents` for a company that files a 10-K
+ * every year.  The overflow files carry the same columns, one per year.
+ */
+async function loadSecFilingIndex(
+  db: Database,
+  cik: string,
+  submissions: SecSubmissionsPayload,
+  httpOptions?: ExternalHttpOptions,
+): Promise<Map<string, SecRegistrantFiling>> {
+  const result = indexSecFilings(submissions);
+  const files = (submissions.filings?.files ?? []).filter((file) => text(file.name));
+  if (files.length === 0) return result;
+  // `file.name` is relative to `/submissions/` (e.g. `CIK0001045810-submissions-001.json`).
+  const pages = await Promise.all(files.map((file) => {
+    const name = text(file.name);
+    return cachedFetchJson(
+      db,
+      `${SEC_DATA_ORIGIN}/submissions/${name}`,
+      secRequestInit(),
+      SEC_SUBMISSIONS_TTL_MS,
+      // Same cache contract as the parent index: a failure here must not sink
+      // the submissions page that already succeeded.
+      { ...httpOptions, cacheKey: `sec.submissions.v1.${cik}.${name}`, cacheMaxBytes: 1_500_000 },
+    ).catch(() => null) as Promise<SecSubmissionsPayload | null>;
+  }));
+  for (const page of pages) {
+    for (const filing of recentFilings(page?.filings?.recent)) result.set(filing.accessionNumber, filing);
+  }
+  return result;
+}
+
+/**
+ * EDGAR URL for a filing's primary document.
+ *
+ * The `primaryDocument` must be a single rendered document name: SEC index
+ * entries also carry viewer-style paths (`xslF345X06/wk-form4_*.xml`), which do
+ * not resolve to `Archives/edgar/data/.../<doc>` — the regex rejects them, and
+ * the caller then skips that filing rather than emitting a dead link.
+ */
+export function secFilingUrl(cik: string, filing: SecRegistrantFiling): string | null {
   const accession = filing.accessionNumber.replace(/-/g, "");
   if (!/^\d+$/.test(accession) || !/^[A-Za-z0-9._-]+\.(?:htm|html|xhtml)$/i.test(filing.primaryDocument)) return null;
   return `${SEC_ORIGIN}/Archives/edgar/data/${String(Number(cik))}/${accession}/${encodeURIComponent(filing.primaryDocument)}`;

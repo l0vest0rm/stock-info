@@ -18,6 +18,7 @@ import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../db/queries";
 import { cachedFetchJson, cachedFetchText, numberOrNull, parseJsonOrJsonp } from "../shared/http";
 import type { ExternalHttpOptions } from "../shared/http";
 import type { CompanyNotice, CompanyOverview, FinancialStatement, FundNavRow, KlineBar, SecurityRecord, StatementType } from "../types";
+import { genReportDates } from "./eastmoney-report-window";
 
 type EastmoneySuggestResponse = {
   GubaCodeTable?: {
@@ -520,23 +521,31 @@ export async function fetchEastmoneyFinance(
       ? fetchEastmoneyFinanceRows(db, normalized, statementType, eastmoneyAnnualIncomeReportType(normalized), httpOptions)
       : Promise.resolve([]),
   ]);
-  // `*INCOMEQC` is Eastmoney's quarterized source family.  Its 12-31 row is
-  // Q4, not FY.  The matching `*INCOME` family is the same primary provider's
-  // annual, year-to-date statement.  Keep only its explicit annual rows and
-  // attach a source-contract period marker; raw REPORT_TYPE is a display label
-  // and is not sufficient to distinguish these two 12-31 observations.
-  const annualRows = annualIncomeRows
-    .filter((row) => isEastmoneyAnnualIncomeRow(row.payload))
-    .map((row) => ({
-      ...row,
-      fiscalPeriod: "12M",
-      payload: {
-        ...(row.payload as Record<string, unknown>),
-        FISCAL_PERIOD: "12M",
-        FINANCIAL_SOURCE_CONTRACT: "eastmoney_f10_annual_income.v1",
-      },
-    }));
-  return [...quarterizedRows, ...annualRows];
+  // `*INCOMEQC` is Eastmoney's quarterized source family: each row is that
+  // quarter alone.  `*INCOME` is the same provider's year-to-date family
+  // (一季报 / 中报 / 三季报 / 年报).  Both are primary extraction, so both are
+  // kept and tagged with a source contract; raw REPORT_TYPE is only a display
+  // label and must never be used to tell the two families apart.
+  const quarterized = quarterizedRows.map((row) => statementType === "income"
+    ? {
+        ...row,
+        payload: {
+          ...(row.payload as Record<string, unknown>),
+          FINANCIAL_SOURCE_CONTRACT: "eastmoney_f10_incomeqc.v1",
+        },
+      }
+    : row);
+  const cumulativeRows = annualIncomeRows.map((row) => ({
+    ...row,
+    fiscalPeriod: isEastmoneyAnnualIncomeRow(row.payload) ? "12M" : row.fiscalPeriod,
+    payload: {
+      ...(row.payload as Record<string, unknown>),
+      FINANCIAL_SOURCE_CONTRACT: isEastmoneyAnnualIncomeRow(row.payload)
+        ? "eastmoney_f10_annual_income.v1"
+        : "eastmoney_f10_income.v1",
+    },
+  }));
+  return [...quarterized, ...cumulativeRows];
 }
 
 async function fetchEastmoneyFinanceRows(
@@ -549,9 +558,14 @@ async function fetchEastmoneyFinanceRows(
   const url = new URL("https://datacenter-web.eastmoney.com/securities/api/data/get");
   url.searchParams.set("type", `RPT_F10_FINANCE_${reportType}`);
   url.searchParams.set("sty", financeStyle(statementType, reportType));
+  // TTM needs three anchors on the cumulative family — prior FY, current
+  // period, prior-year same period — and the quarterized family can be
+  // narrower than the cumulative one (bank and insurer feeds skip interim
+  // quarters).  A 5-period window therefore stopped covering a full trailing
+  // year, so ask for 8 instead of inferring the missing anchor downstream.
   url.searchParams.set(
     "filter",
-    `(SECUCODE="${normalized}")(REPORT_DATE in ('${genReportDates(5).join("','")}'))`
+    `(SECUCODE="${normalized}")(REPORT_DATE in ('${genReportDates(8).join("','")}'))`
   );
   url.searchParams.set("p", "1");
   url.searchParams.set("ps", "");
@@ -1614,7 +1628,15 @@ export async function fetchEastmoneyCompanyOverview(db: Database, code: string):
   url.searchParams.set("fields", "f43,f57,f58,f116,f162,f167,f168,f169,f170");
   const [body, companyProfile] = await Promise.all([
     cachedFetchJson(db, url.toString(), {
-      headers: { Referer: "https://quote.eastmoney.com/" },
+      // push2 rejects requests without a User-Agent by closing the socket, and
+      // Node's fetch sends none by default.  The same URL succeeds through
+      // curl because curl supplies one, which is what made this look like a
+      // provider outage rather than a missing header.
+      headers: {
+        Referer: "https://quote.eastmoney.com/",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+      },
     }, marketDataCacheTtlMsForCode(normalized)) as Promise<EastmoneyOverviewResponse>,
     fetchEastmoneyCompanyProfile(db, normalized),
   ]);
@@ -1876,29 +1898,6 @@ function normalizeYahooFinancePayload(
     row.totalAssets = row.totaAssets;
   }
   return row;
-}
-
-function genReportDates(years: number): string[] {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const dates: string[] = [];
-  for (let i = 0; i < years; i += 1) {
-    const current = year - i;
-    if (i > 0) {
-      dates.push(`${current}-12-31`);
-    }
-    if (i !== 0 || month > 9) {
-      dates.push(`${current}-09-30`);
-    }
-    if (i !== 0 || month > 6) {
-      dates.push(`${current}-06-30`);
-    }
-    if (i !== 0 || month > 3) {
-      dates.push(`${current}-03-31`);
-    }
-  }
-  return dates;
 }
 
 function trimDate(value: unknown): string {

@@ -1,6 +1,6 @@
 import type { Database } from "../platform/contracts";
 import { bareCode, normalizeSecurityCode, securitySuffix } from "../shared/codes";
-import { cachedFetchJson } from "../shared/http";
+import { cachedFetchJson, retryOnRejection } from "../shared/http";
 import type { CompanyNotice } from "../types";
 
 type CninfoSecurityResponse = {
@@ -63,12 +63,55 @@ export async function fetchCninfoCompanyResearch(
   });
 }
 
+/**
+ * Periodic financial reports only, via CNINFO's own report categories.
+ *
+ * Use this instead of filtering `fetchCninfoCompanyNotices`: the announcement
+ * feed is ordered by recency, so a company with 3,000 announcements has its
+ * half-year report far past any single page, and titles vary ("2026年三季度
+ * 报告" carries no 第).  Asking the registry for the category is both correct
+ * and cheaper than paging.
+ */
+export async function fetchCninfoPeriodicReports(
+  db: Database,
+  code: string,
+  pageSize = 30,
+): Promise<CompanyNotice[]> {
+  const normalized = normalizeSecurityCode(code);
+  const suffix = securitySuffix(normalized);
+  const categories = (Object.keys(CNINFO_PERIODIC_CATEGORIES) as Array<keyof typeof CNINFO_PERIODIC_CATEGORIES>)
+    .map((kind) => cninfoCategoryCode(suffix, kind))
+    .filter((value): value is string => Boolean(value));
+  if (categories.length === 0) {
+    throw new Error(`unsupported CNINFO periodic report code: ${code}`);
+  }
+  // One query per category: the registry returns each category newest-first, so
+  // the first page of each already contains the latest annual/interim/quarterly
+  // report without paging through the announcement stream.
+  //
+  // These run sequentially on purpose.  CNINFO rate-limits this endpoint: firing
+  // four category requests at once returns 403 with an empty body, which would be
+  // reported as `source_failed` and read as "the company files nothing".
+  const pages: CompanyNotice[][] = [];
+  for (const category of categories) {
+    pages.push(await retryOnRejection(() => fetchCninfoCompanyDisclosure(db, normalized, 1, pageSize, {
+      tabName: "fulltext",
+      category,
+      fallbackNoticeType: "定期报告",
+    })));
+    // Spacing the category calls keeps them under the interface limit that a
+    // four-in-a-row burst trips.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  return pages.flat();
+}
+
 async function fetchCninfoCompanyDisclosure(
   db: Database,
   code: string,
   page: number,
   pageSize: number,
-  options: { tabName: "fulltext" | "relation"; category: string; fallbackNoticeType: string }
+  options: { tabName: "fulltext" | "relation"; category: string | readonly string[]; fallbackNoticeType: string }
 ): Promise<CompanyNotice[]> {
   const normalized = normalizeSecurityCode(code);
   const suffix = securitySuffix(normalized);
@@ -81,12 +124,16 @@ async function fetchCninfoCompanyDisclosure(
   if (!Number.isInteger(page) || page < 1 || page > 100) {
     throw new Error(`CNINFO announcement page must be between 1 and 100: ${page}`);
   }
+  // CNINFO silently ignores `category` when pageSize exceeds 30: the response
+  // falls back to the unfiltered announcement stream.  Keeping the cap is what
+  // makes a category query actually filtered.
   const effectivePageSize = Math.min(30, Math.max(1, Math.trunc(pageSize)));
   const security = await fetchCninfoSecurity(db, stockCode);
   const orgId = security.orgId?.trim() ?? "";
   if (!orgId) {
     throw new Error(`CNINFO security organization was not found: ${normalized}`);
   }
+  const category: string = Array.isArray(options.category) ? options.category.join(";") : String(options.category);
 
   const body = new URLSearchParams({
     stock: `${stockCode},${orgId}`,
@@ -94,7 +141,7 @@ async function fetchCninfoCompanyDisclosure(
     pageSize: String(effectivePageSize),
     pageNum: String(page),
     column: market.column,
-    category: options.category,
+    category,
     plate: market.plate,
     seDate: "",
     searchkey: "",
@@ -166,6 +213,32 @@ function cninfoMarket(suffix: string): { column: string; plate: string } | null 
     return { column: "hke", plate: "hk" };
   }
   return null;
+}
+
+/**
+ * CNINFO's own periodic-report categories.
+ *
+ * The feed is an announcement stream: at any time its first page is board
+ * resolutions and "翌日披露报表", so a periodic report is not on page 1 and
+ * filtering titles cannot find it.  The registry already labels these four
+ * categories, so the periodic report is queried directly instead of scanned.
+ */
+const CNINFO_PERIODIC_CATEGORIES = {
+  annual: "category_ndbg",
+  interim: "category_bndbg",
+  q1: "category_yjdbg",
+  q3: "category_sjdbg",
+} as const;
+
+/** CNINFO suffixes the periodic-report categories with the market, e.g. `_szsh`. */
+function cninfoCategoryCode(suffix: string, kind: keyof typeof CNINFO_PERIODIC_CATEGORIES): string | null {
+  if (!cninfoMarket(suffix)) return null;
+  // CNINFO (not the exchange) names this suffix: both SSE and SZSE filings use
+  // `_szsh`, i.e. "Shenzhen/Shanghai".  Guessing `_sh` / `_sz` does not error —
+  // it silently returns the unfiltered announcement stream, so a wrong suffix
+  // looks like "this company has no periodic reports".
+  const categoryMarket = suffix === "HK" ? "hk" : "szsh";
+  return `${CNINFO_PERIODIC_CATEGORIES[kind]}_${categoryMarket}`;
 }
 
 function cninfoDate(value: number | undefined): string {

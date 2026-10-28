@@ -3,6 +3,10 @@ import { Hono } from "hono";
 import financeMappings from "../../../../shared/finance-mappings.json";
 import { fetchEastmoneyCompanyOverview, fetchEastmoneyDataRows } from "../../../adapters/eastmoney";
 import { loadFinancialStatementReadModel, parseStatementType } from "../application/load-financial-statements";
+import { loadValuationInputs } from "../application/load-valuation-inputs";
+import { loadValuationBands } from "../application/load-valuation-bands";
+import { loadMidCycleHistory } from "../application/load-mid-cycle-history";
+import { buildQuarterlySeries } from "../domain/quarterly-ttm-series";
 import { cashDividends } from "../domain/dividend-yield";
 import { loadKline } from "../../market/application/load-kline";
 import { externalHttpOptions, fail, ok, requireQuery } from "../../../shared/http";
@@ -23,6 +27,19 @@ financeRoutes.get("/finance/sharebonus", async (c) => {
   const code = requireQuery(c, "code");
   if (code instanceof Response) return code;
   return ok(c, await fetchShareBonus(c.env.DB, code));
+});
+
+financeRoutes.get("/finance/income/quarterly-series", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  const limit = Number(requireQuery(c, "limit") ?? 8);
+  const normalized = normalizeSecurityCode(code);
+  const result = await loadFinancialStatementReadModel(c.env, normalized, "income", {
+    httpOptions: externalHttpOptions(c.env),
+  });
+  return ok(c, buildQuarterlySeries(normalized, result.rows, {
+    limit: Number.isFinite(limit) ? Math.min(Math.max(limit, 1), 40) : 8,
+  }));
 });
 
 financeRoutes.get("/finance/shareadditional", async (c) => {
@@ -69,6 +86,45 @@ financeRoutes.get("/company/restriction", async (c) => {
     client: "PC",
   });
   return ok(c, { result: { data: rows } });
+});
+
+financeRoutes.get("/finance/valuation-inputs", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  return ok(c, await loadValuationInputs(c.env, code, { httpOptions: externalHttpOptions(c.env) }));
+});
+
+/**
+ * Mid-cycle earnings for cyclical archetypes: five to ten annual reports,
+ * never a TTM substitute.  Non-cyclical companies get the same numbers, but the
+ * profile rules mark mid-cycle methods as forbidden, so the endpoint is a data
+ * view, not an instruction to use it.
+ */
+financeRoutes.get("/finance/mid-cycle-earnings", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  const rawYears = requireQuery(c, "years");
+  const years = typeof rawYears === "string" && rawYears.trim() ? Number(rawYears) : undefined;
+  return ok(c, await loadMidCycleHistory(c.env, code, {
+    httpOptions: externalHttpOptions(c.env),
+    years: typeof years === "number" && Number.isFinite(years) ? years : undefined,
+  }));
+});
+
+/**
+ * Conservative valuation bands per archetype.  Research input only: no price
+ * target and no trade instruction are produced, and the response is never
+ * written back into the public universe JSON.
+ */
+financeRoutes.get("/finance/valuation-bands", async (c) => {
+  const code = requireQuery(c, "code");
+  if (code instanceof Response) return code;
+  const rawMarketCap = requireQuery(c, "marketCap");
+  const marketCap = typeof rawMarketCap === "string" && rawMarketCap.trim() ? Number(rawMarketCap) : null;
+  return ok(c, await loadValuationBands(c.env, code, {
+    httpOptions: externalHttpOptions(c.env),
+    marketCap: typeof marketCap === "number" && Number.isFinite(marketCap) ? marketCap : null,
+  }));
 });
 
 financeRoutes.get("/finance/:statementType", async (c) => {

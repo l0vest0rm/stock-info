@@ -99,22 +99,44 @@ function trailingTwelveMonths(rows: FinancialStatement[], metric: ValuationMetri
   if (latestValue === null) return null;
 
   // A source-declared annual row is already a full trailing-twelve-month flow.
-  if (isAnnualFlow(latest) || monthDay === "12-31") {
+  if (isAnnualSelected(latest) || monthDay === "12-31") {
     return latestValue;
   }
-  const previousAnnual = rows.find((row) => reportDate(row) === `${year - 1}-12-31` && isAnnualFlow(row));
-  const priorComparable = rows.find((row) => reportDate(row) === `${year - 1}-${monthDay}`);
+  // The prior-year annual base lives under the annual key because a same-date
+  // Q4 row may also be present for that fiscal-year end.
+  const previousAnnual = rows.find((row) => reportDate(row) === `${year - 1}-12-31` && isAnnualSelected(row));
+  const priorComparable = rows.find((row) => reportDate(row) === `${year - 1}-${monthDay}` && !isAnnualSelected(row));
   const annualValue = previousAnnual ? cumulativeValue(previousAnnual, metric) : null;
   const priorValue = priorComparable ? cumulativeValue(priorComparable, metric) : null;
   if (annualValue === null || priorValue === null) return null;
   return annualValue + latestValue - priorValue;
 }
 
+/**
+ * One observation per report date, preferring the source-declared annual row.
+ *
+ * A 12-31 date can legitimately carry two Eastmoney observations: the
+ * quarterized `*INCOMEQC` Q4 row and the annual `*INCOME` row.  TTM is computed
+ * against the annual base, so the annual row must win the dedupe.  It
+ * previously lost whenever the Q4 row arrived first or had a later
+ * `availableAt`, which silently emptied PE for affected companies.
+ */
 function effectiveRows(rows: FinancialStatement[], availableAt: number): FinancialStatement[] {
   const selected = new Map<string, FinancialStatement>();
+  const annualDates = new Set<string>();
   for (const row of rows) {
     const date = reportDate(row);
     if (!date || availableTimestamp(row) > availableAt) continue;
+    if (row.statementType === "income" && isAnnualFlow(row)) {
+      // Annual rows are kept under their own key, alongside any same-date Q4
+      // row, so the TTM base lookup below can always find them.
+      const annual = markAnnual(row);
+      if (!annualDates.has(date) || compareCurrentFacts(annual, selected.get(ANNUAL_PREFIX + date)!) < 0) {
+        annualDates.add(date);
+        selected.set(ANNUAL_PREFIX + date, annual);
+      }
+      continue;
+    }
     const current = selected.get(date);
     if (!current || compareCurrentFacts(row, current) < 0) selected.set(date, row);
   }
@@ -166,8 +188,28 @@ function payload(row: FinancialStatement): Record<string, unknown> {
   return row.payload && typeof row.payload === "object" ? row.payload as Record<string, unknown> : {};
 }
 
+/**
+ * Selector-internal marker for a source-declared annual observation. Kind is
+ * tracked outside `reportDate` so every downstream date consumer still sees a
+ * plain `YYYY-MM-DD` value.
+ */
 function reportDate(row: FinancialStatement): string {
   return dateText(row.reportDate ?? payload(row).REPORT_DATE) ?? "";
+}
+
+const KIND_ANNUAL = Symbol("annual");
+const ANNUAL_PREFIX = "annual:";
+
+function kindOf(row: FinancialStatement): symbol | null {
+  return (row as { kind?: symbol }).kind ?? null;
+}
+
+function markAnnual(row: FinancialStatement): FinancialStatement {
+  return { ...row, kind: KIND_ANNUAL } as FinancialStatement & { kind: symbol };
+}
+
+function isAnnualSelected(row: FinancialStatement): boolean {
+  return kindOf(row) === KIND_ANNUAL || isAnnualFlow(row);
 }
 
 function availableTimestamp(row: FinancialStatement): number {

@@ -12,7 +12,14 @@
 
 同一经营公司多地上市的证券放在该公司的 `securities` 数组中，当前合计117条，不算额外的经营公司。`preferredMarket` / `preferredTicker` 决定首选研究证券；有A股的公司优先A股。当前首选研究市场：**A股78家，美股15家，港股5家**。证券字段记录 `ticker`、`market`、`exchange`、`securityType`、`sourceCode`、`identityVerified`，其中 `securityType=unverified` 或 `identityVerified=false` 明确表示尚待核验上市身份/权利；不能由此认定 A/H/ADR/韩股可互换、可交易、税费一致或存托比例已确认。
 
-`portfolioIllustration`、`strategyPreferences.illustrative25HoldingSlots`（参考25席位：A股21、美股3、港股1）与 `riskGuidelinesIllustrative` 都是示例策略预算，不是实际持仓。A股与海外账户资金分开核对，绝不自动交易。
+`portfolioIllustration`、`strategyPreferences.illustrative25HoldingSlots`（参考25席位：A股21、美股3、港股1）与 `riskGuidelinesIllustrative` 都是示例策略预算，不是实际持仓。
+
+### 估值原型与因子敞口（派生字段）
+
+- 每家公司的 `valuationArchetype`、`factorExposures`、`themeTags` 由 `scripts/sync-investment-universe-valuation.mjs` 从 `src/modules/research/domain/valuation-coverage.ts` 推导写入，**不要手工编辑**。
+- 修改赛道或新增公司后执行 `npm run sync:investment-universe:valuation`；`npm run check:investment-universe` 会拒绝未知枚举。
+- 只读查询：`GET /api/research/valuation-coverage`；方法说明见 [估值覆盖](investment-valuation-coverage.md)。
+- 这些字段只表达“该用哪种估值方法”和“方向性因子敞口”，不含价格、目标价或买卖建议。A股与海外账户资金分开核对，绝不自动交易。
 
 ## 观察状态
 

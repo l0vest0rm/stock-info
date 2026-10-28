@@ -64,6 +64,34 @@ export async function fetchJson(url: string, init?: RequestInit): Promise<unknow
   return parseJsonOrJsonp(text);
 }
 
+/**
+ * Run `task` with bounded retries on a rejected response.
+ *
+ * CNINFO rate-limits its announcement endpoint per interface and answers 403
+ * with an empty body; POST is not a retryable method in the HTTP layer, so
+ * without this a burst of lookups turns into permanent-looking `source_failed`
+ * results that read like "this company files no reports".
+ */
+export async function retryOnRejection<T>(
+  task: () => Promise<T>,
+  options: { attempts?: number; baseDelayMs?: number; isRejection?: (error: unknown) => boolean } = {},
+): Promise<T> {
+  const attempts = Math.max(1, options.attempts ?? 3);
+  const baseDelayMs = options.baseDelayMs ?? 2000;
+  const isRejection = options.isRejection ?? ((error) => /status=4\d\d|status=5\d\d/.test(String(error)));
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await task();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isRejection(error)) break;
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt));
+    }
+  }
+  throw lastError;
+}
+
 export async function cachedFetchJson(
   db: Database,
   url: string,

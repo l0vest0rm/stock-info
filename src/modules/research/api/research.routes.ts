@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { isSupportedCompanyCode, normalizeSecurityCode } from "../../../shared/codes";
-import { fail, ok } from "../../../shared/http";
+import { externalHttpOptions, fail, ok } from "../../../shared/http";
 import { isTaskdReadUnavailable } from "../../../shared/taskd-client";
 import type { AppEnv } from "../../../types";
 import {
@@ -16,6 +16,10 @@ import {
   syncResearchInvestmentAnalysis,
 } from "../application/research-investment-analysis";
 import { canWriteResearchLocally } from "../domain/research-capabilities";
+import { buildValuationCoverage } from "../domain/valuation-coverage";
+import { loadComparabilityMatrix } from "../application/load-comparability-matrix";
+import { collectSecurityEvidence } from "../application/collect-evidence";
+import { canVerifyIdentity, latestEvidenceDate, validateEvidenceRecord } from "../domain/evidence-record";
 
 /**
  * Public research API surface.
@@ -25,6 +29,55 @@ import { canWriteResearchLocally } from "../domain/research-capabilities";
  * page before they may be exposed again.
  */
 export const researchRoutes = new Hono<AppEnv>();
+
+researchRoutes.get("/research/valuation-coverage", async (c) => {
+  // Deterministic classification only: no price, target value or recommendation.
+  return ok(c, buildValuationCoverage());
+});
+
+/**
+ * Collect primary evidence for one security from CNINFO / HKEX / SEC.
+ *
+ * Returns the raw records plus the derived answers (`identityVerified`,
+ * `lastEvidenceDate`) so the universe can be updated from a single source of
+ * truth instead of hand-typed strings.
+ */
+researchRoutes.get("/research/evidence/:code", async (c) => {
+  const code = normalizeSecurityCode(c.req.param("code"));
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  const collection = await collectSecurityEvidence(c.env, code, { httpOptions: externalHttpOptions(c.env) });
+  const valid = collection.records.filter((record) => validateEvidenceRecord(record).ok);
+  const identity = canVerifyIdentity(code, valid);
+  return ok(c, {
+    security: collection.security,
+    status: collection.status,
+    registry: collection.registry,
+    failure: collection.failure,
+    recordCount: collection.records.length,
+    validRecords: valid.length,
+    identityVerified: identity.ok,
+    identityProblems: identity.problems,
+    lastEvidenceDate: latestEvidenceDate(valid),
+    records: valid,
+  });
+});
+
+/**
+ * Comparability matrix: which peer may be compared on which metric.
+ *
+ * Peers are explicit (`peers=code1,code2`), never inferred from an industry
+ * label — the archetype system exists because labels mis-route.  Refused
+ * comparisons are returned with their reason instead of being dropped.
+ */
+researchRoutes.get("/research/comparability", async (c) => {
+  const code = normalizeSecurityCode(c.req.query("code") ?? "");
+  if (!isSupportedCompanyCode(code)) return fail(c, 400, "unsupported company code");
+  const peers = (c.req.query("peers") ?? "")
+    .split(",")
+    .map((item) => normalizeSecurityCode(item.trim()))
+    .filter((item) => item && isSupportedCompanyCode(item));
+  return ok(c, await loadComparabilityMatrix(c.env, code, peers, { httpOptions: externalHttpOptions(c.env) }));
+});
 
 researchRoutes.get("/research/company/:code/investment-analysis", async (c) => {
   const code = normalizeSecurityCode(c.req.param("code"));

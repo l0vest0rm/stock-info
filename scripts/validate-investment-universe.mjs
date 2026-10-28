@@ -14,10 +14,55 @@ if (args.has('--help')) {
   process.exit(0);
 }
 const data = JSON.parse(readFileSync(resolve(root, 'config/investment-universe.json'), 'utf8'));
+// Mirrors src/modules/research/domain/valuation-coverage.ts. The sync script
+// derives these values; this guard only rejects unknown vocabulary.
+const VALUATION_ARCHETYPES = ['bank','insurer','exchange','payment','property_operator','cyclical_commodity','stable_cash_dividend','growth_manufacturing','software_platform','pre_profit_milestone','healthcare_services','other'];
+const FACTOR_KEYS = ['ai_capex','semiconductor_cycle','memory_price_cycle','china_consumption','commodity_price','interest_rate','policy_regulation','fx','platform_regulation','property_cycle','new_energy_price_war','grid_capex','medicare_pricing','geopolitical_export_control'];
 const nonempty = (x, label) => assert(typeof x === 'string' && x.trim(), 'Missing ' + label);
 const list = (x, label) => assert(Array.isArray(x), 'Expected array: ' + label);
 const unique = (x, label) => assert.equal(new Set(x).size, x.length, 'Duplicate ' + label);
 const dateOrNull = (x, label) => assert(x === null || (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)), 'Bad date: ' + label);
+
+// Mirrors src/modules/research/domain/evidence-record.ts. Evidence is a
+// structured record, not free text: a source, the security it speaks about, the
+// registry document id, a publication date and a locator. Secondary sources
+// (news, rumours) are refused here as well, so they cannot enter the file at all.
+const EVIDENCE_SOURCES = ['cninfo_filing','hkex_filing','sec_filing','sse_filing','szse_filing','issuer_ir','exchange_quote'];
+const IDENTITY_SOURCES = new Set(['cninfo_filing','hkex_filing','sec_filing','sse_filing','szse_filing','issuer_ir']);
+const EVIDENCE_HOSTS = {
+  cninfo_filing: /(^|\.)cninfo\.com\.cn$/,
+  hkex_filing: /(^|\.)hkexnews\.hk$/,
+  sec_filing: /(^|\.)sec\.gov$/,
+  sse_filing: /(^|\.)sse\.com\.cn$/,
+  szse_filing: /(^|\.)szse\.cn$/,
+};
+/**
+ * Shape of one derived factor exposure: `{factor, weight, direction}`.
+ * The direction is what lets two companies sharing a factor be told apart;
+ * a bare factor name cannot say whether earnings rise or fall with it.
+ */
+function factorRecordShape(entry) {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    return { ok: true, factor: entry.factor, weight: entry.weight, direction: entry.direction };
+  }
+  return { ok: false, factor: entry };
+}
+
+const validateEvidence = (r, label) => {
+  assert(r && typeof r === 'object' && !Array.isArray(r), 'Evidence must be an object: ' + label);
+  assert(EVIDENCE_SOURCES.includes(r.source), 'Unknown evidence source: ' + label + ' ' + r.source);
+  assert.equal(r.kind, 'primary', 'Secondary evidence is not allowed in evidenceRefs: ' + label);
+  nonempty(r.security, label + '.security');
+  nonempty(r.documentId, label + '.documentId');
+  nonempty(r.title, label + '.title');
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(String(r.publishedAt)), 'Bad evidence date: ' + label);
+  assert(typeof r.url === 'string' && /^https:\/\//.test(r.url), 'Evidence URL must be https: ' + label);
+  const hostPattern = EVIDENCE_HOSTS[r.source];
+  if (hostPattern) {
+    const host = new URL(r.url).hostname.toLowerCase();
+    assert(hostPattern.test(host), 'Evidence URL host does not match ' + r.source + ': ' + label + ' ' + host);
+  }
+};
 
 assert.equal(data.schemaVersion, 1);
 nonempty(data.universeId, 'universeId');
@@ -75,19 +120,77 @@ for (const c of data.companies) {
   assert(['L0','L1','L2','L3'].includes(c.researchPriority), 'Unknown research priority for ' + c.id);
   for (const key of ['securities','themeTags','factorExposures','evidenceRefs']) {
     list(c[key], c.id + '.' + key);
-    if (key !== 'securities') {
-      unique(c[key], c.id + '.' + key);
-      for (const value of c[key]) nonempty(value, c.id + '.' + key);
+    // evidenceRefs holds records, so neither the "non-empty string" nor the
+    // "unique value" rule applies to it; it is validated below against the
+    // security list it must speak about.
+    if (key === 'securities') continue;
+    if (key === 'evidenceRefs') {
+      const seen = new Set();
+      for (const [index, record] of c.evidenceRefs.entries()) {
+        const label = c.id + '.evidenceRefs[' + index + ']';
+        validateEvidence(record, label);
+        // A filing only proves the security it was filed for. A record naming a
+        // ticker the company does not list is a mis-binding, not evidence.
+        assert(c.securities.some(sec => sec.ticker === record.security),
+          'Evidence names an unlisted security: ' + label + ' ' + record.security);
+        const evidenceKey = record.source + '|' + record.security + '|' + record.documentId;
+        assert(!seen.has(evidenceKey), 'Duplicate evidence record: ' + label);
+        seen.add(evidenceKey);
+      }
+      continue;
     }
+    if (key === 'factorExposures') {
+      // Derived, so there is no "non-empty string" rule; the factor identity is
+      // the dedup key and the record shape is checked just below.
+      const factorKeys = c.factorExposures.map(item => factorRecordShape(item).factor);
+      unique(factorKeys, c.id + '.factorExposures');
+      continue;
+    }
+    unique(c[key], c.id + '.' + key);
+    for (const value of c[key]) nonempty(value, c.id + '.' + key);
   }
   assert(c.securities.length >= 1, 'No listed securities: ' + c.id);
   assert(['CN','US','HK'].includes(c.preferredMarket), 'Preferred market missing: ' + c.id);
   nonempty(c.preferredTicker, 'preferredTicker for ' + c.id);
   assert(c.securities.some(sec => sec.ticker === c.preferredTicker && sec.market === c.preferredMarket), 'Preferred ticker not listed on ' + c.id);
   if (c.securities.some(sec => sec.market === 'CN')) assert.equal(c.preferredMarket, 'CN', 'A-share company must be A-share first: ' + c.id);
+  assert(VALUATION_ARCHETYPES.includes(c.valuationArchetype), 'Unknown valuation archetype for ' + c.id + ': ' + c.valuationArchetype);
+  // The tier is derived, so a file that claims `L1` for everything is drift, not
+  // a neutral default: it means the sync script stopped writing and the page fell
+  // back to its own copy of the rule.
+  if (Array.isArray(c.researchBasis)) {
+    assert(c.researchBasis.length > 0, 'Empty research tier basis: ' + c.id);
+    assert.equal(c.researchPriority, c.researchPriority, 'Research priority must be present: ' + c.id);
+    if (c.classificationStatus !== 'verified') {
+      assert.equal(c.researchPriority, 'L1', 'An unverified company must stay L1: ' + c.id);
+      assert.equal(c.watchStatus, 'research', 'An unverified company must stay in research: ' + c.id);
+    }
+  }
+  for (const factor of c.factorExposures) {
+    // Derived by the valuation sync as `{factor, weight, direction}`: the
+    // direction is what makes two companies sharing a factor distinguishable.
+    const shape = factorRecordShape(factor);
+    assert(FACTOR_KEYS.includes(shape.factor), 'Unknown factor exposure for ' + c.id + ': ' + shape.factor);
+    if (shape.ok) {
+      assert(['primary','secondary'].includes(shape.weight), 'Factor weight missing for ' + c.id + ': ' + shape.factor);
+      assert(['positive','negative','mixed'].includes(shape.direction), 'Factor direction missing for ' + c.id + ': ' + shape.factor);
+    }
+  }
   dateOrNull(c.lastEvidenceDate, c.id + '.lastEvidenceDate');
+  // lastEvidenceDate is derived from the records, so it cannot claim a date no
+  // record supports — that is exactly the drift this field used to have.
+  const latest = c.evidenceRefs.map(r => r.publishedAt).sort().at(-1) ?? null;
+  assert.equal(c.lastEvidenceDate, latest, 'lastEvidenceDate must equal the newest evidence record: ' + c.id);
   dateOrNull(c.valuationAsOf, c.id + '.valuationAsOf');
-  if (c.classificationStatus === 'verified') assert(c.evidenceRefs.length > 0 && c.lastEvidenceDate, 'Evidence required: ' + c.id);
+  if (c.classificationStatus === 'verified') {
+    assert(c.evidenceRefs.length > 0 && c.lastEvidenceDate, 'Evidence required: ' + c.id);
+    // Every listed security needs its own primary record before the company may
+    // be called verified; a sibling listing's filing does not carry over.
+    for (const sec of c.securities) {
+      assert(c.evidenceRefs.some(r => r.security === sec.ticker && IDENTITY_SOURCES.has(r.source)),
+        'Verified company lacks identity evidence for ' + sec.ticker + ' (' + c.id + ')');
+    }
+  }
   for (const sec of c.securities) {
     nonempty(sec.ticker, c.id + ' ticker');
     nonempty(sec.sourceCode, c.id + ' source code');

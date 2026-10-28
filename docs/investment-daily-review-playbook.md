@@ -31,8 +31,9 @@
 5. **评价价值**：按公司本业使用可比较估值方法，区分银行、保险、资源周期、成长制造业、软件与REIT。记录同一上市证券的价格日期、货币、保守价值区间、盈利假设、安全边际及交易权利缺口。
 6. **形成研究动作**：`consider_buy`（买入候选）、`consider_add`（增持候选）、`research_hold`、`consider_trim`、`consider_exit`、`watch`、`insufficient_data`。**新增/增持候选必须有当日或标注日期的价格、保守价值区间与可点击来源**，否则降级为 `watch` / `insufficient_data`。
 7. **比较换仓机会**：只对明确的“两家公司”比较预期回报、永久损失风险、现金流、估值、交易成本和共同风险因子。公开档案必须标注 `portfolioPositionConfirmed=false`，不能说“已确认卖出持仓”；个人实际换仓仅在对话里核对资金账户后提出。
-8. **落盘、校验、展示**：更新 `config/investment-daily-report.json`；若确有公司名单/赛道更新，另改 `config/investment-universe.json` 并保持稳定ID。执行 `npm run check:investment-universe && npm run typecheck:web && npm run build:web`，网页 `/investment-universe.html` 展示最后一份报告；不自动部署、不自动买卖。
-9. **复盘留痕**：建议另写不含个人持仓的 `docs/investment-daily/YYYY-MM-DD.md` 留存当日变化、来源和分析结论。不能用同名文件静默覆盖旧日证据、不能重复报道没有实质性变化的新闻。
+8. **估值区间变化**：先跑 `npm run snapshot:valuation-bands`，它采集当日区间快照并与上一份对比。**输出必须按归因读**：`filing` 是公司披露了新报告，`model` 是我们改了默认倍数（**不是**公司变化），`price_source` 是行情源故障（**不是**估值变化），`unattributed` 需人工查清。把 `model` 项当成公司新闻是最容易犯的错。
+9. **落盘、校验、展示**：更新 `config/investment-daily-report.json`；若确有公司名单/赛道更新，另改 `config/investment-universe.json` 并保持稳定ID。执行 `npm run check:all && npm run build:web`，网页 `/investment-universe.html` 展示最后一份报告；不自动部署、不自动买卖。
+10. **复盘留痕**：复制 `docs/investment-daily/TEMPLATE.md` 为 `docs/investment-daily/YYYY-MM-DD.md` 并填写。不能用同名文件静默覆盖旧日证据、不能重复报道没有实质性变化的新闻。校验：`npm run check:daily-notes`。
 
 ## 4. 投研判断的最低证据条件
 
@@ -53,6 +54,12 @@
 - `assessments`: 公司ID、`action`、判断日期、投资逻辑、预期差、风险、待验证点、证据、估值（买/加必填）；
 - `rotationComparisons`: 两家公司的**假设性**替换比较和来源，不能公开真实个人持仓；
 - `gaps`: 当前证据缺失、交易可达性与需要复核的问题。
+
+**估值区间变化的归因约定**（P3-1 起）：区间变化不进公开 JSON，而是写在
+`docs/investment-daily/YYYY-MM-DD.md` 的「估值区间变化」一节，每条必须标
+`filing` / `model` / `price_source` / `unattributed` 之一。理由：公开 JSON 是
+当日快照，而"为什么变"需要跨日对比才能确定；把归因写进快照会诱使读者把
+我们自己的参数调整读成公司新闻。
 
 所有对外链接须使用HTTPS；判定 `complete` 需要98家公司全部有逐条检查证据；若缺失则如实标记 `partial`。
 
