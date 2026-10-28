@@ -339,6 +339,33 @@ contract === "eastmoney_f10_income.v1" || contract === "eastmoney_f10_annual_inc
 
 **为什么没把 Yahoo 一起加进去**：Yahoo 行的 `FISCAL_PERIOD` 是时长（`12M`/`3M`），不是"累计/单季"之分，把 3M 行喂给累计公式会重复计数。
 
+### 3. TTM 财年基期按 12-31 推断
+
+契约修好后港股区间能算了，但算得**不对**：TTM 的实现把"日期为 12-31 的那一行"当作上年报，而只有财年 12 月结束的公司才成立。
+
+用户提到"港股也有季度财报接口"，核实东财 `RPT_HKF10_FN_MAININDICATOR` 确实返回一季报/中报/三季报/年报四类，`DATE_TYPE_CODE` 明确标注。季报的存在意味着**财年不必 12 月结束**——阿里（`09988.HK`）财年是 3-31。
+
+| | 旧算法 | 正确值 |
+|---|---|---|
+| 阿里 TTM 归母净利 | 480.16 亿 | **735.57 亿** |
+| 构成 | 780.51（三季报，被当年报）+ 106.14 − 406.49 | 1035.92（2026-03-31 年报）+ 106.14 − 406.49 |
+| 偏差 | −35% | — |
+
+且区间仍标 `available`：错数字和"算不出来"看起来一样可用。
+
+同一个假设共四处，现全部收敛到 `src/modules/finance/domain/ttm-fiscal-calendar.ts`：
+
+| 位置 | 后果 |
+|---|---|
+| `trailingCumulative` | 阿里 TTM 净利低估 35% |
+| `ttmCapitalExpenditure` | 同上；A 股现金流无 `FINANCIAL_SOURCE_CONTRACT`/`FISCAL_PERIOD`，改用 `REPORT_TYPE=年报` |
+| `latest-financial-valuation.ts` 的 `trailingTwelveMonths` | 阿里 PE(TTM) 恒为 `null` |
+| `quarterly-ttm-series.ts` 的 `incomeFamilyOf` | 港股行落到"无契约 → 单季"，累计列全空、累计值塞进单季列、TTM 全空 |
+
+修法：财年基期只认数据源声明的年报行（港股 `DATE_TYPE_CODE=001`、A 股 `*INCOME` 年报家族、现金流 `REPORT_TYPE=年报`、Yahoo `FISCAL_PERIOD=12M`）；上年同期按财年基期的**月份偏移**计算，不按自然年减一；缺年报返回 `null`，不回退到任一中间期。
+
+验收：阿里 TTM 净利 735.57 亿、季报序列同期一致；港股 5/5 区间可用；A 股 78 家 TTM 新旧算法**零差异**；美股 15 家区间恢复（代理可用后仅 AMZN 缺区间，因 Yahoo 未返回市值与负债科目）。自检：`npm run check:ttm-fiscal-calendar`。
+
 ---
 
 ## 依赖关系
@@ -379,6 +406,7 @@ npm run repair:income-snapshots -- --delete    # 真正清理
 ```bash
 npm run check:quarterly-series      # 两个财报家族 + 恒等式
 npm run check:ttm-annual-base       # 四季度不冒充年报
+npm run check:ttm-fiscal-calendar   # 财年基期不按 12-31 推断（3-31 财年、现金流、港股家族）
 npm run check:valuation-inputs      # 估值口径算术
 npm run check:valuation-coverage    # 原型分类、因子集中度
 npm run check:investment-universe   # 观察池与每日报告 Schema

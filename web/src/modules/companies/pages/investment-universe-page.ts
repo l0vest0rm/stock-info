@@ -232,7 +232,7 @@ const InvestmentUniversePage = defineComponent({
     // Priority and watch status are derived, not read from the file: the file
     // carries one uniform value, which is the same as having no tiering at all.
     const tierById = new Map(universe.companies.map((company) => [company.id, researchTier(company)]))
-    const tierOf = (company: Company): TieredCompany =>
+    const tierOf = (company: Company): Pick<TieredCompany, 'priority' | 'watchStatus' | 'basis'> =>
       tierById.get(company.id) ?? { priority: 'L1', watchStatus: 'research', basis: [] }
     const tieredCompanies = computed<TieredCompany[]>(() => universe.companies.map((company) => ({ ...company, ...tierOf(company) })))
     const filteredCompanies = computed(() => {

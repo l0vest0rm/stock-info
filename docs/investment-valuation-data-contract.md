@@ -27,6 +27,25 @@
 
 自检：`npm run check:ttm-annual-base`。
 
+### 财年基期不能由 12-31 推断（已修复）
+
+TTM 恒等式是「上年报 + 本期累计 − 上年同期累计」，唯一的自由参数是**哪一行算上年报**。此前代码在四处都把这个参数写死成「日期为 12-31 的那一行」，只有财年恰好 12 月结束的公司才成立。
+
+阿里（`09988.HK`）财年 3-31 结束。最新行是 6 月季报，旧代码去找 `2025-12-31`，拿到的是**三季报**，于是 TTM 净利算成 480.16 亿，真实值 735.57 亿——**低估 35%**，而区间依然标 `available`。
+
+同一个假设造成四处后果，现全部收敛到 `src/modules/finance/domain/ttm-fiscal-calendar.ts`：
+
+| 位置 | 后果 |
+|---|---|
+| `load-valuation-bands.ts` 的 `trailingCumulative` | 阿里 TTM 净利低估 35% |
+| `load-valuation-bands.ts` 的 `ttmCapitalExpenditure` | 同一假设；A 股现金流无契约字段，改用 `REPORT_TYPE=年报` 判定 |
+| `latest-financial-valuation.ts` 的 `trailingTwelveMonths` | 阿里 PE(TTM) 恒为 `null`（找不到「上年报」） |
+| `quarterly-ttm-series.ts` 的 `incomeFamilyOf` | 港股行按「无契约 → 单季」处理，累计列全空、累计值被塞进单季列、TTM 全空 |
+
+判定规则：财年基期只认数据源声明的年报行——港股 `DATE_TYPE_CODE=001`，A 股 `*INCOME` 年报家族，现金流 `REPORT_TYPE=年报`，Yahoo `FISCAL_PERIOD=12M`。**12-31 本身不是年报的证据。**上年同期按财年基期的月份偏移计算，不按自然年减一。
+
+自检：`npm run check:ttm-fiscal-calendar`（3-31 财年 / 12-31 财年 / 最新即年报 / 只有年报+中报 / 现金流无契约 / 缺年报降级为 null）。
+
 ### 季度序列：`GET /api/finance/income/quarterly-series?code=&limit=`
 
 两个口径本来就是东财的两个独立接口族，不需要推算：

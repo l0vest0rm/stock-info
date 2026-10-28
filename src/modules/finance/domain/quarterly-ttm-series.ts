@@ -17,6 +17,8 @@
  * which is only defined on the cumulative family.
  */
 import type { FinancialStatement } from "../../../types";
+import { isCumulativeIncomeRow } from "./income-row-contracts.ts";
+import { isFiscalYearRow, trailingTwelveMonths } from "./ttm-fiscal-calendar.ts";
 
 export type QuarterlyTtmPoint = {
   /** Quarter end that the trailing period ends on. */
@@ -120,7 +122,7 @@ export function buildQuarterlySeries(
     if (quarterRevenue === null) gaps.push("quarterRevenue");
     if (quarterNetProfit === null) gaps.push("quarterNetProfit");
 
-    const ttm = trailingTwelveMonths(cumulativeByDate, reportDate);
+    const ttm = ttmAt(cumulativeByDate, reportDate);
     if (ttm.revenue === null) gaps.push("ttmRevenue");
     if (ttm.netProfit === null) gaps.push("ttmNetProfit");
 
@@ -194,12 +196,21 @@ export function buildQuarterlySeries(
  * identified by the CPS contract when present.  Rows from non-Eastmoney
  * providers (Yahoo) are treated as cumulative only when their period label
  * says so, and are left out of the quarterized family entirely.
+ *
+ * Hong Kong F10 rows (`eastmoney_hk_f10_main_indicator.*`) are cumulative for
+ * Q1/H1/9M and full-year for `DATE_TYPE_CODE=001`, but they carry no A-share
+ * contract tag.  The fallthrough below classified them as *quarterized*, so
+ * every HK company reported `families.cumulative=false`, all cumulative fields
+ * null, and its cumulative interim value in the single-quarter column — a
+ * 一季报 value presented as one quarter's profit.  The contract set is owned by
+ * `income-row-contracts.ts`, which is the same list the TTM bands consume, so
+ * ask it rather than repeating the A-share-only test here.
  */
 export function incomeFamilyOf(row: FinancialStatement): "cumulative" | "quarterized" | null {
   const payload = payloadOf(row);
   const contract = typeof payload.FINANCIAL_SOURCE_CONTRACT === "string" ? payload.FINANCIAL_SOURCE_CONTRACT : "";
-  if (contract === "eastmoney_f10_income.v1" || contract === "eastmoney_f10_annual_income.v1") return "cumulative";
   if (contract === "eastmoney_f10_incomeqc.v1") return "quarterized";
+  if (isCumulativeIncomeRow(payload)) return "cumulative";
   if (row.source !== "eastmoney") {
     return isAnnualLabel(row.fiscalPeriod ?? payload.FISCAL_PERIOD ?? payload.REPORT_TYPE)
       || isCumulativeLabel(row.fiscalPeriod ?? payload.FISCAL_PERIOD ?? payload.REPORT_TYPE)
@@ -212,34 +223,31 @@ export function incomeFamilyOf(row: FinancialStatement): "cumulative" | "quarter
   return "quarterized";
 }
 
-function trailingTwelveMonths(
+function ttmAt(
   cumulativeByDate: Map<string, FinancialStatement>,
   reportDate: string,
 ): { revenue: number | null; netProfit: number | null; basis: "annual" | "cumulative_roll" | null } {
   const current = cumulativeByDate.get(reportDate);
-  const currentRevenue = current ? revenueOf(payloadOf(current)) : null;
-  const currentProfit = current ? profitOf(payloadOf(current)) : null;
-  const [year, month, day] = reportDate.split("-").map(Number);
+  if (!current) return { revenue: null, netProfit: null, basis: null };
+  const currentRevenue = revenueOf(payloadOf(current));
+  const currentProfit = profitOf(payloadOf(current));
 
-  // A fiscal-year-end point is the full year, so TTM is that statement itself.
-  if (month === 12 && day === 31) {
-    return { revenue: currentRevenue, netProfit: currentProfit, basis: currentRevenue === null && currentProfit === null ? null : "annual" };
+  // The fiscal year is whatever the provider declares, not whichever row lands
+  // on 12-31: 阿里巴巴's March year end made the old date lookup treat a Q3 row
+  // as the annual base. `ttm-fiscal-calendar.ts` owns that rule so the series
+  // and the valuation bands cannot drift apart.
+  //
+  // Only rows up to this point may contribute — the function annualises the
+  // latest row of what it is given, and a series point must not borrow a later
+  // filing to compute an earlier TTM.
+  const rows = [...cumulativeByDate.values()].filter((row) => row.reportDate <= reportDate);
+  const basis = isFiscalYearRow(current) ? "annual" : "cumulative_roll";
+  const revenue = trailingTwelveMonths(rows, (row) => revenueOf(payloadOf(row)));
+  const netProfit = trailingTwelveMonths(rows, (row) => profitOf(payloadOf(row)));
+  if (revenue === null && netProfit === null) {
+    return { revenue: null, netProfit: null, basis: null };
   }
-
-  const priorAnnual = cumulativeByDate.get(`${year - 1}-12-31`);
-  const priorComparable = cumulativeByDate.get(`${year - 1}-${pad(month)}-${pad(day)}`);
-  if (!priorAnnual || !priorComparable) return { revenue: null, netProfit: null, basis: null };
-  const annualRevenue = revenueOf(payloadOf(priorAnnual));
-  const annualProfit = profitOf(payloadOf(priorAnnual));
-  const priorRevenue = revenueOf(payloadOf(priorComparable));
-  const priorProfit = profitOf(payloadOf(priorComparable));
-  const revenue = annualRevenue !== null && priorRevenue !== null && currentRevenue !== null
-    ? annualRevenue + currentRevenue - priorRevenue
-    : null;
-  const netProfit = annualProfit !== null && priorProfit !== null && currentProfit !== null
-    ? annualProfit + currentProfit - priorProfit
-    : null;
-  return { revenue, netProfit, basis: revenue === null && netProfit === null ? null : "cumulative_roll" };
+  return { revenue, netProfit, basis };
 }
 
 /** Previous calendar quarter end, or null when the date is not a quarter end. */
@@ -298,8 +306,4 @@ function numberValue(value: unknown): number | null {
 function payloadOf(row: FinancialStatement): Record<string, unknown> {
   const value = row.payload;
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
-}
-
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
 }

@@ -1,5 +1,6 @@
 import { loadFinancialStatementReadModel } from "./load-financial-statements";
 import { isFormalAnnualIncomeStatement } from "../domain/annual-income-statements";
+import { trailingTwelveMonths as ttmFromFiscalCalendar } from "../domain/ttm-fiscal-calendar.ts";
 import type { Bindings, FinancialStatement } from "../../../types";
 import type { ExternalHttpOptions } from "../../../shared/http";
 
@@ -88,28 +89,12 @@ export function deriveLatestFinancialValuation(input: {
 }
 
 function trailingTwelveMonths(rows: FinancialStatement[], metric: ValuationMetric): number | null {
-  const latest = rows[0];
-  if (!latest) return null;
-  const latestDate = reportDate(latest);
-  const match = latestDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const monthDay = `${match[2]}-${match[3]}`;
-  const latestValue = cumulativeValue(latest, metric);
-  if (latestValue === null) return null;
-
-  // A source-declared annual row is already a full trailing-twelve-month flow.
-  if (isAnnualSelected(latest) || monthDay === "12-31") {
-    return latestValue;
-  }
-  // The prior-year annual base lives under the annual key because a same-date
-  // Q4 row may also be present for that fiscal-year end.
-  const previousAnnual = rows.find((row) => reportDate(row) === `${year - 1}-12-31` && isAnnualSelected(row));
-  const priorComparable = rows.find((row) => reportDate(row) === `${year - 1}-${monthDay}` && !isAnnualSelected(row));
-  const annualValue = previousAnnual ? cumulativeValue(previousAnnual, metric) : null;
-  const priorValue = priorComparable ? cumulativeValue(priorComparable, metric) : null;
-  if (annualValue === null || priorValue === null) return null;
-  return annualValue + latestValue - priorValue;
+  // One implementation of the fiscal calendar, shared with the valuation bands
+  // and the quarterly series.  The copy that lived here looked for a prior-year
+  // `12-31` row, which is only the annual base for a December year end: for
+  // 阿里巴巴 (March year end) it found no annual row at all and returned null,
+  // so PE was permanently unavailable while the statements were right there.
+  return ttmFromFiscalCalendar(rows, (row) => cumulativeValue(row, metric));
 }
 
 /**
@@ -200,16 +185,14 @@ function reportDate(row: FinancialStatement): string {
 const KIND_ANNUAL = Symbol("annual");
 const ANNUAL_PREFIX = "annual:";
 
-function kindOf(row: FinancialStatement): symbol | null {
-  return (row as { kind?: symbol }).kind ?? null;
-}
-
+/**
+ * Annual rows are re-keyed under `annual:<date>` so a same-date Q4 observation
+ * cannot overwrite them.  The marker symbol itself is no longer read anywhere:
+ * the fiscal calendar resolves annual identity from the source declaration, not
+ * from this bookkeeping.
+ */
 function markAnnual(row: FinancialStatement): FinancialStatement {
   return { ...row, kind: KIND_ANNUAL } as FinancialStatement & { kind: symbol };
-}
-
-function isAnnualSelected(row: FinancialStatement): boolean {
-  return kindOf(row) === KIND_ANNUAL || isAnnualFlow(row);
 }
 
 function availableTimestamp(row: FinancialStatement): number {

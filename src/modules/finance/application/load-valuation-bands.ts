@@ -11,6 +11,7 @@ import { balanceSheetArchetypeFor } from "./load-valuation-inputs";
 import { companyValuationArchetype } from "../../research/domain/valuation-coverage";
 import { buildValuationBands, type ValuationBandReadModel, type ValuationBandInput } from "../domain/valuation-bands";
 import { isCumulativeIncomeRow } from "../domain/income-row-contracts";
+import { trailingTwelveMonths } from "../domain/ttm-fiscal-calendar";
 
 type Environment = Pick<Bindings, "DB" | "MARKET_DATA_BUCKET">;
 
@@ -118,7 +119,10 @@ async function loadMarketCap(env: Environment, code: string): Promise<number | n
 /**
  * TTM net profit and revenue from the cumulative family only, mirroring the
  * quarterly-series contract: prior FY + current cumulative − prior-year
- * cumulative.  A missing annual base returns null instead of promoting Q4.
+ * cumulative.  The annual base and the prior-year twin are resolved by
+ * `ttm-fiscal-calendar.ts` from the provider's own fiscal-year declaration,
+ * never from a December end date — 阿里巴巴's March year end used to make this
+ * subtract a Q3 row and understate TTM profit by 35%.
  */
 function ttmNetProfit(rows: FinancialStatement[]): number | null {
   return trailingCumulative(rows, "PARENT_NETPROFIT", "NETPROFIT");
@@ -129,44 +133,26 @@ function ttmRevenue(rows: FinancialStatement[]): number | null {
 }
 
 function trailingCumulative(rows: FinancialStatement[], ...fields: string[]): number | null {
+  // Only the cumulative family may enter a year-to-date subtraction. A
+  // quarterized `*INCOMEQC` row is a single quarter, so including it would
+  // double-count; that classification lives in `income-row-contracts.ts`.
   const cumulative = rows.filter((row) => isCumulativeIncomeRow(payloadOf(row)));
-  const byDate = new Map(cumulative.map((row) => [row.reportDate, row]));
-  const latest = cumulative[0];
-  if (!latest) return null;
-  const value = (row: FinancialStatement | undefined) => {
-    if (!row) return null;
+  return trailingTwelveMonths(cumulative, (row) => {
     const payload = payloadOf(row);
     for (const field of fields) {
       const candidate = payload[field];
       if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
     }
     return null;
-  };
-  const [year, month, day] = latest.reportDate.split("-");
-  if (month === "12" && day === "31") return value(latest);
-  const annual = value(byDate.get(`${Number(year) - 1}-12-31`));
-  const priorSame = value(byDate.get(`${Number(year) - 1}-${month}-${day}`));
-  const current = value(latest);
-  if (annual === null || priorSame === null || current === null) return null;
-  return annual + current - priorSame;
+  });
 }
 
 /** TTM capital expenditure from the cumulative cash-flow rows. */
 function ttmCapitalExpenditure(rows: FinancialStatement[]): number | null {
-  const capexOf = (row: FinancialStatement) => {
+  return trailingTwelveMonths(rows, (row) => {
     const raw = payloadOf(row).CONSTRUCT_LONG_ASSET;
     return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-  };
-  const sorted = [...rows].sort((left, right) => right.reportDate.localeCompare(left.reportDate));
-  const latest = sorted[0];
-  if (!latest) return null;
-  const [year, month, day] = latest.reportDate.split("-");
-  if (month === "12" && day === "31") return capexOf(latest);
-  const annual = sorted.find((row) => row.reportDate === `${Number(year) - 1}-12-31`);
-  const priorSame = sorted.find((row) => row.reportDate === `${Number(year) - 1}-${month}-${day}`);
-  if (!annual || !priorSame) return null;
-  const [a, c, p] = [capexOf(annual), capexOf(latest), capexOf(priorSame)];
-  return a === null || c === null || p === null ? null : a + c - p;
+  });
 }
 
 function freeCashFlow(operatingCashFlow: number | null, capex: number | null): number | null {
