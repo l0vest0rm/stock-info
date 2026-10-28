@@ -12,6 +12,8 @@ export type ExternalHttpOptions = {
   timeoutMs?: number;
   cacheKey?: string;
   cacheTtlMs?: number;
+  /** Explicit user refresh: fetch upstream, then replace the normal cache. */
+  bypassCache?: boolean;
   /** Do not attempt to store a response larger than this D1-safe byte size. */
   cacheMaxBytes?: number;
   /** Validate provider payloads before reuse or persistence; throw on failure. */
@@ -113,7 +115,7 @@ export async function cachedFetchText(
   const request = normalizeRequest(url, init);
   const cacheKey = options?.cacheKey || await digestHex(JSON.stringify(request));
   const cacheTtlMs = options?.cacheTtlMs ?? ttlMs;
-  const cached = await getHttpCache(db, cacheKey);
+  const cached = options?.bypassCache ? null : await getHttpCache(db, cacheKey);
   if (cached) {
     try {
       options?.validateResponseText?.(cached.bodyText);

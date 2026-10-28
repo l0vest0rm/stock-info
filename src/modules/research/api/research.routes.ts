@@ -17,6 +17,8 @@ import {
 } from "../application/research-investment-analysis";
 import { canWriteResearchLocally } from "../domain/research-capabilities";
 import { buildValuationCoverage } from "../domain/valuation-coverage";
+import { readValuationDashboard, refreshValuationDashboardRow } from "../application/valuation-screen-cache";
+import { loadOrRefreshValuationScreen } from "../application/screen-valuation-pool";
 import { loadComparabilityMatrix } from "../application/load-comparability-matrix";
 import { collectSecurityEvidence } from "../application/collect-evidence";
 import { canVerifyIdentity, latestEvidenceDate, validateEvidenceRecord } from "../domain/evidence-record";
@@ -33,6 +35,37 @@ export const researchRoutes = new Hono<AppEnv>();
 researchRoutes.get("/research/valuation-coverage", async (c) => {
   // Deterministic classification only: no price, target value or recommendation.
   return ok(c, buildValuationCoverage());
+});
+
+/** Cached dashboard manifest. Browser refreshes each target through a bounded
+ * POST; results persist per security in existing kv_cache, never a new table.
+ * GET/polling is read-only and cannot accidentally start a second full sweep.
+ */
+researchRoutes.get("/research/valuation-screen", async (c) => {
+  c.header('Cache-Control', 'no-store');
+  return ok(c, await readValuationDashboard(c.env));
+});
+
+researchRoutes.post("/research/valuation-screen/refresh/:code", async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const code = normalizeSecurityCode(c.req.param('code'));
+  const result = await refreshValuationDashboardRow(c.env, code);
+  if (!result) return fail(c, 400, '证券不在已核验观察池中');
+  return ok(c, result);
+});
+
+/**
+ * Recompute the pool snapshot.  Same computation, explicit intent.
+ *
+ * Kept separate from the read route so a scheduler or a deploy step can refresh
+ * without pretending to be a browser, and so the read path stays a pure read.
+ */
+researchRoutes.post("/research/valuation-screen/refresh", async (c) => {
+  const snapshot = await loadOrRefreshValuationScreen(c.env, {
+    force: true,
+    httpOptions: externalHttpOptions(c.env),
+  });
+  return ok(c, snapshot);
 });
 
 /**

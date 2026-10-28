@@ -96,7 +96,7 @@
     "sync:xueqiu-secret": "node scripts/sync-xueqiu-secret.mjs",
     "test:basic": "node scripts/test-basic-local-api.mjs",
     "check:evidence-record": "node scripts/check-evidence-record-selftest.mjs && node scripts/check-universe-evidence-rules.mjs",
-    "check:valuation-chain": "npm run check:valuation-inputs && npm run check:evidence-record && npm run check:valuation-coverage && npm run check:valuation-bands && npm run check:mid-cycle-earnings && npm run check:comparability-matrix && npm run check:ttm-annual-base && npm run check:ttm-fiscal-calendar && npm run check:quarterly-series && npm run check:financial-read-model && npm run check:income-window && npm run check:investment-universe && npm run check:valuation-band-review && npm run check:valuation-screen && npm run check:eastmoney-quote && npm run check:web-pe-ttm && npm run check:valuation-multiple-calibration && npm run check:growth-veto && npm run check:income-contracts",
+    "check:valuation-chain": "npm run check:valuation-inputs && npm run check:evidence-record && npm run check:valuation-coverage && npm run check:valuation-bands && npm run check:mid-cycle-earnings && npm run check:comparability-matrix && npm run check:ttm-annual-base && npm run check:ttm-fiscal-calendar && npm run check:quarterly-series && npm run check:financial-read-model && npm run check:income-window && npm run check:investment-universe && npm run check:valuation-band-review && npm run check:valuation-screen && npm run check:eastmoney-quote && npm run check:web-pe-ttm && npm run check:valuation-multiple-calibration && npm run check:growth-veto && npm run check:point-in-time-pe && npm run check:income-contracts",
     "check:all": "npm run typecheck:server && npm run check:valuation-chain && npm run check:wrangler-local && npm run check:inline-prompts && npm run check:no-new-tables && npm run check:runtime-boundaries && npm run check:daily-notes",
     "audit:quarterly-series": "node scripts/audit-quarterly-series.mjs",
     "audit:valuation-multiples": "node scripts/audit-valuation-multiples.mjs",
@@ -119,10 +119,13 @@
     "report:growth-coverage": "node scripts/report-growth-coverage.mjs",
     "screen:valuation-candidates:xueqiu": "node scripts/screen-with-xueqiu-quotes.mjs",
     "calibrate:valuation-multiples": "node scripts/calibrate-valuation-multiples.mjs",
+    "backtest:valuation-band": "node scripts/backtest-valuation-band.mjs",
+    "verify:point-in-time-pe": "node scripts/verify-point-in-time-pe.mjs",
     "check:daily-notes": "node scripts/check-daily-notes.mjs",
     "check:income-contracts": "node scripts/check-income-contracts-selftest.mjs",
     "snapshot:valuation-bands": "node scripts/snapshot-valuation-bands.mjs",
-    "screen:valuation-candidates": "node scripts/screen-valuation-candidates.mjs"
+    "screen:valuation-candidates": "node scripts/screen-valuation-candidates.mjs",
+    "check:point-in-time-pe": "node scripts/check-point-in-time-pe-selftest.mjs"
   },
   "dependencies": {
     "@m2ai/shared-llm-client": "file:../shared-ts/packages/llm-client",

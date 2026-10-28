@@ -87,6 +87,7 @@ type EastmoneyOverviewResponse = {
     f58?: string;
     f116?: number;
     f117?: number;
+    f124?: number;
     f162?: number;
     f167?: number;
     f43?: number;
@@ -1616,7 +1617,7 @@ function yahooFinanceHeaders(symbol: string): Record<string, string> {
   };
 }
 
-export async function fetchEastmoneyCompanyOverview(db: Database, code: string): Promise<CompanyOverview> {
+export async function fetchEastmoneyCompanyOverview(db: Database, code: string, options?: ExternalHttpOptions & { quoteOnly?: boolean }): Promise<CompanyOverview> {
   const normalized = normalizeSecurityCode(code);
   const secid = eastmoneySecId(normalized);
   if (!secid) {
@@ -1627,7 +1628,7 @@ export async function fetchEastmoneyCompanyOverview(db: Database, code: string):
   url.searchParams.set("invt", "2");
   url.searchParams.set("fltt", "1");
   url.searchParams.set("secid", secid);
-  url.searchParams.set("fields", "f43,f57,f58,f59,f116,f162,f167,f168,f169,f170");
+  url.searchParams.set("fields", "f43,f57,f58,f59,f116,f124,f162,f167,f168,f169,f170");
   const [body, companyProfile] = await Promise.all([
     cachedFetchJson(db, url.toString(), {
       // push2 rejects requests without a User-Agent by closing the socket, and
@@ -1639,8 +1640,8 @@ export async function fetchEastmoneyCompanyOverview(db: Database, code: string):
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
       },
-    }, marketDataCacheTtlMsForCode(normalized)) as Promise<EastmoneyOverviewResponse>,
-    fetchEastmoneyCompanyProfile(db, normalized),
+    }, marketDataCacheTtlMsForCode(normalized), options) as Promise<EastmoneyOverviewResponse>,
+    options?.quoteOnly ? Promise.resolve(null) : fetchEastmoneyCompanyProfile(db, normalized),
   ]);
   const data = body.data ?? {};
   const latestPriceRaw = numberOrNull(data.f43);
@@ -1657,7 +1658,9 @@ export async function fetchEastmoneyCompanyOverview(db: Database, code: string):
     name: String(data.f58 ?? "").trim() || normalized,
     market: securityMarket(normalized),
     type: inferSecurityType(normalized),
-    marketDate: null,
+    marketDate: numberOrNull(data.f124) && Number(data.f124) > 0
+      ? new Date(Number(data.f124) * 1000).toLocaleDateString('en-CA', { timeZone: normalized.endsWith('.US') ? 'America/New_York' : 'Asia/Shanghai' })
+      : null,
     latestPrice: latestPriceRaw !== null ? latestPriceRaw / priceDivisor : null,
     pctChange: pctChangeRaw !== null ? pctChangeRaw / 100 : null,
     changeAmount: changeAmountRaw !== null ? changeAmountRaw / priceDivisor : null,

@@ -56,7 +56,7 @@ export async function loadFinancialStatements(
     && snapshotRows.length > 0
     && (!snapshotRows.some(isEastmoneyAnnualIncomeStatement)
       || !snapshotRows.some(isEastmoneyCumulativeIncomeStatement));
-  if (snapshotRows.length > 0 && !hongKongSnapshotNeedsSourceMetadata && !usSnapshotNeedsSourceMetadata && !aShareIncomeSnapshotNeedsAnnualSource) {
+  if (!options?.httpOptions?.bypassCache && snapshotRows.length > 0 && !hongKongSnapshotNeedsSourceMetadata && !usSnapshotNeedsSourceMetadata && !aShareIncomeSnapshotNeedsAnnualSource) {
     const now = Date.now();
     const latest = snapshotRows[0];
     if (isProvisionalFinancialStatement(latest) && now - latest.updatedAt < PROVISIONAL_FINANCE_TTL_MS) {

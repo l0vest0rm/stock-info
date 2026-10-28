@@ -44,7 +44,7 @@ export async function loadValuationBands(
       : Promise.resolve(null),
   ]);
 
-  const marketCap = options?.marketCap ?? await loadMarketCap(env, code);
+  const marketCap = options?.marketCap !== undefined ? options.marketCap : await loadMarketCap(env, code);
   const valuation = deriveLatestFinancialValuation({
     marketCapitalization: marketCap,
     incomeRows: income.sourceHealth.status === "failed" ? [] : income.rows,

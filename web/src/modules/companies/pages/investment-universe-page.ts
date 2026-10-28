@@ -1,4 +1,5 @@
 import { computed, createApp, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { ValuationAssessment } from '../../../../../shared/valuation-assessment'
 import universeJson from '../../../../../config/investment-universe.json'
 import { renderDailyPanel } from './investment-daily-panel'
 
@@ -71,6 +72,68 @@ type Universe = {
   companies: Company[]
 }
 
+/**
+ * A row of the server-computed screen.
+ *
+ * The page must not compute this itself.  The band, the implied ceiling, the
+ * margin of safety and the verdict all depend on statements, a dated quote and
+ * the archetype's allowed methods; duplicating that in the browser would give two
+ * definitions of "cheap" and eventually two answers.  `GET /api/research/valuation-screen`
+ * runs the same `screenValuationCandidate` the daily note quotes.
+ */
+type ScreenRow = {
+  assessment?: ValuationAssessment;
+  code: string
+  name: string
+  market: string
+  archetype: string
+  verdict: 'research_candidate' | 'watch' | 'blocked'
+  basis: { key: string; label?: string; reportDate: string } | null
+  position: { metric: string; marketCap: number; impliedHigh: number; marginOfSafety: number } | null
+  blockReasons: string[]
+  note: string
+  growth: { verdict: string; ttmGrowth: number | null; reportDate: string | null; note: string | null } | null
+  executable: false
+}
+type ScreenSnapshot = {
+  asOf: string
+  generatedAt: string | null
+  targets: string[]
+  companies: number
+  byVerdict: Record<string, number>
+  blockedDetail: Record<string, number>
+  rows: ScreenRow[]
+  stale: boolean
+  warnings: string[]
+}
+
+const valuationLabels: Record<ValuationAssessment['status'], string> = {
+  undervalued: '低估（规则）', fair_low: '合理偏低', fair: '合理', expensive: '偏贵', very_expensive: '明显偏贵', unknown: '无法判断',
+}
+const valuationTone = (status: string) => ['undervalued', 'fair_low'].includes(status) ? 'is-candidate' : ['expensive', 'very_expensive'].includes(status) ? 'is-expensive' : status === 'fair' ? 'is-watch' : 'is-blocked'
+const metricText = (a: ValuationAssessment) => a.current == null ? '—' : a.current.toFixed(2) + (a.unit === 'percent' ? '%' : '×')
+const rangeText = (a: ValuationAssessment) => a.range ? `${a.range.low}–${a.range.high}${a.unit === 'percent' ? '%' : '×'}` : '—'
+
+/**
+ * Match a screen row to a universe company.
+ *
+ * The screen works in normalised API codes (`600519.SH`) while the universe
+ * stores native exchange symbols, and the two differ for US listings.  Matching
+ * on the preferred security and falling back to any listed security keeps the
+ * join explicit instead of relying on display names, which repeat across
+ * markets.
+ */
+function screenKeyCandidates(company: Company): string[] {
+  const apiCode = (security: Security) =>
+    security.market === 'US' && !security.ticker.endsWith('.US') ? security.ticker + '.US' : security.ticker
+  return [apiCode({ ...company.securities.find((s) => s.ticker === company.preferredTicker) ?? company.securities[0] } as Security),
+    ...company.securities.map(apiCode)]
+}
+
+function formatPct(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? (value * 100).toFixed(1) + '%' : '—'
+}
+
 const universe = universeJson as Universe
 const sectorsById = new Map(universe.sectors.map((sector) => [sector.id, sector]))
 const tracksById = new Map(universe.tracks.map((track) => [track.id, track]))
@@ -107,6 +170,7 @@ function selectControl(label: string, value: string, options: Array<[string, str
     h('span', { class: 'ivu-label' }, label),
     h('select', {
       class: 'ivu-select',
+      'aria-label': label,
       value,
       onChange: (event: Event) => onChange((event.target as HTMLSelectElement).value),
     }, options.map(([code, name]) => option(code, name))),
@@ -226,6 +290,89 @@ const InvestmentUniversePage = defineComponent({
     const selectedId = ref(safeParam('company', universe.companies.map((company) => company.id)))
     const sort = ref(safeParam('sort', ['industry', 'name', 'priority']) || 'industry')
 
+    /**
+     * The server-computed screen, fetched once on mount.
+     *
+     * Before this the page could only show the archetype label from the JSON, so
+     * every number a reader actually wants — the band, the margin of safety, the
+     * verdict — lived in a terminal and in prose.  Loading it here makes the page
+     * a view of a computation rather than of a handwritten list.
+     *
+     * A failure is rendered as a failure.  If the endpoint is down the table must
+     * not fall back to "no candidates", because that reads as a finding about the
+     * companies when it is a fact about the request.
+     */
+    const screenRows = ref<Map<string, ScreenRow>>(new Map())
+    const screenMeta = ref<ScreenSnapshot | null>(null)
+    const screenError = ref('')
+    const screenLoading = ref(true)
+    const refreshing = ref(false)
+    const completed = ref(0)
+    const refreshErrors = ref(0)
+    const rowState = ref<Record<string, string>>({})
+    const valuationFilter = ref('')
+    const controller = new AbortController()
+
+    async function api(path: string, method = 'GET') {
+      const response = await fetch(path, { method, headers: { accept: 'json' }, cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120000)]) })
+      const body = await response.json().catch(() => null)
+      if (!response.ok || body?.code !== 200) throw new Error(body?.msg || 'HTTP ' + response.status)
+      return body.data
+    }
+    function acceptRow(row: ScreenRow) {
+      screenRows.value = new Map(screenRows.value).set(row.code.toUpperCase(), row)
+    }
+    async function loadScreen() {
+      if (refreshing.value) return
+      screenError.value = ''
+      try {
+        const snapshot = await api('/api/research/valuation-screen') as ScreenSnapshot
+        screenMeta.value = snapshot
+        for (const row of snapshot.rows) acceptRow(row)
+        screenLoading.value = false
+        refreshing.value = true
+        completed.value = 0
+        refreshErrors.value = 0
+        rowState.value = Object.fromEntries(snapshot.targets.map((code) => [code, '等待刷新']))
+        let cursor = 0
+        async function worker() {
+          while (!controller.signal.aborted) {
+            const code = snapshot.targets[cursor++]
+            if (!code) return
+            rowState.value[code] = '刷新中'
+            try {
+              // Only two in-flight securities. Each response is server-computed
+              // and durably cached; no whole-pool Worker background lifetime.
+              let result = await api('/api/research/valuation-screen/refresh/' + encodeURIComponent(code), 'POST')
+              for (let retry = 0; result.state === 'busy' && retry < 60 && !controller.signal.aborted; retry++) {
+                await new Promise((resolve) => setTimeout(resolve, 3000))
+                result = await api('/api/research/valuation-screen/refresh/' + encodeURIComponent(code), 'POST')
+              }
+              if (result.state !== 'complete' || !result.row) throw new Error('其他页面正在计算，请稍后重试')
+              acceptRow(result.row)
+              rowState.value[code] = '本轮已计算'
+            } catch (error) {
+              if (controller.signal.aborted) return
+              rowState.value[code] = '刷新失败 · 旧结果仅供参考'
+              refreshErrors.value++
+            } finally { completed.value++ }
+          }
+        }
+        await Promise.all([worker(), worker()])
+      } catch (error) {
+        if (!controller.signal.aborted) screenError.value = error instanceof Error ? error.message : String(error)
+      } finally { screenLoading.value = false; refreshing.value = false }
+    }
+
+    /** A company's screen row, matched by API code rather than by display name. */
+    const screenFor = (company: Company): ScreenRow | null => {
+      for (const key of screenKeyCandidates(company)) {
+        const row = screenRows.value.get(key.toUpperCase())
+        if (row) return row
+      }
+      return null
+    }
+
     const trackOptions = computed(() =>
       universe.tracks.filter((track) => !sectorId.value || track.sectorId === sectorId.value),
     )
@@ -238,6 +385,7 @@ const InvestmentUniversePage = defineComponent({
     const filteredCompanies = computed(() => {
       const keyword = normalized(query.value)
       const companies = tieredCompanies.value.filter((company) => {
+        if (valuationFilter.value && (screenFor(company)?.assessment?.status ?? 'unknown') !== valuationFilter.value) return false
         if (sectorId.value && company.primarySectorId !== sectorId.value) return false
         if (trackId.value && company.primaryTrackId !== trackId.value) return false
         if (market.value && company.preferredMarket !== market.value) return false
@@ -270,11 +418,7 @@ const InvestmentUniversePage = defineComponent({
       const company = universe.companies.find((item) => item.id === selectedId.value) || null
       return company ? { ...company, ...tierOf(company) } : null
     })
-    const sectorCounts = new Map(universe.sectors.map((sector) => [
-      sector.id,
-      universe.companies.filter((company) => company.primarySectorId === sector.id).length,
-    ]))
-    const marketCounts = Object.fromEntries(['CN','US','HK'].map((code) => [code, universe.companies.filter((company) => company.preferredMarket === code).length])) as Record<string,number>
+
 
     function setSector(id: string) {
       sectorId.value = id
@@ -287,6 +431,7 @@ const InvestmentUniversePage = defineComponent({
       status.value = ''
       priority.value = ''
       sort.value = 'industry'
+      valuationFilter.value = ''
     }
     function chooseCompany(id: string) {
       selectedId.value = id
@@ -319,15 +464,11 @@ const InvestmentUniversePage = defineComponent({
         window.history.replaceState(window.history.state, '', newUrl)
       }
     })
-    onMounted(() => window.addEventListener('popstate', readNavigationState))
-    onBeforeUnmount(() => window.removeEventListener('popstate', readNavigationState))
-
-    const countBlock = (value: string | number, label: string, extra: string) =>
-      h('div', { class: 'ivu-stat' }, [
-        h('strong', { class: 'ivu-stat-value' }, String(value)),
-        h('span', { class: 'ivu-stat-label' }, label),
-        h('span', { class: 'ivu-stat-extra' }, extra),
-      ])
+    onMounted(() => {
+      window.addEventListener('popstate', readNavigationState)
+      void loadScreen()
+    })
+    onBeforeUnmount(() => { controller.abort(); window.removeEventListener('popstate', readNavigationState) })
 
     const linkForSecurity = (security: Security) =>
       security.market === 'KR' ? '' : 'company.html?code=' + encodeURIComponent(security.ticker)
@@ -410,13 +551,73 @@ const InvestmentUniversePage = defineComponent({
           h('span', '最新证据日期：' + (company.lastEvidenceDate || '待补充')),
           evidenceLink(company),
           h('span', '估值原型：' + (archetypeLabels[company.valuationArchetype] || company.valuationArchetype || '待归类')),
-          h('span', '估值日期：' + (company.valuationAsOf || '未录入')),
+          h('span', '动态估值计算：' + (screenFor(company)?.assessment?.computedAt ? new Date(screenFor(company)!.assessment!.computedAt).toLocaleString('zh-CN') : '等待计算')),
           h('span', '风险因子：' + (company.factorExposures.length ? describeFactors(company.factorExposures) : '待补充证据')),
           h('span', '主题标签：' + (company.themeTags.length ? company.themeTags.join('、') : '待补充证据')),
           h('span', '分级依据：' + (company.basis.join('；') || '待补充')),
         ]),
+        renderValuationDetail(company),
       ])
     }
+
+    /**
+     * The valuation arithmetic, spelled out for one company.
+     *
+     * The table cell has room for a verdict; this has room for the reason.  It
+     * shows which band carried the decision, its anchor period, the ceiling, the
+     * current position and the growth reading — the same fields the daily note
+     * quotes — so a reader can check the verdict instead of trusting it.
+     */
+    const renderValuationDetail = (company: Company) => {
+      const row = screenFor(company)
+      const a = row?.assessment
+      if (!a) return h('p', { class: 'ivu-screen-warning' }, row?.note || '等待后台计算；缺失数据不代表估值合理。')
+      const fact = (title: string, value: string) => h('div', [h('dt', title), h('dd', value)])
+      return h('section', { class: 'ivu-valuation-detail-block' }, [
+        h('h3', '估值依据 · 可复核规则'),
+        renderValuationCell(company),
+        h('dl', { class: 'ivu-valuation-facts' }, [
+          fact('主方法', a.method || '暂无适用主方法'), fact('当前指标', metricText(a)), fact('规则合理区间', rangeText(a)),
+          fact('保守安全边际', formatPct(a.conservativeMargin)), fact('可信度', a.confidence === 'medium' ? '中（非未来价值预测）' : '低'),
+          fact('行情来源', a.quote?.source || '取数失败'), fact('行情日期', a.quote?.date || '—'),
+          fact('行情获取时间', a.quote ? new Date(a.quote.fetchedAt).toLocaleString('zh-CN') : '—'),
+          fact('财报期间', a.operating.reportDate || '—'), fact('经营口径', a.operating.periodLabel),
+          fact('单季营收同比', formatPct(a.operating.revenueYoY)), fact('单季利润同比', formatPct(a.operating.profitYoY)),
+          fact('TTM利润同比', formatPct(a.operating.ttmGrowth)), fact('未来估值', '未覆盖 · 等待有来源的预测'),
+        ]),
+        h('p', { class: 'ivu-muted-small' }, '安全边际 = 1 − 当前市值 / 规则区间的保守价值下限；负数表示尚无保守折价。'),
+        h('h4', '历史估值位置'),
+        ...a.history.windows.map((w) => h('p', { class: 'ivu-detail-copy' }, `${w.years}年 ${a.history.metric} 分位：${formatPct(w.percentile)} · ${w.samples}个有效样本 · ${w.from || '—'} 至 ${w.to || '—'}`)),
+        h('p', { class: 'ivu-muted-small' }, a.history.note),
+        h('h4', '假设与限制'),
+        h('ul', [...a.assumptions, ...a.limitations].map((text) => h('li', { class: 'ivu-detail-copy' }, text))),
+        h('p', { class: 'ivu-muted-small' }, '档位规则：低于下限为低估；下半区合理偏低；上半区合理；超过上限为偏贵；超过上限20%为明显偏贵。阈值为可审计政策，不是统计概率。'),
+      ])
+    }
+    const renderValuationCell = (company: Company) => {
+      const row = screenFor(company)
+      const a = row?.assessment
+      const state = row ? rowState.value[row.code] : ''
+      return h('div', { class: 'ivu-valuation' }, [
+        h('span', { class: 'ivu-verdict ' + valuationTone(a?.status || 'unknown') }, a ? valuationLabels[a.status] : '无法判断'),
+        h('span', { class: 'ivu-valuation-detail' }, a?.method ? `${a.method} ${metricText(a)}` : row?.note || '等待计算'),
+        a?.range ? h('span', { class: 'ivu-valuation-detail' }, '规则区间 ' + rangeText(a)) : null,
+        a ? h('span', { class: 'ivu-valuation-detail' }, `可信度${a.confidence === 'medium' ? '中' : '低'} · ${a.quote?.date || '无行情日期'}`) : null,
+        h('span', { class: 'ivu-valuation-detail' }, state || (row ? '缓存结果' : '待刷新')),
+        a ? h('time', { class: 'ivu-valuation-detail', dateTime: a.computedAt }, new Date(a.computedAt).toLocaleString('zh-CN')) : null,
+      ])
+    }
+    const renderScreenStatus = () => h('section', { class: 'ivu-screen-status', 'aria-live': 'polite' }, [
+      h('div', { class: 'ivu-screen-head' }, [
+        h('strong', '估值看板 · 后台计算 / 自动缓存'),
+        h('button', { type: 'button', class: 'ivu-open', disabled: refreshing.value || screenLoading.value, onClick: () => void loadScreen() }, '重新计算'),
+        h('span', { class: 'ivu-muted-small' }, screenLoading.value ? '读取缓存…' : refreshing.value ? `后台刷新 ${completed.value}/${screenMeta.value?.companies ?? 0}` : `本轮计算结束 ${completed.value}/${screenMeta.value?.companies ?? 0}`),
+      ]),
+      refreshing.value ? h('progress', { max: screenMeta.value?.companies || 1, value: completed.value, 'aria-label': '估值刷新进度' }) : null,
+      screenError.value ? h('p', { class: 'ivu-screen-warning' }, '读取失败：' + screenError.value) : null,
+      refreshErrors.value ? h('p', { class: 'ivu-screen-warning' }, `${refreshErrors.value}家请求失败；保留的旧结果不代表本轮估值。`) : null,
+      h('span', { class: 'ivu-muted-small' }, '先展示缓存，再逐行更新 · 规则估值非买卖信号 · 未来估值待补'),
+    ])
 
     const renderTable = () => h('div', { class: 'ivu-table-wrap' }, [
       h('table', { class: 'ivu-table' }, [
@@ -425,6 +626,10 @@ const InvestmentUniversePage = defineComponent({
           h('th', '行业 / 细分赛道'),
           h('th', '首选研究市场'),
           h('th', '研究层级'),
+          h('th', '估值判定'),
+          h('th', '历史位置'),
+          h('th', '经营趋势'),
+          h('th', '未来估值'),
           h('th', '状态'),
           h('th', { class: 'ivu-action-col' }, '详情'),
         ])]),
@@ -445,6 +650,15 @@ const InvestmentUniversePage = defineComponent({
                 )],
             )]),
             h('td', h('span', { class: 'ivu-priority' }, company.priority)),
+            h('td', renderValuationCell(company)),
+            h('td', (screenFor(company)?.assessment?.history.windows ?? []).map((w) => h('div', { class: 'ivu-valuation-detail' }, `${w.years}年PE：${w.percentile == null ? '样本不足 / 不适用' : formatPct(w.percentile)}`))),
+            h('td', [
+              h('div', { class: 'ivu-valuation-detail' }, '单季营收 ' + formatPct(screenFor(company)?.assessment?.operating.revenueYoY)),
+              h('div', { class: 'ivu-valuation-detail' }, '单季利润 ' + formatPct(screenFor(company)?.assessment?.operating.profitYoY)),
+              h('div', { class: 'ivu-valuation-detail' }, 'TTM利润 ' + formatPct(screenFor(company)?.assessment?.operating.ttmGrowth)),
+              h('div', { class: 'ivu-valuation-detail' }, screenFor(company)?.assessment?.operating.reportDate || '未覆盖'),
+            ]),
+            h('td', h('span', { class: 'ivu-valuation-detail' }, '未覆盖 · 待补预测')),
             h('td', [
               h('span', { class: 'ivu-status' }, statusLabels[company.watchStatus] || company.watchStatus),
               h('span', { class: 'ivu-ticker-line' }, company.classificationStatus === 'verified' ? '证券身份已核验' : '证券身份待核验'),
@@ -482,67 +696,82 @@ const InvestmentUniversePage = defineComponent({
       ]),
     ))
 
-    const renderSidebar = () => h('aside', { class: 'ivu-sidebar', 'aria-label': '一级行业筛选' }, [
-      h('div', { class: 'ivu-sidebar-title' }, [
-        h('h2', '行业目录'),
-        h('span', '11 个一级行业'),
+    const focusMode = ref<'opportunity' | 'change' | 'data'>('opportunity')
+    const focusLabels = { opportunity: '估值机会', change: '经营变化', data: '数据待核查' }
+    const focusGroups = computed(() => {
+      const groups: Record<keyof typeof focusLabels, Array<{ company: Company; reason: string; score: number }>> = { opportunity: [], change: [], data: [] }
+      for (const company of universe.companies) {
+        const row = screenFor(company)
+        const a = row?.assessment
+        if (!row) continue // Pending is not a finding about the company.
+        const stale = !a || Date.now() - Date.parse(a.computedAt) > 10 * 60000 || rowState.value[row.code]?.startsWith('刷新失败')
+        const growth = a?.operating.ttmGrowth
+        if (!stale && a && growth != null && (growth <= -.1 || growth >= .3)) {
+          groups.change.push({ company, reason: `TTM利润同比 ${formatPct(growth)}，${growth < 0 ? '需核查盈利收缩原因' : '需核查增长来源与持续性'}${a.operating.provisional ? '（含预告/快报）' : ''}`, score: growth < 0 ? 100 + Math.abs(growth) : growth })
+        }
+        if (stale || a?.status === 'unknown') {
+          if (stale || !row.blockReasons.includes('earnings_shrinking')) groups.data.push({ company, reason: stale ? '缓存过期或刷新未成功，先核验数据' : row.note, score: stale ? 2 : 1 })
+          continue
+        }
+        if (!a) continue
+        if (['undervalued', 'fair_low'].includes(a.status) && a.confidence === 'medium' && growth != null && growth >= 0 && !a.operating.provisional) {
+          groups.opportunity.push({ company, reason: `${valuationLabels[a.status]}，TTM利润同比 ${formatPct(growth)}；优先核查盈利可持续性`, score: a.conservativeMargin ?? -Infinity })
+        }
+      }
+      for (const group of Object.values(groups)) group.sort((a, b) => b.score - a.score || a.company.id.localeCompare(b.company.id))
+      return groups
+    })
+    const focusCards = computed(() => {
+      const sectors = new Map<string, number>()
+      return focusGroups.value[focusMode.value].filter(({ company }) => {
+        const count = sectors.get(company.primarySectorId) ?? 0
+        sectors.set(company.primarySectorId, count + 1)
+        return count < 2
+      }).slice(0, 6)
+    })
+    const renderFocus = () => h('section', { class: 'ivu-focus', 'aria-labelledby': 'ivu-focus-heading' }, [
+      h('div', { class: 'ivu-section-heading' }, [
+        h('div', [h('div', { class: 'ivu-eyebrow' }, 'RESEARCH FIRST'), h('h2', { id: 'ivu-focus-heading' }, '优先关注'), h('p', '先看值得研究的变化，再浏览完整观察池。')]),
+        h('span', { class: 'ivu-focus-scope' }, '全池精选 · 每行业最多2家 · 最多6家'),
       ]),
-      h('div', { class: 'ivu-sector-list' }, [
-        h('button', {
-          class: 'ivu-sector-button' + (sectorId.value === '' ? ' is-active' : ''),
-          type: 'button', onClick: () => setSector(''),
-          'aria-pressed': sectorId.value === '',
-        }, [
-          h('span', '全部行业'),
-          h('strong', String(universe.companies.length)),
-        ]),
-        ...universe.sectors.map((sector) => h('button', {
-          key: sector.id, type: 'button',
-          class: 'ivu-sector-button' + (sectorId.value === sector.id ? ' is-active' : ''),
-          'aria-pressed': sectorId.value === sector.id,
-          onClick: () => setSector(sector.id),
-        }, [
-          h('span', [h('span', sector.name), h('small', '参考席位 ' + sector.portfolioIllustration.targetSlots)]),
-          h('strong', String(sectorCounts.get(sector.id) || 0)),
-        ])),
-      ]),
-      h('div', { class: 'ivu-sidebar-note' }, [
-        h('strong', '25席位参考 · A股优先'),
-        h('p', 'A股 ' + universe.strategyPreferences.illustrative25HoldingSlots.CN + ' / 美股 ' + universe.strategyPreferences.illustrative25HoldingSlots.US + ' / 港股 ' + universe.strategyPreferences.illustrative25HoldingSlots.HK + '；与实际持仓无关，按账户资金分别管理。'),
-      ]),
+      h('div', { class: 'ivu-focus-tabs', role: 'group', 'aria-label': '重点关注分类' }, Object.entries(focusLabels).map(([key, label]) =>
+        h('button', { type: 'button', 'aria-pressed': focusMode.value === key, onClick: () => { focusMode.value = key as keyof typeof focusLabels } }, [label, h('span', String(focusGroups.value[key as keyof typeof focusLabels].length))]))),
+      focusCards.value.length ? h('div', { class: 'ivu-focus-grid' }, focusCards.value.map(({ company, reason }) => {
+        const a = screenFor(company)?.assessment
+        return h('article', { class: 'ivu-focus-card', key: company.id }, [
+          h('div', { class: 'ivu-focus-card-top' }, [h('span', sectorsById.get(company.primarySectorId)?.name || '—'), h('span', { class: 'ivu-verdict ' + valuationTone(focusMode.value === 'data' ? 'unknown' : a?.status ?? 'unknown') }, focusMode.value === 'data' ? '待核查' : a ? valuationLabels[a.status] : '无法判断')]),
+          h('h3', company.displayName),
+          h('p', { class: 'ivu-focus-code' }, `${company.preferredTicker} · ${tracksById.get(company.primaryTrackId)?.name || ''}`),
+          h('p', { class: 'ivu-focus-reason' }, reason),
+          h('div', { class: 'ivu-focus-metrics' }, [
+            h('div', [h('span', a?.method || '主方法'), h('strong', a ? metricText(a) : '—')]),
+            h('div', [h('span', '保守安全边际'), h('strong', formatPct(a?.conservativeMargin))]),
+          ]),
+          h('div', { class: 'ivu-focus-card-bottom' }, [
+            h('span', a ? `${rowState.value[screenFor(company)!.code] === '本轮已计算' ? '已更新' : '缓存'} · ${new Date(a.computedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '数据不足'),
+            h('button', { type: 'button', class: 'ivu-open', 'aria-label': '研究' + company.displayName, onClick: () => chooseCompany(company.id) }, '查看依据 ↗'),
+          ]),
+        ])
+      })) : h('div', { class: 'ivu-focus-empty', role: 'status' }, screenLoading.value ? '正在读取估值结果…' : refreshing.value ? '已计算结果中暂无符合条件的公司，等待本轮刷新。' : '暂无符合条件的公司；不为填满卡片而放宽规则。'),
+      h('details', { class: 'ivu-focus-policy' }, [h('summary', '如何选出这些公司？'), h('p', '估值机会：未过期的低估或合理偏低结果、可信度中、正式报告TTM利润同比非负；按保守安全边际排序。经营变化：TTM利润同比≤−10%或≥30%，先看收缩。数据待核查：估值无法判断、缓存过期或刷新失败。各组每行业最多2家，展示前6家；与下方列表筛选独立。刷新未完成时不是完整全池排名。规则估值并非内在价值，以上仅为研究优先级，不是交易建议。')]),
     ])
 
     return () => h('main', { class: 'ivu-page' }, [
       h('div', { class: 'ivu-shell' }, [
-        h('section', { class: 'ivu-hero' }, [
-          h('div', { class: 'ivu-hero-top' }, [
-            h('div', [
-              h('div', { class: 'ivu-eyebrow ivu-eyebrow-light' }, 'A-SHARE FIRST · INVESTMENT RESEARCH UNIVERSE · V2'),
-              h('h1', '优质公司观察池'),
-              h('p', '以A股为主要研究范围，保留少量美股与港股核心候选；11个行业、37个细分赛道，重视竞争优势、合理估值和跨赛道的共同风险。'),
-            ]),
-            h('span', { class: 'ivu-asof' }, '研究快照 · ' + universe.asOf),
-          ]),
-          h('div', { class: 'ivu-stats' }, [
-            countBlock(universe.companies.length + ' / ' + universe.scope.watchlistLimit, '候选观察公司', universe.tracks.length + '赛道 / ' + universe.sectors.length + '行业'),
-            countBlock(marketCounts.CN, 'A股优先', '观察池的主要研究对象'),
-            countBlock(marketCounts.US, '美股优先', '仅保留少量核心公司'),
-            countBlock(marketCounts.HK, '港股优先', '补充观察标的'),
-          ]),
+        h('header', { class: 'ivu-page-header' }, [
+          h('div', [h('div', { class: 'ivu-eyebrow' }, 'INVESTMENT UNIVERSE'), h('h1', '优质公司观察池'), h('p', '分散行业 · 研究好公司 · 等待合理估值')]),
+          h('div', { class: 'ivu-header-summary' }, [h('strong', String(universe.companies.length)), h('span', '观察公司'), h('i', '/'), h('strong', String(universe.sectors.length)), h('span', '行业'), h('i', '/'), h('strong', '20–30'), h('span', '目标持有')]),
         ]),
-        h('div', { class: 'ivu-notice', role: 'note' }, [
-          h('strong', '研究配置 · 非实时信号'),
-          h('span', '名单来自版本化 JSON。研究观点需结合有效证据和同日估值，不等于真实持仓或自动交易；每日复盘按需人工发起，未启用后台持续监控。'),
-        ]),
-        renderDailyPanel(chooseCompany),
+        renderScreenStatus(),
+        renderFocus(),
+        selected.value ? renderDetail(selected.value) : null,
         h('div', { class: 'ivu-workspace' }, [
-          renderSidebar(),
           h('div', { class: 'ivu-main-content' }, [
             h('div', { class: 'ivu-topline' }, [
               h('div', [
                 h('div', { class: 'ivu-eyebrow' }, 'EXPLORE COMPANIES'),
-                h('h2', '探索候选公司'),
-                h('p', 'A股排在各行业前列，可按首选研究市场、赛道和状态筛选。'),
+                h('h2', '完整观察池'),
+                h('p', '集中筛选行业、估值与经营状态，横向比较全部候选。'),
               ]),
               h('button', {
                 type: 'button', class: 'ivu-export', disabled: filteredCompanies.value.length === 0,
@@ -560,6 +789,7 @@ const InvestmentUniversePage = defineComponent({
                 }),
               ]),
               h('div', { class: 'ivu-filters' }, [
+                selectControl('估值档位', valuationFilter.value, [['', '全部估值'], ...Object.entries(valuationLabels)], (value) => { valuationFilter.value = value }),
                 selectControl('一级行业', sectorId.value,
                   [['', '全部行业'], ...universe.sectors.map((item): [string, string] => [item.id, item.name])], setSector),
                 selectControl('细分赛道', trackId.value,
@@ -594,7 +824,6 @@ const InvestmentUniversePage = defineComponent({
                 h('button', { type: 'button', 'aria-pressed': view.value === 'tracks', class: view.value === 'tracks' ? 'is-active' : '', onClick: () => { view.value = 'tracks' } }, '按赛道浏览'),
               ]),
             ]),
-            selected.value ? renderDetail(selected.value) : null,
             filteredCompanies.value.length
               ? (view.value === 'companies' ? renderTable() : renderTrackCards())
               : h('div', { class: 'ivu-empty', role: 'status' }, [
@@ -604,6 +833,7 @@ const InvestmentUniversePage = defineComponent({
               ]),
           ]),
         ]),
+        h('details', { class: 'ivu-review-fold' }, [h('summary', '每日研究与策略复盘'), renderDailyPanel(chooseCompany)]),
         h('footer', { class: 'ivu-page-foot' }, [
           h('span', '数据口径：经营公司与上市证券分离；行业为待验证的研究归类。'),
           h('span', '来源：config/investment-universe.json · 日期 ' + universe.asOf),
