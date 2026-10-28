@@ -105,7 +105,7 @@ const cyclical = buildValuationBands({
   archetype: "cyclical_commodity",
   ttm: { netProfit: 300 * YI, ebit: 350 * YI, ebitda: 400 * YI },
   balance: { grossDebt: 100 * YI, cash: 200 * YI, debtIncomplete: false },
-  midCycle: { status: "available", mean: 313 * YI, median: 169 * YI, window: "2016..2025", notes: ["窗口内有 1 个亏损年度"] },
+  midCycle: { status: "available", mean: 313 * YI, median: 169 * YI, window: "2016..2025", years: [{ fiscalYear: 2025, value: 169 * YI, reportDate: "2025-12-31" }], notes: ["窗口内有 1 个亏损年度"] },
 });
 assert.equal(band(cyclical, "pe_ttm").role, "auxiliary", "TTM PE is demoted for a cyclical");
 assert.equal(band(cyclical, "pe_mid_cycle").status, "available");
@@ -127,6 +127,31 @@ assert.equal(band(shortHistory, "pe_mid_cycle").status, "insufficient_data");
 assert.ok(band(shortHistory, "pe_mid_cycle").missingInputs.some((text) => text.includes("足够长的年报历史")));
 assert.ok(shortHistory.warnings.some((text) => text.includes("不要退回 TTM")), "no silent TTM fallback");
 
+// 11b. The mid-cycle anchor must be a real annual report date, never the
+//      window label.  `window` is `2016..2025`, and using it as `reportDate`
+//      made the band undateable: every cyclical then failed a staleness check
+//      and could not be screened at all, while the band looked available.
+const anchorIsDate = band(cyclical, "pe_mid_cycle").denominator.reportDate;
+assert.equal(anchorIsDate, "2025-12-31", "the anchor is the newest annual report in the window");
+assert.match(anchorIsDate, /^\d{4}-\d{2}-\d{2}$/, "an anchor must parse as a date");
+assert.ok(!anchorIsDate.includes(".."), "the window label must never be used as a date");
+// The window itself is still disclosed, as an assumption rather than a date.
+assert.ok(band(cyclical, "pe_mid_cycle").assumptions.some((text) => text.includes("2016..2025")), "the window is still stated");
+
+// A mid-cycle centre with no dated observations cannot be anchored, so it is
+// unavailable rather than silently dated by its window label.
+const undatableCentre = buildValuationBands({
+  ...base,
+  code: "NODATE.SH",
+  archetype: "cyclical_commodity",
+  ttm: { netProfit: 50 * YI },
+  balance: {},
+  midCycle: { status: "available", mean: 50 * YI, median: 50 * YI, window: "2016..2025" },
+});
+assert.equal(band(undatableCentre, "pe_mid_cycle").status, "insufficient_data");
+assert.ok(band(undatableCentre, "pe_mid_cycle").missingInputs.some((text) => text.includes("没有可用的年报报告期")));
+assert.equal(band(undatableCentre, "pe_mid_cycle").denominator, null);
+
 // 12. Non-cyclicals declare the mid-cycle method forbidden instead of omitting it.
 assert.equal(band(manufacturer, "pe_mid_cycle").status, "forbidden_for_archetype");
 assert.ok(band(manufacturer, "pe_mid_cycle").reasons.some((text) => text.includes("抹掉成长")));
@@ -138,7 +163,7 @@ const boom = buildValuationBands({
   archetype: "cyclical_commodity",
   ttm: { netProfit: 1097 * YI },
   balance: {},
-  midCycle: { status: "available", mean: 313 * YI, median: 169 * YI, window: "2016..2025" },
+  midCycle: { status: "available", mean: 313 * YI, median: 169 * YI, window: "2016..2025", years: [{ fiscalYear: 2025, value: 169 * YI, reportDate: "2025-12-31" }] },
 });
 assert.ok(band(boom, "pe_mid_cycle").implied.low < band(boom, "pe_ttm").implied.low, "mid-cycle band sits far below the TTM band at a peak");
 

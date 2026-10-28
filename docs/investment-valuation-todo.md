@@ -277,11 +277,49 @@ P0 完成后，这是把"方法论"变成"能算出来的数"的核心阶段。
 
 无变化时次日对比输出 `0 band changes`，不会每日误报。
 
-### P3-2 动作的机器判定规则 —— 未开始
+### P3-2 研究候选的机器判定 ✅ 已完成（2026-10-28）
 
-- [ ] `consider_buy / consider_add` 等动作的机器判定规则（仍需人工确认账户）
-- 现状：`scripts/validate-investment-daily-report.mjs` 已强制买/加必须带当日价格、保守区间与来源，且价格不得高于区间上限；但**没有**自动生成动作的逻辑
-- 前置条件：账户资金与持仓永远不进公开 JSON，因此机器只能判"研究候选"，不能判"可交易"
+- [x] `src/modules/research/domain/valuation-screen.ts`：只输出 `research_candidate / watch / blocked`，**不产出** `consider_buy / consider_add / consider_trim`
+- [x] `scripts/screen-valuation-candidates.mjs`：全池筛选，`--market/--limit/--verdict/--json`；只读，不写任何文件
+- [x] 自检 `check:valuation-screen`，已接入 `check:valuation-chain` → `check:all`
+- 核心约束：账户资金与持仓永不进公开 JSON，因此机器只能判"研究候选"，不能判"可交易"；每条结果都带 `executable: false`
+
+**只有主方法能形成候选。** 原型定义写明保险的 PE 是"辅助，不单独使用"、银行的 PE 也是辅助；若只剩辅助区间可用，只能停在 `watch` 并说明"主方法不可计算"。实测中国平安/中国太保原本以 PE 显示 66–72% 安全边际，改后正确降级为 `watch`。
+
+**币种不一致是硬阻断。** 区间分母用报表币种、市值用交易币种：阿里/腾讯/农夫山泉以人民币报账，友邦以美元报账，五家港股全部以港币交易。跨币种相除是一个 7.8 倍的错误，但看起来仍像个数字，所以一律 `blocked`，不做隐含换算（复用了 `relative-valuation-ledger` 既有的"币种不同即抛错"原则）。
+
+**阻断原因必须准确。** 三个真实缺陷是实测中暴露并修掉的：
+
+| 缺陷 | 症状 | 根因 |
+|---|---|---|
+| 用 `band.implied.metric` 判可比性 | 688256.SH 有 30x PE 区间却报"无可用区间" | 区间引擎缺市值时会把 `implied` 整个丢掉，于是"缺行情"被误报成"无估值方法" |
+| 陈旧度取第一个可用区间 | 选中的 PE 新鲜、辅助 PB 陈旧时结论乱跳 | 应取最终选中那个区间的锚点 |
+| 单次取数失败即判不可筛选 | 33 家报 `quote_missing`，含茅台/五粮液 | 行情接口限流；加 3 次重试后降到 1 家，并区分 `quote_fetch_failed`（取数失败）与 `quote_missing`（确实无市值） |
+
+**周期中枢区间不能按 120 天判陈旧。** 中枢锚在最近一个完整财年，2026 年 10 月看到 2025-12-31 锚点是**正确**的（2026 年报还没出）。按 TTM 门槛判定会把全部 10 家周期股永久阻断，改按 460 天（缺一个完整年度才算陈旧）。
+
+实测全池（97 家已核验）：
+
+```
+byVerdict  { watch: 54, blocked: 30, research_candidate: 13 }
+blocked    quote_fetch_failed 9 / currency_mismatch 5 / no_market_cap_band 14
+           no_available_band 1 / quote_missing 1
+```
+
+候选全部落在 primary 方法上：3 家银行用 `pb`，10 家用 `pe_ttm`。
+
+**同时修掉两个区间引擎缺陷**（会污染 P3-1 的快照归因）：
+
+| 缺陷 | 影响 | 修法 |
+|---|---|---|
+| `pe_mid_cycle` 把窗口标签 `2016..2025` 当 `reportDate` | 锚点不是日期，周期股永远无法判陈旧；快照 diff 还会把它当成 `filing` | 改用窗口内最新年报的真实报告期，窗口降级为 assumption |
+| 银行/保险的 `pe_ttm` 被设为 primary | 通用 8–18x 套在资产负债表驱动业务上，银行显示 60–70% 虚假安全边际 | 按原型降级为 auxiliary，银行主方法回落 PB |
+
+`role_changed` 的归因原本无条件写成 `filing`，但区间角色由原型静态决定，因此改成 `model`。
+
+归因修复还有一个**必须用旧快照实测才能发现**的坑：空字符串锚点修复后，`reportDate` 从 `""` 变成 `2026-06-30`，naive 比较 `then !== now` 会把"我们补上日期"读成 `filing`（"新一期报告让分母成立"），收益率区间还会再额外产生一条 `unattributed`。现在统一由 `anchorAdvanced()` 判定——**只有两个都能解析的日期且后者更新**才算 `filing`，其余锚点变化一律 `model`。
+
+用当日旧快照（含三个缺陷）实测对比，修前 60 处变化被拆成 `model 16 / filing 19 / unattributed 25`（错），修后 **60 处全部 `model`**（对）——因为这一批变化确实全部来自我们。
 
 ### P3-3 复盘留痕 ✅ 已完成（2026-10-28）
 

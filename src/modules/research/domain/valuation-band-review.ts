@@ -234,14 +234,21 @@ function diffBand(
   // 1. Availability.  The cause is read off the inputs, never assumed.
   if (thenBand.status !== nowBand.status) {
     const nowQuoteOnly = blockedOnlyByQuote(nowBand);
-    const filingMoved = thenBand.denominator?.reportDate !== nowBand.denominator?.reportDate;
+    // Only a move between two real dates can be a new filing.  A band that went
+    // from an empty or non-date anchor to a dated one (the yield bands used to
+    // carry `""`, the through-cycle band its window label) changed because we
+    // fixed the anchor, and calling that `filing` publishes our edit as company
+    // news.
+    const filingMoved = anchorAdvanced(thenBand.denominator?.reportDate, nowBand.denominator?.reportDate);
     const attribution: BandChangeAttribution = NON_COMPARABLE_STATUSES.has(nowBand.status)
       ? "model"
       : nowQuoteOnly
         ? "price_source"
         : filingMoved
           ? "filing"
-          : "unattributed";
+          : thenBand.denominator?.reportDate !== nowBand.denominator?.reportDate
+            ? "model"
+            : "unattributed";
     const kind: BandChangeKind = nowBand.status === "available"
       ? "became_available"
       : nowBand.status === "forbidden_for_archetype"
@@ -265,16 +272,27 @@ function diffBand(
   ) {
     const filedAgain = Boolean(
       thenDenominator?.reportDate && nowDenominator?.reportDate &&
+      isIsoDate(nowDenominator.reportDate) && isIsoDate(thenDenominator.reportDate) &&
       nowDenominator.reportDate > thenDenominator.reportDate,
     );
     const basisChanged = Boolean(thenDenominator && nowDenominator && thenDenominator.basis !== nowDenominator.basis);
-    const attribution: BandChangeAttribution = basisChanged ? "model" : filedAgain ? "filing" : "unattributed";
+    // An anchor that is missing or not a date cannot be evidence of a new
+    // filing.  Two real cases: the through-cycle band carried its window label
+    // (`2016..2025`), and the yield bands carried an empty string.  When both
+    // were corrected to real report dates, a naive `>` comparison read the
+    // change as "the company filed again" and credited our own fix to the
+    // company.  `anchorAdvanced` requires two parseable dates to say `filing`.
+    const anchorRepaired = !anchorAdvanced(thenDenominator?.reportDate, nowDenominator?.reportDate)
+      && isIsoDate(thenDenominator?.reportDate) !== isIsoDate(nowDenominator?.reportDate);
+    const attribution: BandChangeAttribution = basisChanged || anchorRepaired ? "model" : filedAgain ? "filing" : "unattributed";
     add("denominator_changed", attribution, describeDenominator(thenDenominator), describeDenominator(nowDenominator),
       basisChanged
         ? `${nowBand.key} 的分母口径从 ${thenDenominator?.basis} 改为 ${nowDenominator?.basis}：口径变更，跨版本不可直接比较。`
-        : filedAgain
-          ? `${nowBand.key} 的分母已换到 ${nowDenominator?.reportDate} 报告期：公司披露了新一期报告，倍数不变但锚点变了。`
-          : `${nowBand.key} 的分母数值变化（可能是同一报告期的追溯调整），需人工确认为何变化。`);
+        : anchorRepaired
+          ? `${nowBand.key} 的分母锚点从「${thenDenominator?.reportDate || "空"}」变为「${nowDenominator?.reportDate || "空"}」：原先缺少可解析的报告期，属口径修正，不是公司披露新报告。`
+          : filedAgain
+            ? `${nowBand.key} 的分母已换到 ${nowDenominator?.reportDate} 报告期：公司披露了新一期报告，倍数不变但锚点变了。`
+            : `${nowBand.key} 的分母数值变化（可能是同一报告期的追溯调整），需人工确认为何变化。`);
   }
 
   // 3. Multiple range.  `DEFAULT_RANGES` is ours, so a range move is always a
@@ -291,9 +309,17 @@ function diffBand(
 
   // 4. Role.  `primary → auxiliary` moves the weight of a conclusion, so it is
   //    reported even when the numbers are identical.
+  //
+  //    Role in `buildValuationBands` is decided by the archetype, not by the
+  //    latest filing — every band's role is a static function of the business
+  //    model (the capital-intensity split changes the EV/EBITDA *range*, not its
+  //    role).  So a role move is always our edit, and `filing` was wrong: when
+  //    the bank and insurer PE bands were demoted to auxiliary — because their
+  //    archetype marks PE as "辅助，不单独使用" — that attribution would have
+  //    announced a method review as company news.
   if (thenBand.role !== nowBand.role) {
-    add("role_changed", "filing", thenBand.role, nowBand.role,
-      `${nowBand.key} 从 ${thenBand.role} 变为 ${nowBand.role}：由输入结构决定（如折旧/EBIT 过高时 EV/EBITDA 自动降级）。`);
+    add("role_changed", "model", thenBand.role, nowBand.role,
+      `${nowBand.key} 从 ${thenBand.role} 变为 ${nowBand.role}：这是估值模型对该原型的角色设定调整，不是公司披露变化。`);
   }
 
   return changes;
@@ -342,4 +368,29 @@ function formatAmount(value: number): string {
   if (abs >= 1e8) return `${(value / 1e8).toFixed(2)} 亿`;
   if (abs >= 1e4) return `${(value / 1e4).toFixed(2)} 万`;
   return value.toFixed(2);
+}
+
+/**
+ * True only when both anchors are real dates and the newer one moved forward.
+ *
+ * That is the one condition under which an anchor change is evidence of a new
+ * filing.  An empty string, a window label (`2016..2025`), or a date appearing
+ * where there was none is a repair of our own field, not a company event.
+ */
+function anchorAdvanced(thenDate: string | null | undefined, nowDate: string | null | undefined): boolean {
+  return Boolean(thenDate && nowDate && isIsoDate(thenDate) && isIsoDate(nowDate) && nowDate > thenDate);
+}
+
+/** True when the value parses as a date; false for empty or malformed anchors. */
+/**
+ * True for a real calendar date (`YYYY-MM-DD`).
+ *
+ * Denormalised anchors exist in this repository: the through-cycle band stored
+ * a window label (`2016..2025`) where a date belonged, and the yield bands
+ * stored `""`.  Comparing such a string to a date with `>` produces a nonsense
+ * "the company filed again", so anything that is not a date is treated as
+ * not-evidence-of-a-filing.
+ */
+function isIsoDate(value: string | null | undefined): boolean {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }

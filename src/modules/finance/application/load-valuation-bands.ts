@@ -91,6 +91,7 @@ export async function loadValuationBands(
           mean: midCycleHistory.earnings.mean,
           median: midCycleHistory.earnings.median,
           window: midCycleHistory.earnings.status === "available" ? midCycleHistory.earnings.window : null,
+          years: midCycleHistory.earnings.years,
           notes: midCycleHistory.earnings.notes,
         }
       : null,

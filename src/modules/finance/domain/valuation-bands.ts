@@ -120,6 +120,12 @@ export type ValuationBandInput = {
     mean: number | null;
     median: number | null;
     window: string | null;
+    /**
+     * The annual observations behind the centre, oldest first.  Their
+     * `reportDate` is the only real date in the group — `window` is a label
+     * like `2016..2025` and cannot anchor a band.
+     */
+    years?: Array<{ fiscalYear: number; value: number; reportDate: string }>;
     /** EBIT-basis centre, used by the EV/EBIT midpoint band when present. */
     ebitMedian?: number | null;
     notes?: string[];
@@ -167,21 +173,37 @@ export function buildValuationBands(input: ValuationBandInput): ValuationBandRea
   if (input.archetype === "pre_profit_milestone") {
     add(forbidden("pe_ttm", "PE(TTM)", "primary", input.archetype, "里程碑型公司尚无可持续利润，PE 无意义。"));
   } else {
+    // A bank's or insurer's earnings are an output of the balance sheet, not an
+    // independent anchor: `valuation-coverage` marks PE as auxiliary there and
+    // says so explicitly ("PE 辅助，不单独使用"), because profit is moved by
+    // provisioning and reserve releases faster than by the business.  Keeping
+    // it primary made every bank screen as 60–70% cheap against the generic
+    // 8–18x range — a wide margin that measured the wrong method, not value.
+    const earningsLed = FINANCIAL_LED_ARCHETYPES.has(input.archetype);
     add(multipleBand({
       key: "pe_ttm",
-      label: isCyclical ? "PE(TTM)（周期股仅作参考）" : "PE(TTM)",
+      label: isCyclical
+        ? "PE(TTM)（周期股仅作参考）"
+        : earningsLed
+          ? "PE(TTM)（资产负债表驱动，仅作辅助）"
+          : "PE(TTM)",
       // A cyclical's TTM denominator is peak- or trough-biased, so the band is
       // demoted and the mid-cycle PE below carries the primary role.
-      role: isCyclical ? "auxiliary" : "primary",
+      role: isCyclical || earningsLed ? "auxiliary" : "primary",
       basis: "net_income_ttm",
       value: input.ttm.netProfit ?? null,
       reportDate: input.asOf.income,
       metric: "market_cap",
       marketCap: input.marketCap,
       extraMissing: netProfitUsable(input.ttm.netProfit) ? [] : ["净利润为正（当前为负或缺失）"],
-      extraAssumptions: isCyclical
-        ? ["周期股 TTM 利润可能处在周期高点或低点，只用 TTM PE 会系统性误判，须与周期中枢 PE 并列。"]
-        : [],
+      extraAssumptions: [
+        ...(isCyclical
+          ? ["周期股 TTM 利润可能处在周期高点或低点，只用 TTM PE 会系统性误判，须与周期中枢 PE 并列。"]
+          : []),
+        ...(earningsLed
+          ? ["银行的利润受拨备与减值影响，PE 不能单独作为估值依据；主方法为 PB-ROE 与股息率。"]
+          : []),
+      ],
     }));
   }
 
@@ -292,6 +314,7 @@ export function buildValuationBands(input: ValuationBandInput): ValuationBandRea
       role: "primary",
       basis: "free_cash_flow_ttm",
       flow: input.ttm.freeCashFlow ?? null,
+      reportDate: input.asOf.cashflow ?? input.asOf.income,
       metric: "market_cap",
       marketCap: input.marketCap,
       missing: input.ttm.freeCashFlow === null || input.ttm.freeCashFlow === undefined
@@ -414,25 +437,37 @@ function midCycleBand(input: ValuationBandInput): ValuationBand {
     ...(usable ? [] : midCycle ? ["中枢利润为正"] : []),
     ...(positive(input.marketCap) ? [] : ["市值（用于隐含值）"]),
   ];
+  // `window` is a range label such as `2016..2025`, not a date.  Using it as the
+  // anchor made `pe_mid_cycle` undateable: date parsing failed, so every
+  // cyclical (中远海控, 紫金矿业, 万华化学 …) fell through to `stale_basis` and
+  // could never be screened, even though its median came from real annual
+  // filings.  Anchor on the newest annual report actually inside the window.
+  const anchorDate = midCycle?.years?.length
+    ? [...midCycle.years].sort((left, right) => left.reportDate.localeCompare(right.reportDate)).at(-1)!.reportDate
+    : null;
   return {
     key: "pe_mid_cycle",
     label: "PE（周期中枢利润）",
     role: "primary",
-    status: usable ? "available" : "insufficient_data",
-    range: usable ? range : null,
-    unit: usable ? "multiple" : null,
-    denominator: usable && midCycle?.median
-      ? { basis: "net_income_mid_cycle", value: midCycle.median, reportDate: midCycle.window ?? "" }
+    status: usable && anchorDate ? "available" : "insufficient_data",
+    range: usable && anchorDate ? range : null,
+    unit: usable && anchorDate ? "multiple" : null,
+    denominator: usable && midCycle?.median && anchorDate
+      ? { basis: "net_income_mid_cycle", value: midCycle.median, reportDate: anchorDate }
       : null,
-    implied: usable && midCycle?.median && positive(input.marketCap)
+    implied: usable && midCycle?.median && anchorDate && positive(input.marketCap)
       ? impliedMarketCap(midCycle.median, range, input.marketCap)
       : null,
     assumptions: [
       DEFAULT_RANGES.pe_mid_cycle.note,
       "分母取年报利润中位数；缺失年度不插值，亏损年度保留。",
+      ...(midCycle?.window ? [`中枢窗口 ${midCycle.window}。`] : []),
       ...(midCycle?.notes ?? []),
     ],
-    missingInputs: missing,
+    missingInputs: [
+      ...missing,
+      ...(anchorDate ? [] : ["中枢窗口内没有可用的年报报告期"]),
+    ],
     reasons: [],
   };
 }
@@ -493,23 +528,34 @@ function yieldBand(input: {
   role: ValuationBand["role"];
   basis: ValuationBandBasis;
   flow: number | null;
+  /**
+   * Statement date the flow is anchored on.  Leaving this empty made every
+   * yield band undateable, so a reader could not tell a one-year-old cash flow
+   * from a fresh one — and any staleness check had to reject the band outright.
+   */
+  reportDate: string | null;
   metric: "market_cap";
   marketCap: number | null | undefined;
   missing: string[];
 }): ValuationBand {
   const usable = positive(input.flow);
   const range = rangeOf(input.key);
+  const dated = usable && input.reportDate;
   return {
     key: input.key,
     label: input.label,
     role: input.role,
-    status: usable && positive(input.marketCap) ? "available" : "insufficient_data",
-    range: usable && positive(input.marketCap) ? range : null,
-    unit: usable && positive(input.marketCap) ? "percent" : null,
-    denominator: usable ? { basis: input.basis, value: input.flow as number, reportDate: "" } : null,
+    status: usable && positive(input.marketCap) && input.reportDate ? "available" : "insufficient_data",
+    range: usable && positive(input.marketCap) && input.reportDate ? range : null,
+    unit: usable && positive(input.marketCap) && input.reportDate ? "percent" : null,
+    denominator: dated ? { basis: input.basis, value: input.flow as number, reportDate: input.reportDate as string } : null,
     implied: null,
     assumptions: [DEFAULT_RANGES[input.key].note, "收益率区间是门槛值，不是对当前价格的判断。"],
-    missingInputs: [...input.missing, ...(positive(input.marketCap) ? [] : ["市值"])],
+    missingInputs: [
+      ...input.missing,
+      ...(positive(input.marketCap) ? [] : ["市值"]),
+      ...(input.reportDate ? [] : ["现金流报告期"]),
+    ],
     reasons: [],
   };
 }

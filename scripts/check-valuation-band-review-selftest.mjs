@@ -131,8 +131,116 @@ const onlyThen = diffBandSnapshots(snapshotAt("2026-10-27", [withQuote]), snapsh
 assert.deepEqual(onlyThen.removed, ["co-0001"]);
 assert.equal(onlyThen.changes.length, 0);
 
+// 9. A non-date anchor is a model fix, never a filing.
+//    The through-cycle band stored its window label (`2016..2025`) where a
+//    report date belonged.  Comparing that string to a real date with `>`
+//    yields a nonsense "the company filed again", which would credit our own
+//    correction to the company — exactly the misattribution the review exists
+//    to prevent.
+const nakedBand = (reportDate) => ({
+  companyId: "co-0002",
+  code: "TEST.SH",
+  archetype: "cyclical_commodity",
+  asOf: { income: "2026-06-30", balance: "2026-06-30", cashflow: "2026-06-30" },
+  bands: [{
+    key: "pe_mid_cycle",
+    status: "available",
+    role: "primary",
+    range: { low: 8, high: 15 },
+    unit: "multiple",
+    denominator: { basis: "net_income_mid_cycle", reportDate, value: 50 * YI },
+    missingInputs: [],
+  }],
+});
+const anchorFix = diffBandSnapshots(
+  snapshotAt("2026-10-27", [nakedBand("2016..2025")]),
+  snapshotAt("2026-10-28", [nakedBand("2025-12-31")]),
+);
+assert.equal(anchorFix.changes.length, 1);
+assert.equal(anchorFix.changes[0].kind, "denominator_changed");
+assert.equal(anchorFix.changes[0].attribution, "model", "fixing our own anchor is not a company event");
+assert.match(anchorFix.changes[0].note, /口径修正/);
+
+// A real date that moved forward is still a filing, so the guard above only
+// rejects strings that cannot be dates.
+const realFiling = diffBandSnapshots(
+  snapshotAt("2026-10-27", [nakedBand("2025-12-31")]),
+  snapshotAt("2026-10-28", [nakedBand("2026-06-30")]),
+);
+assert.equal(realFiling.changes[0].attribution, "filing");
+
+// 10. A role change is our edit, not a filing.
+//     Band roles are decided by archetype, so `primary → auxiliary` always
+//     means the method weighting changed on our side.  Attributing it to
+//     `filing` would publish a method review as company news.
+const roleSnapshot = (role) => ({
+  companyId: "co-0003",
+  code: "BANK.SH",
+  archetype: "bank",
+  asOf: { income: "2026-06-30", balance: "2026-06-30", cashflow: "2026-06-30" },
+  bands: [{
+    key: "pe_ttm",
+    status: "available",
+    role,
+    range: { low: 8, high: 18 },
+    unit: "multiple",
+    denominator: { basis: "net_income_ttm", reportDate: "2026-06-30", value: 50 * YI },
+    missingInputs: [],
+  }],
+});
+const roleChange = diffBandSnapshots(
+  snapshotAt("2026-10-27", [roleSnapshot("primary")]),
+  snapshotAt("2026-10-28", [roleSnapshot("auxiliary")]),
+);
+assert.equal(roleChange.changes.length, 1);
+assert.equal(roleChange.changes[0].kind, "role_changed");
+assert.equal(roleChange.changes[0].attribution, "model", "a role move is a model edit, never a filing");
+
+// 11. An anchor that gains a date is a repair, not a filing.
+//
+//     The yield bands used to carry `""` in reportDate.  When that was fixed to
+//     the cash-flow report date, the band went from `insufficient_data` to
+//     `available` and the naive `reportDate !== reportDate` test called it
+//     "新一期报告让分母成立" — announcing our own field repair as a fresh filing.
+const repairSnapshot = (reportDate, status) => ({
+  companyId: "co-0004",
+  code: "YIELD.SH",
+  archetype: "growth_manufacturing",
+  asOf: { income: "2026-06-30", balance: "2026-06-30", cashflow: "2026-06-30" },
+  bands: [{
+    key: "fcf_yield",
+    status,
+    role: "primary",
+    range: status === "available" ? { low: 3, high: 6 } : null,
+    unit: status === "available" ? "percent" : null,
+    denominator: { basis: "free_cash_flow_ttm", reportDate, value: 10 * YI },
+    missingInputs: [],
+  }],
+});
+const emptyAnchor = diffBandSnapshots(
+  snapshotAt("2026-10-27", [repairSnapshot("", "insufficient_data")]),
+  snapshotAt("2026-10-28", [repairSnapshot("2026-06-30", "available")]),
+);
+assert.equal(emptyAnchor.changes[0].kind, "became_available");
+assert.equal(emptyAnchor.changes[0].attribution, "model", "an anchor gaining a date is our fix, not a filing");
+assert.ok(
+  emptyAnchor.changes.some((item) => item.kind === "denominator_changed" && item.attribution === "model"),
+  "the denominator change is also attributed to us",
+);
+
+// A genuinely newer dated anchor is still a filing, so the rule only rejects
+// anchors that cannot be dates.
+const realFilingAgain = diffBandSnapshots(
+  snapshotAt("2026-10-27", [repairSnapshot("2026-03-31", "available")]),
+  snapshotAt("2026-10-28", [repairSnapshot("2026-06-30", "available")]),
+);
+assert.ok(
+  realFilingAgain.changes.some((item) => item.kind === "denominator_changed" && item.attribution === "filing"),
+  "two real dates moving forward is a filing",
+);
+
 console.log("valuation-band-review self-test: ok", {
-  attributions: [...new Set([...identical.changes, ...newFiling.changes, ...modelChange.changes, ...outage.changes, ...archetypeChange.changes, ...unknown.changes].map((item) => item.attribution))],
-  kinds: [...new Set([...newFiling.changes, ...modelChange.changes, ...outage.changes, ...archetypeChange.changes].map((item) => item.kind))],
+  attributions: [...new Set([...identical.changes, ...newFiling.changes, ...modelChange.changes, ...outage.changes, ...archetypeChange.changes, ...unknown.changes, ...anchorFix.changes, ...roleChange.changes].map((item) => item.attribution))],
+  kinds: [...new Set([...newFiling.changes, ...modelChange.changes, ...outage.changes, ...archetypeChange.changes, ...anchorFix.changes, ...roleChange.changes].map((item) => item.kind))],
 });
 

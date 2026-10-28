@@ -30,10 +30,11 @@
 4. **重点加深**：对重大财报/指引变化、客户/竞争/供应链变化、估值进入安全边际的公司以及个人当前持仓，深入检查分部利润、盈利质量、资本回报和市场预期。
 5. **评价价值**：按公司本业使用可比较估值方法，区分银行、保险、资源周期、成长制造业、软件与REIT。记录同一上市证券的价格日期、货币、保守价值区间、盈利假设、安全边际及交易权利缺口。
 6. **形成研究动作**：`consider_buy`（买入候选）、`consider_add`（增持候选）、`research_hold`、`consider_trim`、`consider_exit`、`watch`、`insufficient_data`。**新增/增持候选必须有当日或标注日期的价格、保守价值区间与可点击来源**，否则降级为 `watch` / `insufficient_data`。
-7. **比较换仓机会**：只对明确的“两家公司”比较预期回报、永久损失风险、现金流、估值、交易成本和共同风险因子。公开档案必须标注 `portfolioPositionConfirmed=false`，不能说“已确认卖出持仓”；个人实际换仓仅在对话里核对资金账户后提出。
-8. **估值区间变化**：先跑 `npm run snapshot:valuation-bands`，它采集当日区间快照并与上一份对比。**输出必须按归因读**：`filing` 是公司披露了新报告，`model` 是我们改了默认倍数（**不是**公司变化），`price_source` 是行情源故障（**不是**估值变化），`unattributed` 需人工查清。把 `model` 项当成公司新闻是最容易犯的错。
-9. **落盘、校验、展示**：更新 `config/investment-daily-report.json`；若确有公司名单/赛道更新，另改 `config/investment-universe.json` 并保持稳定ID。执行 `npm run check:all && npm run build:web`，网页 `/investment-universe.html` 展示最后一份报告；不自动部署、不自动买卖。
-10. **复盘留痕**：复制 `docs/investment-daily/TEMPLATE.md` 为 `docs/investment-daily/YYYY-MM-DD.md` 并填写。不能用同名文件静默覆盖旧日证据、不能重复报道没有实质性变化的新闻。校验：`npm run check:daily-notes`。
+7. **机器只筛「研究候选」**：`npm run screen:valuation-candidates`（可加 `--market=CN|HK|US`、`--limit=N`、`--verdict=...`、`--json`）。它只输出 `research_candidate` / `watch` / `blocked`，**从不输出** `consider_buy` / `consider_add` / `consider_trim`——因为机器看不到账户资金与持仓，那两项永远不进公开 JSON。三条硬规则：**只有主方法能形成候选**（保险/银行的 PE 是辅助，只剩它可用时只能停在 `watch`）；**币种不一致一律阻断**（港股多以人民币/美元报账、以港币交易，跨币种相除是 7.8 倍误差）；**阻断原因必须准确**（`quote_fetch_failed` 是取数失败，`quote_missing` 是确实没有市值，`currency_mismatch` 是结构性问题，三者不能互换）。候选是"值得读一遍财报"的名单，不是动作。
+8. **比较换仓机会**：只对明确的“两家公司”比较预期回报、永久损失风险、现金流、估值、交易成本和共同风险因子。公开档案必须标注 `portfolioPositionConfirmed=false`，不能说“已确认卖出持仓”；个人实际换仓仅在对话里核对资金账户后提出。
+9. **估值区间变化**：先跑 `npm run snapshot:valuation-bands`，它采集当日区间快照并与上一份对比。**输出必须按归因读**：`filing` 是公司披露了新报告，`model` 是我们改了默认倍数或区间角色（**不是**公司变化），`price_source` 是行情源故障（**不是**估值变化），`unattributed` 需人工查清。把 `model` 项当成公司新闻是最容易犯的错。
+10. **落盘、校验、展示**：更新 `config/investment-daily-report.json`；若确有公司名单/赛道更新，另改 `config/investment-universe.json` 并保持稳定ID。执行 `npm run check:all && npm run build:web`，网页 `/investment-universe.html` 展示最后一份报告；不自动部署、不自动买卖。
+11. **复盘留痕**：复制 `docs/investment-daily/TEMPLATE.md` 为 `docs/investment-daily/YYYY-MM-DD.md` 并填写。不能用同名文件静默覆盖旧日证据、不能重复报道没有实质性变化的新闻。校验：`npm run check:daily-notes`。
 
 ## 4. 投研判断的最低证据条件
 
