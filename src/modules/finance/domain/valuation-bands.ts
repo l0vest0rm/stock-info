@@ -94,6 +94,8 @@ export type ValuationBandInput = {
   balance: {
     /** Equity attributable to the parent. */
     parentEquity?: number | null;
+    /** Equity attributable to ordinary shares, after other equity instruments. */
+    commonEquity?: number | null;
     /** Disclosed interest-bearing debt total; null when any line is missing. */
     grossDebt?: number | null;
     /** Disclosed cash and equivalents. */
@@ -152,7 +154,7 @@ const DEFAULT_RANGES: Record<string, { low: number; high: number; unit: "multipl
   ev_ebitda_medium: { low: 9, high: 18, unit: "multiple", note: "中等资本密度（折旧/EBIT 0.5–1）。" },
   ev_ebitda_heavy: { low: 5, high: 11, unit: "multiple", note: "重资本（折旧/EBIT > 1）：折旧摊销吞掉大部分利润，EV/EBITDA 与 EV/EBIT 必须并列。" },
   ev_revenue: { low: 0.6, high: 2.4, unit: "multiple", note: "EV/营业收入只在无正利润阶段使用，利润率恢复后失效。" },
-  pb: { low: 0.8, high: 2.5, unit: "multiple", note: "PB 必须与 ROE 一起看，单独使用的 PB 区间没有信息量。" },
+  pb: { low: 0.8, high: 2.5, unit: "multiple", note: "PB 使用扣除其他权益工具后的普通股股东权益；必须与 ROE 一起看，单独使用的 PB 区间没有信息量。" },
   fcf_yield: { low: 3, high: 6, unit: "percent", note: "自由现金流收益率下限体现机会成本，上限体现不确定性打折。" },
   dividend_yield: { low: 2.5, high: 5, unit: "percent", note: "股息率必须以可持续分红为前提，一次性特别股息不计入门槛。" },
   pe_mid_cycle: { low: 8, high: 15, unit: "multiple", note: "周期中枢 PE 以 5–10 年年报利润中位数为分母，上限低于 TTM PE 区间，因为中枢本身已含周期不确定性。" },
@@ -286,7 +288,7 @@ export function buildValuationBands(input: ValuationBandInput): ValuationBandRea
       label: "PB（须与 ROE 联读）",
       role: "primary",
       basis: "book_equity",
-      value: input.balance.parentEquity ?? null,
+      value: input.balance.commonEquity ?? null,
       reportDate: input.asOf.balance,
       metric: "market_cap",
       marketCap: input.marketCap,
@@ -299,7 +301,7 @@ export function buildValuationBands(input: ValuationBandInput): ValuationBandRea
       label: "PB（辅助）",
       role: "auxiliary",
       basis: "book_equity",
-      value: input.balance.parentEquity ?? null,
+      value: input.balance.commonEquity ?? null,
       reportDate: input.asOf.balance,
       metric: "market_cap",
       marketCap: input.marketCap,

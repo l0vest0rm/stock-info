@@ -197,3 +197,39 @@
 .ivu-focus-tabs button:focus-visible,.ivu-focus-policy summary:focus-visible,.ivu-review-fold>summary:focus-visible{outline:2px solid #278264;outline-offset:3px}
 @media(max-width:1100px){.ivu-filters{grid-template-columns:repeat(4,minmax(0,1fr))}.ivu-focus-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ivu-page-header{align-items:flex-start}.ivu-header-summary{max-width:240px}}
 @media(max-width:767px){.ivu-shell{padding:18px 14px 28px}.ivu-page-header{display:block}.ivu-page-header h1{font-size:1.6rem}.ivu-header-summary{max-width:none;margin-top:15px;gap:6px}.ivu-header-summary strong{font-size:1.1rem}.ivu-header-summary i{margin:0 3px}.ivu-section-heading{display:block}.ivu-focus-scope{display:block;margin-top:8px}.ivu-focus-grid{grid-template-columns:1fr}.ivu-focus-card{padding:16px}.ivu-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.ivu-focus-tabs button{padding:8px 10px}.ivu-detail{padding:16px}.ivu-detail-grid{grid-template-columns:1fr}.ivu-topline{align-items:flex-start}.ivu-muted-small{color:#748980}}
+
+/* Versioned opportunity evidence, independent from valuation-band labels. */
+.ivu-opportunity-detail{border-top:1px solid #dce7e1;margin-top:22px;padding-top:20px}
+.ivu-opportunity-detail h3{font-size:1.15rem;margin:0 0 10px}
+.ivu-opportunity-detail h4{font-size:.9rem;margin:12px 0}
+.ivu-opportunity-detail p,.ivu-opportunity-detail li{font-size:.78rem;line-height:1.8;color:#526d60;overflow-wrap:anywhere}
+.ivu-opportunity-gates{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0}
+.ivu-opportunity-gate{border:1px solid #dce6df;border-radius:10px;padding:14px;background:#f8faf8}
+.ivu-opportunity-gate strong{display:block;font-size:.84rem;margin-bottom:5px}
+.ivu-opportunity-gate>span{font-size:.72rem;color:#6c8071}
+.ivu-opportunity-gate.is-fail{border-color:#e8c4b5;background:#fff6f1}
+.ivu-opportunity-gate.is-pass{border-color:#bddac9;background:#f2faf5}
+.ivu-opportunity-signals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.ivu-opportunity-signal{border:1px solid #e2eae5;border-radius:10px;padding:16px;min-width:0}
+.ivu-opportunity-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin:14px 0}
+.ivu-opportunity-metrics dt{font-size:.71rem;color:#83958b}
+.ivu-opportunity-metrics dd{margin:4px 0;font-size:1rem;font-weight:650;color:#2b5745}
+.ivu-opportunity-metrics small{font-size:.65rem;color:#8b9b92;display:block;overflow-wrap:anywhere}
+.ivu-opportunity-tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.ivu-opportunity-tags span{border-radius:5px;background:#edf2ef;color:#5c7566;padding:3px 7px;font-size:.7rem}
+.ivu-opportunity-review{background:#f6f8f5;border-radius:10px;padding:16px;margin-top:16px}
+.ivu-table{min-width:1500px}
+.ivu-filters{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:1100px){.ivu-filters{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:767px){.ivu-opportunity-signals,.ivu-opportunity-gates{grid-template-columns:1fr}.ivu-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.ivu-opportunity-detail .ivu-section-heading{display:flex;flex-wrap:wrap}}
+
+/* Keep research evidence above the pool without moving the underlying page. */
+html:has(.ivu-detail-dialog){scrollbar-gutter:stable}
+html:has(.ivu-detail-dialog[open]){overflow:hidden}
+.ivu-detail-dialog{box-sizing:border-box;width:min(1120px,calc(100% - 32px));max-height:calc(100dvh - 48px);margin:auto;padding:0;border:0;border-radius:14px;background:#fff;color:inherit;box-shadow:0 24px 80px #142f3940;overflow:auto;overscroll-behavior:contain}
+.ivu-detail-dialog::backdrop{background:rgba(15,35,30,.48)}
+.ivu-detail-dialog .ivu-detail{margin:0;border:0;border-radius:0;box-shadow:none;padding-top:0}
+.ivu-detail-dialog .ivu-detail-header{position:sticky;top:0;z-index:1;background:#fff;padding:20px 0 14px;border-bottom:1px solid #e9efec}
+.ivu-detail-dialog .ivu-close{cursor:pointer;flex-shrink:0}
+.ivu-detail-dialog .ivu-close:focus-visible{outline:2px solid #278264;outline-offset:3px}
+@media(max-width:767px){.ivu-detail-dialog{width:calc(100% - 16px);max-height:calc(100dvh - 24px)}.ivu-detail-dialog .ivu-detail-header{padding-top:16px}}

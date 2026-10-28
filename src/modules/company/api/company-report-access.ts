@@ -40,7 +40,10 @@ function reportUrl(item: ReportItem): string {
 export function projectCompanyReportItemsForSession(items: ReportItem[], authenticated: boolean): ReportItem[] {
   return items.map((item) => {
     const target = reportUrl(item);
-    const projected = { ...item };
+    const carrier = String(item.detailUrl || item.url || "");
+    const reportCarrier = /(^|\.)sina\.com\.cn$/.test((() => { try { return new URL(carrier).hostname; } catch { return ""; } })())
+      ? (item.infoCode ? "东方财富 / 新浪" : "新浪") : item.infoCode ? "东方财富" : "其他来源";
+    const projected: ReportItem = { ...item, reportCarrier };
     for (const field of HIDDEN_REPORT_FIELDS) delete projected[field];
     if (!target) return projected;
     return authenticated

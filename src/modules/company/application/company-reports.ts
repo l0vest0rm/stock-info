@@ -1,3 +1,4 @@
+import { normalizeForwardReference } from "../domain/report-forward-reference";
 import type { Database } from "../../../platform/contracts";
 import { fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
@@ -91,7 +92,8 @@ export async function getCompanyReportsWithProgress(
   env: AppEnv["Bindings"],
   code: string,
   page: number,
-  onProgress: (event: ReportForecastStreamEvent) => void
+  onProgress: (event: ReportForecastStreamEvent) => void,
+  options: { readOnly?: boolean } = {},
 ): Promise<Array<Record<string, unknown>>> {
   const [sourceItems, overview, actualAnnualProfitByYear] = await Promise.all([
     getCompanyReportsSource(env, code, page),
@@ -100,14 +102,14 @@ export async function getCompanyReportsWithProgress(
   ]);
   let items = sourceItems;
   // Production reads persisted forecasts; extraction belongs to the local runtime.
-  if (page === 1 && env.LLM_RUNTIME === "local") {
+  if (!options.readOnly && page === 1 && env.LLM_RUNTIME === "local") {
     const failures = await ensureReportForecastsForItemsWithProgress(env, code, items, overview, actualAnnualProfitByYear, onProgress);
     if (failures.length > 0) onProgress({ failures });
   } else {
     onProgress({ progress: { completed: 0, total: 0, title: "" } });
   }
   items = await annotateReportItemsWithForecasts(env, items);
-  return applyCurrentPeToReportItems(items, overview, actualAnnualProfitByYear);
+  return applyCurrentPeToReportItems(options.readOnly ? items.map(normalizeForwardReference) : items, overview, actualAnnualProfitByYear);
 }
 
 async function fetchCompanyReportPeOverview(env: AppEnv["Bindings"], code: string): Promise<CompanyOverview | null> {

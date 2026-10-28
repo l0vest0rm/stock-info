@@ -1,3 +1,4 @@
+import { commonEquity } from "../domain/common-equity.ts";
 import { loadFinancialStatementReadModel } from "./load-financial-statements";
 import { isFormalAnnualIncomeStatement } from "../domain/annual-income-statements";
 import { trailingTwelveMonths as ttmFromFiscalCalendar } from "../domain/ttm-fiscal-calendar.ts";
@@ -72,12 +73,12 @@ export function deriveLatestFinancialValuation(input: {
   const netProfit = trailingTwelveMonths(incomeRows, "netProfit");
   const revenue = trailingTwelveMonths(incomeRows, "revenue");
   const operatingCashFlow = trailingTwelveMonths(cashflowRows, "operatingCashFlow");
-  const parentEquity = balance ? firstFinite(payload(balance).TOTAL_PARENT_EQUITY, payload(balance).TOTAL_EQUITY) : null;
+  const ordinaryEquity = balance ? commonEquity(payload(balance))?.value ?? null : null;
 
   return {
     source: "financial-statements",
     peTtm: quotient(marketCapitalization, netProfit),
-    pb: quotient(marketCapitalization, parentEquity),
+    pb: quotient(marketCapitalization, ordinaryEquity),
     psTtm: quotient(marketCapitalization, revenue),
     pcfTtm: quotient(marketCapitalization, operatingCashFlow),
     basis: {

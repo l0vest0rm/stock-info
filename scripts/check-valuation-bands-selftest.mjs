@@ -26,7 +26,7 @@ const manufacturer = buildValuationBands({
   code: "TEST.SH",
   archetype: "growth_manufacturing",
   ttm: { netProfit: 50 * YI, revenue: 400 * YI, ebit: 80 * YI, ebitda: 100 * YI, operatingCashFlow: 90 * YI, freeCashFlow: 40 * YI },
-  balance: { parentEquity: 200 * YI, grossDebt: 100 * YI, cash: 60 * YI, debtIncomplete: false },
+  balance: { commonEquity: 200 * YI, parentEquity: 200 * YI, grossDebt: 100 * YI, cash: 60 * YI, debtIncomplete: false },
 });
 assert.equal(band(manufacturer, "pe_ttm").status, "available");
 assert.ok(Math.abs(band(manufacturer, "pe_ttm").denominator.value - 50 * YI) < 1, "PE denominator is TTM net profit");
@@ -56,7 +56,7 @@ const bank = buildValuationBands({
   code: "600036.SH",
   archetype: "bank",
   ttm: { netProfit: 1500 * YI, revenue: 3400 * YI, ebit: 2000 * YI, ebitda: 2100 * YI },
-  balance: { parentEquity: 12000 * YI, grossDebt: 0, cash: 0, debtIncomplete: false },
+  balance: { commonEquity: 12000 * YI, parentEquity: 12000 * YI, grossDebt: 0, cash: 0, debtIncomplete: false },
 });
 assert.equal(band(bank, "ev_ebit").status, "forbidden_for_archetype");
 assert.equal(band(bank, "ev_ebitda").status, "forbidden_for_archetype");
@@ -65,7 +65,7 @@ assert.equal(band(bank, "pb").status, "available");
 assert.equal(band(bank, "pb").denominator.basis, "book_equity");
 
 // 4. Insurers: unadjusted PB is forbidden too.
-const insurer = buildValuationBands({ ...base, code: "601318.SH", archetype: "insurer", ttm: { netProfit: 1300 * YI }, balance: { parentEquity: 9000 * YI } });
+const insurer = buildValuationBands({ ...base, code: "601318.SH", archetype: "insurer", ttm: { netProfit: 1300 * YI }, balance: { commonEquity: 9000 * YI , parentEquity: 9000 * YI } });
 assert.equal(band(insurer, "pb").status, "forbidden_for_archetype");
 assert.ok(band(insurer, "pb").reasons.some((text) => text.includes("内含价值")));
 
@@ -76,7 +76,7 @@ assert.equal(band(preprofit, "ev_revenue").status, "available");
 assert.equal(band(preprofit, "ev_revenue").role, "primary");
 
 // 6. No quote: anchors still compute, the implied column is simply absent.
-const noQuote = buildValuationBands({ ...base, code: "NOPRICE.SH", archetype: "stable_cash_dividend", marketCap: null, ttm: { netProfit: 30 * YI, freeCashFlow: 25 * YI }, balance: { parentEquity: 100 * YI } });
+const noQuote = buildValuationBands({ ...base, code: "NOPRICE.SH", archetype: "stable_cash_dividend", marketCap: null, ttm: { netProfit: 30 * YI, freeCashFlow: 25 * YI }, balance: { commonEquity: 100 * YI , parentEquity: 100 * YI } });
 assert.equal(band(noQuote, "pe_ttm").status, "available", "anchor survives a missing quote");
 assert.equal(band(noQuote, "pe_ttm").implied, null);
 assert.equal(band(noQuote, "fcf_yield").status, "insufficient_data", "yield needs a market cap");

@@ -55,13 +55,32 @@ console.log(JSON.stringify({
   marketCapYi: overview.marketCapYi,
 }, null, 2));
 
+// Existing provider forecasts must retain publication-relative years and access control.
+const { normalizeForwardReference } = await import('../src/modules/company/domain/report-forward-reference.ts');
+const normalizedForward = normalizeForwardReference({ publishDate: '2025-09-20', predictThisYearEps: '2', predictNextYearEps: '3', predictNextYearPe: '12', forecasts: [{ year: 2026, eps: 4 }] });
+assert(normalizedForward.forecasts[0].year === 2025 && normalizedForward.forecasts[1].year === 2026, '预测年份必须锚定发布日期');
+assert(normalizedForward.forecasts[1].eps === 4 && normalizedForward.forecasts[1].pe === 12, '已保存提取优先且保留提供商PE');
+assert(normalizeForwardReference({ predictThisYearEps: '2' }).forecasts.length === 0, '无发布日期不得猜预测年份');
+assert(normalizeForwardReference({ publishDate: '2026-01-01', predictThisYearEps: '' }).forecasts.length === 0, '空预测不得变成0');
+const { projectCompanyReportItemsForSession } = await import('../src/modules/company/api/company-report-access.ts');
+const anonymousReport = projectCompanyReportItemsForSession([{ code, infoCode: 'AP123', url: 'https://pdf.dfcfw.com/example.pdf' }], false)[0];
+assert(anonymousReport.reportCarrier === '东方财富' && anonymousReport.reportLocked && !anonymousReport.url && !anonymousReport.infoCode && !anonymousReport.reportUrl, '来源标记不得绕过研报链接权限');
+const reportReferences = await get(`/api/company/reports?code=${code}&readOnly=1`);
+assert(Array.isArray(reportReferences) && reportReferences.length > 0, '只读研报参考缺失');
+assert(reportReferences.every((r) => typeof r.reportCarrier === 'string'), '研报来源缺失');
+assert(reportReferences.some((r) => r.forecasts?.some((f) => Number.isInteger(f.year) && Number.isFinite(f.eps))), '现有研报EPS未接入');
+console.log(JSON.stringify({ forwardReferences: 'passed', reports: reportReferences.length }));
+
 // The retained basic entry point also protects the valuation dashboard contract.
 const dashboard = await get('/api/research/valuation-screen');
-assert(dashboard.schemaVersion === 2 && Array.isArray(dashboard.targets), '估值看板契约版本错误');
+assert(dashboard.schemaVersion === 3 && Array.isArray(dashboard.targets), '估值看板契约版本错误');
 assert(dashboard.targets.length === dashboard.companies && new Set(dashboard.targets).size === dashboard.companies, '估值观察池目标重复或缺失');
 for (const row of dashboard.rows) {
   assert(dashboard.targets.includes(row.code), '缓存混入观察池外证券');
   assert(row.executable === false, '估值不得成为自动交易指令');
+  assert(row.opportunity?.policyVersion === 'opportunity-v1', '机会模型缺失或策略版本错误');
+  assert(row.opportunity.signals.length === 4 && row.opportunity.future === null, '四类线索契约或未来留空错误');
+  if (row.opportunity.stage === 'research_candidate') assert(row.opportunity.gates.every((g) => g.state === 'pass'), '候选必须通过全部量化门槛');
   if (!row.assessment) { assert(row.verdict === 'blocked', '缺失估值模型必须阻断'); continue; }
   const a = row.assessment;
   assert(a.future === null, '未覆盖的未来估值不得伪造');
@@ -88,3 +107,6 @@ assert(assessValuation({ ...input, result: { ...input.result, verdict: 'blocked'
 const yieldResult = assessValuation({ ...input, result: { ...input.result, basis: { key: 'fcf_yield' } }, bands: { bands: [{ ...baseBand, key: 'fcf_yield', unit: 'percent', range: { low: 3, high: 6 } }], warnings: [] } });
 assert(Math.abs(yieldResult.conservativeMargin - .4) < 1e-9, '收益率区间必须反向换算价值，再计算安全边际');
 console.log(JSON.stringify({ valuationDashboard: 'passed', cachedRows: dashboard.rows.length, targets: dashboard.companies }));
+
+const { checkInvestmentOpportunity } = await import('./lib/check-investment-opportunity.mjs');
+console.log(JSON.stringify(checkInvestmentOpportunity()));

@@ -138,7 +138,7 @@ export function buildQuarterlySeries(
       ttmBasis: ttm.basis,
       revenueYoY: null,
       netProfitYoY: null,
-      provisional: isProvisional(cumulativeRow ?? quarterRow),
+      provisional: isProvisional(cumulativeRow) || isProvisional(quarterRow),
       gaps,
     });
   }

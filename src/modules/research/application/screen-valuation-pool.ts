@@ -2,6 +2,10 @@
  * per-security requests; the legacy bulk screen remains available to CLI callers.
  * Failures stay data, not investment conclusions. No LLM or trading execution.
  */
+import { buildInvestmentOpportunity } from "../domain/investment-opportunity";
+import type { InvestmentOpportunity } from "../../../../shared/investment-opportunity";
+import opportunityPolicy from "../../../../config/investment-opportunity-policy.json";
+import { trailingTwelveMonths } from "../../finance/domain/ttm-fiscal-calendar";
 import { loadValuationBands } from "../../finance/application/load-valuation-bands";
 import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
 import { buildQuarterlySeries } from "../../finance/domain/quarterly-ttm-series";
@@ -20,6 +24,7 @@ type Environment = Pick<Bindings, "DB" | "MARKET_DATA_BUCKET"> & Partial<Pick<Bi
 
 export type ValuationScreenRow = {
   assessment?: ValuationAssessment;
+  opportunity?: InvestmentOpportunity;
   code: string;
   name: string;
   market: "CN" | "HK" | "US" | "KR";
@@ -227,12 +232,35 @@ async function screenOne(
   const failedFinancials = financials.filter((model) => model.sourceHealth.status !== 'healthy');
   // A fresh computation does not make an old quote fresh. Holidays get a bounded
   // calendar allowance; suspensions beyond it must not produce a green badge.
-  if (quoteFailed || (quoteAge > 7 || quoteAge < -1) || failedFinancials.length) {
+  if (quoteFailed || (quoteAge > 7 || quoteAge < -1 || !Number.isFinite(quoteAge)) || failedFinancials.length) {
     result = { ...result, verdict: 'blocked', basis: null, position: null, blockReasons: ['quote_missing'], note: failedFinancials.length ? '本次财报刷新失败；不以旧财报冒充最新结果。' : quoteFailed ? quoteFailureReason! : '行情日期缺失或距今超过7天，不能判定当前估值。' };
   }
   const assessment = assessValuation({ result, bands, series, statements: income.rows, bars, quote: quoteMeta,
     historyComparable: comparableCurrency });
-  return { ...base, ...result, blockReasons: failedFinancials.length ? ['financial_refresh_failed'] : quoteFailed ? ['quote_fetch_failed'] : (quoteAge > 7 || quoteAge < -1) ? ['stale_quote'] : result.blockReasons, growth: result.growth ?? null, assessment };
+  const blockReasons: ValuationScreenRow['blockReasons'] = failedFinancials.length ? ['financial_refresh_failed'] : quoteFailed ? ['quote_fetch_failed'] : (quoteAge > 7 || quoteAge < -1 || !Number.isFinite(quoteAge)) ? ['stale_quote'] : result.blockReasons;
+  // Separate adjusted-price contract. Never use normal-price bars for drawdowns.
+  let adjustedBars: import("../../../types").KlineBar[] = [];
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
+    adjustedBars = (await fetchXueqiuStockKline(env.DB, target.code, 'day', 'qfq', today, httpOptions, env.XUEQIU_COOKIE)).rows;
+  } catch { /* Missing adjusted data stays an uncovered signal, not a fallback. */ }
+  const cashRows = financials[2].sourceHealth.status === 'healthy' ? financials[2].rows : [];
+  const balanceRows = financials[1].sourceHealth.status === 'healthy' ? financials[1].rows : [];
+  const cashDate = cashRows.map((r) => r.reportDate).sort().at(-1) ?? null;
+  const balanceRow = [...balanceRows].sort((a, b) => b.reportDate.localeCompare(a.reportDate))[0];
+  const numeric = (payload: unknown, keys: string[]) => {
+    const object = (payload ?? {}) as Record<string, unknown>;
+    for (const key of keys) if (typeof object[key] === 'number' && Number.isFinite(object[key])) return object[key] as number;
+    return null;
+  };
+  const assets = numeric(balanceRow?.payload, ['TOTAL_ASSETS', 'totalAssets', 'totaAssets']);
+  const liabilities = numeric(balanceRow?.payload, ['TOTAL_LIABILITIES', 'totalLiabilities', 'totalLiab']);
+  const cashflowTtm = target.market === 'US' ? null : trailingTwelveMonths(cashRows, (row) => numeric(row.payload, ['NETCASH_OPERATE', 'netcashOperate', 'netCashOperate']));
+  const opportunity = buildInvestmentOpportunity({ assessment, archetype: base.archetype, blockReasons,
+    points: series.points, adjustedBars, cashflowTtm, cashflowReportDate: cashDate,
+    debtRatio: assets !== null && assets > 0 && liabilities !== null && liabilities >= 0 ? liabilities / assets : null,
+    balanceReportDate: balanceRow?.reportDate ?? null, policy: opportunityPolicy });
+  return { ...base, ...result, blockReasons, growth: result.growth ?? null, assessment, opportunity };
 
 }
 
@@ -275,6 +303,7 @@ export async function screenValuationPool(
           growth: null,
           executable: false,
           unavailableReason: error instanceof Error ? error.message : String(error),
+          opportunity: buildInvestmentOpportunity({ assessment: null, archetype: companyValuationArchetype(targets[index].code) ?? 'other', blockReasons: ['request_failed'], points: [], adjustedBars: [], cashflowTtm: null, cashflowReportDate: null, debtRatio: null, balanceReportDate: null, policy: opportunityPolicy }),
         };
       }
     }

@@ -1,12 +1,13 @@
 import { getKvCache, listKvCacheByNamespace } from '../../../db/queries';
 import { externalHttpOptions } from '../../../shared/http';
 import type { Bindings } from '../../../types';
+import opportunityPolicy from '../../../../config/investment-opportunity-policy.json';
 import { screenTargets, screenValuationPool, type ValuationScreenRow } from './screen-valuation-pool';
 
 // Existing kv_cache only. Per-security results avoid lost updates between tabs
 // and allow small, bounded Worker requests instead of a 97-company waitUntil.
-const NAMESPACE = 'valuation-screen-v2';
-const LEASE_NAMESPACE = 'valuation-screen-v2-lease';
+const NAMESPACE = 'valuation-screen-v3';
+const LEASE_NAMESPACE = 'valuation-screen-v3-lease';
 const RETENTION_MS = 7 * 86400000;
 type Environment = Pick<Bindings, 'DB' | 'MARKET_DATA_BUCKET'> & Partial<Bindings>;
 type Stored = { row: ValuationScreenRow; computedAt: string };
@@ -14,7 +15,7 @@ type Stored = { row: ValuationScreenRow; computedAt: string };
 function parse(text: string): Stored | null {
   try {
     const value = JSON.parse(text) as Stored;
-    return value?.row?.code && Number.isFinite(Date.parse(value.computedAt)) ? value : null;
+    return value?.row?.code && value.row.opportunity?.policyVersion === opportunityPolicy.version && Number.isFinite(Date.parse(value.computedAt)) ? value : null;
   } catch { return null; }
 }
 
@@ -27,7 +28,7 @@ export async function readValuationDashboard(env: Environment) {
   for (const row of rows) byVerdict[row.verdict] = (byVerdict[row.verdict] ?? 0) + 1;
   const dates = stored.map((r) => r.computedAt).sort();
   return {
-    schemaVersion: 2, asOf: new Date().toISOString().slice(0, 10), generatedAt: dates.at(-1) ?? null,
+    schemaVersion: 3, asOf: new Date().toISOString().slice(0, 10), generatedAt: dates.at(-1) ?? null,
     oldestComputedAt: dates[0] ?? null, companies: targets.length, targets: targets.map((t) => t.code), rows, byVerdict,
     stale: stored.length < targets.length || stored.some((r) => Date.now() - Date.parse(r.computedAt) > 10 * 60000),
     warnings: ['先展示缓存；每次打开/刷新页面逐家公司请求后台重算并缓存。行情请求上游最新数据，财报刷新按原数据源执行。未来估值未覆盖。'],

@@ -89,7 +89,7 @@ companyRoutes.get("/company/reports", async (c) => {
     return code;
   }
   const page = positivePage(c.req.query("page"));
-  const items = await getCompanyReportsWithProgress(c.env, code, page, () => undefined);
+  const items = await getCompanyReportsWithProgress(c.env, code, page, () => undefined, { readOnly: c.req.query("readOnly") === "1" });
   const authenticated = isLocalDevelopmentRuntime(c.env) || Boolean(await currentUser(c.req.raw, c.env));
   c.header("Cache-Control", "no-store");
   c.header("Vary", "Cookie");

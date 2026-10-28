@@ -1,7 +1,16 @@
-import { computed, createApp, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, createApp, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { InvestmentOpportunity, OpportunityKind, OpportunityMetric } from '../../../../../shared/investment-opportunity'
 import type { ValuationAssessment } from '../../../../../shared/valuation-assessment'
 import universeJson from '../../../../../config/investment-universe.json'
+import researchJson from '../../../../../config/investment-universe-research.json'
+import opportunityPolicy from '../../../../../config/investment-opportunity-policy.json'
 import { renderDailyPanel } from './investment-daily-panel'
+
+type ForwardReport = {
+  title?: string; orgSName?: string; orgName?: string; publishDate?: string;
+  reportCarrier?: string; reportUrl?: string; reportLocked?: boolean; targetPrice?: number;
+  forecasts?: { year: number; eps?: number; netProfit?: number; pe?: number; computedPe?: number; computedPeAsOf?: number }[];
+}
 
 type Security = {
   ticker: string
@@ -48,6 +57,71 @@ type Company = {
   /** Derived by scripts/sync-investment-universe-valuation.mjs; see src/modules/research/domain/valuation-coverage.ts. */
   valuationArchetype: string
 }
+type ResearchForecastYear = {
+  year: number
+  epsYuan: number | null
+  epsYuanRange: { low: number | null; high: number | null }
+  netProfitYi: number | null
+  netProfitYiRange: { low: number | null; high: number | null }
+  brokerCount: number
+}
+type ResearchForecast = {
+  asOf: string
+  method: string
+  source: { publisher: string; title: string; url: string; sourceType: string }
+  forecastYears: ResearchForecastYear[]
+}
+type ResearchBrokerReport = {
+  institution: string
+  analyst: string
+  publishedAt: string
+  title: string | null
+  rating: string | null
+  sourceUrl: string
+  forecastYears: { year: number; epsYuan: number | null; netProfitYi: number | null }[]
+}
+type ResearchNews = {
+  publishedAt: string
+  title: string
+  summary: string
+  verification: 'full_text_checked' | 'headline_only'
+  source: { publisher: string; url: string; sourceType: string }
+}
+type ResearchGuidance = {
+  period: string
+  metric: string
+  value: { low?: number; high?: number; central?: number; plusMinus?: number }
+  unit: string
+  publishedAt: string
+  sourceUrl: string
+}
+type ResearchIndustrySignal = {
+  trackId: string
+  publishedAt: string
+  title: string
+  summary: string
+  implication: string
+  verification: string
+  source: { publisher: string; url: string; sourceType: string }
+}
+type ResearchEntry = {
+  companyId: string
+  checkedAt: string | null
+  forecastStatus: string
+  forecast: ResearchForecast | null
+  analystReports: ResearchBrokerReport[]
+  managementGuidance: ResearchGuidance[]
+  keyJudgments: { type: string; text: string; attribution: string; publishedAt: string | null; sourceUrl: string | null }[]
+  news: ResearchNews[]
+  industrySignals: ResearchIndustrySignal[]
+  gaps: string[]
+}
+type ResearchSnapshot = {
+  asOf: string
+  coverage: { totalCompanies: number; companiesWithForecast: number; companiesWithNewsOrAnnouncements: number }
+  companies: ResearchEntry[]
+}
+
 type Track = { id: string; sectorId: string; name: string; researchFocus: string; risksToReview: string }
 type Sector = {
   id: string
@@ -82,6 +156,7 @@ type Universe = {
  * runs the same `screenValuationCandidate` the daily note quotes.
  */
 type ScreenRow = {
+  opportunity?: InvestmentOpportunity;
   assessment?: ValuationAssessment;
   code: string
   name: string
@@ -106,6 +181,14 @@ type ScreenSnapshot = {
   stale: boolean
   warnings: string[]
 }
+
+const opportunityLabels: Record<OpportunityKind, string> = { historical_discount: '历史折价', earnings_delivery: '盈利兑现', forward_gap: '未来预期差', drawdown: '显著回撤' }
+const opportunityStageLabels: Record<InvestmentOpportunity['stage'], string> = { research_candidate: '优先研究', clue: '线索待验证', blocked: '风险阻断', no_signal: '未触发', insufficient_data: '数据不足' }
+const evidenceLabels = { triggered: '已触发', not_triggered: '未触发', insufficient_data: '未覆盖 / 样本不足', not_applicable: '方法不适用' }
+const gateLabels = { data: '数据有效性', business: '经营质量初筛', valuation: '价格吸引力初筛' }
+const gateStateLabels = { pass: '通过初筛', fail: '未通过', unknown: '待核验' }
+const opportunityTone = (stage: string) => stage === 'research_candidate' ? 'is-candidate' : stage === 'blocked' ? 'is-expensive' : 'is-blocked'
+const opportunityMetric = (m: OpportunityMetric) => m.value === null ? '—' : m.unit === 'ratio' ? formatPct(m.value) : m.value.toFixed(2) + '×'
 
 const valuationLabels: Record<ValuationAssessment['status'], string> = {
   undervalued: '低估（规则）', fair_low: '合理偏低', fair: '合理', expensive: '偏贵', very_expensive: '明显偏贵', unknown: '无法判断',
@@ -135,6 +218,8 @@ function formatPct(value: number | null | undefined): string {
 }
 
 const universe = universeJson as Universe
+const researchSnapshot = researchJson as unknown as ResearchSnapshot
+const researchById = new Map(researchSnapshot.companies.map((entry) => [entry.companyId, entry]))
 const sectorsById = new Map(universe.sectors.map((sector) => [sector.id, sector]))
 const tracksById = new Map(universe.tracks.map((track) => [track.id, track]))
 const marketLabels: Record<string, string> = { CN: 'A股', HK: '港股', US: '美股', KR: '韩股' }
@@ -311,6 +396,11 @@ const InvestmentUniversePage = defineComponent({
     const refreshErrors = ref(0)
     const rowState = ref<Record<string, string>>({})
     const valuationFilter = ref('')
+    const opportunityFilter = ref(safeParam('opportunity', Object.keys(opportunityStageLabels)))
+    const signalFilter = ref(safeParam('signal', Object.keys(opportunityLabels)))
+    const freshnessClock = ref(Date.now())
+    let freshnessTimer: ReturnType<typeof setInterval> | undefined
+    const freshOpportunity = (row: ScreenRow | null) => !!row?.opportunity && freshnessClock.value - Date.parse(row.opportunity.computedAt) <= 10 * 60000 && !rowState.value[row.code]?.startsWith('刷新失败')
     const controller = new AbortController()
 
     async function api(path: string, method = 'GET') {
@@ -318,6 +408,39 @@ const InvestmentUniversePage = defineComponent({
       const body = await response.json().catch(() => null)
       if (!response.ok || body?.code !== 200) throw new Error(body?.msg || 'HTTP ' + response.status)
       return body.data
+    }
+    const forwardReports = ref<Record<string, ForwardReport[]>>({})
+    const forwardState = ref<Record<string, string>>({})
+    async function loadForwardReports(company: Company) {
+      if (forwardState.value[company.id] === '读取中') return
+      if (company.preferredMarket !== 'CN') { forwardState.value[company.id] = '现有东财/新浪研报链路仅覆盖A股'; return }
+      forwardState.value[company.id] = '读取中'
+      try {
+        const items = await api('/api/company/reports?readOnly=1&code=' + encodeURIComponent(company.preferredTicker)) as ForwardReport[]
+        forwardReports.value[company.id] = items.filter((r) => r.reportCarrier === '东方财富' || r.reportCarrier === '新浪' || r.reportCarrier === '东方财富 / 新浪')
+        forwardState.value[company.id] = '已读取'
+      } catch (error) { forwardState.value[company.id] = '读取失败：' + (error instanceof Error ? error.message : String(error)) }
+    }
+    const forwardYears = (r: ForwardReport) => (r.forecasts ?? []).filter((f) => f.year >= new Date().getFullYear())
+    const forwardNumber = (n: unknown) => typeof n === 'number' && Number.isFinite(n) ? n.toFixed(2) : '—'
+    const renderForwardReports = (company: Company) => {
+      const reports = forwardReports.value[company.id] ?? []
+      return h('section', { class: 'ivu-valuation-detail-block', 'aria-label': '未来估值参考' }, [
+        h('h3', '未来估值参考 · 东财 / 新浪研报'),
+        h('p', { class: 'ivu-muted-small' }, '复用项目已有研报及已保存的预测提取，不触发模型分析。逐份展示，不合成为一致预期，不自动触发“未来预期差”或低估信号。'),
+        h('button', { type: 'button', disabled: forwardState.value[company.id] === '读取中', onClick: () => loadForwardReports(company) }, '刷新研报估值'),
+        h('p', forwardState.value[company.id] || '等待读取'),
+        ...reports.map((r) => h('article', { class: 'ivu-opportunity-signal' }, [
+          h('h4', r.title || '研报'),
+          h('p', `${r.reportCarrier} · ${r.orgSName || r.orgName || '机构未标明'} · 发布 ${r.publishDate || '日期缺失'}`),
+          ...forwardYears(r).map((f) => h('p', `${f.year}E：EPS ${forwardNumber(f.eps)} 元 · 归母净利润 ${forwardNumber(f.netProfit)} 亿元 · 研报PE ${forwardNumber(f.pe)} 倍 · 行情快照重算PE ${forwardNumber(f.computedPe)} 倍${f.computedPeAsOf ? '（计算基准获取于 ' + new Date(f.computedPeAsOf).toLocaleString('zh-CN') + '）' : ''}`)),
+          !forwardYears(r).length ? h('p', '暂无本年及以后年度的已保存盈利预测，不以历史数据补缺。') : null,
+          h('p', `研报目标价：${forwardNumber(r.targetPrice)} 元（目标期限、复权及股本口径需核验，不计算上涨空间）`),
+          r.reportUrl && /^https?:\/\//i.test(r.reportUrl) ? h('a', { href: r.reportUrl, target: '_blank', rel: 'noopener noreferrer' }, '核查原研报 ↗') : h('span', r.reportLocked ? '登录后可查看原研报' : '原文链接暂缺'),
+        ])),
+        forwardState.value[company.id] === '已读取' && !reports.length ? h('p', '暂无东财/新浪研报；空缺不代表估值合理。') : null,
+        h('p', { class: 'ivu-muted-small' }, '预测可能已过时或尚未兑现；研报PE使用报告当时价格，重算PE使用行情快照而非实时价。负利润不适用PE。未来年度盈利预测不等于内在价值，需结合历史估值、经营质量及悲观情景复核。'),
+      ])
     }
     function acceptRow(row: ScreenRow) {
       screenRows.value = new Map(screenRows.value).set(row.code.toUpperCase(), row)
@@ -385,6 +508,9 @@ const InvestmentUniversePage = defineComponent({
     const filteredCompanies = computed(() => {
       const keyword = normalized(query.value)
       const companies = tieredCompanies.value.filter((company) => {
+        const opportunity = screenFor(company)?.opportunity
+        if (opportunityFilter.value && (freshOpportunity(screenFor(company)) ? opportunity?.stage : 'insufficient_data') !== opportunityFilter.value) return false
+        if (signalFilter.value && !opportunity?.signals.some((s) => s.kind === signalFilter.value && s.state === 'triggered')) return false
         if (valuationFilter.value && (screenFor(company)?.assessment?.status ?? 'unknown') !== valuationFilter.value) return false
         if (sectorId.value && company.primarySectorId !== sectorId.value) return false
         if (trackId.value && company.primaryTrackId !== trackId.value) return false
@@ -432,10 +558,32 @@ const InvestmentUniversePage = defineComponent({
       priority.value = ''
       sort.value = 'industry'
       valuationFilter.value = ''
+      opportunityFilter.value = ''
+      signalFilter.value = ''
     }
+    const detailDialog = ref<HTMLDialogElement | null>(null)
+    let detailTrigger: HTMLElement | null = null
+    function syncDetailDialog() {
+      const dialog = detailDialog.value
+      if (!dialog) return
+      if (selectedId.value && !dialog.open) {
+        detailTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        dialog.showModal()
+        dialog.scrollTop = 0
+        dialog.querySelector<HTMLElement>('.ivu-close')?.focus({ preventScroll: true })
+      } else if (!selectedId.value && dialog.open) {
+        dialog.close()
+        detailTrigger?.focus({ preventScroll: true })
+        detailTrigger = null
+      }
+    }
+    watch(selectedId, syncDetailDialog, { flush: 'post' })
+    watch(selectedId, (id) => { const company = universe.companies.find((c) => c.id === id); if (company && !forwardState.value[id]) void loadForwardReports(company) }, { immediate: true })
     function chooseCompany(id: string) {
       selectedId.value = id
-      void nextTick(() => document.getElementById('ivu-company-detail')?.focus())
+    }
+    function closeDetail() {
+      selectedId.value = ''
     }
     function readNavigationState() {
       const p = new URLSearchParams(window.location.search)
@@ -446,17 +594,19 @@ const InvestmentUniversePage = defineComponent({
       status.value = Object.hasOwn(statusLabels, p.get('status') || '') ? p.get('status') || '' : ''
       priority.value = Object.hasOwn(priorityLabels, p.get('priority') || '') ? p.get('priority') || '' : ''
       sort.value = ['industry','name','priority'].includes(p.get('sort') || '') ? p.get('sort') || 'industry' : 'industry'
+      opportunityFilter.value = Object.hasOwn(opportunityStageLabels, p.get('opportunity') || '') ? p.get('opportunity') || '' : ''
+      signalFilter.value = Object.hasOwn(opportunityLabels, p.get('signal') || '') ? p.get('signal') || '' : ''
       view.value = p.get('view') === 'tracks' ? 'tracks' : 'companies'
       selectedId.value = universe.companies.some((company) => company.id === p.get('company')) ? p.get('company') || '' : ''
     }
-    watch([query, sectorId, trackId, market, status, priority, sort, view, selectedId], () => {
+    watch([query, sectorId, trackId, market, status, priority, sort, view, selectedId, opportunityFilter, signalFilter], () => {
       const p = new URLSearchParams()
       const values: Record<string, string> = {
         q: query.value, sector: sectorId.value, track: trackId.value,
         market: market.value, status: status.value, priority: priority.value,
         sort: sort.value === 'industry' ? '' : sort.value,
         view: view.value === 'companies' ? '' : view.value,
-        company: selectedId.value,
+        company: selectedId.value, opportunity: opportunityFilter.value, signal: signalFilter.value,
       }
       for (const [key, value] of Object.entries(values)) if (value) p.set(key, value)
       const newUrl = window.location.pathname + (p.size ? '?' + p.toString() : '') + window.location.hash
@@ -465,10 +615,12 @@ const InvestmentUniversePage = defineComponent({
       }
     })
     onMounted(() => {
+      syncDetailDialog()
+      freshnessTimer = setInterval(() => { freshnessClock.value = Date.now() }, 30000)
       window.addEventListener('popstate', readNavigationState)
       void loadScreen()
     })
-    onBeforeUnmount(() => { controller.abort(); window.removeEventListener('popstate', readNavigationState) })
+    onBeforeUnmount(() => { clearInterval(freshnessTimer); controller.abort(); window.removeEventListener('popstate', readNavigationState) })
 
     const linkForSecurity = (security: Security) =>
       security.market === 'KR' ? '' : 'company.html?code=' + encodeURIComponent(security.ticker)
@@ -502,6 +654,84 @@ const InvestmentUniversePage = defineComponent({
       h('span', { class: 'ivu-token-arrow', 'aria-hidden': 'true' }, '↗'),
     ])
 
+    // The research snapshot is a separate, dated public-source index. It never
+    // enters the rule-based valuation model and never impersonates current prices.
+    const renderCompanyResearch = (company: Company) => {
+      const research = researchById.get(company.id)
+      if (!research) return h('p', { class: 'ivu-screen-warning' }, '尚无该公司的研报研究记录。')
+      const forecast = research.forecast
+      const link = (url: string, label: string) =>
+        h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, label)
+      const years = forecast?.forecastYears ?? []
+      const formatYear = (entry: ResearchForecastYear) =>
+        entry.year + '年：归母净利润 ' + (entry.netProfitYi == null ? '未核验' : entry.netProfitYi.toFixed(2) + '亿元') +
+        ' · EPS ' + (entry.epsYuan == null ? '未核验' : entry.epsYuan.toFixed(2) + '元')
+      const renderGuidanceValue = (entry: ResearchGuidance) =>
+        entry.value.central != null
+          ? String(entry.value.central) + (entry.value.plusMinus == null ? '' : '±' + entry.value.plusMinus)
+          : entry.value.low != null && entry.value.high != null
+            ? entry.value.low + '–' + entry.value.high
+            : '未提供具体数值'
+      return h('section', { class: 'ivu-valuation-detail-block', 'aria-label': '研报盈利预测与近期资讯' }, [
+        h('h3', '研报盈利预测 · 近期资讯'),
+        h('p', { class: 'ivu-muted-small' }, '研究快照：' + researchSnapshot.asOf +
+          ' · 机构预测与公司经营指引、已披露业绩、系统估值分别展示；不代表交易指令。'),
+        forecast ? h('div', [
+          h('h4', '近期单券商年度盈利预测（非一致预期与公司指引）'),
+          h('p', { class: 'ivu-muted-small' }, forecast.method + ' · 数据截至 ' + forecast.asOf),
+          ...years.map((entry) => h('p', { class: 'ivu-detail-copy', key: String(entry.year) }, formatYear(entry))),
+          h('p', { class: 'ivu-muted-small' }, link(forecast.source.url, '核查来源：' + forecast.source.publisher + ' ↗')),
+        ]) : h('p', { class: 'ivu-screen-warning' }, '暂未从独立网页核查到年度券商盈利预测；不以0或推算补缺。'),
+        research.managementGuidance.length ? h('div', [
+          h('h4', '公司管理层指引（不同口径，不并入一致预期）'),
+          ...research.managementGuidance.map((entry) => h('p', { class: 'ivu-detail-copy', key: entry.period + entry.metric }, [
+            entry.period + ' · ' + entry.metric + '：' + renderGuidanceValue(entry) + ' ' + entry.unit + ' · ',
+            link(entry.sourceUrl, '公司来源 ↗'),
+          ])),
+        ]) : null,
+        research.analystReports.length ? h('div', [
+          h('h4', '近期券商预测'),
+          ...research.analystReports.slice(0, 3).map((entry) => h('p', { class: 'ivu-detail-copy', key: entry.institution + entry.publishedAt }, [
+            h('strong', entry.institution + ' · ' + entry.publishedAt + '：'),
+            entry.title ? ' ' + entry.title + '；' : ' ',
+            entry.forecastYears.map((y) => y.netProfitYi != null
+              ? `${y.year}年净利${y.netProfitYi.toFixed(2)}亿元`
+              : y.epsYuan != null ? `${y.year}年EPS${y.epsYuan.toFixed(2)}元` : null).filter(Boolean).join(' / ') + ' · ',
+            link(entry.sourceUrl, '原始预测列表 ↗'),
+          ])),
+          h('p', { class: 'ivu-muted-small' }, '信息来自独立 Web Search 的公开报告页/摘要；出处和预测口径以原报告为准，不代表市场一致预期。'),
+        ]) : null,
+        research.keyJudgments.some((entry) => entry.type === 'broker_report_view' || entry.type === 'analyst_synthesis_and_verification_question')
+          ? h('div', [
+              h('h4', '研究判断与验证问题'),
+              ...research.keyJudgments.filter((entry) => entry.type === 'broker_report_view' || entry.type === 'analyst_synthesis_and_verification_question')
+                .map((entry, i) => h('p', { class: 'ivu-detail-copy', key: i }, entry.text)),
+              h('p', { class: 'ivu-muted-small' }, '研究综合判断属于分析推断，而非公司公告或已实现业绩。'),
+            ]) : null,
+        h('h4', '近期公司新闻与公告'),
+        research.news.length
+          ? h('div', research.news.slice(0, 6).map((entry, index) => h('p', { class: 'ivu-detail-copy', key: index }, [
+              h('strong', entry.publishedAt + ' · '),
+              link(entry.source.url, entry.title + ' ↗'),
+              h('span', { class: 'ivu-muted-small' }, entry.verification === 'headline_only' ? '（公开索引/检索摘要）' : '（网页正文已核查）'),
+              h('span', ' ' + entry.summary),
+            ])))
+          : h('p', { class: 'ivu-muted-small' }, '本轮尚未找到独立的近期公司资讯；不代表实际没有新闻。'),
+        research.industrySignals?.length ? h('div', [
+          h('h4', '相关细分赛道最新信息（不代表本公司已确认业绩）'),
+          ...research.industrySignals.map((entry) => h('p', { class: 'ivu-detail-copy', key: entry.trackId + entry.publishedAt }, [
+            h('strong', entry.publishedAt + ' · '),
+            link(entry.source.url, entry.title + ' ↗'),
+            ' ' + entry.summary + '；研究重点：' + entry.implication,
+          ])),
+        ]) : null,
+        research.gaps.length ? h('details', { class: 'ivu-focus-policy' }, [
+          h('summary', '数据缺口与核验限制（' + research.gaps.length + '）'),
+          h('ul', research.gaps.map((gap, i) => h('li', { key: i, class: 'ivu-detail-copy' }, gap))),
+        ]) : null,
+      ])
+    }
+
     const renderDetail = (company: TieredCompany) => {
       const track = tracksById.get(company.primaryTrackId)
       const sector = sectorsById.get(company.primarySectorId)
@@ -515,7 +745,7 @@ const InvestmentUniversePage = defineComponent({
             h('h2', { class: 'ivu-detail-title' }, company.displayName),
             h('p', { class: 'ivu-detail-subtitle' }, (sector?.name || '') + ' / ' + (track?.name || '')),
           ]),
-          h('button', { type: 'button', class: 'ivu-close', onClick: () => { selectedId.value = '' }, 'aria-label': '关闭公司详情' }, '×'),
+          h('button', { type: 'button', class: 'ivu-close', onClick: closeDetail, 'aria-label': '关闭公司详情' }, '×'),
         ]),
         h('p', { class: 'ivu-description' }, company.positioning),
         h('div', { class: 'ivu-tag-row' }, [
@@ -556,6 +786,9 @@ const InvestmentUniversePage = defineComponent({
           h('span', '主题标签：' + (company.themeTags.length ? company.themeTags.join('、') : '待补充证据')),
           h('span', '分级依据：' + (company.basis.join('；') || '待补充')),
         ]),
+        renderOpportunityDetail(company),
+        renderForwardReports(company),
+        renderCompanyResearch(company),
         renderValuationDetail(company),
       ])
     }
@@ -568,6 +801,44 @@ const InvestmentUniversePage = defineComponent({
      * current position and the growth reading — the same fields the daily note
      * quotes — so a reader can check the verdict instead of trusting it.
      */
+    const renderOpportunityDetail = (company: Company) => {
+      const row = screenFor(company)
+      const o = row?.opportunity
+      if (!o) return h('section', { class: 'ivu-opportunity-detail' }, [h('h3', '机会研究卡'), h('p', '等待服务端机会模型；不会用旧估值标签替代四类线索。')])
+      const fresh = freshOpportunity(row)
+      const metrics = (items: OpportunityMetric[]) => h('dl', { class: 'ivu-opportunity-metrics' }, items.map((m) => h('div', [h('dt', m.label), h('dd', opportunityMetric(m)), h('small', m.period + ' · ' + m.source)])))
+      return h('section', { class: 'ivu-opportunity-detail' }, [
+        h('div', { class: 'ivu-section-heading' }, [h('h3', '机会研究卡 · 线索 → 验证 → 研究'), h('span', { class: 'ivu-verdict ' + opportunityTone(fresh ? o.stage : '') }, fresh ? opportunityStageLabels[o.stage] : '缓存过期 / 待刷新')]),
+        h('p', { class: 'ivu-muted-small' }, `规则版本 ${o.policyVersion} · ${new Date(o.computedAt).toLocaleString('zh-CN')} · 不按信号数量打分`),
+        h('div', { class: 'ivu-opportunity-gates' }, o.gates.map((g) => h('article', { class: 'ivu-opportunity-gate is-' + g.state }, [h('strong', gateLabels[g.key]), h('span', gateStateLabels[g.state]), ...g.reasons.map((r) => h('p', r))]))),
+        h('div', { class: 'ivu-opportunity-signals' }, o.signals.map((signal) => h('article', { class: 'ivu-opportunity-signal' }, [
+          h('div', { class: 'ivu-section-heading' }, [h('h4', opportunityLabels[signal.kind]), h('span', { class: 'ivu-verdict ' + (signal.state === 'triggered' ? 'is-watch' : 'is-blocked') }, evidenceLabels[signal.state])]),
+          h('p', signal.summary), metrics(signal.metrics),
+          h('ul', signal.limitations.map((text) => h('li', text))),
+        ]))),
+        h('h4', '经营质量读数'),
+        metrics([
+          { key: 'cash', label: '经营现金 / 归母利润（TTM）', value: o.quality.cashConversion, unit: 'multiple', period: o.quality.cashflowReportDate || '未覆盖', source: '同期间财报；非金融初筛' },
+          { key: 'debt', label: '资产负债率', value: o.quality.debtRatio, unit: 'ratio', period: o.quality.balanceReportDate || '未覆盖', source: '总负债 / 总资产' },
+          { key: 'growth', label: '利润两年复合增长', value: o.quality.profitCagr2y, unit: 'ratio', period: '最近两年TTM', source: '正式财报口径待核验' },
+        ]),
+        h('div', { class: 'ivu-opportunity-review' }, [
+          h('h4', '市场可能担心什么'), h('p', o.review.marketConcern),
+          h('h4', '与市场不同的判断是否成立'), h('p', o.review.alternativeView),
+          h('h4', '下一步验证'), h('ul', o.review.nextChecks.map((t) => h('li', t))),
+          h('h4', '什么会使判断失效'), h('ul', o.review.invalidation.map((t) => h('li', t))),
+        ]),
+        ...o.caveats.map((text) => h('p', { class: 'ivu-muted-small' }, text)),
+      ])
+    }
+    const renderOpportunityCell = (company: Company) => {
+      const row = screenFor(company)
+      const o = row?.opportunity
+      return h('div', { class: 'ivu-valuation' }, [
+        h('span', { class: 'ivu-verdict ' + opportunityTone(freshOpportunity(row) ? o!.stage : '') }, o ? freshOpportunity(row) ? opportunityStageLabels[o.stage] : '缓存待刷新' : '等待机会计算'),
+        ...(o?.signals.filter((s) => s.state === 'triggered').map((s) => h('span', { class: 'ivu-valuation-detail' }, opportunityLabels[s.kind])) ?? []),
+      ])
+    }
     const renderValuationDetail = (company: Company) => {
       const row = screenFor(company)
       const a = row?.assessment
@@ -583,7 +854,9 @@ const InvestmentUniversePage = defineComponent({
           fact('行情获取时间', a.quote ? new Date(a.quote.fetchedAt).toLocaleString('zh-CN') : '—'),
           fact('财报期间', a.operating.reportDate || '—'), fact('经营口径', a.operating.periodLabel),
           fact('单季营收同比', formatPct(a.operating.revenueYoY)), fact('单季利润同比', formatPct(a.operating.profitYoY)),
-          fact('TTM利润同比', formatPct(a.operating.ttmGrowth)), fact('未来估值', '未覆盖 · 等待有来源的预测'),
+          fact('单季营收环比', formatPct(row?.opportunity?.quality.revenueQoQ)), fact('单季利润环比', formatPct(row?.opportunity?.quality.profitQoQ)),
+          fact('环比比较期间（未季调）', row?.opportunity?.quality.qoqPeriod || '未覆盖'),
+          fact('TTM利润同比', formatPct(a.operating.ttmGrowth)), fact('未来估值', '东财 / 新浪研报参考见上方；情景估值待核验'),
         ]),
         h('p', { class: 'ivu-muted-small' }, '安全边际 = 1 − 当前市值 / 规则区间的保守价值下限；负数表示尚无保守折价。'),
         h('h4', '历史估值位置'),
@@ -616,8 +889,19 @@ const InvestmentUniversePage = defineComponent({
       refreshing.value ? h('progress', { max: screenMeta.value?.companies || 1, value: completed.value, 'aria-label': '估值刷新进度' }) : null,
       screenError.value ? h('p', { class: 'ivu-screen-warning' }, '读取失败：' + screenError.value) : null,
       refreshErrors.value ? h('p', { class: 'ivu-screen-warning' }, `${refreshErrors.value}家请求失败；保留的旧结果不代表本轮估值。`) : null,
-      h('span', { class: 'ivu-muted-small' }, '先展示缓存，再逐行更新 · 规则估值非买卖信号 · 未来估值待补'),
+      h('span', { class: 'ivu-muted-small' }, '先展示缓存，再逐行更新 · 规则估值非买卖信号 · 东财 / 新浪未来估值参考见详情'),
     ])
+
+    const renderResearchForecastCell = (company: Company) => {
+      const forecast = researchById.get(company.id)?.forecast
+      if (!forecast) return h('button', { type: 'button', onClick: () => { selectedId.value = company.id } }, '查看东财 / 新浪未来估值')
+      return h('div', { class: 'ivu-valuation' }, [
+        ...forecast.forecastYears.map((entry) =>
+          h('span', { class: 'ivu-valuation-detail', key: String(entry.year) },
+            `${entry.year}净利 ${entry.netProfitYi == null ? '—' : entry.netProfitYi.toFixed(2) + '亿'} · EPS ${entry.epsYuan == null ? '—' : entry.epsYuan.toFixed(2)}`)),
+        h('span', { class: 'ivu-valuation-detail' }, forecast.source.publisher + ' · ' + forecast.asOf),
+      ])
+    }
 
     const renderTable = () => h('div', { class: 'ivu-table-wrap' }, [
       h('table', { class: 'ivu-table' }, [
@@ -627,9 +911,10 @@ const InvestmentUniversePage = defineComponent({
           h('th', '首选研究市场'),
           h('th', '研究层级'),
           h('th', '估值判定'),
+          h('th', '机会线索 / 验证'),
           h('th', '历史位置'),
           h('th', '经营趋势'),
-          h('th', '未来估值'),
+          h('th', '未来估值 / 券商预测'),
           h('th', '状态'),
           h('th', { class: 'ivu-action-col' }, '详情'),
         ])]),
@@ -651,14 +936,17 @@ const InvestmentUniversePage = defineComponent({
             )]),
             h('td', h('span', { class: 'ivu-priority' }, company.priority)),
             h('td', renderValuationCell(company)),
+            h('td', renderOpportunityCell(company)),
             h('td', (screenFor(company)?.assessment?.history.windows ?? []).map((w) => h('div', { class: 'ivu-valuation-detail' }, `${w.years}年PE：${w.percentile == null ? '样本不足 / 不适用' : formatPct(w.percentile)}`))),
             h('td', [
-              h('div', { class: 'ivu-valuation-detail' }, '单季营收 ' + formatPct(screenFor(company)?.assessment?.operating.revenueYoY)),
-              h('div', { class: 'ivu-valuation-detail' }, '单季利润 ' + formatPct(screenFor(company)?.assessment?.operating.profitYoY)),
-              h('div', { class: 'ivu-valuation-detail' }, 'TTM利润 ' + formatPct(screenFor(company)?.assessment?.operating.ttmGrowth)),
+              h('div', { class: 'ivu-valuation-detail' }, '单季营收同比 ' + formatPct(screenFor(company)?.assessment?.operating.revenueYoY)),
+              h('div', { class: 'ivu-valuation-detail' }, '单季利润同比 ' + formatPct(screenFor(company)?.assessment?.operating.profitYoY)),
+              h('div', { class: 'ivu-valuation-detail' }, 'TTM利润同比 ' + formatPct(screenFor(company)?.assessment?.operating.ttmGrowth)),
+              h('div', { class: 'ivu-valuation-detail' }, '单季营收环比 ' + formatPct(screenFor(company)?.opportunity?.quality.revenueQoQ)),
+              h('div', { class: 'ivu-valuation-detail' }, '单季利润环比 ' + formatPct(screenFor(company)?.opportunity?.quality.profitQoQ)),
               h('div', { class: 'ivu-valuation-detail' }, screenFor(company)?.assessment?.operating.reportDate || '未覆盖'),
             ]),
-            h('td', h('span', { class: 'ivu-valuation-detail' }, '未覆盖 · 待补预测')),
+            h('td', renderResearchForecastCell(company)),
             h('td', [
               h('span', { class: 'ivu-status' }, statusLabels[company.watchStatus] || company.watchStatus),
               h('span', { class: 'ivu-ticker-line' }, company.classificationStatus === 'verified' ? '证券身份已核验' : '证券身份待核验'),
@@ -696,34 +984,27 @@ const InvestmentUniversePage = defineComponent({
       ]),
     ))
 
-    const focusMode = ref<'opportunity' | 'change' | 'data'>('opportunity')
-    const focusLabels = { opportunity: '估值机会', change: '经营变化', data: '数据待核查' }
+    const focusMode = ref<'all' | OpportunityKind | 'risk'>('all')
+    const focusLabels = { all: '全部线索', ...opportunityLabels, risk: '风险 / 缺口' }
     const focusGroups = computed(() => {
-      const groups: Record<keyof typeof focusLabels, Array<{ company: Company; reason: string; score: number }>> = { opportunity: [], change: [], data: [] }
+      const groups: Record<keyof typeof focusLabels, Company[]> = { all: [], historical_discount: [], earnings_delivery: [], forward_gap: [], drawdown: [], risk: [] }
       for (const company of universe.companies) {
         const row = screenFor(company)
-        const a = row?.assessment
-        if (!row) continue // Pending is not a finding about the company.
-        const stale = !a || Date.now() - Date.parse(a.computedAt) > 10 * 60000 || rowState.value[row.code]?.startsWith('刷新失败')
-        const growth = a?.operating.ttmGrowth
-        if (!stale && a && growth != null && (growth <= -.1 || growth >= .3)) {
-          groups.change.push({ company, reason: `TTM利润同比 ${formatPct(growth)}，${growth < 0 ? '需核查盈利收缩原因' : '需核查增长来源与持续性'}${a.operating.provisional ? '（含预告/快报）' : ''}`, score: growth < 0 ? 100 + Math.abs(growth) : growth })
-        }
-        if (stale || a?.status === 'unknown') {
-          if (stale || !row.blockReasons.includes('earnings_shrinking')) groups.data.push({ company, reason: stale ? '缓存过期或刷新未成功，先核验数据' : row.note, score: stale ? 2 : 1 })
-          continue
-        }
-        if (!a) continue
-        if (['undervalued', 'fair_low'].includes(a.status) && a.confidence === 'medium' && growth != null && growth >= 0 && !a.operating.provisional) {
-          groups.opportunity.push({ company, reason: `${valuationLabels[a.status]}，TTM利润同比 ${formatPct(growth)}；优先核查盈利可持续性`, score: a.conservativeMargin ?? -Infinity })
-        }
+        const o = row?.opportunity
+        if (!o) continue
+        if (!freshOpportunity(row)) { groups.risk.push(company); continue }
+        if (['blocked', 'insufficient_data'].includes(o.stage)) groups.risk.push(company)
+        const triggered = o.signals.filter((s) => s.state === 'triggered')
+        for (const signal of triggered) groups[signal.kind].push(company)
+        if (triggered.length && ['research_candidate', 'clue'].includes(o.stage)) groups.all.push(company)
       }
-      for (const group of Object.values(groups)) group.sort((a, b) => b.score - a.score || a.company.id.localeCompare(b.company.id))
+      const rank = (c: Company) => screenFor(c)?.opportunity?.stage === 'research_candidate' ? 0 : screenFor(c)?.opportunity?.stage === 'clue' ? 1 : 2
+      for (const list of Object.values(groups)) list.sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id))
       return groups
     })
     const focusCards = computed(() => {
       const sectors = new Map<string, number>()
-      return focusGroups.value[focusMode.value].filter(({ company }) => {
+      return focusGroups.value[focusMode.value].filter((company) => {
         const count = sectors.get(company.primarySectorId) ?? 0
         sectors.set(company.primarySectorId, count + 1)
         return count < 2
@@ -731,29 +1012,36 @@ const InvestmentUniversePage = defineComponent({
     })
     const renderFocus = () => h('section', { class: 'ivu-focus', 'aria-labelledby': 'ivu-focus-heading' }, [
       h('div', { class: 'ivu-section-heading' }, [
-        h('div', [h('div', { class: 'ivu-eyebrow' }, 'RESEARCH FIRST'), h('h2', { id: 'ivu-focus-heading' }, '优先关注'), h('p', '先看值得研究的变化，再浏览完整观察池。')]),
-        h('span', { class: 'ivu-focus-scope' }, '全池精选 · 每行业最多2家 · 最多6家'),
+        h('div', [h('div', { class: 'ivu-eyebrow' }, 'EVIDENCE BEFORE OPPORTUNITY'), h('h2', { id: 'ivu-focus-heading' }, '机会研究雷达'), h('p', '四类线索分别发现，三道验证决定研究优先级。没有综合推荐分。')]),
+        h('span', { class: 'ivu-focus-scope' }, '全池研究入口 · 每行业最多2家 · 最多6家'),
       ]),
-      h('div', { class: 'ivu-focus-tabs', role: 'group', 'aria-label': '重点关注分类' }, Object.entries(focusLabels).map(([key, label]) =>
-        h('button', { type: 'button', 'aria-pressed': focusMode.value === key, onClick: () => { focusMode.value = key as keyof typeof focusLabels } }, [label, h('span', String(focusGroups.value[key as keyof typeof focusLabels].length))]))),
-      focusCards.value.length ? h('div', { class: 'ivu-focus-grid' }, focusCards.value.map(({ company, reason }) => {
-        const a = screenFor(company)?.assessment
+      h('div', { class: 'ivu-focus-tabs', role: 'group', 'aria-label': '机会线索分类' }, Object.entries(focusLabels).map(([key, label]) =>
+        h('button', { type: 'button', 'aria-pressed': focusMode.value === key, 'aria-label': label, onClick: () => { focusMode.value = key as keyof typeof focusLabels } }, [label, h('span', key === 'forward_gap' ? '待核验' : String(focusGroups.value[key as keyof typeof focusLabels].length))]))),
+      focusCards.value.length ? h('div', { class: 'ivu-focus-grid' }, focusCards.value.map((company) => {
+        const row = screenFor(company)!
+        const o = row.opportunity!
+        const a = row.assessment
+        const clues = o.signals.filter((s) => s.state === 'triggered' && (['all', 'risk'].includes(focusMode.value) || s.kind === focusMode.value))
+        const gate = o.gates.find((g) => g.state === 'fail') ?? o.gates.find((g) => g.state === 'unknown')
         return h('article', { class: 'ivu-focus-card', key: company.id }, [
-          h('div', { class: 'ivu-focus-card-top' }, [h('span', sectorsById.get(company.primarySectorId)?.name || '—'), h('span', { class: 'ivu-verdict ' + valuationTone(focusMode.value === 'data' ? 'unknown' : a?.status ?? 'unknown') }, focusMode.value === 'data' ? '待核查' : a ? valuationLabels[a.status] : '无法判断')]),
-          h('h3', company.displayName),
-          h('p', { class: 'ivu-focus-code' }, `${company.preferredTicker} · ${tracksById.get(company.primaryTrackId)?.name || ''}`),
-          h('p', { class: 'ivu-focus-reason' }, reason),
+          h('div', { class: 'ivu-focus-card-top' }, [h('span', sectorsById.get(company.primarySectorId)?.name || '—'), h('span', { class: 'ivu-verdict ' + opportunityTone(freshOpportunity(row) ? o.stage : '') }, freshOpportunity(row) ? opportunityStageLabels[o.stage] : '缓存待刷新')]),
+          h('h3', company.displayName), h('p', { class: 'ivu-focus-code' }, `${company.preferredTicker} · ${tracksById.get(company.primaryTrackId)?.name || ''}`),
+          h('div', { class: 'ivu-opportunity-tags' }, clues.map((c) => h('span', opportunityLabels[c.kind]))),
+          h('p', { class: 'ivu-focus-reason' }, freshOpportunity(row) ? clues[0]?.summary ?? gate?.reasons[0] ?? '等待证据核查' : '缓存过期或本轮刷新失败，不据此形成当前机会判断。'),
+          h('p', { class: 'ivu-focus-reason' }, gate ? `${gateLabels[gate.key]}：${gate.reasons[0]}` : '三道量化初筛通过；仍需核查公告、扣非、现金流与股本稀释。'),
           h('div', { class: 'ivu-focus-metrics' }, [
-            h('div', [h('span', a?.method || '主方法'), h('strong', a ? metricText(a) : '—')]),
-            h('div', [h('span', '保守安全边际'), h('strong', formatPct(a?.conservativeMargin))]),
+            h('div', [h('span', a?.method || '主估值方法'), h('strong', a ? metricText(a) : '—')]),
+            h('div', [h('span', 'TTM利润同比'), h('strong', formatPct(o.quality.ttmGrowth))]),
+            h('div', [h('span', '单季营收环比'), h('strong', formatPct(o.quality.revenueQoQ))]),
+            h('div', [h('span', '单季利润环比'), h('strong', formatPct(o.quality.profitQoQ))]),
           ]),
           h('div', { class: 'ivu-focus-card-bottom' }, [
-            h('span', a ? `${rowState.value[screenFor(company)!.code] === '本轮已计算' ? '已更新' : '缓存'} · ${new Date(a.computedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}` : '数据不足'),
-            h('button', { type: 'button', class: 'ivu-open', 'aria-label': '研究' + company.displayName, onClick: () => chooseCompany(company.id) }, '查看依据 ↗'),
+            h('span', `${o.policyVersion} · ${new Date(o.computedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`),
+            h('button', { type: 'button', class: 'ivu-open', 'aria-label': '研究' + company.displayName, onClick: () => chooseCompany(company.id) }, '查看证据链 ↗'),
           ]),
         ])
-      })) : h('div', { class: 'ivu-focus-empty', role: 'status' }, screenLoading.value ? '正在读取估值结果…' : refreshing.value ? '已计算结果中暂无符合条件的公司，等待本轮刷新。' : '暂无符合条件的公司；不为填满卡片而放宽规则。'),
-      h('details', { class: 'ivu-focus-policy' }, [h('summary', '如何选出这些公司？'), h('p', '估值机会：未过期的低估或合理偏低结果、可信度中、正式报告TTM利润同比非负；按保守安全边际排序。经营变化：TTM利润同比≤−10%或≥30%，先看收缩。数据待核查：估值无法判断、缓存过期或刷新失败。各组每行业最多2家，展示前6家；与下方列表筛选独立。刷新未完成时不是完整全池排名。规则估值并非内在价值，以上仅为研究优先级，不是交易建议。')]),
+      })) : h('div', { class: 'ivu-focus-empty', role: 'status' }, focusMode.value === 'forward_gap' ? '未来预期差未覆盖：已有机构预测参考不会自动成为估值结论。仍需核验来源、预测口径、情景假设和价格隐含预期。' : screenLoading.value || refreshing.value ? '当前已计算结果暂无此类线索，等待本轮刷新。' : '暂无满足规则的线索，不为填满卡片而降低门槛。'),
+      h('details', { class: 'ivu-focus-policy' }, [h('summary', '研究规则、阈值与覆盖边界'), h('p', `历史折价：3年与5年PE分位均≤${formatPct(opportunityPolicy.historyPercentileMax)}；盈利兑现：TTM利润同比≥${formatPct(opportunityPolicy.ttmGrowthMin)}，连续${opportunityPolicy.earningsQuarters}个正式单季营收同比≥${formatPct(opportunityPolicy.quarterRevenueGrowthMin)}、利润同比≥${formatPct(opportunityPolicy.quarterProfitGrowthMin)}，不以PEG直接判低估。回撤：雪球前复权${Object.entries(opportunityPolicy.returns).map(([days, threshold]) => days + '交易日跌幅≥' + formatPct(-threshold)).join('、')}，或距252交易日最高收盘价回撤≥${formatPct(-opportunityPolicy.drawdown252Max)}。金融/周期企业不套用通用增长规则。`), h('p', '量化验证：有效行情和报表、经营现金转化与两年利润/负债初筛、适用主方法下价格未超规则区间。最新正式单季营收、利润环比均需可比且不下降；环比未季调，下降需复核季节性及一次性因素，不直接判定经营恶化。上季基数非正、缺季或预告不计算环比。存在缺口时只保留线索，不自动通过。历史折价与回撤有共同价格因素，命中多个不加分。验证阶段优先，同阶段按观察池顺序，每行业最多2家；与下方筛选独立。'), h('p', `阈值为${opportunityPolicy.version}研究政策，尚未完成样本外收益检验。未来估值、行业相对收益、市场预期差及定性护城河尚需证据；所有结果仅用于研究，不自动交易。`)]),
     ])
 
     return () => h('main', { class: 'ivu-page' }, [
@@ -764,7 +1052,16 @@ const InvestmentUniversePage = defineComponent({
         ]),
         renderScreenStatus(),
         renderFocus(),
-        selected.value ? renderDetail(selected.value) : null,
+        h('dialog', {
+          ref: detailDialog, class: 'ivu-detail-dialog',
+          'aria-label': selected.value ? selected.value.displayName + '详情与证据链' : '公司详情与证据链',
+          onCancel: (event: Event) => { event.preventDefault(); closeDetail() },
+          onClick: (event: MouseEvent) => {
+            if (event.target !== detailDialog.value) return
+            const bounds = detailDialog.value!.getBoundingClientRect()
+            if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeDetail()
+          },
+        }, selected.value ? [renderDetail(selected.value)] : []),
         h('div', { class: 'ivu-workspace' }, [
           h('div', { class: 'ivu-main-content' }, [
             h('div', { class: 'ivu-topline' }, [
@@ -789,6 +1086,8 @@ const InvestmentUniversePage = defineComponent({
                 }),
               ]),
               h('div', { class: 'ivu-filters' }, [
+                selectControl('机会验证状态', opportunityFilter.value, [['', '全部验证状态'], ...Object.entries(opportunityStageLabels)], (value) => { opportunityFilter.value = value }),
+                selectControl('机会线索', signalFilter.value, [['', '全部机会线索'], ...Object.entries(opportunityLabels)], (value) => { signalFilter.value = value }),
                 selectControl('估值档位', valuationFilter.value, [['', '全部估值'], ...Object.entries(valuationLabels)], (value) => { valuationFilter.value = value }),
                 selectControl('一级行业', sectorId.value,
                   [['', '全部行业'], ...universe.sectors.map((item): [string, string] => [item.id, item.name])], setSector),

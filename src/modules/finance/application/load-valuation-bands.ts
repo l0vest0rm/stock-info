@@ -75,6 +75,7 @@ export async function loadValuationBands(
     },
     balance: {
       parentEquity: lineValue("parentEquity"),
+      commonEquity: lineValue("commonEquity"),
       grossDebt: lineValue("grossDebtDisclosed"),
       cash: lineValue("cashDisclosed"),
       minorityEquity: lineValue("minorityEquity"),

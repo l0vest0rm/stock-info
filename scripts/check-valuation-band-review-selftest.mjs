@@ -26,7 +26,7 @@ function readModel(overrides = {}) {
     archetype: "growth_manufacturing",
     asOf: { income: "2026-06-30", balance: "2026-06-30", cashflow: "2026-06-30" },
     ttm: { netProfit: 50 * YI, revenue: 400 * YI, ebit: 80 * YI, ebitda: 100 * YI, operatingCashFlow: 90 * YI, freeCashFlow: 40 * YI },
-    balance: { parentEquity: 200 * YI, grossDebt: 100 * YI, cash: 60 * YI, debtIncomplete: false },
+    balance: { commonEquity: 200 * YI, parentEquity: 200 * YI, grossDebt: 100 * YI, cash: 60 * YI, debtIncomplete: false },
     marketCap: 1000 * YI,
     ...overrides,
   });
@@ -75,7 +75,7 @@ const widerModel = buildValuationBands({
   archetype: "growth_manufacturing",
   asOf: { income: "2026-06-30", balance: "2026-06-30", cashflow: "2026-06-30" },
   ttm: { netProfit: 50 * YI, revenue: 400 * YI, ebit: 80 * YI, ebitda: 100 * YI, freeCashFlow: 40 * YI },
-  balance: { parentEquity: 200 * YI, grossDebt: 100 * YI, cash: 60 * YI, debtIncomplete: false },
+  balance: { commonEquity: 200 * YI, parentEquity: 200 * YI, grossDebt: 100 * YI, cash: 60 * YI, debtIncomplete: false },
 });
 // Force a range move the way a real model edit would: same inputs, edited ranges.
 const edited = structuredClone(widerModel);

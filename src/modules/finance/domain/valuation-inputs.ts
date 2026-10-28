@@ -1,3 +1,4 @@
+import { commonEquity } from "./common-equity.ts";
 import type { FinancialStatement } from "../../../types";
 
 /**
@@ -173,6 +174,9 @@ export function buildValuationInputs(input: {
   if (totalAssets) lines.push(line("totalAssets", "总资产", totalAssets, "balance"));
   if (totalEquity) lines.push(line("totalEquity", "股东权益合计", totalEquity, "balance"));
   if (totalParentEquity) lines.push(line("parentEquity", "归母权益", totalParentEquity, "balance"));
+  const ordinaryEquity = commonEquity(latestBalance);
+  if (ordinaryEquity) lines.push(line("commonEquity", "普通股股东权益（扣除其他权益工具）", ordinaryEquity, "balance"));
+  else gaps.push({ key: "commonEquity", label: "普通股股东权益", reason: "field_not_reported" });
   if (minorityEquity) lines.push(line("minorityEquity", "少数股东权益", minorityEquity, "balance"));
 
   const debtParts: ValuationInputLine[] = [];
