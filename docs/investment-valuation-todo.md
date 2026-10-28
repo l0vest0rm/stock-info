@@ -18,6 +18,7 @@
 | 研究分级 | ✅ 98/98 写入（L1 40 / L2 35 / L3 23） | `researchPriority` / `researchBasis` |
 | 估值区间可用性 | ✅ 83/97 家有可用区间（14 家美股仅因 Yahoo 代理未启动） | `npm run snapshot:valuation-bands` |
 | 区间变化归因 | ✅ filing / model / price_source / unattributed | `valuation-band-review.ts` |
+| 区间倍数的证据基础 | ⚠️ 已取证：PE 8–18x 对多数原型不成立（91/97 家所在原型历史中位数在区间外） | `valuation-multiple-calibration.ts`，见 P4 |
 | 复盘留痕 | ✅ 模板 + 首份 2026-10-28 | `docs/investment-daily/` |
 | 每日报告 | `not_reviewed`，0 家核验 | `config/investment-daily-report.json` |
 | 公司证据链 | ✅ **97/98 家已核验**，115 条一手记录 | `evidenceRefs` / `identityVerified` |
@@ -346,6 +347,59 @@ blocked    quote_fetch_failed 9 / currency_mismatch 5 / no_market_cap_band 14
 
 ---
 
+## P4：区间倍数的数据校准 —— 已完成取证，待决策
+
+### 结论先说
+
+`DEFAULT_RANGES` 里的 PE 8–18x 对观察池的大部分原型**不成立**。用雪球 K 线自带的每日 `pe`/`pb`/`ps` 列（2016-01-01 至 2026-10-28，97 个代码全部取到），把每个原型全部成员的每个交易日汇总后，8–18x 覆盖该原型历史的比例是：
+
+| 原型 | 家数 | 8–18x 覆盖 | 历史 PE 中位数 | 区间相对历史的位置 |
+|---|---:|---:|---:|---|
+| insurer 保险 | 3 | 60.3% | 12.5 | 大致吻合 |
+| stable_cash_dividend 稳定分红 | 19 | 42.4% | 18.5 | 区间偏低（显得贵） |
+| bank 银行 | 3 | 36.4% | 6.9 | **区间偏高（显得便宜）** |
+| cyclical_commodity 周期 | 13 | 32.7% | 20.8 | 区间偏低 |
+| property_operator 地产运营 | 2 | 28.7% | 31.3 | 区间偏低 |
+| growth_manufacturing 成长制造 | 30 | 12.5% | 36.0 | 区间偏低 |
+| software_platform 软件平台 | 15 | 11.4% | 32.4 | 区间偏低 |
+| payment 支付 | 2 | 6.9% | 29.2 | 区间偏低 |
+| pre_profit_milestone 里程碑 | 3 | 4.0% | 53.3 | 区间偏低 |
+| exchange 交易所 | 1 | **0.0%** | 35.8 | 区间偏低 |
+| healthcare_services 医疗服务 | 6 | **0.0%** | 59.3 | 区间偏低 |
+
+这不是统计瑕疵，而是**结构性后果**，且方向有两个：
+
+- **区间在历史下方（91/97 家）**：一个成员按自己的正常估值水平交易，也永远进不了 8–18x，于是这些原型**不可能**产出 `research_candidate`。30 家成长制造、15 家软件平台、6 家医疗服务、13 家周期股全部如此。它们现在的 `watch` 不是"公司不够便宜"，而是"常数太低"。
+- **区间在历史上方（银行 3 家）**：全组看起来永久便宜。3 家银行确实都进了 `research_candidate`，但走的是 PB 而非 PE（银行的 PE 是 auxiliary），所以银行现象是对**整套默认值**的提醒，不是 PE 区间单方面的锅。
+
+### 已交付（只取证，不改判定）
+
+- `src/modules/research/domain/valuation-multiple-calibration.ts`：`summarizeMultipleDistribution` / `measureBandCoverage` / `bandExcludesMostHistory`，含"负 PE 与近零分母不算便宜"的剔除规则和可解释的分位算法。
+- `scripts/calibrate-valuation-multiples.mjs`（`npm run calibrate:valuation-multiples`）：输出每个原型的分布、覆盖率、位移方向，并直接说明哪些原型"按正常水平也不可能入选"。**只读，不改任何区间。**
+- 自检 `check:valuation-multiple-calibration`（18 项，已接入 `check:valuation-chain`）。
+
+### 为什么没有自动改区间
+
+因为"改成什么"是策略判断，不是算术：
+
+1. 分布中位数包含泡沫与危机，2016–2026 覆盖了这两者；用中位数当区间会把泡沫期的倍数当作常态。
+2. 低中位数可能是**长期折价**而非价值：银行的 6.9x 也许是市场对资产质量的持续定价，而不是低估。
+3. 换个区间会让全池结论整体翻转，而翻转必须能被解释——这正是 P3-1 归因存在的理由：这种情况的归因是 `model`（我们改参数），**不是** `filing`（公司变化）。
+
+### 需要你拍板
+
+PE 区间是否按原型改为数据驱动？三种可选做法：
+
+| 做法 | 区间来源 | 后果 |
+|---|---|---|
+| A. 保持不变 | 8–18x | 现状：高倍数原型永不入选，低倍数原型过度入选 |
+| B. 按原型取历史分位 | 如 p25–p75 | 每个原型都有可比基准，但把泡沫期一起纳入常态 |
+| C. 原型区间 + 历史校验 | 人工定区间，但要求覆盖率 ≥ 25% 才允许用于判定 | 保守：覆盖不足的原型明确报"区间未经证据支持"，不假装可判 |
+
+我倾向 **C**：它不假装数据能替代判断，但也不允许一个覆盖 0% 历史区间继续产出结论。选 B 需要额外确认是否要剔除泡沫年份。
+
+---
+
 ## 本轮（P3-1/P3-3）顺带修掉的两个 P2 遗留缺陷
 
 ### 1. 美股代码在 API 侧解析不到发行人
@@ -431,11 +485,12 @@ npm run repair:income-snapshots -- --delete    # 真正清理
 
 ---
 
-## 需要你拍板的三个决策点
+## 需要你拍板的决策点
 
-1. **EBITDA 怎么办**：补充资料取不到时，是接受"只有 EV/EBIT"，还是允许用估算折旧（并强制标注）？
-2. **估值区间落在哪**：是只做本地研究脚本输出到 `reports/`，还是要进公开页面（涉及 JSON Schema 变更）？
-3. **周期中枢利润需要 10 年财务**：现有数据够不够，要不要扩大抓取范围？
+1. **PE 区间要不要按原型改（P4，最高优先级）**：现状 8–18x 对 91/97 家所在原型不成立，高倍数原型结构上永不入选、银行组过度入选。三个选项见 P4 节，我倾向 C（人工区间 + 覆盖率校验）。
+2. **EBITDA 怎么办**：补充资料取不到时，是接受"只有 EV/EBIT"，还是允许用估算折旧（并强制标注）？
+3. **估值区间落在哪**：是只做本地研究脚本输出到 `reports/`，还是要进公开页面（涉及 JSON Schema 变更）？
+4. **周期中枢利润需要 10 年财务**：现有数据够不够，要不要扩大抓取范围？
 
 ---
 
@@ -448,6 +503,9 @@ npm run check:ttm-fiscal-calendar   # 财年基期不按 12-31 推断（3-31 财
 npm run check:valuation-inputs      # 估值口径算术
 npm run check:valuation-coverage    # 原型分类、因子集中度
 npm run check:investment-universe   # 观察池与每日报告 Schema
+npm run check:valuation-band-review  # 区间快照归因（anchorAdvanced 判定）
+npm run calibrate:valuation-multiples # 区间倍数与历史分布对照（只读）
+npm run check:valuation-multiple-calibration  # 覆盖率算术与剔除规则
 npm run typecheck:server
 ./start-local.sh                    # 起本地后跑 npm run test:basic
 ```
