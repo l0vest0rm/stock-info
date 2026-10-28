@@ -3043,78 +3043,73 @@ function onFinanceCodeSelectChange() {
 
 // 计算并显示估值指标
 function calculateAndDisplayValuation(code: string, data: number[][], currentPrice: number) {
-  let stockValuation = ''
   const financeCacheKey = `${code}-fsi`
   const shareChangeCacheKey = `${code}-sc`
-  
+
+  // PE(TTM) is not computed here.  The browser only has `/api/finance/income`,
+  // whose rows mix cumulative (中报/三季报/年报) with single-quarter values, so
+  // "add the last four rows" adds a full-year profit as if it were one quarter.
+  // That is how 腾讯 showed PE 6.23 against a true 14.93 and 茅台 10.86 against
+  // 20.58 — plausible numbers, silently wrong.  The server already resolves the
+  // annual base + cumulative roll in `loadLatestFinancialValuation`, so the
+  // figure is read from `/api/company/info` instead of re-derived here.
+  const renderPe = (value: unknown) => {
+    const pe = typeof value === 'number' && Number.isFinite(value) ? value : null
+    let html: string
+    if (pe === null) {
+      html = '<span class="px-1">PE: 暂无数据</span>'
+    } else if (pe > 0) {
+      html = `<span class="px-1">PE(TTM): ${pe.toFixed(2)}</span>`
+    } else {
+      // A non-positive PE means trailing earnings are negative.  Printing the
+      // number would read as "very cheap"; the honest label is 亏损.
+      html = '<span class="px-1">PE: 亏损</span>'
+    }
+    const element = document.getElementById('stockValuation')
+    if (element) {
+      element.innerHTML = html
+    }
+  }
+
   const calculateValuation = () => {
-    const financeData = cache[financeCacheKey]
     const shareChangeData = cache[shareChangeCacheKey]
-    
+
     // 获取总股本（从股本变动数据）
     let totalShares = null
     if (shareChangeData && Array.isArray(shareChangeData) && shareChangeData.length > 0) {
       totalShares = shareChangeData[0].totalShares // 最新总股本（股）
     }
-    
-    // 计算市值 = 股价 × 总股本
-    if (totalShares && totalShares > 0) {
-      const marketCap = currentPrice * totalShares // 市值（元）
-      document.getElementById('marketCap')!.textContent = (marketCap / 1e8).toFixed(2)
-    } else {
-      document.getElementById('marketCap')!.textContent = '暂无数据'
-    }
-    
-    if (financeData && Array.isArray(financeData) && financeData.length > 0) {
-      // 使用净利润计算PE TTM
-      // PE TTM = 市值 / 最近4个季度的净利润之和
-      if (totalShares && totalShares > 0 && financeData.length >= 4) {
-        const marketCap = currentPrice * totalShares // 市值（元）
-        const trailingProfits = trailingQuarterlyParentNetProfits(financeData)
-        const totalNetProfit = trailingProfits.reduce((sum, profit) => sum + profit, 0)
 
-        if (trailingProfits.length === 4 && totalNetProfit > 0) {
-          // 净利润单位是元，市值也是元，直接相除
-          const pe = marketCap / totalNetProfit
-          stockValuation += `<span class="px-1">PE(TTM): ${pe.toFixed(2)}</span>`
-        } else if (trailingProfits.length === 4 && totalNetProfit < 0) {
-          stockValuation = `<span class="px-1">PE: 亏损</span>`
-        }
+    // 计算市值 = 股价 × 总股本
+    const element = document.getElementById('marketCap')
+    if (element) {
+      if (totalShares && totalShares > 0) {
+        const marketCap = currentPrice * totalShares // 市值（元）
+        element.textContent = (marketCap / 1e8).toFixed(2)
+      } else {
+        element.textContent = '暂无数据'
       }
     }
-    
-    if (!stockValuation) {
-      stockValuation = `<span class="px-1">PE: 暂无数据</span>`
-    }
-    
-    document.getElementById('stockValuation')!.innerHTML = stockValuation
+
+    // The PE comes from the server, which owns the TTM calendar.  Asking for it
+    // separately keeps this function from becoming a second implementation that
+    // drifts from `loadLatestFinancialValuation`.
+    fetchRequest({ url: `${server}/api/company/info`, params: { code }, silent: true })
+      .then((info: any) => renderPe(info?.peTtm))
+      .catch(() => renderPe(null))
   }
-  
+
   // 检查数据是否都已缓存
-  const financeCached = cache[financeCacheKey] !== undefined
   const shareChangeCached = cache[shareChangeCacheKey] !== undefined
-  
-  if (financeCached && shareChangeCached) {
+
+  if (shareChangeCached) {
     calculateValuation()
   } else {
-    // 获取财务数据
-    if (!financeCached) {
-      fetchFinanceIncome(code, () => {
-        if (shareChangeCached || cache[shareChangeCacheKey] !== undefined) {
-          calculateValuation()
-        }
-      })
-    }
-    
     // 获取股本变动数据
-    if (!shareChangeCached) {
-      fetchRequest(`${server}/api/finance/sharechange?code=${code}`).then((data: any) => {
-        cache[shareChangeCacheKey] = data
-        if (financeCached || cache[financeCacheKey] !== undefined) {
-          calculateValuation()
-        }
-      })
-    }
+    fetchRequest(`${server}/api/finance/sharechange?code=${code}`).then((data: any) => {
+      cache[shareChangeCacheKey] = data
+      calculateValuation()
+    })
   }
 }
 

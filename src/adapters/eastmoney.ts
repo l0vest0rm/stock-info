@@ -17,6 +17,7 @@ import {
 import { getKvCacheByLegacyKey, putKvCacheByLegacyKey } from "../db/queries";
 import { cachedFetchJson, cachedFetchText, numberOrNull, parseJsonOrJsonp } from "../shared/http";
 import type { ExternalHttpOptions } from "../shared/http";
+import { eastmoneyMarketCapYi, eastmoneyPriceDivisor } from "../shared/eastmoney-quote";
 import type { CompanyNotice, CompanyOverview, FinancialStatement, FundNavRow, KlineBar, SecurityRecord, StatementType } from "../types";
 import { genReportDates } from "./eastmoney-report-window";
 
@@ -89,6 +90,7 @@ type EastmoneyOverviewResponse = {
     f162?: number;
     f167?: number;
     f43?: number;
+    f59?: number;
     f169?: number;
     f170?: number;
     f168?: number;
@@ -1625,7 +1627,7 @@ export async function fetchEastmoneyCompanyOverview(db: Database, code: string):
   url.searchParams.set("invt", "2");
   url.searchParams.set("fltt", "1");
   url.searchParams.set("secid", secid);
-  url.searchParams.set("fields", "f43,f57,f58,f116,f162,f167,f168,f169,f170");
+  url.searchParams.set("fields", "f43,f57,f58,f59,f116,f162,f167,f168,f169,f170");
   const [body, companyProfile] = await Promise.all([
     cachedFetchJson(db, url.toString(), {
       // push2 rejects requests without a User-Agent by closing the socket, and
@@ -1644,7 +1646,12 @@ export async function fetchEastmoneyCompanyOverview(db: Database, code: string):
   const latestPriceRaw = numberOrNull(data.f43);
   const changeAmountRaw = numberOrNull(data.f169);
   const pctChangeRaw = numberOrNull(data.f170);
-  const priceDivisor = 100;
+  // `f43`/`f169` are integers plus `f59` declaring their decimal count.  That
+  // count is 2 for A-shares but 3 for HK and US, so a constant /100 scaled every
+  // HK price 10x up — which also shrank the derived share count 10x (the
+  // market-cap fallback divides cap by price) and so under-reported 市值 on the
+  // company page by a factor of ten.  See `shared/eastmoney-quote.ts`.
+  const priceDivisor = eastmoneyPriceDivisor(numberOrNull(data.f59));
   return {
     code: normalized,
     name: String(data.f58 ?? "").trim() || normalized,
@@ -1655,7 +1662,7 @@ export async function fetchEastmoneyCompanyOverview(db: Database, code: string):
     pctChange: pctChangeRaw !== null ? pctChangeRaw / 100 : null,
     changeAmount: changeAmountRaw !== null ? changeAmountRaw / priceDivisor : null,
     turnover: numberOrNull(data.f168) !== null ? numberOrNull(data.f168)! / 100 : null,
-    marketCapYi: numberOrNull(data.f116) !== null ? numberOrNull(data.f116)! / 100_000_000 : null,
+    marketCapYi: eastmoneyMarketCapYi(numberOrNull(data.f116)),
     peTtm: numberOrNull(data.f162) !== null ? numberOrNull(data.f162)! / 100 : null,
     pb: numberOrNull(data.f167) !== null ? numberOrNull(data.f167)! / 100 : null,
     psTtm: null,

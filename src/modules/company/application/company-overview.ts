@@ -99,6 +99,16 @@ function applyXueqiuKlineOverview(
   if (!latest) {
     throw new Error(`Xueqiu K-line is empty for company overview: ${eastmoneyOverview.code}`);
   }
+  // Xueqiu is authoritative for price, but not for market cap on every market:
+  // its HK K-line omits `market_capital`, so overwriting unconditionally wiped
+  // the Eastmoney value and left every HK company with `marketCapYi: null` —
+  // which then blocked the whole HK half of the valuation screen for a reason
+  // that was never a data gap.  An absent Xueqiu field must not erase a present
+  // Eastmoney one; a present Xueqiu field still wins, because it is the same
+  // session as the price beside it.
+  const xueqiuMarketCap = latest.marketCapital !== null && latest.marketCapital !== undefined
+    ? latest.marketCapital / 100_000_000
+    : null;
   return {
     ...eastmoneyOverview,
     marketDate: latest.date,
@@ -106,7 +116,7 @@ function applyXueqiuKlineOverview(
     pctChange: latest.pctChange,
     changeAmount: latest.changeAmount,
     turnover: latest.turnover,
-    marketCapYi: latest.marketCapital !== null ? latest.marketCapital / 100_000_000 : null,
+    marketCapYi: xueqiuMarketCap ?? eastmoneyOverview.marketCapYi ?? null,
     peTtm: null,
     pb: null,
     psTtm: null,

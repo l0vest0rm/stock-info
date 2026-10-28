@@ -201,25 +201,40 @@ function trimDate(value: unknown): string {
   return typeof value === "string" ? value.slice(0, 10) : "";
 }
 
+/**
+ * Share history for the equity-change table, and the total-share count the
+ * company page multiplies by price to show 市值.
+ *
+ * `RPT_F10_EH_EQUITY` is an A-share F10 report and returns nothing for HK/US
+ * codes, so those used to return `[]` before the fallback below could run —
+ * which is why every HK company showed 市值「暂无数据」 on `/company.html` even
+ * though Eastmoney publishes the market cap.  The early return is now limited
+ * to skipping the A-share report, not to skipping the fallback.
+ */
 async function fetchShareChange(db: Database, code: string): Promise<Record<string, unknown>[]> {
   const normalized = normalizeSecurityCode(code);
-  if (!isCnExchangeCode(normalized)) {
-    return [];
-  }
-  const rows = await fetchEastmoneyDataRows(db, "https://datacenter-web.eastmoney.com/securities/api/data/v1/get", {
-    reportName: "RPT_F10_EH_EQUITY",
-    columns:
-      "SECUCODE,SECURITY_CODE,END_DATE,TOTAL_SHARES,LIMITED_SHARES,LIMITED_OTHARS,LIMITED_DOMESTIC_NATURAL,LIMITED_STATE_LEGAL,UNLIMITED_SHARES,LISTED_A_SHARES,FREE_SHARES,LIMITED_A_SHARES,LIMITED_DOMESTIC_NOSTATE,CHANGE_REASON",
-    quoteColumns: "",
-    filter: `(SECUCODE="${normalized}")`,
-    pageNumber: "1",
-    pageSize: "5000",
-    sortTypes: "-1",
-    sortColumns: "END_DATE",
-    source: "HSF10",
-    client: "PC",
-  });
+  // The A-share F10 report is only meaningful for A-shares; asking it for HK/US
+  // codes just burns a request.  Everything after this is market-agnostic.
+  const rows = isCnExchangeCode(normalized)
+    ? await fetchEastmoneyDataRows(db, "https://datacenter-web.eastmoney.com/securities/api/data/v1/get", {
+        reportName: "RPT_F10_EH_EQUITY",
+        columns:
+          "SECUCODE,SECURITY_CODE,END_DATE,TOTAL_SHARES,LIMITED_SHARES,LIMITED_OTHARS,LIMITED_DOMESTIC_NATURAL,LIMITED_STATE_LEGAL,UNLIMITED_SHARES,LISTED_A_SHARES,FREE_SHARES,LIMITED_A_SHARES,LIMITED_DOMESTIC_NOSTATE,CHANGE_REASON",
+        quoteColumns: "",
+        filter: `(SECUCODE="${normalized}")`,
+        pageNumber: "1",
+        pageSize: "5000",
+        sortTypes: "-1",
+        sortColumns: "END_DATE",
+        source: "HSF10",
+        client: "PC",
+      })
+    : [];
   if (!rows.length) {
+    // Derive the count from a published market cap instead of guessing it.
+    // Both halves must be in the security's own trading currency, which they
+    // are: Eastmoney's `f116` is the market cap in HKD for HK codes and in CNY
+    // for A-shares, matching the quoted price beside it.
     const overview = await fetchEastmoneyCompanyOverview(db, normalized);
     const totalShares =
       overview.marketCapYi && overview.latestPrice && overview.latestPrice > 0
