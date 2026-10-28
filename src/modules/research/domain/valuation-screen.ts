@@ -36,6 +36,8 @@
  * is fetched, and no number is invented to make a company screenable.
  */
 
+import { assessGrowthAgainstBand } from "./growth-veto.ts";
+
 export type ValuationScreenVerdict =
   /** Inside the conservative range with margin — a human should read the filing. */
   | "research_candidate"
@@ -52,10 +54,23 @@ export type ValuationScreenBlockReason =
   | "quote_missing"
   /** Band denominator currency differs from the quote currency. */
   | "currency_mismatch"
+  /**
+   * One side's currency could not be determined at all.
+   *
+   * Kept separate from `currency_mismatch` because it is a different fact and a
+   * different fix: a mismatch is structural (阿里 reports CNY, trades HKD) and
+   * needs an official rate, whereas an unknown currency usually means the row we
+   * read the currency from was a forecast that does not carry the field.  Merging
+   * the two is how an A-share reporting in CNY got reported as a currency
+   * problem — the diagnosis was wrong even though the refusal was right.
+   */
+  | "currency_unknown"
   /** Band anchors and quote are too far apart in time to be one observation. */
   | "stale_basis"
   /** Only EV-style bands are usable; EV is not comparable to a market cap. */
-  | "no_market_cap_band";
+  | "no_market_cap_band"
+  /** Trailing profit is shrinking fast enough that a low multiple is not a discount. */
+  | "earnings_shrinking";
 
 export type ValuationScreenInput = {
   code: string;
@@ -79,6 +94,20 @@ export type ValuationScreenInput = {
   } | null;
   /** Max days between the quote and the statement anchor. */
   maxBasisAgeDays?: number;
+  /**
+   * Trailing earnings growth, when available.
+   *
+   * This can only stop a nomination, never create one.  See `growth-veto.ts`
+   * for why growth is a veto rather than the band itself: measured on this
+   * watchlist it explains 2–13% of the multiple's variation, which is not
+   * enough to set the band, but a collapsing denominator is enough to make a
+   * low multiple meaningless.
+   */
+  growth?: {
+    ttmGrowth: number;
+    reportDate: string;
+    provisional?: boolean;
+  } | null;
 };
 
 export type ValuationScreenResult = {
@@ -112,6 +141,16 @@ export type ValuationScreenResult = {
   } | null;
   /** Machine-readable reasons; empty only for a clean verdict. */
   blockReasons: ValuationScreenBlockReason[];
+  /**
+   * Growth reading, always present so a reader can see whether the veto was
+   * even available.  `unknown` means no reading, which never blocks.
+   */
+  growth?: {
+    verdict: "supports" | "weakens" | "vetoes" | "unknown" | "not_meaningful";
+    ttmGrowth: number | null;
+    reportDate: string | null;
+    note: string | null;
+  };
   /** One line a reader can act on, stating the arithmetic and its limits. */
   note: string;
   /**
@@ -191,8 +230,17 @@ const BAND_PREFERENCE = [
 export function screenValuationCandidate(input: ValuationScreenInput): ValuationScreenResult {
   const code = input.code;
   const archetype = input.archetype;
+  const growthAssessment = assessGrowthAgainstBand(
+    input.growth ? { ttmGrowth: input.growth.ttmGrowth, reportDate: input.growth.reportDate, provisional: input.growth.provisional } : null,
+  );
+  const growth = {
+    verdict: growthAssessment.verdict,
+    ttmGrowth: growthAssessment.reading ? growthAssessment.reading.ttmGrowth : null,
+    reportDate: growthAssessment.reading ? growthAssessment.reading.reportDate : null,
+    note: growthAssessment.note,
+  };
   const blocked = (reasons: ValuationScreenBlockReason[], note: string): ValuationScreenResult => ({
-    code, archetype, verdict: "blocked", basis: null, position: null, blockReasons: reasons, note, executable: false,
+    code, archetype, verdict: "blocked", basis: null, position: null, blockReasons: reasons, note, executable: false, growth,
   });
 
   const usable = input.bands.filter((band) => band.status === "available" && band.denominator && band.range && band.unit);
@@ -235,7 +283,7 @@ export function screenValuationCandidate(input: ValuationScreenInput): Valuation
   const bandCurrency = normalizeCurrency(input.bandCurrency);
   const quoteCurrency = normalizeCurrency(input.quote.currency);
   if (!bandCurrency || !quoteCurrency) {
-    return blocked(["currency_mismatch"], "区间分母或行情的币种缺失，无法确认两边同币种；不做隐含换算。");
+    return blocked(["currency_unknown"], "区间分母或行情的币种缺失，无法确认两边同币种；不做隐含换算。");
   }
   if (bandCurrency !== quoteCurrency) {
     return blocked(
@@ -316,10 +364,14 @@ export function screenValuationCandidate(input: ValuationScreenInput): Valuation
         position,
       );
     }
+    if (earningsVetoApplies(chosen, growthAssessment)) {
+      return blocked(["earnings_shrinking"], `${growthAssessment.note}现金流收益率因此不能单独作为入选依据。`);
+    }
     return {
       code, archetype, verdict: "research_candidate", basis, position, blockReasons: [],
       note: `${chosen.key} 当前 ${currentYield.toFixed(2)}%，高出保守上限 ${chosen.range.high}% 达 ${(margin * 100).toFixed(1)}%；这只是研究候选，不是交易指令。`,
       executable: false,
+      growth,
     };
   }
 
@@ -350,10 +402,14 @@ export function screenValuationCandidate(input: ValuationScreenInput): Valuation
       position,
     );
   }
+  if (earningsVetoApplies(chosen, growthAssessment)) {
+    return blocked(["earnings_shrinking"], `${growthAssessment.note}区间本身成立，但分母在收缩时不能把低倍数当作折价。`);
+  }
   return {
     code, archetype, verdict: "research_candidate", basis, position, blockReasons: [],
     note: `${chosen.key} 口径下市值 ${formatYi(marketCap)} 低于区间上限 ${formatYi(impliedHigh)} 约 ${(margin * 100).toFixed(1)}%，达到研究门槛；这只是研究候选，不是交易指令。`,
     executable: false,
+    growth,
   };
 
   function watch(reason: string, basisValue: NonNullable<ValuationScreenResult["basis"]>, positionValue: NonNullable<ValuationScreenResult["position"]>): ValuationScreenResult {
@@ -361,6 +417,7 @@ export function screenValuationCandidate(input: ValuationScreenInput): Valuation
       code, archetype, verdict: "watch", basis: basisValue, position: positionValue, blockReasons: [],
       note: `${reason}这只是观察项，不是交易指令。`,
       executable: false,
+      growth,
     };
   }
 }
@@ -381,6 +438,23 @@ function pickBand(bands: ComparableBand[]): ComparableBand {
     if (a.role !== b.role) return a.role === "primary" ? -1 : 1;
     return rank(a) - rank(b);
   })[0];
+}
+
+/**
+ * Does the growth veto apply to *this* band?
+ *
+ * Only when the band's denominator is trailing net profit.  A PB band for a
+ * bank, an EV/EBITDA band or a NAV band is anchored on something other than
+ * trailing earnings, so shrinking profit does not invalidate it in the same
+ * way — applying the veto there would block banks and asset-backed companies
+ * for a reason that does not touch their multiple.
+ */
+function earningsVetoApplies(
+  chosen: ComparableBand,
+  assessment: ReturnType<typeof assessGrowthAgainstBand>,
+): boolean {
+  if (assessment.verdict !== "vetoes") return false;
+  return chosen.denominator.basis === "net_income_ttm";
 }
 
 function metricOf(key: string): "pe" | "ev" | "pb" | "yield" {

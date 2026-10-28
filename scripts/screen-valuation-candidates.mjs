@@ -85,15 +85,72 @@ async function getJson(path) {
  * Reporting currency of the latest income statement, as the provider spells it
  * (Chinese for HK, ISO for A-shares). `valuation-screen` normalises it.
  */
+/**
+ * Reporting currency of the newest *formal* statement.
+ *
+ * Not `rows[0]`: a 业绩预告 / 业绩快报 row carries no `CURRENCY` field, so taking
+ * the newest row blindly returns null for any company that has a forecast, and
+ * the screen then blocks it as a currency problem.  生益科技 is the live case —
+ * an A-share reporting in CNY was blocked because its newest row was a forecast.
+ * Scanning forward for the first row that actually declares a currency fixes the
+ * cause rather than the symptom.
+ */
 async function reportingCurrency(code) {
   const rows = await getJson(`/api/finance/income?code=${encodeURIComponent(code)}`);
-  const first = Array.isArray(rows) ? rows[0] : null;
-  return first?.REPORTING_CURRENCY ?? first?.CURRENCY ?? null;
+  if (!Array.isArray(rows)) return null;
+  for (const row of rows) {
+    const currency = row?.REPORTING_CURRENCY ?? row?.CURRENCY;
+    if (typeof currency === 'string' && currency.trim()) return currency.trim();
+  }
+  return null;
 }
 
 /** Trading currency of the security. */
 function tradingCurrency(targetMarket) {
   return targetMarket === 'CN' ? 'CNY' : targetMarket === 'HK' ? 'HKD' : targetMarket === 'US' ? 'USD' : null;
+}
+
+/**
+ * Trailing net-profit growth from the newest quarterly/interim period.
+ *
+ * Never from an annual report: a December annual quoted in October is a year
+ * stale, and the whole point of the reading is whether earnings are shrinking
+ * *now*.  The year-ago period is matched by date rather than array position,
+ * because US filers interleave 12M and 3M rows.
+ *
+ * Returns null rather than a guess when either TTM figure is missing — absent
+ * growth must not become a verdict about the company.
+ */
+function ttmGrowth(points) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const latest = points[0];
+  const latestDate = Date.parse(`${latest?.reportDate}T00:00:00Z`);
+  if (!Number.isFinite(latestDate)) return null;
+  let best = null;
+  let bestDistance = Infinity;
+  for (const point of points.slice(1)) {
+    const time = Date.parse(`${point?.reportDate}T00:00:00Z`);
+    if (!Number.isFinite(time)) continue;
+    const distance = Math.abs(time - (latestDate - 365 * 86_400_000));
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = point;
+    }
+  }
+  if (!best || bestDistance > 45 * 86_400_000) return null;
+  const now = latest?.ttmNetProfit;
+  const then = best?.ttmNetProfit;
+  if (typeof now !== 'number' || typeof then !== 'number' || then <= 0 || now <= 0) return null;
+  return {
+    ttmGrowth: now / then - 1,
+    reportDate: latest.reportDate,
+    provisional: latest.provisional === true,
+  };
+}
+
+async function growthReading(code) {
+  const data = await getJson(`/api/finance/income/quarterly-series?code=${encodeURIComponent(code)}&limit=8`);
+  return ttmGrowth(data?.points ?? []);
 }
 
 const results = [];
@@ -102,10 +159,11 @@ async function worker() {
   while (cursor < targets.length) {
     const target = targets[cursor++];
     try {
-      const [bands, overview, bandCurrency] = await Promise.all([
+      const [bands, overview, bandCurrency, growth] = await Promise.all([
         getJson(`/api/finance/valuation-bands?code=${encodeURIComponent(target.code)}`),
         getJson(`/api/company/overview?code=${encodeURIComponent(target.code)}`),
         reportingCurrency(target.code),
+        growthReading(target.code),
       ]);
       if (!bands) {
         results.push({ code: target.code, name: target.name, market: target.market, verdict: 'blocked', blockReasons: ['bands_unavailable'], note: '区间接口未返回数据（取数失败，不等于估值不可计算）' });
@@ -130,6 +188,7 @@ async function worker() {
             ? null
             : overview.marketCapYi * 100_000_000,
         },
+        growth,
       });
       results.push({ ...result, name: target.name, market: target.market, bandCurrency });
     } catch (error) {
@@ -185,5 +244,30 @@ if (asJson) {
       console.log(`  ${item.code.padEnd(11)} ${String(item.name).padEnd(8)} ${item.note}`);
     }
     if (watched.length > 10) console.log(`  …另有 ${watched.length - 10} 家`);
+  }
+
+  // The growth reading is reported even when it changed nothing, because "no veto
+  // fired" and "no veto was available" are different facts and only one of them is
+  // reassuring.  `unknown` means the data was missing; `not_meaningful` means it
+  // was too extreme to use as evidence in either direction.
+  const growthDetail = results.reduce((acc, item) => {
+    const verdict = item.growth?.verdict ?? 'unknown';
+    acc[verdict] = (acc[verdict] ?? 0) + 1;
+    return acc;
+  }, {});
+  console.log('');
+  console.log(`Growth reading: ${JSON.stringify(growthDetail)}`);
+
+  const vetoed = results.filter((item) => item.growth?.verdict === 'vetoes');
+  if (vetoed.length) {
+    console.log(`Growth veto (${vetoed.length}): TTM 利润同比 ≤ −15%，低倍数不是折价。只对净利润口径区间生效。`);
+    for (const item of vetoed.slice(0, 12)) {
+      const growth = item.growth.ttmGrowth;
+      console.log(
+        `  ${item.code.padEnd(11)} ${String(item.name).padEnd(8)} ${item.verdict.padEnd(19)}`
+        + ` 增速 ${(growth * 100).toFixed(1)}%  截至 ${item.growth.reportDate}`,
+      );
+    }
+    if (vetoed.length > 12) console.log(`  …另有 ${vetoed.length - 12} 家`);
   }
 }

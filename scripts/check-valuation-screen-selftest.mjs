@@ -160,7 +160,15 @@ const unknownCurrency = screenValuationCandidate({
   bands: [capBand()],
   quote: quote(1000 * YI),
 });
-assert.deepEqual(unknownCurrency.blockReasons, ["currency_mismatch"]);
+assert.deepEqual(unknownCurrency.blockReasons, ["currency_unknown"]);
+
+// A missing currency and a conflicting one are different facts.  Conflating them
+// is how 生益科技 — an A-share reporting in CNY — got reported as a currency
+// mismatch when the real cause was that its newest income row was a 业绩预告 and
+// therefore carried no CURRENCY field.  The refusal was right; the diagnosis was
+// wrong, and a wrong diagnosis is what makes the next fix go to the wrong place.
+assert.match(unknownCurrency.note, /币种缺失/);
+assert.doesNotMatch(unknownCurrency.note, /以 \w+ 计价/);
 
 // --- 5. EV-only companies block -------------------------------------------
 const evOnly = screenValuationCandidate({
@@ -340,7 +348,7 @@ const reachable = new Set(
 );
 assert.deepEqual(
   [...reachable].sort(),
-  ["currency_mismatch", "no_available_band", "no_market_cap_band", "quote_missing", "stale_basis"],
+  ["currency_mismatch", "currency_unknown", "no_available_band", "no_market_cap_band", "quote_missing", "stale_basis"],
   "every declared block reason must be produced by some input",
 );
 
