@@ -1,0 +1,2108 @@
+{
+  "schemaVersion": 1,
+  "scope": "Source-registration parity only; does not prove payload, arithmetic, authentication, provider, scheduler or UI behavior.",
+  "counts": {
+    "expected": 115,
+    "mountedRust": 152,
+    "definedRust": 104,
+    "missing": 0,
+    "frontendReferences": 55,
+    "frontendMissing": 0
+  },
+  "expected": [
+    {
+      "listener": "content",
+      "method": "GET",
+      "path": "/__health",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "content",
+      "method": "GET",
+      "path": "/featured-reports/*",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "content",
+      "method": "GET",
+      "path": "/knowledge-content/*",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "content",
+      "method": "HEAD",
+      "path": "/featured-reports/*",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "content",
+      "method": "HEAD",
+      "path": "/knowledge-content/*",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "content",
+      "method": "OPTIONS",
+      "path": "/featured-reports/*",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "content",
+      "method": "OPTIONS",
+      "path": "/knowledge-content/*",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "content",
+      "method": "POST",
+      "path": "/__convert-report",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "content",
+      "method": "POST",
+      "path": "/__convert-sec-filing",
+      "source": "scripts/local-knowledge-content-server.mjs"
+    },
+    {
+      "listener": "http",
+      "method": "ALL",
+      "path": "/__review/:code/save",
+      "source": "scripts/lib/featured-report-review.mjs"
+    },
+    {
+      "listener": "http",
+      "path": "/api/llm-tasks",
+      "source": "src/app/router.ts:61",
+      "method": "ALL"
+    },
+    {
+      "listener": "http",
+      "path": "/api/llm-tasks/*",
+      "source": "src/app/router.ts:62",
+      "method": "ALL"
+    },
+    {
+      "listener": "http",
+      "path": "/login.html",
+      "source": "src/app/router.ts:85",
+      "method": "ALL"
+    },
+    {
+      "listener": "http",
+      "path": "/",
+      "source": "src/app/router.ts:64",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/__review/:code/content.json",
+      "source": "scripts/lib/featured-report-local.mjs"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/__review/:code/original.pdf",
+      "source": "scripts/lib/featured-report-local.mjs"
+    },
+    {
+      "listener": "http",
+      "path": "/api/13f/manager/list",
+      "source": "src/modules/thirteenf/api/thirteenf.routes.ts:7",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/13f/position/:filingId",
+      "source": "src/modules/thirteenf/api/thirteenf.routes.ts:50",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/13f/quarters/:id",
+      "source": "src/modules/thirteenf/api/thirteenf.routes.ts:28",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/code/name",
+      "source": "src/modules/security/api/security.routes.ts:32",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/companies/change",
+      "source": "src/modules/market/api/market.routes.ts:18",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/companies/filter",
+      "source": "src/modules/market/api/market.routes.ts:9",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/companies/follow/forecast",
+      "source": "src/modules/local-data/api/local-data.routes.ts:10",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/companies/holding/rank",
+      "source": "src/modules/market/api/market.routes.ts:64",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/companies/report/cnt",
+      "source": "src/modules/market/api/market.routes.ts:83",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/info",
+      "source": "src/modules/company/api/company.routes.ts:36",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/notices",
+      "source": "src/modules/company/api/company.routes.ts:56",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/overview",
+      "source": "src/modules/company/api/company.routes.ts:27",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/reports",
+      "source": "src/modules/company/api/company.routes.ts:86",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/reports/discovery-capability",
+      "source": "src/modules/company/api/company.routes.ts:102",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/reports/stream",
+      "source": "src/modules/company/api/company.routes.ts:123",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/restriction",
+      "source": "src/modules/finance/api/finance.routes.ts:71",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/featured-reports/:code",
+      "source": "src/modules/featured-reports/api/featured-reports.routes.ts:11",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/:statementType",
+      "source": "src/modules/finance/api/finance.routes.ts:130",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/dividendyield",
+      "source": "src/modules/finance/api/finance.routes.ts:51",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/freeholders",
+      "source": "src/modules/finance/api/finance.routes.ts:57",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/income/quarterly-series",
+      "source": "src/modules/finance/api/finance.routes.ts:32",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/mid-cycle-earnings",
+      "source": "src/modules/finance/api/finance.routes.ts:103",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/orgholders",
+      "source": "src/modules/finance/api/finance.routes.ts:63",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/shareadditional",
+      "source": "src/modules/finance/api/finance.routes.ts:45",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/sharebonus",
+      "source": "src/modules/finance/api/finance.routes.ts:26",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/sharechange",
+      "source": "src/modules/finance/api/finance.routes.ts:18",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/valuation-bands",
+      "source": "src/modules/finance/api/finance.routes.ts:119",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/finance/valuation-inputs",
+      "source": "src/modules/finance/api/finance.routes.ts:91",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/asset-allocation",
+      "source": "src/modules/fund/api/fund.routes.ts:24",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/companies",
+      "source": "src/modules/fund/api/fund.routes.ts:53",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/compare",
+      "source": "src/modules/fund/api/fund.routes.ts:55",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/constituents",
+      "source": "src/modules/fund/api/fund.routes.ts:45",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/info",
+      "source": "src/modules/fund/api/fund.routes.ts:11",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/notices",
+      "source": "src/modules/fund/api/fund.routes.ts:36",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/position",
+      "source": "src/modules/fund/api/fund.routes.ts:17",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/rank",
+      "source": "src/modules/fund/api/fund.routes.ts:51",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/fund/share-change",
+      "source": "src/modules/fund/api/fund.routes.ts:30",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/health",
+      "source": "src/modules/health/api/health.routes.ts:7",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/kline",
+      "source": "src/modules/market/api/kline.routes.ts:8",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/content",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:488",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/doc",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:165",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/docs",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:149",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/feed",
+      "source": "src/modules/knowledge/api/information-feed.routes.ts:148",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/feed/facets",
+      "source": "src/modules/knowledge/api/information-feed.routes.ts:214",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/feed/story",
+      "source": "src/modules/knowledge/api/information-feed.routes.ts:248",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/file",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:466",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/filtered",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:303",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/filtered/doc",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:327",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/industries",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:447",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/sources",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:412",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/local/information-feed/rejected",
+      "source": "src/platform/node/local-server.ts"
+    },
+    {
+      "listener": "http",
+      "path": "/api/macro/analysis",
+      "source": "src/modules/macro/api/macro.routes.ts:29",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/macro/catalog",
+      "source": "src/modules/macro/api/macro.routes.ts:67",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/macro/overview",
+      "source": "src/modules/macro/api/macro.routes.ts:80",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/macro/series",
+      "source": "src/modules/macro/api/macro.routes.ts:121",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/options/us/contracts",
+      "source": "src/modules/options/api/options.routes.ts:25",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/options/us/summary",
+      "source": "src/modules/options/api/options.routes.ts:9",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/report/forecast",
+      "source": "src/modules/company/api/company.routes.ts:211",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/report/url",
+      "source": "src/modules/company/api/company.routes.ts:220",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/company/:code/financial-analysis",
+      "source": "src/modules/research/api/research.routes.ts:117",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/company/:code/investment-analysis",
+      "source": "src/modules/research/api/research.routes.ts:107",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/comparability",
+      "source": "src/modules/research/api/research.routes.ts:97",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/evidence/:code",
+      "source": "src/modules/research/api/research.routes.ts:70",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/observation/:code",
+      "source": "src/modules/research/api/observation-research.routes.ts:26",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/observation/:code/history",
+      "source": "src/modules/research/api/observation-research.routes.ts:41",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/portfolio/history/:version",
+      "source": "src/modules/research/api/active-portfolio.routes.ts:19",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/portfolio/workspace",
+      "source": "src/modules/research/api/active-portfolio.routes.ts:18",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/valuation-coverage",
+      "source": "src/modules/research/api/research.routes.ts:38",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/valuation-screen",
+      "source": "src/modules/research/api/research.routes.ts:44",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/search",
+      "source": "src/modules/security/api/security.routes.ts:8",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/sector/flow",
+      "source": "src/modules/market/api/market.routes.ts:41",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/api/suggest",
+      "source": "src/modules/security/api/security.routes.ts:17",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/featured-report.html",
+      "source": "src/app/router.ts:76",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "path": "/home.html",
+      "source": "src/app/router.ts:81",
+      "method": "GET"
+    },
+    {
+      "listener": "http",
+      "method": "HEAD",
+      "path": "/__review/:code/content.json",
+      "source": "scripts/lib/featured-report-local.mjs"
+    },
+    {
+      "listener": "http",
+      "method": "HEAD",
+      "path": "/__review/:code/original.pdf",
+      "source": "scripts/lib/featured-report-local.mjs"
+    },
+    {
+      "listener": "http",
+      "path": "/api/companies/follow/forecast",
+      "source": "src/modules/local-data/api/local-data.routes.ts:31",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/reports/discover",
+      "source": "src/modules/company/api/company.routes.ts:182",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/company/reports/discover/sync",
+      "source": "src/modules/company/api/company.routes.ts:198",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/internal/featured-reports",
+      "source": "src/modules/featured-reports/api/featured-reports.routes.ts:24",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/internal/knowledge/import",
+      "source": "src/modules/knowledge/api/knowledge-import.routes.ts:76",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/filtered/keep",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:338",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/knowledge/report-analysis",
+      "source": "src/modules/knowledge/api/knowledge.routes.ts:185",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/local/sub2me/callback",
+      "source": "scripts/lib/sub2me-callback.mjs"
+    },
+    {
+      "listener": "http",
+      "path": "/api/macro/analysis/refresh",
+      "source": "src/modules/macro/api/macro.routes.ts:37",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/macro/analysis/resume",
+      "source": "src/modules/macro/api/macro.routes.ts:47",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/macro/analysis/sync",
+      "source": "src/modules/macro/api/macro.routes.ts:56",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/macro/sync",
+      "source": "src/modules/macro/api/macro.routes.ts:163",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/company/:code/financial-analysis/refresh",
+      "source": "src/modules/research/api/research.routes.ts:127",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/company/:code/financial-analysis/resume",
+      "source": "src/modules/research/api/research.routes.ts:142",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/company/:code/financial-analysis/sync",
+      "source": "src/modules/research/api/research.routes.ts:153",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/company/:code/investment-analysis/refresh",
+      "source": "src/modules/research/api/research.routes.ts:165",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/company/:code/investment-analysis/resume",
+      "source": "src/modules/research/api/research.routes.ts:179",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/company/:code/investment-analysis/sync",
+      "source": "src/modules/research/api/research.routes.ts:190",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/observation/:code",
+      "source": "src/modules/research/api/observation-research.routes.ts:32",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/observation/:code/evaluate",
+      "source": "src/modules/research/api/observation-research.routes.ts:42",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/portfolio/workspace",
+      "source": "src/modules/research/api/active-portfolio.routes.ts:23",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/valuation-screen/refresh",
+      "source": "src/modules/research/api/research.routes.ts:58",
+      "method": "POST"
+    },
+    {
+      "listener": "http",
+      "path": "/api/research/valuation-screen/refresh/:code",
+      "source": "src/modules/research/api/research.routes.ts:49",
+      "method": "POST"
+    }
+  ],
+  "excludedProductionOnly": [
+    {
+      "listener": "http",
+      "path": "/api/auth/me",
+      "source": "src/modules/auth/auth.ts:76",
+      "method": "GET",
+      "reason": "Already returns404 in the supported local runtime; Rust must not expose a login surface."
+    },
+    {
+      "listener": "http",
+      "path": "/api/auth/login",
+      "source": "src/modules/auth/auth.ts:77",
+      "method": "POST",
+      "reason": "Already returns404 in the supported local runtime; Rust must not expose a login surface."
+    },
+    {
+      "listener": "http",
+      "path": "/api/auth/logout",
+      "source": "src/modules/auth/auth.ts:106",
+      "method": "POST",
+      "reason": "Already returns404 in the supported local runtime; Rust must not expose a login surface."
+    },
+    {
+      "listener": "http",
+      "path": "/api/auth/password-reset/request",
+      "source": "src/modules/auth/auth.ts:112",
+      "method": "POST",
+      "reason": "Already returns404 in the supported local runtime; Rust must not expose a login surface."
+    },
+    {
+      "listener": "http",
+      "path": "/api/auth/password-reset/confirm",
+      "source": "src/modules/auth/auth.ts:131",
+      "method": "POST",
+      "reason": "Already returns404 in the supported local runtime; Rust must not expose a login surface."
+    },
+    {
+      "listener": "http",
+      "path": "/api/internal/report-sync",
+      "source": "src/modules/report-sync/api/report-sync.routes.ts:9",
+      "method": "POST",
+      "reason": "Cloudflare-only report publication ingress; retired by the local-only requirement."
+    }
+  ],
+  "mountedRust": [
+    {
+      "listener": "content",
+      "method": "GET",
+      "path": "/__health",
+      "source": "backend/src/knowledge/content.rs:31"
+    },
+    {
+      "listener": "content",
+      "method": "GET",
+      "path": "/featured-reports/{*key}",
+      "source": "backend/src/knowledge/content.rs:35"
+    },
+    {
+      "listener": "content",
+      "method": "GET",
+      "path": "/knowledge-content/{*key}",
+      "source": "backend/src/knowledge/content.rs:34"
+    },
+    {
+      "listener": "content",
+      "method": "HEAD",
+      "path": "/featured-reports/{*key}",
+      "source": "backend/src/knowledge/content.rs:35"
+    },
+    {
+      "listener": "content",
+      "method": "HEAD",
+      "path": "/knowledge-content/{*key}",
+      "source": "backend/src/knowledge/content.rs:34"
+    },
+    {
+      "listener": "content",
+      "method": "OPTIONS",
+      "path": "/featured-reports/{*key}",
+      "source": "backend/src/lib.rs:196"
+    },
+    {
+      "listener": "content",
+      "method": "OPTIONS",
+      "path": "/knowledge-content/{*key}",
+      "source": "backend/src/lib.rs:195"
+    },
+    {
+      "listener": "content",
+      "method": "POST",
+      "path": "/__convert-report",
+      "source": "backend/src/knowledge/content.rs:32"
+    },
+    {
+      "listener": "content",
+      "method": "POST",
+      "path": "/__convert-sec-filing",
+      "source": "backend/src/knowledge/content.rs:33"
+    },
+    {
+      "listener": "http",
+      "method": "ALL",
+      "path": "/__review/{code}/save",
+      "source": "backend/src/featured_reports.rs:226"
+    },
+    {
+      "listener": "http",
+      "method": "ALL",
+      "path": "/api/auth/{*path}",
+      "source": "backend/src/lib.rs:143"
+    },
+    {
+      "listener": "http",
+      "method": "ALL",
+      "path": "/api/llm-tasks",
+      "source": "backend/src/lib.rs:152"
+    },
+    {
+      "listener": "http",
+      "method": "ALL",
+      "path": "/api/llm-tasks/{*path}",
+      "source": "backend/src/lib.rs:153"
+    },
+    {
+      "listener": "http",
+      "method": "ALL",
+      "path": "/api/local/information-feed/rejected",
+      "source": "backend/src/runtime_jobs.rs:59"
+    },
+    {
+      "listener": "http",
+      "method": "ALL",
+      "path": "/api/local/sub2me/callback",
+      "source": "backend/src/runtime_jobs.rs:58"
+    },
+    {
+      "listener": "http",
+      "method": "ALL",
+      "path": "/login.html",
+      "source": "backend/src/lib.rs:172"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/",
+      "source": "backend/src/lib.rs:164"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/__featured/{report_id}/{content_hash}/content.json",
+      "source": "backend/src/featured_reports.rs:228"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/__featured/{report_id}/original.pdf",
+      "source": "backend/src/featured_reports.rs:227"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/__health",
+      "source": "backend/src/knowledge/content.rs:31"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/__review/{code}/content.json",
+      "source": "backend/src/featured_reports.rs:225"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/__review/{code}/original.pdf",
+      "source": "backend/src/featured_reports.rs:224"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/13f-position.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/13f.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/13f/manager/list",
+      "source": "backend/src/thirteenf.rs:34"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/13f/position/{filing_id}",
+      "source": "backend/src/thirteenf.rs:36"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/13f/quarters/{id}",
+      "source": "backend/src/thirteenf.rs:35"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/code/name",
+      "source": "backend/src/market.rs:21"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/companies/change",
+      "source": "backend/src/market.rs:25"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/companies/filter",
+      "source": "backend/src/market.rs:24"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/companies/follow/forecast",
+      "source": "backend/src/lib.rs:155"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/companies/holding/rank",
+      "source": "backend/src/market.rs:27"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/companies/report/cnt",
+      "source": "backend/src/market.rs:23"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/company/info",
+      "source": "backend/src/company.rs:30"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/company/notices",
+      "source": "backend/src/company.rs:31"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/company/overview",
+      "source": "backend/src/company.rs:29"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/company/reports",
+      "source": "backend/src/company.rs:32"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/company/reports/discovery-capability",
+      "source": "backend/src/company.rs:33"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/company/reports/stream",
+      "source": "backend/src/company.rs:37"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/company/restriction",
+      "source": "backend/src/finance.rs:52"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/featured-reports/{code}",
+      "source": "backend/src/featured_reports.rs:217"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/{statement_type}",
+      "source": "backend/src/finance.rs:57"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/dividendyield",
+      "source": "backend/src/finance.rs:49"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/freeholders",
+      "source": "backend/src/finance.rs:50"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/income/quarterly-series",
+      "source": "backend/src/finance.rs:53"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/mid-cycle-earnings",
+      "source": "backend/src/finance.rs:56"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/orgholders",
+      "source": "backend/src/finance.rs:51"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/shareadditional",
+      "source": "backend/src/finance.rs:48"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/sharebonus",
+      "source": "backend/src/finance.rs:47"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/sharechange",
+      "source": "backend/src/finance.rs:46"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/valuation-bands",
+      "source": "backend/src/finance.rs:55"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/finance/valuation-inputs",
+      "source": "backend/src/finance.rs:54"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/asset-allocation",
+      "source": "backend/src/fund.rs:25"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/companies",
+      "source": "backend/src/fund.rs:30"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/compare",
+      "source": "backend/src/fund.rs:31"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/constituents",
+      "source": "backend/src/fund.rs:28"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/info",
+      "source": "backend/src/fund.rs:23"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/notices",
+      "source": "backend/src/fund.rs:27"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/position",
+      "source": "backend/src/fund.rs:24"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/rank",
+      "source": "backend/src/fund.rs:29"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/fund/share-change",
+      "source": "backend/src/fund.rs:26"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/health",
+      "source": "backend/src/lib.rs:154"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/kline",
+      "source": "backend/src/market.rs:22"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/content",
+      "source": "backend/src/knowledge.rs:24"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/doc",
+      "source": "backend/src/knowledge.rs:20"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/docs",
+      "source": "backend/src/knowledge.rs:19"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/feed",
+      "source": "backend/src/knowledge/feed.rs:118"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/feed/facets",
+      "source": "backend/src/knowledge/feed.rs:119"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/feed/story",
+      "source": "backend/src/knowledge/feed.rs:120"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/file",
+      "source": "backend/src/knowledge.rs:23"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/filtered",
+      "source": "backend/src/knowledge/review.rs:22"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/filtered/doc",
+      "source": "backend/src/knowledge/review.rs:23"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/industries",
+      "source": "backend/src/knowledge.rs:22"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/knowledge/sources",
+      "source": "backend/src/knowledge.rs:21"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/macro/analysis",
+      "source": "backend/src/macro_data.rs:27"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/macro/catalog",
+      "source": "backend/src/macro_data.rs:23"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/macro/overview",
+      "source": "backend/src/macro_data.rs:24"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/macro/series",
+      "source": "backend/src/macro_data.rs:25"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/options/us/contracts",
+      "source": "backend/src/options.rs:68"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/options/us/summary",
+      "source": "backend/src/options.rs:67"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/report/forecast",
+      "source": "backend/src/company.rs:40"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/report/url",
+      "source": "backend/src/company.rs:41"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/company/{code}/financial-analysis",
+      "source": "backend/src/research.rs:24"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/company/{code}/investment-analysis",
+      "source": "backend/src/research.rs:28"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/comparability",
+      "source": "backend/src/dashboard.rs:36"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/evidence/{code}",
+      "source": "backend/src/research.rs:23"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/observation/{code}",
+      "source": "backend/src/observation.rs:820"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/observation/{code}/history",
+      "source": "backend/src/observation.rs:824"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/portfolio/history/{version}",
+      "source": "backend/src/portfolio.rs:1067"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/portfolio/workspace",
+      "source": "backend/src/portfolio.rs:1066"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/valuation-coverage",
+      "source": "backend/src/dashboard.rs:35"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/research/valuation-screen",
+      "source": "backend/src/dashboard.rs:32"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/search",
+      "source": "backend/src/market.rs:19"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/sector/flow",
+      "source": "backend/src/market.rs:26"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/api/suggest",
+      "source": "backend/src/market.rs:20"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/companies-change.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/companies-filter.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/companies-follow.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/companies-holding.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-dividend.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-finance.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-holders.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-news.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-notice.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-option-theta.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-option.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-report.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-shares.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company-trade.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/company.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/featured-report.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/featured-reports/{*key}",
+      "source": "backend/src/knowledge/content.rs:35"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/fund-compare.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/fund-notice.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/fund-position.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/fund.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/funds.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/home.html",
+      "source": "backend/src/lib.rs:168"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/institutional-tracks.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/investment-analysis.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/investment-universe.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/knowledge-content/{*key}",
+      "source": "backend/src/knowledge/content.rs:34"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/macro.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/news.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/option-strategy.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "GET",
+      "path": "/sector-flow.html",
+      "source": "config/app/page-manifest.json (ServeDir fallback)"
+    },
+    {
+      "listener": "http",
+      "method": "HEAD",
+      "path": "/featured-reports/{*key}",
+      "source": "backend/src/knowledge/content.rs:35"
+    },
+    {
+      "listener": "http",
+      "method": "HEAD",
+      "path": "/knowledge-content/{*key}",
+      "source": "backend/src/knowledge/content.rs:34"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/__convert-report",
+      "source": "backend/src/knowledge/content.rs:32"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/__convert-sec-filing",
+      "source": "backend/src/knowledge/content.rs:33"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/companies/follow/forecast",
+      "source": "backend/src/lib.rs:155"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/company/reports/discover",
+      "source": "backend/src/company.rs:38"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/company/reports/discover/sync",
+      "source": "backend/src/company.rs:39"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/internal/featured-reports",
+      "source": "backend/src/featured_reports.rs:218"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/internal/knowledge/import",
+      "source": "backend/src/knowledge.rs:26"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/knowledge/filtered/keep",
+      "source": "backend/src/knowledge/review.rs:24"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/knowledge/report-analysis",
+      "source": "backend/src/knowledge.rs:25"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/macro/analysis/refresh",
+      "source": "backend/src/macro_data.rs:28"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/macro/analysis/resume",
+      "source": "backend/src/macro_data.rs:29"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/macro/analysis/sync",
+      "source": "backend/src/macro_data.rs:30"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/macro/sync",
+      "source": "backend/src/macro_data.rs:26"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/company/{code}/financial-analysis/refresh",
+      "source": "backend/src/research.rs:32"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/company/{code}/financial-analysis/resume",
+      "source": "backend/src/research.rs:36"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/company/{code}/financial-analysis/sync",
+      "source": "backend/src/research.rs:40"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/company/{code}/investment-analysis/refresh",
+      "source": "backend/src/research.rs:44"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/company/{code}/investment-analysis/resume",
+      "source": "backend/src/research.rs:48"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/company/{code}/investment-analysis/sync",
+      "source": "backend/src/research.rs:52"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/observation/{code}",
+      "source": "backend/src/observation.rs:820"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/observation/{code}/evaluate",
+      "source": "backend/src/observation.rs:825"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/portfolio/workspace",
+      "source": "backend/src/portfolio.rs:1066"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/valuation-screen/refresh",
+      "source": "backend/src/dashboard.rs:33"
+    },
+    {
+      "listener": "http",
+      "method": "POST",
+      "path": "/api/research/valuation-screen/refresh/{code}",
+      "source": "backend/src/dashboard.rs:34"
+    }
+  ],
+  "missing": [],
+  "frontend": {
+    "files": [
+      "shared/active-portfolio.ts",
+      "shared/investment-opportunity.ts",
+      "shared/observation-research.ts",
+      "shared/valuation-assessment.ts",
+      "shared/valuation-dashboard.ts",
+      "src/modules/featured-reports/domain/content.ts",
+      "src/modules/research/domain/growth-veto.ts",
+      "src/modules/research/domain/valuation-screen.ts",
+      "web/src/analysis-task-queue.ts",
+      "web/src/api.ts",
+      "web/src/app/layout/components/app-footer.ts",
+      "web/src/app/layout/components/app-top-nav.ts",
+      "web/src/app/layout/components/company-info-bar.ts",
+      "web/src/app/layout/components/sub-nav.ts",
+      "web/src/app/layout/config/navigation.ts",
+      "web/src/app/layout/index.ts",
+      "web/src/app/layout/mount-layout.ts",
+      "web/src/app/layout/security-search-route.ts",
+      "web/src/bs-table.ts",
+      "web/src/chart.ts",
+      "web/src/date-range-ui.ts",
+      "web/src/date.ts",
+      "web/src/finance-constants.ts",
+      "web/src/format.ts",
+      "web/src/legacy-page-init.ts",
+      "web/src/modules/companies/components/active-portfolio-panel.ts",
+      "web/src/modules/companies/components/observation-information-panel.ts",
+      "web/src/modules/companies/components/observation-research-panel.ts",
+      "web/src/modules/companies/composables/use-valuation-dashboard.ts",
+      "web/src/modules/companies/domain/follow-storage.ts",
+      "web/src/modules/companies/domain/institutional-track-financial-valuation.ts",
+      "web/src/modules/companies/domain/institutional-track-growth-valuation.ts",
+      "web/src/modules/companies/domain/institutional-track-performance.ts",
+      "web/src/modules/companies/domain/institutional-track-rating.ts",
+      "web/src/modules/companies/domain/stop-loss-analysis.ts",
+      "web/src/modules/companies/pages/companies-change-page.ts",
+      "web/src/modules/companies/pages/companies-filter-page.ts",
+      "web/src/modules/companies/pages/companies-follow-page.ts",
+      "web/src/modules/companies/pages/companies-holding-page.ts",
+      "web/src/modules/companies/pages/institutional-tracks-page.ts",
+      "web/src/modules/companies/pages/investment-daily-panel.ts",
+      "web/src/modules/companies/pages/investment-universe-page.ts",
+      "web/src/modules/companies/runtime/companies-change-runtime.ts",
+      "web/src/modules/companies/runtime/companies-filter-runtime.ts",
+      "web/src/modules/companies/runtime/companies-follow-runtime.ts",
+      "web/src/modules/companies/runtime/companies-holding-runtime.ts",
+      "web/src/modules/company/domain/pe-ttm.ts",
+      "web/src/modules/company/domain/trade-analysis.ts",
+      "web/src/modules/company/pages/company-dividend-page.ts",
+      "web/src/modules/company/pages/company-finance-page.ts",
+      "web/src/modules/company/pages/company-holders-page.ts",
+      "web/src/modules/company/pages/company-news-page.ts",
+      "web/src/modules/company/pages/company-notice-page.ts",
+      "web/src/modules/company/pages/company-option-page.ts",
+      "web/src/modules/company/pages/company-option-theta-page.ts",
+      "web/src/modules/company/pages/company-page.ts",
+      "web/src/modules/company/pages/company-report-page.ts",
+      "web/src/modules/company/pages/company-shares-page.ts",
+      "web/src/modules/company/pages/company-trade-page.ts",
+      "web/src/modules/company/runtime/company-dividend-runtime.ts",
+      "web/src/modules/company/runtime/company-holders-runtime.ts",
+      "web/src/modules/company/runtime/company-notice-runtime.ts",
+      "web/src/modules/company/runtime/company-option-runtime.ts",
+      "web/src/modules/company/runtime/company-option-theta-runtime.ts",
+      "web/src/modules/company/runtime/company-pages-runtime.ts",
+      "web/src/modules/company/runtime/company-report-contract.ts",
+      "web/src/modules/company/runtime/company-table-runtime.ts",
+      "web/src/modules/company/runtime/company-trade-runtime.ts",
+      "web/src/modules/featured-reports/pages/featured-report-page.ts",
+      "web/src/modules/fund/pages/fund-notice-page.ts",
+      "web/src/modules/fund/pages/fund-page.ts",
+      "web/src/modules/fund/pages/fund-position-page.ts",
+      "web/src/modules/fund/pages/funds-page.ts",
+      "web/src/modules/fund/runtime/fund-notice-runtime.ts",
+      "web/src/modules/fund/runtime/fund-pages-runtime.ts",
+      "web/src/modules/fund/runtime/funds-runtime.ts",
+      "web/src/modules/home/pages/home-page.ts",
+      "web/src/modules/knowledge/pages/information-feed-page.ts",
+      "web/src/modules/knowledge/runtime/knowledge-doc-modal.ts",
+      "web/src/modules/macro/pages/macro-page.ts",
+      "web/src/modules/macro/pages/macro-value-format.ts",
+      "web/src/modules/market/domain/kline-drawdown.ts",
+      "web/src/modules/market/pages/sector-flow-page.ts",
+      "web/src/modules/market/runtime/sector-flow-runtime.ts",
+      "web/src/modules/options/domain/latest-kline-price.ts",
+      "web/src/modules/options/domain/option-contract-key.ts",
+      "web/src/modules/options/domain/recent-expirations.ts",
+      "web/src/modules/options/domain/strategy-calculator.ts",
+      "web/src/modules/options/pages/option-strategy-page.ts",
+      "web/src/modules/research/pages/fund-compare-page.ts",
+      "web/src/modules/research/pages/investment-analysis-page.ts",
+      "web/src/modules/thirteenf/pages/thirteenf-page.ts",
+      "web/src/modules/thirteenf/pages/thirteenf-position-page.ts",
+      "web/src/modules/thirteenf/runtime/thirteenf-position-runtime.ts",
+      "web/src/modules/thirteenf/runtime/thirteenf-runtime.ts",
+      "web/src/platform/legacy/legacy-controls.ts",
+      "web/src/platform/legacy/legacy-data-services.ts",
+      "web/src/platform/legacy/legacy-page-init.ts",
+      "web/src/platform/legacy/legacy-page-registry.ts",
+      "web/src/platform/legacy/legacy-runtime-state.ts",
+      "web/src/platform/legacy/legacy-runtime.ts",
+      "web/src/platform/runtime.ts",
+      "web/src/platform/search-history.ts",
+      "web/src/shared/report-link.ts",
+      "web/src/shared/taskd/taskd-report-ui.ts",
+      "web/src/table.ts"
+    ],
+    "references": [
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/auth/me",
+        "source": "web/src/app/layout/components/app-top-nav.ts:103"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/company/overview",
+        "source": "web/src/modules/research/pages/investment-analysis-page.ts:126"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/featured-reports/:segment",
+        "source": "web/src/modules/featured-reports/pages/featured-report-page.ts:58"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/finance/freeholders",
+        "source": "web/src/platform/legacy/legacy-data-services.ts:308"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/finance/income",
+        "source": "web/src/modules/research/pages/investment-analysis-page.ts:142"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/finance/orgholders",
+        "source": "web/src/platform/legacy/legacy-data-services.ts:328"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/finance/sharebonus",
+        "source": "web/src/modules/company/runtime/company-dividend-runtime.ts:111"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/finance/sharechange",
+        "source": "web/src/modules/research/pages/investment-analysis-page.ts:143"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/fund/compare",
+        "source": "web/src/modules/research/pages/fund-compare-page.ts:21"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/kline",
+        "source": "web/src/modules/options/pages/option-strategy-page.ts:295"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/knowledge/feed",
+        "source": "web/src/modules/companies/components/observation-information-panel.ts:16"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/macro/analysis",
+        "source": "web/src/modules/macro/pages/macro-page.ts:74"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/macro/catalog",
+        "source": "web/src/modules/macro/pages/macro-page.ts:113"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/macro/overview",
+        "source": "web/src/modules/macro/pages/macro-page.ts:106"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/macro/series",
+        "source": "web/src/modules/macro/pages/macro-page.ts:131"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/research/company/:segment/financial-analysis",
+        "source": "web/src/modules/company/pages/company-finance-page.ts:186"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/research/company/:segment/investment-analysis",
+        "source": "web/src/modules/research/pages/investment-analysis-page.ts:95"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/research/portfolio/history/:segment",
+        "source": "web/src/modules/companies/components/active-portfolio-panel.ts:159"
+      },
+      {
+        "listener": "http",
+        "method": "GET",
+        "path": "/api/search",
+        "source": "web/src/app/layout/components/app-top-nav.ts:68"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/auth/logout",
+        "source": "web/src/app/layout/components/app-top-nav.ts:37"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/macro/analysis/refresh",
+        "source": "web/src/modules/macro/pages/macro-page.ts:81"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/macro/analysis/resume",
+        "source": "web/src/modules/macro/pages/macro-page.ts:94"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/macro/analysis/sync",
+        "source": "web/src/modules/macro/pages/macro-page.ts:88"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/research/company/:segment/financial-analysis/refresh",
+        "source": "web/src/modules/company/pages/company-finance-page.ts:195"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/research/company/:segment/financial-analysis/resume",
+        "source": "web/src/modules/company/pages/company-finance-page.ts:205"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/research/company/:segment/financial-analysis/sync",
+        "source": "web/src/modules/company/pages/company-finance-page.ts:214"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/research/company/:segment/investment-analysis/refresh",
+        "source": "web/src/modules/research/pages/investment-analysis-page.ts:103"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/research/company/:segment/investment-analysis/resume",
+        "source": "web/src/modules/research/pages/investment-analysis-page.ts:110"
+      },
+      {
+        "listener": "http",
+        "method": "POST",
+        "path": "/api/research/company/:segment/investment-analysis/sync",
+        "source": "web/src/modules/research/pages/investment-analysis-page.ts:118"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/companies/change",
+        "source": "web/src/modules/companies/runtime/companies-change-runtime.ts:83"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/companies/filter",
+        "source": "web/src/modules/companies/runtime/companies-filter-runtime.ts:197"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/companies/holding/rank",
+        "source": "web/src/modules/companies/runtime/companies-holding-runtime.ts:99"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/company/info",
+        "source": "web/src/modules/companies/pages/institutional-tracks-page.ts:1217"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/company/overview",
+        "source": "web/src/modules/companies/pages/institutional-tracks-page.ts:1032"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/company/reports",
+        "source": "web/src/modules/companies/pages/investment-universe-page.ts:383"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/company/restriction",
+        "source": "web/src/modules/company/runtime/company-pages-runtime.ts:1387"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/finance/balance",
+        "source": "web/src/modules/companies/pages/institutional-tracks-page.ts:1220"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/finance/dividendyield",
+        "source": "web/src/modules/companies/pages/institutional-tracks-page.ts:1225"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/finance/income",
+        "source": "web/src/modules/companies/pages/institutional-tracks-page.ts:1219"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/finance/sharechange",
+        "source": "web/src/platform/legacy/legacy-runtime.ts:3109"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/fund/companies",
+        "source": "web/src/platform/legacy/legacy-runtime.ts:3123"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/fund/rank",
+        "source": "web/src/modules/fund/runtime/funds-runtime.ts:166"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/kline",
+        "source": "web/src/modules/companies/pages/institutional-tracks-page.ts:1223"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/knowledge/docs",
+        "source": "web/src/modules/companies/pages/institutional-tracks-page.ts:1222"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/knowledge/feed",
+        "source": "web/src/modules/knowledge/pages/information-feed-page.ts:618"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/knowledge/feed/facets",
+        "source": "web/src/modules/knowledge/pages/information-feed-page.ts:631"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/knowledge/feed/story",
+        "source": "web/src/modules/knowledge/pages/information-feed-page.ts:529"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/knowledge/file",
+        "source": "web/src/modules/company/runtime/company-pages-runtime.ts:374"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/local/information-feed/rejected",
+        "source": "web/src/modules/knowledge/pages/information-feed-page.ts:580"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/report/forecast",
+        "source": "web/src/modules/companies/pages/institutional-tracks-page.ts:1218"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/research/observation/:segment",
+        "source": "web/src/modules/companies/components/observation-research-panel.ts:21"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/research/portfolio/workspace",
+        "source": "web/src/modules/companies/components/active-portfolio-panel.ts:24"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/research/valuation-screen",
+        "source": "web/src/modules/companies/composables/use-valuation-dashboard.ts:25"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/research/valuation-screen/refresh",
+        "source": "web/src/modules/companies/composables/use-valuation-dashboard.ts:25"
+      },
+      {
+        "listener": "http",
+        "method": "UNSPECIFIED",
+        "path": "/api/sector/flow",
+        "source": "web/src/modules/market/runtime/sector-flow-runtime.ts:88"
+      }
+    ],
+    "missing": [],
+    "unresolvedDynamicTails": []
+  },
+  "diagnostics": []
+}

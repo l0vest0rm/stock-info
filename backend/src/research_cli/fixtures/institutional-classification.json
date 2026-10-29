@@ -1,0 +1,1221 @@
+{
+  "input": {
+    "generatedAt": "2026-10-29T00:00:00.000Z",
+    "rows": [
+      {
+        "rank": 1,
+        "code": "300308.SZ",
+        "name": "中际旭创",
+        "institutionCount": 2739,
+        "industry": "通信设备",
+        "concepts": [
+          "5G概念",
+          "通信技术",
+          "算力概念",
+          "CPO概念",
+          "贬值受益",
+          "无人驾驶",
+          "光通信模块",
+          "F5G概念",
+          "节能环保"
+        ]
+      },
+      {
+        "rank": 2,
+        "code": "300750.SZ",
+        "name": "宁德时代",
+        "institutionCount": 2175,
+        "industry": "电源设备",
+        "concepts": [
+          "电池技术",
+          "锂电池概念",
+          "特斯拉概念",
+          "钠离子电池",
+          "储能概念",
+          "麒麟电池",
+          "锂矿概念",
+          "新能源车",
+          "小米汽车",
+          "动力电池回收",
+          "华为概念",
+          "蚂蚁概念",
+          "固态电池"
+        ]
+      },
+      {
+        "rank": 3,
+        "code": "300502.SZ",
+        "name": "新易盛",
+        "institutionCount": 1989,
+        "industry": "通信设备",
+        "concepts": [
+          "5G概念",
+          "CPO概念",
+          "通信技术",
+          "西部大开发",
+          "算力概念",
+          "光通信模块"
+        ]
+      },
+      {
+        "rank": 4,
+        "code": "688256.SH",
+        "name": "寒武纪",
+        "institutionCount": 1595,
+        "industry": "半导体",
+        "concepts": [
+          "先进封装",
+          "国产芯片",
+          "AI芯片",
+          "阿里概念",
+          "数据中心",
+          "边缘计算",
+          "算力概念",
+          "人工智能",
+          "半导体概念"
+        ]
+      },
+      {
+        "rank": 5,
+        "code": "603986.SH",
+        "name": "兆易创新",
+        "institutionCount": 1345,
+        "industry": "半导体",
+        "concepts": [
+          "半导体概念",
+          "物联网",
+          "国产芯片",
+          "智能穿戴",
+          "存储芯片",
+          "传感器",
+          "超清视频",
+          "无线耳机",
+          "汽车芯片",
+          "消费电子概念",
+          "AI眼镜",
+          "人工智能",
+          "人形机器人"
+        ]
+      },
+      {
+        "rank": 6,
+        "code": "688041.SH",
+        "name": "海光信息",
+        "institutionCount": 1112,
+        "industry": "半导体",
+        "concepts": [
+          "国产芯片",
+          "DeepSeek概念",
+          "抖音概念(字节概念)",
+          "信创",
+          "AI芯片",
+          "算力概念",
+          "阿里概念",
+          "人工智能",
+          "百度概念",
+          "半导体概念"
+        ]
+      },
+      {
+        "rank": 7,
+        "code": "002371.SZ",
+        "name": "北方华创",
+        "institutionCount": 1060,
+        "industry": "半导体",
+        "concepts": [
+          "国产芯片",
+          "电池技术",
+          "央国企改革",
+          "半导体概念",
+          "中芯概念",
+          "华为概念",
+          "存储芯片",
+          "第三代半导体",
+          "华为海思",
+          "光刻机",
+          "锂电池概念",
+          "高带宽内存",
+          "氮化镓",
+          "光伏概念"
+        ]
+      },
+      {
+        "rank": 8,
+        "code": "600519.SH",
+        "name": "贵州茅台",
+        "institutionCount": 992,
+        "industry": "饮料",
+        "concepts": [
+          "电商概念",
+          "超级品牌",
+          "白酒",
+          "央国企改革",
+          "西部大开发",
+          "酿酒概念",
+          "味蕾经济"
+        ]
+      },
+      {
+        "rank": 9,
+        "code": "688012.SH",
+        "name": "中微公司",
+        "institutionCount": 960,
+        "industry": "半导体",
+        "concepts": [
+          "LED概念",
+          "国产芯片",
+          "高带宽内存",
+          "科创板做市股",
+          "长江三角",
+          "存储芯片",
+          "区块链",
+          "中芯概念",
+          "半导体概念"
+        ]
+      },
+      {
+        "rank": 10,
+        "code": "601899.SH",
+        "name": "紫金矿业",
+        "institutionCount": 931,
+        "industry": "贵金属",
+        "concepts": [
+          "黄金概念",
+          "小金属概念",
+          "贬值受益",
+          "锂矿概念",
+          "央国企改革",
+          "稀缺资源",
+          "一带一路"
+        ]
+      },
+      {
+        "rank": 11,
+        "code": "002384.SZ",
+        "name": "东山精密",
+        "institutionCount": 918,
+        "industry": "电子器件",
+        "concepts": [
+          "MiniLED",
+          "小米概念",
+          "5G概念",
+          "苹果概念",
+          "OLED",
+          "创投",
+          "数据中心",
+          "特斯拉概念",
+          "LED概念",
+          "长江三角",
+          "新能源车",
+          "PCB",
+          "光通信模块",
+          "华为概念",
+          "通信技术"
+        ]
+      },
+      {
+        "rank": 12,
+        "code": "688981.SH",
+        "name": "中芯国际",
+        "institutionCount": 820,
+        "industry": "半导体",
+        "concepts": [
+          "存储芯片",
+          "中芯概念",
+          "半导体概念",
+          "国产芯片",
+          "科创板做市股"
+        ]
+      },
+      {
+        "rank": 13,
+        "code": "002475.SZ",
+        "name": "立讯精密",
+        "institutionCount": 799,
+        "industry": "消费电子设备",
+        "concepts": [
+          "混合现实",
+          "消费电子概念",
+          "3D摄像头",
+          "新能源车",
+          "虚拟现实",
+          "无线充电",
+          "无线耳机",
+          "电子烟",
+          "光通信模块",
+          "5G概念",
+          "苹果概念",
+          "智能家居",
+          "通信技术",
+          "智能穿戴",
+          "铜缆高速连接",
+          "机器人概念",
+          "AI眼镜",
+          "深圳特区",
+          "CPO概念",
+          "液冷概念",
+          "华为概念",
+          "数据中心"
+        ]
+      },
+      {
+        "rank": 14,
+        "code": "603259.SH",
+        "name": "药明康德",
+        "institutionCount": 781,
+        "industry": "医疗服务",
+        "concepts": [
+          "CRO",
+          "创新药",
+          "独角兽",
+          "创新医疗服务",
+          "CAR-T细胞疗法"
+        ]
+      },
+      {
+        "rank": 15,
+        "code": "000333.SZ",
+        "name": "美的集团",
+        "institutionCount": 753,
+        "industry": "白色家电",
+        "concepts": [
+          "工业互联",
+          "数据中心",
+          "鸿蒙概念",
+          "超级品牌",
+          "智能家居",
+          "人形机器人",
+          "参股银行",
+          "净水概念",
+          "国产芯片",
+          "液冷概念",
+          "新能源车",
+          "物联网",
+          "空气能热泵",
+          "医疗器械概念"
+        ]
+      },
+      {
+        "rank": 16,
+        "code": "688498.SH",
+        "name": "源杰科技",
+        "institutionCount": 719,
+        "industry": "电子设备制造",
+        "concepts": [
+          "半导体概念",
+          "西部大开发",
+          "光纤概念",
+          "国产芯片",
+          "光通信模块",
+          "通信技术"
+        ]
+      },
+      {
+        "rank": 17,
+        "code": "688008.SH",
+        "name": "澜起科技",
+        "institutionCount": 716,
+        "industry": "电子设备制造",
+        "concepts": [
+          "AI芯片",
+          "存储芯片",
+          "云计算",
+          "半导体概念",
+          "算力概念",
+          "中芯概念",
+          "数据安全",
+          "人工智能",
+          "国产芯片",
+          "贬值受益"
+        ]
+      },
+      {
+        "rank": 18,
+        "code": "601318.SH",
+        "name": "中国平安",
+        "institutionCount": 685,
+        "industry": "保险Ⅱ",
+        "concepts": [
+          "互联网金融",
+          "养老概念",
+          "区块链",
+          "独角兽",
+          "IPO受益",
+          "参股银行",
+          "互联医疗",
+          "参股券商",
+          "深圳特区"
+        ]
+      },
+      {
+        "rank": 19,
+        "code": "300408.SZ",
+        "name": "三环集团",
+        "institutionCount": 664,
+        "industry": "电子元件",
+        "concepts": [
+          "小米概念",
+          "被动元件概念",
+          "5G概念",
+          "光纤概念",
+          "MLCC",
+          "新材料",
+          "燃料电池概念",
+          "通信技术",
+          "智能穿戴",
+          "电池技术",
+          "华为概念"
+        ]
+      },
+      {
+        "rank": 20,
+        "code": "300604.SZ",
+        "name": "长川科技",
+        "institutionCount": 657,
+        "industry": "半导体",
+        "concepts": [
+          "国产芯片",
+          "半导体概念",
+          "存储芯片"
+        ]
+      },
+      {
+        "rank": 21,
+        "code": "600036.SH",
+        "name": "招商银行",
+        "institutionCount": 595,
+        "industry": "银行Ⅱ",
+        "concepts": [
+          "互联网金融",
+          "深圳特区",
+          "跨境支付"
+        ]
+      },
+      {
+        "rank": 22,
+        "code": "300274.SZ",
+        "name": "阳光电源",
+        "institutionCount": 586,
+        "industry": "电源设备",
+        "concepts": [
+          "新能源车",
+          "阿里概念",
+          "氢能源",
+          "风能",
+          "充电桩",
+          "储能概念",
+          "光伏概念"
+        ]
+      },
+      {
+        "rank": 23,
+        "code": "688072.SH",
+        "name": "拓荆科技",
+        "institutionCount": 521,
+        "industry": "半导体",
+        "concepts": [
+          "中芯概念",
+          "先进封装",
+          "高带宽内存",
+          "半导体概念",
+          "存储芯片"
+        ]
+      },
+      {
+        "rank": 24,
+        "code": "600183.SH",
+        "name": "生益科技",
+        "institutionCount": 519,
+        "industry": "电子元件",
+        "concepts": [
+          "华为概念",
+          "通信技术",
+          "5G概念",
+          "存储芯片",
+          "PCB"
+        ]
+      },
+      {
+        "rank": 25,
+        "code": "688347.SH",
+        "name": "华虹宏力",
+        "institutionCount": 474,
+        "industry": "半导体",
+        "concepts": [
+          "央国企改革",
+          "半导体概念",
+          "存储芯片"
+        ]
+      },
+      {
+        "rank": 26,
+        "code": "600176.SH",
+        "name": "中国巨石",
+        "institutionCount": 445,
+        "industry": "合成纤维及树脂",
+        "concepts": [
+          "PCB",
+          "DeepSeek概念",
+          "新材料",
+          "风能",
+          "一带一路",
+          "央国企改革",
+          "PEEK材料概念"
+        ]
+      },
+      {
+        "rank": 27,
+        "code": "002463.SZ",
+        "name": "沪电股份",
+        "institutionCount": 444,
+        "industry": "电子元件",
+        "concepts": [
+          "无人驾驶",
+          "通信技术",
+          "新能源车",
+          "国产芯片",
+          "PCB",
+          "华为概念",
+          "5G概念"
+        ]
+      },
+      {
+        "rank": 28,
+        "code": "688521.SH",
+        "name": "芯原股份",
+        "institutionCount": 439,
+        "industry": "半导体",
+        "concepts": [
+          "国产芯片",
+          "无人驾驶",
+          "物联网",
+          "先进封装",
+          "人工智能",
+          "半导体概念",
+          "AI眼镜",
+          "虚拟现实",
+          "上海自贸",
+          "数字货币"
+        ]
+      },
+      {
+        "rank": 29,
+        "code": "301666.SZ",
+        "name": "大普微",
+        "institutionCount": 438,
+        "industry": "计算机硬件",
+        "concepts": [
+          "抖音概念(字节概念)",
+          "小红书概念",
+          "数据中心",
+          "DeepSeek概念",
+          "百度概念",
+          "存储芯片",
+          "次新股",
+          "半导体概念",
+          "英伟达概念",
+          "国产芯片"
+        ]
+      },
+      {
+        "rank": 30,
+        "code": "600276.SH",
+        "name": "恒瑞医药",
+        "institutionCount": 419,
+        "industry": "化学制药",
+        "concepts": [
+          "医疗器械概念",
+          "减肥药",
+          "单抗概念",
+          "中药概念",
+          "创新药"
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "generatedAt": "2026-10-29T00:00:00.000Z",
+    "rows": [
+      {
+        "rank": 1,
+        "code": "300308.SZ",
+        "name": "中际旭创",
+        "institutionCount": 2739,
+        "industry": "通信设备",
+        "concepts": [
+          "5G概念",
+          "通信技术",
+          "算力概念",
+          "CPO概念",
+          "贬值受益",
+          "无人驾驶",
+          "光通信模块",
+          "F5G概念",
+          "节能环保"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "光通信与连接",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：通信设备",
+        "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 2,
+        "code": "300750.SZ",
+        "name": "宁德时代",
+        "institutionCount": 2175,
+        "industry": "电源设备",
+        "concepts": [
+          "电池技术",
+          "锂电池概念",
+          "特斯拉概念",
+          "钠离子电池",
+          "储能概念",
+          "麒麟电池",
+          "锂矿概念",
+          "新能源车",
+          "小米汽车",
+          "动力电池回收",
+          "华为概念",
+          "蚂蚁概念",
+          "固态电池"
+        ],
+        "primaryTrack": "电力设备与新能源",
+        "secondaryTrack": "锂电池",
+        "classificationBasis": "company",
+        "classificationLabel": "主营锂电池及电池系统",
+        "classificationNote": "公司级主营校正：主营锂电池及电池系统。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 3,
+        "code": "300502.SZ",
+        "name": "新易盛",
+        "institutionCount": 1989,
+        "industry": "通信设备",
+        "concepts": [
+          "5G概念",
+          "CPO概念",
+          "通信技术",
+          "西部大开发",
+          "算力概念",
+          "光通信模块"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "光通信与连接",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：通信设备",
+        "classificationNote": "按东财行业“通信设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 4,
+        "code": "688256.SH",
+        "name": "寒武纪",
+        "institutionCount": 1595,
+        "industry": "半导体",
+        "concepts": [
+          "先进封装",
+          "国产芯片",
+          "AI芯片",
+          "阿里概念",
+          "数据中心",
+          "边缘计算",
+          "算力概念",
+          "人工智能",
+          "半导体概念"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "芯片设计与IDM",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：半导体",
+        "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 5,
+        "code": "603986.SH",
+        "name": "兆易创新",
+        "institutionCount": 1345,
+        "industry": "半导体",
+        "concepts": [
+          "半导体概念",
+          "物联网",
+          "国产芯片",
+          "智能穿戴",
+          "存储芯片",
+          "传感器",
+          "超清视频",
+          "无线耳机",
+          "汽车芯片",
+          "消费电子概念",
+          "AI眼镜",
+          "人工智能",
+          "人形机器人"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "芯片设计与IDM",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：半导体",
+        "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 6,
+        "code": "688041.SH",
+        "name": "海光信息",
+        "institutionCount": 1112,
+        "industry": "半导体",
+        "concepts": [
+          "国产芯片",
+          "DeepSeek概念",
+          "抖音概念(字节概念)",
+          "信创",
+          "AI芯片",
+          "算力概念",
+          "阿里概念",
+          "人工智能",
+          "百度概念",
+          "半导体概念"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "芯片设计与IDM",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：半导体",
+        "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 7,
+        "code": "002371.SZ",
+        "name": "北方华创",
+        "institutionCount": 1060,
+        "industry": "半导体",
+        "concepts": [
+          "国产芯片",
+          "电池技术",
+          "央国企改革",
+          "半导体概念",
+          "中芯概念",
+          "华为概念",
+          "存储芯片",
+          "第三代半导体",
+          "华为海思",
+          "光刻机",
+          "锂电池概念",
+          "高带宽内存",
+          "氮化镓",
+          "光伏概念"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "半导体设备",
+        "classificationBasis": "company",
+        "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+        "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 8,
+        "code": "600519.SH",
+        "name": "贵州茅台",
+        "institutionCount": 992,
+        "industry": "饮料",
+        "concepts": [
+          "电商概念",
+          "超级品牌",
+          "白酒",
+          "央国企改革",
+          "西部大开发",
+          "酿酒概念",
+          "味蕾经济"
+        ],
+        "primaryTrack": "必选消费",
+        "secondaryTrack": "白酒",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：饮料",
+        "classificationNote": "按东财行业“饮料”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 9,
+        "code": "688012.SH",
+        "name": "中微公司",
+        "institutionCount": 960,
+        "industry": "半导体",
+        "concepts": [
+          "LED概念",
+          "国产芯片",
+          "高带宽内存",
+          "科创板做市股",
+          "长江三角",
+          "存储芯片",
+          "区块链",
+          "中芯概念",
+          "半导体概念"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "半导体设备",
+        "classificationBasis": "company",
+        "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+        "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 10,
+        "code": "601899.SH",
+        "name": "紫金矿业",
+        "institutionCount": 931,
+        "industry": "贵金属",
+        "concepts": [
+          "黄金概念",
+          "小金属概念",
+          "贬值受益",
+          "锂矿概念",
+          "央国企改革",
+          "稀缺资源",
+          "一带一路"
+        ],
+        "primaryTrack": "原材料",
+        "secondaryTrack": "贵金属",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：贵金属",
+        "classificationNote": "按东财行业“贵金属”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 11,
+        "code": "002384.SZ",
+        "name": "东山精密",
+        "institutionCount": 918,
+        "industry": "电子器件",
+        "concepts": [
+          "MiniLED",
+          "小米概念",
+          "5G概念",
+          "苹果概念",
+          "OLED",
+          "创投",
+          "数据中心",
+          "特斯拉概念",
+          "LED概念",
+          "长江三角",
+          "新能源车",
+          "PCB",
+          "光通信模块",
+          "华为概念",
+          "通信技术"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "PCB与覆铜板",
+        "classificationBasis": "company",
+        "classificationLabel": "主营PCB、覆铜板或相关材料",
+        "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 12,
+        "code": "688981.SH",
+        "name": "中芯国际",
+        "institutionCount": 820,
+        "industry": "半导体",
+        "concepts": [
+          "存储芯片",
+          "中芯概念",
+          "半导体概念",
+          "国产芯片",
+          "科创板做市股"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "晶圆制造",
+        "classificationBasis": "company",
+        "classificationLabel": "主营晶圆代工制造",
+        "classificationNote": "公司级主营校正：主营晶圆代工制造。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 13,
+        "code": "002475.SZ",
+        "name": "立讯精密",
+        "institutionCount": 799,
+        "industry": "消费电子设备",
+        "concepts": [
+          "混合现实",
+          "消费电子概念",
+          "3D摄像头",
+          "新能源车",
+          "虚拟现实",
+          "无线充电",
+          "无线耳机",
+          "电子烟",
+          "光通信模块",
+          "5G概念",
+          "苹果概念",
+          "智能家居",
+          "通信技术",
+          "智能穿戴",
+          "铜缆高速连接",
+          "机器人概念",
+          "AI眼镜",
+          "深圳特区",
+          "CPO概念",
+          "液冷概念",
+          "华为概念",
+          "数据中心"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "消费电子",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：消费电子设备",
+        "classificationNote": "按东财行业“消费电子设备”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 14,
+        "code": "603259.SH",
+        "name": "药明康德",
+        "institutionCount": 781,
+        "industry": "医疗服务",
+        "concepts": [
+          "CRO",
+          "创新药",
+          "独角兽",
+          "创新医疗服务",
+          "CAR-T细胞疗法"
+        ],
+        "primaryTrack": "医药健康",
+        "secondaryTrack": "医疗服务",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：医疗服务",
+        "classificationNote": "按东财行业“医疗服务”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 15,
+        "code": "000333.SZ",
+        "name": "美的集团",
+        "institutionCount": 753,
+        "industry": "白色家电",
+        "concepts": [
+          "工业互联",
+          "数据中心",
+          "鸿蒙概念",
+          "超级品牌",
+          "智能家居",
+          "人形机器人",
+          "参股银行",
+          "净水概念",
+          "国产芯片",
+          "液冷概念",
+          "新能源车",
+          "物联网",
+          "空气能热泵",
+          "医疗器械概念"
+        ],
+        "primaryTrack": "可选消费",
+        "secondaryTrack": "家电",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：白色家电",
+        "classificationNote": "按东财行业“白色家电”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 16,
+        "code": "688498.SH",
+        "name": "源杰科技",
+        "institutionCount": 719,
+        "industry": "电子设备制造",
+        "concepts": [
+          "半导体概念",
+          "西部大开发",
+          "光纤概念",
+          "国产芯片",
+          "光通信模块",
+          "通信技术"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "光通信与连接",
+        "classificationBasis": "company",
+        "classificationLabel": "主营光芯片、光器件或高速连接器",
+        "classificationNote": "公司级主营校正：主营光芯片、光器件或高速连接器。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 17,
+        "code": "688008.SH",
+        "name": "澜起科技",
+        "institutionCount": 716,
+        "industry": "电子设备制造",
+        "concepts": [
+          "AI芯片",
+          "存储芯片",
+          "云计算",
+          "半导体概念",
+          "算力概念",
+          "中芯概念",
+          "数据安全",
+          "人工智能",
+          "国产芯片",
+          "贬值受益"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "芯片设计与IDM",
+        "classificationBasis": "company",
+        "classificationLabel": "主营芯片设计或IDM业务",
+        "classificationNote": "公司级主营校正：主营芯片设计或IDM业务。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 18,
+        "code": "601318.SH",
+        "name": "中国平安",
+        "institutionCount": 685,
+        "industry": "保险Ⅱ",
+        "concepts": [
+          "互联网金融",
+          "养老概念",
+          "区块链",
+          "独角兽",
+          "IPO受益",
+          "参股银行",
+          "互联医疗",
+          "参股券商",
+          "深圳特区"
+        ],
+        "primaryTrack": "金融",
+        "secondaryTrack": "保险",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：保险Ⅱ",
+        "classificationNote": "按东财行业“保险Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 19,
+        "code": "300408.SZ",
+        "name": "三环集团",
+        "institutionCount": 664,
+        "industry": "电子元件",
+        "concepts": [
+          "小米概念",
+          "被动元件概念",
+          "5G概念",
+          "光纤概念",
+          "MLCC",
+          "新材料",
+          "燃料电池概念",
+          "通信技术",
+          "智能穿戴",
+          "电池技术",
+          "华为概念"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "被动元件",
+        "classificationBasis": "company",
+        "classificationLabel": "主营被动元件或电子陶瓷",
+        "classificationNote": "公司级主营校正：主营被动元件或电子陶瓷。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 20,
+        "code": "300604.SZ",
+        "name": "长川科技",
+        "institutionCount": 657,
+        "industry": "半导体",
+        "concepts": [
+          "国产芯片",
+          "半导体概念",
+          "存储芯片"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "半导体设备",
+        "classificationBasis": "company",
+        "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+        "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 21,
+        "code": "600036.SH",
+        "name": "招商银行",
+        "institutionCount": 595,
+        "industry": "银行Ⅱ",
+        "concepts": [
+          "互联网金融",
+          "深圳特区",
+          "跨境支付"
+        ],
+        "primaryTrack": "金融",
+        "secondaryTrack": "银行",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：银行Ⅱ",
+        "classificationNote": "按东财行业“银行Ⅱ”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 22,
+        "code": "300274.SZ",
+        "name": "阳光电源",
+        "institutionCount": 586,
+        "industry": "电源设备",
+        "concepts": [
+          "新能源车",
+          "阿里概念",
+          "氢能源",
+          "风能",
+          "充电桩",
+          "储能概念",
+          "光伏概念"
+        ],
+        "primaryTrack": "电力设备与新能源",
+        "secondaryTrack": "光伏与储能系统",
+        "classificationBasis": "company",
+        "classificationLabel": "主营光伏逆变器与储能系统",
+        "classificationNote": "公司级主营校正：主营光伏逆变器与储能系统。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 23,
+        "code": "688072.SH",
+        "name": "拓荆科技",
+        "institutionCount": 521,
+        "industry": "半导体",
+        "concepts": [
+          "中芯概念",
+          "先进封装",
+          "高带宽内存",
+          "半导体概念",
+          "存储芯片"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "半导体设备",
+        "classificationBasis": "company",
+        "classificationLabel": "主营半导体制造、检测设备或核心零部件",
+        "classificationNote": "公司级主营校正：主营半导体制造、检测设备或核心零部件。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 24,
+        "code": "600183.SH",
+        "name": "生益科技",
+        "institutionCount": 519,
+        "industry": "电子元件",
+        "concepts": [
+          "华为概念",
+          "通信技术",
+          "5G概念",
+          "存储芯片",
+          "PCB"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "PCB与覆铜板",
+        "classificationBasis": "company",
+        "classificationLabel": "主营PCB、覆铜板或相关材料",
+        "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 25,
+        "code": "688347.SH",
+        "name": "华虹宏力",
+        "institutionCount": 474,
+        "industry": "半导体",
+        "concepts": [
+          "央国企改革",
+          "半导体概念",
+          "存储芯片"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "晶圆制造",
+        "classificationBasis": "company",
+        "classificationLabel": "主营晶圆代工制造",
+        "classificationNote": "公司级主营校正：主营晶圆代工制造。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 26,
+        "code": "600176.SH",
+        "name": "中国巨石",
+        "institutionCount": 445,
+        "industry": "合成纤维及树脂",
+        "concepts": [
+          "PCB",
+          "DeepSeek概念",
+          "新材料",
+          "风能",
+          "一带一路",
+          "央国企改革",
+          "PEEK材料概念"
+        ],
+        "primaryTrack": "原材料",
+        "secondaryTrack": "先进材料",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：合成纤维及树脂",
+        "classificationNote": "按东财行业“合成纤维及树脂”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 27,
+        "code": "002463.SZ",
+        "name": "沪电股份",
+        "institutionCount": 444,
+        "industry": "电子元件",
+        "concepts": [
+          "无人驾驶",
+          "通信技术",
+          "新能源车",
+          "国产芯片",
+          "PCB",
+          "华为概念",
+          "5G概念"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "PCB与覆铜板",
+        "classificationBasis": "company",
+        "classificationLabel": "主营PCB、覆铜板或相关材料",
+        "classificationNote": "公司级主营校正：主营PCB、覆铜板或相关材料。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 28,
+        "code": "688521.SH",
+        "name": "芯原股份",
+        "institutionCount": 439,
+        "industry": "半导体",
+        "concepts": [
+          "国产芯片",
+          "无人驾驶",
+          "物联网",
+          "先进封装",
+          "人工智能",
+          "半导体概念",
+          "AI眼镜",
+          "虚拟现实",
+          "上海自贸",
+          "数字货币"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "芯片设计与IDM",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：半导体",
+        "classificationNote": "按东财行业“半导体”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 29,
+        "code": "301666.SZ",
+        "name": "大普微",
+        "institutionCount": 438,
+        "industry": "计算机硬件",
+        "concepts": [
+          "抖音概念(字节概念)",
+          "小红书概念",
+          "数据中心",
+          "DeepSeek概念",
+          "百度概念",
+          "存储芯片",
+          "次新股",
+          "半导体概念",
+          "英伟达概念",
+          "国产芯片"
+        ],
+        "primaryTrack": "信息技术",
+        "secondaryTrack": "计算硬件与服务器",
+        "classificationBasis": "company",
+        "classificationLabel": "主营服务器、计算硬件或企业存储设备",
+        "classificationNote": "公司级主营校正：主营服务器、计算硬件或企业存储设备。东财主题概念不参与主营赛道判定。"
+      },
+      {
+        "rank": 30,
+        "code": "600276.SH",
+        "name": "恒瑞医药",
+        "institutionCount": 419,
+        "industry": "化学制药",
+        "concepts": [
+          "医疗器械概念",
+          "减肥药",
+          "单抗概念",
+          "中药概念",
+          "创新药"
+        ],
+        "primaryTrack": "医药健康",
+        "secondaryTrack": "化学药",
+        "classificationBasis": "industry",
+        "classificationLabel": "东财行业：化学制药",
+        "classificationNote": "按东财行业“化学制药”映射主营赛道；东财主题概念不参与主营赛道判定。"
+      }
+    ],
+    "classificationVersion": 2
+  }
+}

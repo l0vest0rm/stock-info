@@ -4,11 +4,12 @@ import { resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 function files(dir) {
-  return readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(resolve(dir, e.name)) : /\.(ts|json)$/.test(e.name) ? [resolve(dir, e.name)] : []);
+  return readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? files(resolve(dir, e.name)) : /\.(ts|rs|json)$/.test(e.name) ? [resolve(dir, e.name)] : []);
 }
 // Conservative dependency closure: invalidate rather than serve a result made
 // with old adapter/financial/domain logic. No timestamps or secrets are inputs.
-const inputs = [...files(resolve(root, 'src')), ...files(resolve(root, 'shared')),
+const inputs = [...files(resolve(root, 'src')), ...files(resolve(root, 'backend/src')), ...files(resolve(root, 'shared')),
+  resolve(root, 'backend/Cargo.toml'), resolve(root, 'backend/Cargo.lock'),
   ...files(resolve(root, 'config/research')), resolve(root, 'config/generated/eastmoney-company-em2016-profiles.json'),
   resolve(root, 'config/investment-universe.json'), resolve(root, 'config/investment-opportunity-policy.json')].sort();
 const hash = createHash('sha256');

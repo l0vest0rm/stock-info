@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { copyLocalPageAssets } from './local-page-assets.mjs'
 import { legacyEntryFileName, pagesWithoutLegacyRuntime, buildPages, pageManifest } from './page-build-config.mjs'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -297,6 +298,7 @@ const expectedPages = new Set(pageFiles.map((item) => path.basename(item.name, '
 
 cleanupRemovedPages(expectedPages)
 copyStaticAssets()
+copyLocalPageAssets(distDir)
 const compiledPages = []
 for (const item of pageFiles) {
   compiledPages.push(compilePage(item.name, baseConfig, partials))

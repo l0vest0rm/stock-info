@@ -9,7 +9,7 @@ export default defineConfig(({ command }) => {
   return {
     define: {
       'process.env.NODE_ENV': JSON.stringify('development'),
-      __STOCK_INFO_APP_RUNTIME__: JSON.stringify('node'),
+      __STOCK_INFO_APP_RUNTIME__: JSON.stringify('rust'),
     },
     publicDir: false,
   }

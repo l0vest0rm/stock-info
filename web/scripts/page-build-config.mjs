@@ -10,7 +10,7 @@ for (const page of pageManifest) {
   paths.add(page.path)
 }
 export const buildRuntime = process.env.WEB_RUNTIME || 'local'
-if (!['local', 'production'].includes(buildRuntime)) throw new Error(`Invalid WEB_RUNTIME: ${buildRuntime}`)
+if (buildRuntime !== 'local') throw new Error(`Invalid WEB_RUNTIME: ${buildRuntime}`)
 export const buildPages = pageManifest.filter((page) => buildRuntime === 'local' || page.runtime === 'all')
 export const pagesWithoutLegacyRuntime = new Set(pageManifest.filter((page) => !page.legacy).map((page) => page.path.slice(1, -5)))
 export function legacyEntryFileName(pageBase) { return `js/legacy-pages/${pageBase}-legacy.js` }

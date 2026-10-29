@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>基金持仓统计（@@QUARTER@@）</title>
+  <style>
+    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18212f; background: #f5f7fa; }
+    body { margin: 0; padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .summary { margin: 0 0 8px; color: #52606d; }
+    .hint { margin: 0 0 16px; color: #66788a; font-size: 13px; }
+    .table-wrap { max-height: calc(100vh - 150px); overflow: auto; border: 1px solid #d8dee8; border-radius: 8px; background: white; }
+    table { border-collapse: separate; border-spacing: 0; min-width: 2600px; width: 100%; font-size: 13px; }
+    th, td { padding: 9px 10px; border-right: 1px solid #e5e9f0; border-bottom: 1px solid #e5e9f0; white-space: nowrap; }
+    th { position: sticky; top: 0; z-index: 2; background: #eef2f7; text-align: right; cursor: pointer; user-select: none; box-shadow: 0 1px 0 #cbd3df; }
+    th:nth-child(2), th:nth-child(3) { text-align: left; }
+    th:hover, th:focus { background: #dfe7f1; outline: none; }
+    th[aria-sort="ascending"] .sort-indicator::after { content: " ▲"; }
+    th[aria-sort="descending"] .sort-indicator::after { content: " ▼"; }
+    th small, td small { display: block; color: #718096; font-weight: normal; font-size: 11px; }
+    td.number { text-align: right; font-variant-numeric: tabular-nums; }
+    td.text { text-align: left; }
+    tbody tr:nth-child(even) { background: #fafbfd; }
+    tbody tr:hover { background: #edf5ff; }
+    a { color: #1769aa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    section { margin-top: 24px; max-width: 1200px; }
+    section h2 { font-size: 18px; }
+    section li { margin: 6px 0; }
+    .notes { color: #52606d; font-size: 13px; line-height: 1.65; }
+  </style>
+</head>
+<body>
+  <h1>基金持仓统计（@@QUARTER@@）</h1>
+  <p class="summary">数据截至：@@AS_OF@@；基金持仓报告期：@@REPORT_DATE@@；纳入基金：@@FUNDS_ANALYZED@@ 只；持仓标的：@@HOLDINGS_COUNT@@ 个。</p>
+  <p class="hint">点击任意列名可升序或降序排列；缺失值始终排在末尾。</p>
+  <div class="table-wrap">
+    <table id="holdings-table">
+      <thead><tr>@@HEADER@@</tr></thead>
+      <tbody>@@ROWS@@</tbody>
+    </table>
+  </div>
+  <section class="notes">
+    <h2>口径与限制</h2>
+    <ul>
+      <li>持有基金数只统计纳入本次季度分析且出现在季报公开持仓明细中的基金；权重合计是跨基金权重的百分点求和，不代表组合实际配置比例。</li>
+      <li>股价涨跌幅使用雪球前复权日 K 线，以区间起点之前最近一个交易日收盘价至数据截止日最近收盘价计算。</li>
+      <li>未来营收、归母净利润和 EPS 来自最近研报逐年预测的简单平均；n 是该字段有效样本数。预测增速按相邻预测年度计算，首个预测年度没有可比基数时留空。</li>
+      <li>当前口径 PE 优先使用当前总市值除以预测归母净利润；总市值缺失时才使用当前股价除以预测 EPS。负值或缺失预测不计算 PE。</li>
+      <li>研报接口目前主要覆盖 A 股最近 90 天、最多 10 篇研报；港股及缺少研报覆盖的标的保留空值。</li>
+    </ul>
+  </section>
+  @@WARNINGS@@
+  <script>
+    (() => {
+      const table = document.getElementById("holdings-table");
+      const body = table.tBodies[0];
+      const headers = [...table.tHead.rows[0].cells];
+      const sortBy = (header) => {
+        const column = Number(header.dataset.column);
+        const direction = header.getAttribute("aria-sort") === "ascending" ? "descending" : "ascending";
+        headers.forEach((item) => item.removeAttribute("aria-sort"));
+        header.setAttribute("aria-sort", direction);
+        const multiplier = direction === "ascending" ? 1 : -1;
+        const type = header.dataset.type;
+        const rows = [...body.rows];
+        rows.sort((left, right) => {
+          const a = left.cells[column]?.dataset.sortValue ?? "";
+          const b = right.cells[column]?.dataset.sortValue ?? "";
+          if (a === "" && b === "") return 0;
+          if (a === "") return 1;
+          if (b === "") return -1;
+          const compared = type === "number"
+            ? Number(a) - Number(b)
+            : a.localeCompare(b, "zh-CN", { numeric: true });
+          return compared * multiplier;
+        });
+        rows.forEach((row) => body.appendChild(row));
+      };
+      headers.forEach((header) => {
+        header.addEventListener("click", () => sortBy(header));
+        header.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); sortBy(header); }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

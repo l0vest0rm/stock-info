@@ -3,6 +3,7 @@ import { resolve, basename, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { build, defineConfig } from 'vite'
 import { buildPages, buildRuntime } from './page-build-config.mjs'
+import { verifyLocalPageAssets } from './local-page-assets.mjs'
 
 // One graph for layout, Vue pages and transitional legacy adapters means every
 // browser page loads one Vue instance and one instance of shared services.
@@ -50,7 +51,7 @@ try {
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),
       __STOCK_INFO_LOCAL_PAGES__: JSON.stringify(buildRuntime === 'local'),
-      __STOCK_INFO_APP_RUNTIME__: JSON.stringify(buildRuntime === 'local' ? 'node' : 'cloudflare'),
+      __STOCK_INFO_APP_RUNTIME__: JSON.stringify('rust'),
     },
     publicDir: false,
     build: {
@@ -66,6 +67,7 @@ try {
       },
     },
   }))
+  verifyLocalPageAssets(dist)
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true })
 }

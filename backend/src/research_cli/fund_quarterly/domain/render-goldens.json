@@ -1,0 +1,170 @@
+[
+  {
+    "kind": "index",
+    "input": {
+      "asOf": "2026-10-29",
+      "reportDate": "2026-09-30",
+      "quarter": "2026Q3",
+      "fundsAnalyzed": 2,
+      "baseUrl": "http://127.0.0.1:8000/",
+      "periods": [
+        {
+          "key": "oneWeek",
+          "label": "近1周"
+        },
+        {
+          "key": "year",
+          "label": "年<增速>"
+        }
+      ],
+      "forecastYears": [
+        2026,
+        2027
+      ],
+      "warnings": [
+        "资料 <script>&\"缺失'"
+      ],
+      "holdingsStatisticsFilename": "统计 #1.html",
+      "funds": [
+        {
+          "rank": 2,
+          "code": "005678",
+          "name": "基金|二\nA",
+          "shareClass": "A",
+          "navDate": "2026-10-28",
+          "reportPublishDate": "2026-10-29",
+          "threeMonthReturnPct": 0.125,
+          "oneMonthReturnPct": null,
+          "sixMonthReturnPct": 2.675,
+          "outputFilename": "基金二 A.md"
+        },
+        {
+          "rank": 1,
+          "code": "001234",
+          "name": "基金一",
+          "threeMonthReturnPct": 0,
+          "oneMonthReturnPct": -1,
+          "sixMonthReturnPct": null,
+          "outputFilename": "one.md"
+        }
+      ]
+    },
+    "expected": "# 基金季度分析索引（2026Q3）\n\n> 数据截至：2026-10-29；持仓报告期：2026-09-30；已生成报告：2 只。\n\n[查看跨基金持仓统计](./%E7%BB%9F%E8%AE%A1%20#1.html)\n\n| 近3月排名 | 近3月收益 | 近1月收益 | 近6月收益 | 基金名称 | 代码 | 份额类别 | 净值日期 | 季报发布日期 | 分析报告 |\n|---:|---:|---:|---:|---|---|---|---|---|---|\n| 1 | 0.00% | -1.00% | - | 基金一 | 001234 | - | - | - | [查看](./one.md) |\n| 2 | 0.13% | - | 2.67% | 基金\\|二 A | 005678 | A | 2026-10-28 | 2026-10-29 | [查看](./%E5%9F%BA%E9%87%91%E4%BA%8C%20A.md) |\n\n## 口径\n\n- 排名和收益率来自本次运行的近三个月基金排名快照。\n- A/B/C 份额已按配置去重；排名保留所选份额在原始 Top 100 中的名次。\n- 列表只收录已经成功生成或此前已存在的单基金季度报告。\n"
+  },
+  {
+    "kind": "index",
+    "input": {
+      "asOf": "2026-10-29",
+      "reportDate": "2026-09-30",
+      "quarter": "2026Q3",
+      "fundsAnalyzed": 2,
+      "baseUrl": "http://127.0.0.1:8000/",
+      "periods": [
+        {
+          "key": "oneWeek",
+          "label": "近1周"
+        },
+        {
+          "key": "year",
+          "label": "年<增速>"
+        }
+      ],
+      "forecastYears": [
+        2026,
+        2027
+      ],
+      "warnings": [
+        "资料 <script>&\"缺失'"
+      ],
+      "funds": []
+    },
+    "expected": "# 基金季度分析索引（2026Q3）\n\n> 数据截至：2026-10-29；持仓报告期：2026-09-30；已生成报告：0 只。\n\n| 近3月排名 | 近3月收益 | 近1月收益 | 近6月收益 | 基金名称 | 代码 | 份额类别 | 净值日期 | 季报发布日期 | 分析报告 |\n|---:|---:|---:|---:|---|---|---|---|---|---|\n| - | - | - | - | 暂无已生成报告 | - | - | - | - | - |\n\n## 口径\n\n- 排名和收益率来自本次运行的近三个月基金排名快照。\n- A/B/C 份额已按配置去重；排名保留所选份额在原始 Top 100 中的名次。\n- 列表只收录已经成功生成或此前已存在的单基金季度报告。\n"
+  },
+  {
+    "kind": "html",
+    "input": {
+      "asOf": "2026-10-29",
+      "reportDate": "2026-09-30",
+      "quarter": "2026Q3",
+      "fundsAnalyzed": 2,
+      "baseUrl": "http://127.0.0.1:8000/",
+      "periods": [
+        {
+          "key": "oneWeek",
+          "label": "近1周"
+        },
+        {
+          "key": "year",
+          "label": "年<增速>"
+        }
+      ],
+      "forecastYears": [
+        2026,
+        2027
+      ],
+      "warnings": [
+        "资料 <script>&\"缺失'"
+      ],
+      "holdings": [
+        {
+          "fundCount": 2,
+          "name": "招商 & 银行<",
+          "code": "600036.SH",
+          "totalWeightPct": 0.125,
+          "averageWeightPct": 2.675,
+          "maxWeightPct": -0.125,
+          "market": {
+            "price": 12.345,
+            "priceDate": "2026-10-29",
+            "performance": {
+              "oneWeek": 0,
+              "year": null
+            }
+          },
+          "forecasts": [
+            {
+              "year": 2026,
+              "revenueYi": 100,
+              "netProfitYi": 0,
+              "pe": 20,
+              "revenueSampleCount": 2,
+              "netProfitSampleCount": 0
+            },
+            {
+              "year": 2027,
+              "revenueYi": null,
+              "netProfitYi": 1.23,
+              "pe": null,
+              "revenueGrowthPct": 1,
+              "netProfitGrowthPct": -2,
+              "netProfitSampleCount": 3
+            }
+          ]
+        },
+        {
+          "fundCount": 1,
+          "name": "Other",
+          "code": "A B.US",
+          "market": {},
+          "forecasts": []
+        }
+      ]
+    },
+    "expected": "<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>基金持仓统计（2026Q3）</title>\n  <style>\n    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; color: #18212f; background: #f5f7fa; }\n    body { margin: 0; padding: 24px; }\n    h1 { margin: 0 0 8px; font-size: 24px; }\n    .summary { margin: 0 0 8px; color: #52606d; }\n    .hint { margin: 0 0 16px; color: #66788a; font-size: 13px; }\n    .table-wrap { max-height: calc(100vh - 150px); overflow: auto; border: 1px solid #d8dee8; border-radius: 8px; background: white; }\n    table { border-collapse: separate; border-spacing: 0; min-width: 2600px; width: 100%; font-size: 13px; }\n    th, td { padding: 9px 10px; border-right: 1px solid #e5e9f0; border-bottom: 1px solid #e5e9f0; white-space: nowrap; }\n    th { position: sticky; top: 0; z-index: 2; background: #eef2f7; text-align: right; cursor: pointer; user-select: none; box-shadow: 0 1px 0 #cbd3df; }\n    th:nth-child(2), th:nth-child(3) { text-align: left; }\n    th:hover, th:focus { background: #dfe7f1; outline: none; }\n    th[aria-sort=\"ascending\"] .sort-indicator::after { content: \" ▲\"; }\n    th[aria-sort=\"descending\"] .sort-indicator::after { content: \" ▼\"; }\n    th small, td small { display: block; color: #718096; font-weight: normal; font-size: 11px; }\n    td.number { text-align: right; font-variant-numeric: tabular-nums; }\n    td.text { text-align: left; }\n    tbody tr:nth-child(even) { background: #fafbfd; }\n    tbody tr:hover { background: #edf5ff; }\n    a { color: #1769aa; text-decoration: none; }\n    a:hover { text-decoration: underline; }\n    section { margin-top: 24px; max-width: 1200px; }\n    section h2 { font-size: 18px; }\n    section li { margin: 6px 0; }\n    .notes { color: #52606d; font-size: 13px; line-height: 1.65; }\n  </style>\n</head>\n<body>\n  <h1>基金持仓统计（2026Q3）</h1>\n  <p class=\"summary\">数据截至：2026-10-29；基金持仓报告期：2026-09-30；纳入基金：2 只；持仓标的：2 个。</p>\n  <p class=\"hint\">点击任意列名可升序或降序排列；缺失值始终排在末尾。</p>\n  <div class=\"table-wrap\">\n    <table id=\"holdings-table\">\n      <thead><tr><th scope=\"col\" data-column=\"0\" data-type=\"number\" tabindex=\"0\">持有基金数<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"1\" data-type=\"text\" tabindex=\"0\">标的<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"2\" data-type=\"text\" tabindex=\"0\">代码<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"3\" data-type=\"number\" tabindex=\"0\">权重合计<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"4\" data-type=\"number\" tabindex=\"0\">平均权重<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"5\" data-type=\"number\" tabindex=\"0\">最高权重<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"6\" data-type=\"number\" tabindex=\"0\">当前价<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"7\" data-type=\"number\" tabindex=\"0\">近1周<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"8\" data-type=\"number\" tabindex=\"0\">年&lt;增速&gt;<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"9\" data-type=\"number\" tabindex=\"0\">2026E营收<small>亿元</small><span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"10\" data-type=\"number\" tabindex=\"0\">2026E营收增速<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"11\" data-type=\"number\" tabindex=\"0\">2026E归母净利润<small>亿元</small><span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"12\" data-type=\"number\" tabindex=\"0\">2026E净利润增速<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"13\" data-type=\"number\" tabindex=\"0\">2026E PE<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"14\" data-type=\"number\" tabindex=\"0\">2027E营收<small>亿元</small><span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"15\" data-type=\"number\" tabindex=\"0\">2027E营收增速<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"16\" data-type=\"number\" tabindex=\"0\">2027E归母净利润<small>亿元</small><span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"17\" data-type=\"number\" tabindex=\"0\">2027E净利润增速<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"18\" data-type=\"number\" tabindex=\"0\">2027E PE<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th></tr></thead>\n      <tbody><tr><td data-sort-value=\"2\" class=\"number\">2</td><td data-sort-value=\"招商 &amp; 银行&lt;\" class=\"text\"><a href=\"http://127.0.0.1:8000/company.html?code=600036.SH\" target=\"_blank\" rel=\"noreferrer\">招商 &amp; 银行&lt;</a></td><td data-sort-value=\"600036.SH\" class=\"text\">600036.SH</td><td data-sort-value=\"0.125\" class=\"number\">0.13%</td><td data-sort-value=\"2.675\" class=\"number\">2.67%</td><td data-sort-value=\"-0.125\" class=\"number\">-0.13%</td><td data-sort-value=\"12.345\" class=\"number\">12.35<small>2026-10-29</small></td><td data-sort-value=\"0\" class=\"number\">0.00%</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"100\" class=\"number\">100.00<small>n=2</small></td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"0\" class=\"number\">0.00</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"20\" class=\"number\">20.00</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"1\" class=\"number\">1.00%</td><td data-sort-value=\"1.23\" class=\"number\">1.23<small>n=3</small></td><td data-sort-value=\"-2\" class=\"number\">-2.00%</td><td data-sort-value=\"\" class=\"number\">-</td></tr>\n<tr><td data-sort-value=\"1\" class=\"number\">1</td><td data-sort-value=\"Other\" class=\"text\"><a href=\"http://127.0.0.1:8000/company.html?code=A%20B.US\" target=\"_blank\" rel=\"noreferrer\">Other</a></td><td data-sort-value=\"A B.US\" class=\"text\">A B.US</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td><td data-sort-value=\"\" class=\"number\">-</td></tr></tbody>\n    </table>\n  </div>\n  <section class=\"notes\">\n    <h2>口径与限制</h2>\n    <ul>\n      <li>持有基金数只统计纳入本次季度分析且出现在季报公开持仓明细中的基金；权重合计是跨基金权重的百分点求和，不代表组合实际配置比例。</li>\n      <li>股价涨跌幅使用雪球前复权日 K 线，以区间起点之前最近一个交易日收盘价至数据截止日最近收盘价计算。</li>\n      <li>未来营收、归母净利润和 EPS 来自最近研报逐年预测的简单平均；n 是该字段有效样本数。预测增速按相邻预测年度计算，首个预测年度没有可比基数时留空。</li>\n      <li>当前口径 PE 优先使用当前总市值除以预测归母净利润；总市值缺失时才使用当前股价除以预测 EPS。负值或缺失预测不计算 PE。</li>\n      <li>研报接口目前主要覆盖 A 股最近 90 天、最多 10 篇研报；港股及缺少研报覆盖的标的保留空值。</li>\n    </ul>\n  </section>\n  <section><h2>数据缺失</h2><ul><li>资料 &lt;script&gt;&amp;&quot;缺失&#39;</li></ul></section>\n  <script>\n    (() => {\n      const table = document.getElementById(\"holdings-table\");\n      const body = table.tBodies[0];\n      const headers = [...table.tHead.rows[0].cells];\n      const sortBy = (header) => {\n        const column = Number(header.dataset.column);\n        const direction = header.getAttribute(\"aria-sort\") === \"ascending\" ? \"descending\" : \"ascending\";\n        headers.forEach((item) => item.removeAttribute(\"aria-sort\"));\n        header.setAttribute(\"aria-sort\", direction);\n        const multiplier = direction === \"ascending\" ? 1 : -1;\n        const type = header.dataset.type;\n        const rows = [...body.rows];\n        rows.sort((left, right) => {\n          const a = left.cells[column]?.dataset.sortValue ?? \"\";\n          const b = right.cells[column]?.dataset.sortValue ?? \"\";\n          if (a === \"\" && b === \"\") return 0;\n          if (a === \"\") return 1;\n          if (b === \"\") return -1;\n          const compared = type === \"number\"\n            ? Number(a) - Number(b)\n            : a.localeCompare(b, \"zh-CN\", { numeric: true });\n          return compared * multiplier;\n        });\n        rows.forEach((row) => body.appendChild(row));\n      };\n      headers.forEach((header) => {\n        header.addEventListener(\"click\", () => sortBy(header));\n        header.addEventListener(\"keydown\", (event) => {\n          if (event.key === \"Enter\" || event.key === \" \") { event.preventDefault(); sortBy(header); }\n        });\n      });\n    })();\n  </script>\n</body>\n</html>"
+  },
+  {
+    "kind": "html",
+    "input": {
+      "asOf": "2026-10-29",
+      "reportDate": "2026-09-30",
+      "quarter": "2026Q3",
+      "fundsAnalyzed": 2,
+      "baseUrl": "http://127.0.0.1:8000/",
+      "periods": [],
+      "forecastYears": [],
+      "warnings": [],
+      "holdings": []
+    },
+    "expected": "<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>基金持仓统计（2026Q3）</title>\n  <style>\n    :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif; color: #18212f; background: #f5f7fa; }\n    body { margin: 0; padding: 24px; }\n    h1 { margin: 0 0 8px; font-size: 24px; }\n    .summary { margin: 0 0 8px; color: #52606d; }\n    .hint { margin: 0 0 16px; color: #66788a; font-size: 13px; }\n    .table-wrap { max-height: calc(100vh - 150px); overflow: auto; border: 1px solid #d8dee8; border-radius: 8px; background: white; }\n    table { border-collapse: separate; border-spacing: 0; min-width: 2600px; width: 100%; font-size: 13px; }\n    th, td { padding: 9px 10px; border-right: 1px solid #e5e9f0; border-bottom: 1px solid #e5e9f0; white-space: nowrap; }\n    th { position: sticky; top: 0; z-index: 2; background: #eef2f7; text-align: right; cursor: pointer; user-select: none; box-shadow: 0 1px 0 #cbd3df; }\n    th:nth-child(2), th:nth-child(3) { text-align: left; }\n    th:hover, th:focus { background: #dfe7f1; outline: none; }\n    th[aria-sort=\"ascending\"] .sort-indicator::after { content: \" ▲\"; }\n    th[aria-sort=\"descending\"] .sort-indicator::after { content: \" ▼\"; }\n    th small, td small { display: block; color: #718096; font-weight: normal; font-size: 11px; }\n    td.number { text-align: right; font-variant-numeric: tabular-nums; }\n    td.text { text-align: left; }\n    tbody tr:nth-child(even) { background: #fafbfd; }\n    tbody tr:hover { background: #edf5ff; }\n    a { color: #1769aa; text-decoration: none; }\n    a:hover { text-decoration: underline; }\n    section { margin-top: 24px; max-width: 1200px; }\n    section h2 { font-size: 18px; }\n    section li { margin: 6px 0; }\n    .notes { color: #52606d; font-size: 13px; line-height: 1.65; }\n  </style>\n</head>\n<body>\n  <h1>基金持仓统计（2026Q3）</h1>\n  <p class=\"summary\">数据截至：2026-10-29；基金持仓报告期：2026-09-30；纳入基金：2 只；持仓标的：0 个。</p>\n  <p class=\"hint\">点击任意列名可升序或降序排列；缺失值始终排在末尾。</p>\n  <div class=\"table-wrap\">\n    <table id=\"holdings-table\">\n      <thead><tr><th scope=\"col\" data-column=\"0\" data-type=\"number\" tabindex=\"0\">持有基金数<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"1\" data-type=\"text\" tabindex=\"0\">标的<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"2\" data-type=\"text\" tabindex=\"0\">代码<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"3\" data-type=\"number\" tabindex=\"0\">权重合计<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"4\" data-type=\"number\" tabindex=\"0\">平均权重<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"5\" data-type=\"number\" tabindex=\"0\">最高权重<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th><th scope=\"col\" data-column=\"6\" data-type=\"number\" tabindex=\"0\">当前价<span class=\"sort-indicator\" aria-hidden=\"true\"></span></th></tr></thead>\n      <tbody><tr><td colspan=\"7\">暂无可用持仓</td></tr></tbody>\n    </table>\n  </div>\n  <section class=\"notes\">\n    <h2>口径与限制</h2>\n    <ul>\n      <li>持有基金数只统计纳入本次季度分析且出现在季报公开持仓明细中的基金；权重合计是跨基金权重的百分点求和，不代表组合实际配置比例。</li>\n      <li>股价涨跌幅使用雪球前复权日 K 线，以区间起点之前最近一个交易日收盘价至数据截止日最近收盘价计算。</li>\n      <li>未来营收、归母净利润和 EPS 来自最近研报逐年预测的简单平均；n 是该字段有效样本数。预测增速按相邻预测年度计算，首个预测年度没有可比基数时留空。</li>\n      <li>当前口径 PE 优先使用当前总市值除以预测归母净利润；总市值缺失时才使用当前股价除以预测 EPS。负值或缺失预测不计算 PE。</li>\n      <li>研报接口目前主要覆盖 A 股最近 90 天、最多 10 篇研报；港股及缺少研报覆盖的标的保留空值。</li>\n    </ul>\n  </section>\n  \n  <script>\n    (() => {\n      const table = document.getElementById(\"holdings-table\");\n      const body = table.tBodies[0];\n      const headers = [...table.tHead.rows[0].cells];\n      const sortBy = (header) => {\n        const column = Number(header.dataset.column);\n        const direction = header.getAttribute(\"aria-sort\") === \"ascending\" ? \"descending\" : \"ascending\";\n        headers.forEach((item) => item.removeAttribute(\"aria-sort\"));\n        header.setAttribute(\"aria-sort\", direction);\n        const multiplier = direction === \"ascending\" ? 1 : -1;\n        const type = header.dataset.type;\n        const rows = [...body.rows];\n        rows.sort((left, right) => {\n          const a = left.cells[column]?.dataset.sortValue ?? \"\";\n          const b = right.cells[column]?.dataset.sortValue ?? \"\";\n          if (a === \"\" && b === \"\") return 0;\n          if (a === \"\") return 1;\n          if (b === \"\") return -1;\n          const compared = type === \"number\"\n            ? Number(a) - Number(b)\n            : a.localeCompare(b, \"zh-CN\", { numeric: true });\n          return compared * multiplier;\n        });\n        rows.forEach((row) => body.appendChild(row));\n      };\n      headers.forEach((header) => {\n        header.addEventListener(\"click\", () => sortBy(header));\n        header.addEventListener(\"keydown\", (event) => {\n          if (event.key === \"Enter\" || event.key === \" \") { event.preventDefault(); sortBy(header); }\n        });\n      });\n    })();\n  </script>\n</body>\n</html>"
+  }
+]

@@ -1,0 +1,6837 @@
+{
+  "cases": [
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Risk factors",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Risk factors"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Risk factors",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Risk factors",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "New regulation increases costs and litigation risk.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Risk factors"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Risk factors",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Risk factors",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Risk factors",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Risk factors",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Risk factors",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Risk factors",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "Copyright 2026 Research Inc.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Risk factors"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Legal",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Legal"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Legal",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Legal",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "New regulation increases costs and litigation risk.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Legal"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Legal",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Legal",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Legal",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Legal",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Legal",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Legal",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "Copyright 2026 Research Inc.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Legal"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Disclosures"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "New regulation increases costs and litigation risk.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Disclosures"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定段落",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "skipped": [],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "翻译",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": [
+        [
+          {
+            "id": "b1",
+            "original": "Copyright 2026 Research Inc.",
+            "sourceLocations": [
+              {
+                "page": 1,
+                "bbox": [
+                  0.1,
+                  0.1,
+                  0.8,
+                  0.3
+                ]
+              }
+            ],
+            "sectionId": "s1",
+            "sectionTitle": "Disclosures"
+          }
+        ]
+      ]
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Important disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Important disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Important disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Important disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Important disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Important disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Important disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Important disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Important disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Important disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Important disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Important disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Important disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Important disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Important disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Important disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：版权及使用限制】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclaimer",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclaimer",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclaimer",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclaimer",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclaimer",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclaimer",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclaimer",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclaimer",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclaimer",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclaimer",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclaimer",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclaimer",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclaimer",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclaimer",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclaimer",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclaimer",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：版权及使用限制】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "General Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "General Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "General Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "General Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "General Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "General Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "General Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "General Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "General Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "General Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "General Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "General Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "General Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "General Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "General Disclosures",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "General Disclosures",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：版权及使用限制】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "法律声明",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "法律声明",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "法律声明",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "法律声明",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "法律声明",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "法律声明",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "法律声明",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "法律声明",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "法律声明",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "法律声明",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "法律声明",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "法律声明",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "法律声明",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "法律声明",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "法律声明",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "法律声明",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：版权及使用限制】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "分析师认证",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "分析师认证",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "分析师认证",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "分析师认证",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "分析师认证",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "分析师认证",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "分析师认证",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "分析师认证",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "分析师认证",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "分析师认证",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "分析师认证",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "分析师认证",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "分析师认证",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "分析师认证",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "分析师认证",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "分析师认证",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：版权及使用限制】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosure Appendix",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosure Appendix",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：披露附录（含评级说明等附属信息）】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosure Appendix",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosure Appendix",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosure Appendix",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosure Appendix",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：披露附录（含评级说明等附属信息）】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosure Appendix",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosure Appendix",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：披露附录（含评级说明等附属信息）】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosure Appendix",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosure Appendix",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：披露附录（含评级说明等附属信息）】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosure Appendix",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosure Appendix",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：披露附录（含评级说明等附属信息）】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosure Appendix",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosure Appendix",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Disclosure Appendix",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Disclosure Appendix",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：版权及使用限制】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Conflicts of interest",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Conflicts of interest",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Conflicts of interest",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Conflicts of interest",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Conflicts of interest",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Conflicts of interest",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Conflicts of interest",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Conflicts of interest",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Conflicts of interest",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Conflicts of interest",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Conflicts of interest",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Conflicts of interest",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Conflicts of interest",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Conflicts of interest",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Conflicts of interest",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Conflicts of interest",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：版权及使用限制】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Copyright Notice",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Substantive research revenue grew 12% to 1,234 dollars.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Copyright Notice",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Copyright Notice",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This report does not constitute investment advice.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Copyright Notice",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：免责声明】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Copyright Notice",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "New regulation increases costs and litigation risk.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Copyright Notice",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Copyright Notice",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "This material is for informational purposes only.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Copyright Notice",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Copyright Notice",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "本报告不构成投资建议。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Copyright Notice",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Copyright Notice",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "未经本报告出版方授权不得复制、转载或传播。",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Copyright Notice",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：法律声明及固定披露信息】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Copyright Notice",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Our firm does and seeks to do business and has conflict of interest that affects objectivity of this research.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Copyright Notice",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：利益冲突披露】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    },
+    {
+      "source": {
+        "pageCount": 1,
+        "sections": [
+          {
+            "id": "s1",
+            "title": "Copyright Notice",
+            "blocks": [
+              {
+                "id": "b1",
+                "original": "Copyright 2026 Research Inc.",
+                "sourceLocations": [
+                  {
+                    "page": 1,
+                    "bbox": [
+                      0.1,
+                      0.1,
+                      0.8,
+                      0.3
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "selected": {
+        "pageCount": 1,
+        "sections": []
+      },
+      "skipped": [
+        {
+          "id": "b1",
+          "sectionId": "s1",
+          "reason": "法律、声明等固定章节",
+          "sourceLocations": [
+            {
+              "page": 1,
+              "bbox": [
+                0.1,
+                0.1,
+                0.8,
+                0.3
+              ]
+            }
+          ]
+        }
+      ],
+      "restored": [
+        {
+          "id": "s1",
+          "title": "Copyright Notice",
+          "blocks": [
+            {
+              "id": "b1",
+              "translation": "> 【未翻译：版权及使用限制】此处为非研究正文的附属信息，无需逐段翻译；请参阅对应位置的原文。",
+              "sourceLocations": [
+                {
+                  "page": 1,
+                  "bbox": [
+                    0.1,
+                    0.1,
+                    0.8,
+                    0.3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "batches": []
+    }
+  ],
+  "cacheKeys": [
+    {
+      "kind": "whole",
+      "prompt": "instructions\n中文",
+      "input": {
+        "blocks": [
+          {
+            "id": "b1",
+            "original": "Revenue grew 12% 中文",
+            "sectionTitle": "Research"
+          }
+        ]
+      },
+      "key": "682deb851af67856c895283e4214abdbc2a195cc8daaf3cb69ea66af530301b2"
+    },
+    {
+      "kind": "glossary",
+      "prompt": "instructions\n中文",
+      "input": [
+        {
+          "title": "Research",
+          "sample": "Revenue grew 12%"
+        }
+      ],
+      "key": "1681245726f8520050ba4a9a6a543fa5a193d5c44ef61afcd941b03f4df22622"
+    },
+    {
+      "kind": "translate",
+      "prompt": "instructions\n中文",
+      "input": {
+        "glossary": {
+          "terms": [
+            {
+              "source": "revenue",
+              "target": "营收"
+            }
+          ]
+        },
+        "context": {
+          "previous": "earlier",
+          "next": "later"
+        },
+        "blocks": [
+          {
+            "id": "b1",
+            "original": "Revenue grew 12% 中文",
+            "sectionTitle": "Research"
+          }
+        ]
+      },
+      "key": "8adbfdccf963ecaef9b394020a073ad6ce655b030b79d41c00e066257b403cbe"
+    },
+    {
+      "kind": "summary",
+      "prompt": "instructions\n中文",
+      "input": [
+        {
+          "digest": "Revenue grew 12%"
+        }
+      ],
+      "key": "78ac6f9844adb103a272caf3cda26029f36ae2c5311fa8c256a6eb11a696ed31"
+    },
+    {
+      "kind": "summary",
+      "prompt": "instructions\n中文",
+      "input": [
+        {
+          "title": "Research",
+          "digest": "Revenue grew 12%"
+        }
+      ],
+      "key": "39be9aa84bd17f72bf3411221a937597ff72964381e5724c194114700dd1627c"
+    }
+  ],
+  "tokens": [
+    {
+      "text": "abc中文",
+      "tokens": 5
+    },
+    {
+      "text": "😀abc",
+      "tokens": 5
+    },
+    {
+      "text": "Hello world",
+      "tokens": 8
+    },
+    {
+      "text": "中文测试",
+      "tokens": 6
+    },
+    {
+      "text": "",
+      "tokens": 0
+    }
+  ]
+}

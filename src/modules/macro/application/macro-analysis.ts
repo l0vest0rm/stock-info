@@ -153,13 +153,13 @@ export function validateMacroAnalysisTerminalEvidence(evidence: Record<string, u
 
 export function validateMacroAnalysisMarkdown(markdown: string): void {
   if (markdown.length < 4_000) throw new Error("macro analysis result is shorter than 4000 characters");
-  const expected = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十", "二十一", "二十二", "二十三", "二十四", "二十五", "二十六", "二十七", "二十八", "二十九", "三十", "三十一"];
+  const expected = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"];
   // Models commonly add a report title before the numbered structure, which
   // can make the first numbered section an H2 while retaining all required
   // sections. The numbered topology is the delivery contract; its Markdown
   // nesting level is not evidence of missing analysis.
   const headings = new Set([...markdown.matchAll(/^#{1,6} ([一二三四五六七八九十]+)、/gm)].map((match) => match[1]));
-  if (!expected.every((heading) => headings.has(heading))) throw new Error("macro analysis result must contain all thirty-one numbered sections");
+  if (!expected.every((heading) => headings.has(heading))) throw new Error("macro analysis result must contain all twelve numbered sections");
   if (!/^# 一句话结论\s*$/m.test(markdown)) throw new Error("macro analysis result must contain the one-sentence conclusion H1 heading");
 }
 

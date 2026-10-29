@@ -1,0 +1,128 @@
+[
+  {
+    "input": {
+      "security": {
+        "code": "600036.SH",
+        "name": "招商银行",
+        "market": "cn-sh",
+        "type": "stock",
+        "currency": "CNY"
+      },
+      "preparedAt": "2026-10-29T00:00:00.000Z",
+      "marketSnapshot": {
+        "asOf": "2026-10-28",
+        "marketDataSource": "xueqiu",
+        "valuationSource": "financial-statements",
+        "latestPrice": 40.125,
+        "marketCapYi": 1000,
+        "peTtm": null,
+        "pb": 0.93,
+        "psTtm": null,
+        "pcfTtm": null,
+        "valuationBasis": {
+          "income": null,
+          "balance": {
+            "source": "financial_report",
+            "reportDate": "2026-09-30",
+            "noticeDate": null
+          },
+          "cashflow": null
+        }
+      },
+      "analysisFramework": null,
+      "businessBoundary": {
+        "products": [
+          "do not inject this into frozen public facts"
+        ]
+      }
+    },
+    "brief": "## 研究对象\n- 公司：招商银行\n- 证券代码：600036.SH\n- 报告时点：2026-10-29T00:00:00.000Z\n\n## 已确认的市场快照\n- 截至：2026-10-28\n- 行情源：xueqiu（仅价格、市值）\n- 估值源：financial-statements（按最新已披露财报、快报、预告派生）\n- 最新价格：40.13 CNY\n- 总市值：1000 亿元\n- PE（TTM）：未提供\n- PB：0.93\n- PS（TTM）：未提供\n- PCF（TTM）：未提供\n- 利润/营收口径：未提供\n- 净资产口径：financial_report；报告期 2026-09-30；公告日 未提供\n- 经营现金流口径：未提供\n\n## 研究框架（不是公司事实）\n- 量价成本主公式：未提供\n- 优先核验指标：未提供\n- 可用估值方法：未提供\n- 压力因素：未提供"
+  },
+  {
+    "input": {
+      "security": {
+        "code": "AAPL.US",
+        "name": "Apple",
+        "market": "us",
+        "type": "stock",
+        "currency": "USD"
+      },
+      "preparedAt": "2026-10-29T01:02:03.000Z",
+      "marketSnapshot": {
+        "asOf": "2026-10-28",
+        "marketDataSource": "xueqiu",
+        "valuationSource": "financial-statements",
+        "latestPrice": 2.675,
+        "marketCapYi": 1.005,
+        "peTtm": 0,
+        "pb": -0.005,
+        "psTtm": 14.005,
+        "pcfTtm": 123456789.999,
+        "valuationBasis": {
+          "income": {
+            "source": "performance_forecast",
+            "reportDate": "2026-09-30",
+            "noticeDate": "2026-10-15"
+          },
+          "balance": null,
+          "cashflow": {
+            "source": "financial_report",
+            "reportDate": "2026-06-30",
+            "noticeDate": "2026-07-15"
+          }
+        }
+      },
+      "analysisFramework": {
+        "primaryFormula": "revenue = units × ASP",
+        "operatingMetrics": [
+          "units",
+          "ASP"
+        ],
+        "valuationMethods": [
+          "PE",
+          "DCF"
+        ],
+        "stressFactors": [
+          "margin contraction",
+          "customer loss"
+        ]
+      }
+    },
+    "brief": "## 研究对象\n- 公司：Apple\n- 证券代码：AAPL.US\n- 报告时点：2026-10-29T01:02:03.000Z\n\n## 已确认的市场快照\n- 截至：2026-10-28\n- 行情源：xueqiu（仅价格、市值）\n- 估值源：financial-statements（按最新已披露财报、快报、预告派生）\n- 最新价格：2.67 USD\n- 总市值：1 亿元\n- PE（TTM）：0\n- PB：-0.01\n- PS（TTM）：14.01\n- PCF（TTM）：123456790\n- 利润/营收口径：performance_forecast；报告期 2026-09-30；公告日 2026-10-15\n- 净资产口径：未提供\n- 经营现金流口径：financial_report；报告期 2026-06-30；公告日 2026-07-15\n\n## 研究框架（不是公司事实）\n- 量价成本主公式：revenue = units × ASP\n- 优先核验指标：units、ASP\n- 可用估值方法：PE、DCF\n- 压力因素：margin contraction、customer loss"
+  },
+  {
+    "input": {
+      "security": {
+        "code": "00700.HK",
+        "name": "腾讯控股",
+        "market": "hk",
+        "type": "stock",
+        "currency": null
+      },
+      "preparedAt": "2026-10-29T04:05:06.000Z",
+      "marketSnapshot": {
+        "asOf": "2026-10-28",
+        "marketDataSource": "xueqiu",
+        "valuationSource": "financial-statements",
+        "latestPrice": null,
+        "marketCapYi": null,
+        "peTtm": null,
+        "pb": null,
+        "psTtm": null,
+        "pcfTtm": null,
+        "valuationBasis": {
+          "income": null,
+          "balance": null,
+          "cashflow": null
+        }
+      },
+      "analysisFramework": {
+        "primaryFormula": "",
+        "operatingMetrics": [],
+        "valuationMethods": [],
+        "stressFactors": []
+      }
+    },
+    "brief": "## 研究对象\n- 公司：腾讯控股\n- 证券代码：00700.HK\n- 报告时点：2026-10-29T04:05:06.000Z\n\n## 已确认的市场快照\n- 截至：2026-10-28\n- 行情源：xueqiu（仅价格、市值）\n- 估值源：financial-statements（按最新已披露财报、快报、预告派生）\n- 最新价格：未提供\n- 总市值：未提供\n- PE（TTM）：未提供\n- PB：未提供\n- PS（TTM）：未提供\n- PCF（TTM）：未提供\n- 利润/营收口径：未提供\n- 净资产口径：未提供\n- 经营现金流口径：未提供\n\n## 研究框架（不是公司事实）\n- 量价成本主公式：\n- 优先核验指标：未提供\n- 可用估值方法：未提供\n- 压力因素：未提供"
+  }
+]

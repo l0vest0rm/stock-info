@@ -60,7 +60,7 @@ async function main() {
   await waitForHealthy(`http://${host}:${httpPort}/api/health`, "local-http");
   await waitForHealthy(`http://${host}:${contentPort}/__health`, "local-http-content");
   const cron = await startLocalCronScheduler({
-    configPath: resolve(process.env.LOCAL_CRON_CONFIG || "wrangler.jsonc"),
+    configPath: resolve(process.env.LOCAL_CRON_CONFIG || "config/app/local-runtime.json"),
     onEvent: (event, details) => log("local-scheduler", `cron_${event}`, details),
   });
   const ingest = process.env.KNOWLEDGE_INGEST_SCHEDULER === "0"

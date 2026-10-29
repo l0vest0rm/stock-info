@@ -35,7 +35,8 @@ export LLM_RUNTIME="local"
 # callers therefore run this script directly without exporting a token.
 export TASKD_BASE_URL="${TASKD_BASE_URL:-https://task.m2ai.cc}"
 export TASKD_NAMESPACE="${TASKD_NAMESPACE:-stock-info}"
-export PRODUCTION_REPORT_SYNC_URL="${PRODUCTION_REPORT_SYNC_URL:-https://tinfo.cc/api/internal/report-sync}"
+# This checkout is local-only. Never resume publication from stale shell vars.
+unset PRODUCTION_REPORT_SYNC_URL REPORT_SYNC_TOKEN
 export LLM_DAILY_LIMIT="${LLM_DAILY_LIMIT:-1000000}"
 # Xueqiu can revoke a browser session before the previous six-hour cadence.
 # Refresh inside the observed three-hour usable window so the local runtime

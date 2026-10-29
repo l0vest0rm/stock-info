@@ -1,5 +1,21 @@
 # stock-info
 
+## 本地 Rust 重构状态
+
+本分支改为**仅本地运行**，不再支持 Cloudflare 部署。完整保留现有功能的 Rust
+重构正在进行，**尚未完成**；当前完整业务仍使用 `./start-local.sh` 的 Node
+运行时，Rust 验证入口为 `./start-rust.sh`。不要把 Rust 健康检查成功当作整站
+迁移完成。具体共享契约、数据边界及全量验收门槛见
+[本地 Rust 后端迁移](docs/local-rust-migration.md)。
+
+本地 cron 已改用 `config/app/local-runtime.json`；自动向生产同步研究结果已移除。
+Cloudflare 部署、回滚、远端迁移与远端上传 npm 命令已移除。现有线上资源未被操作。
+`npm run check:rust` 验证 Rust 格式、clippy 和隔离回归；`npm run test:basic`
+仍是完整业务基线，不能为迁移删减断言。
+
+以下为迁移前功能说明，涉及 Worker/D1/R2/生产部署的段落仅供历史参考，
+不再是本分支支持的操作流程。迁移完成后将统一替换这些历史说明。
+
 项目整体设计见 [架构文档](docs/architecture.md)；AI 产业标的研究见 [赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)；宽基式投资的[初版历史赛道图谱](docs/宽基式优质公司组合_细分赛道与98家观察池_2026-10-27.md)保留作对照。当前[观察池主数据](config/investment-universe.json)已调整为**A股优先**（A股78、美股15、港股5家）；[每日复盘规则](docs/investment-daily-review-playbook.md)、[维护指南](docs/investment-universe-usage.md)规定证据与策略判断要求。交互页面为 [`/investment-universe.html`](web/src/investment-universe.html)（顶栏「观察池」）。首次每日行情与估值核验尚未执行，不代表已经形成买入或换仓建议。
 
 Cloudflare Workers 股票信息站。当前知识链路已收敛到固定形态：

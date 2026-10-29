@@ -1,0 +1,9 @@
+{
+  "runtime": "local",
+  "host": "127.0.0.1",
+  "port": 8000,
+  "timezone": "UTC",
+  "triggers": {
+    "crons": ["*/15 * * * *", "17 * * * *", "* * * * *"]
+  }
+}

@@ -2,45 +2,52 @@
 
 ## Runtime Model
 
-- Treat this repo as a Cloudflare Worker project in production and a Node runtime project in local development.
-- Local development should default to `./start-local.sh`, which starts the Node runtime without Wrangler.
-- The default local URL is `http://127.0.0.1:8000`.
-- Production deployment and verification must be treated separately from the Node local runtime.
+- This checkout is local-only. Cloudflare deployment is retired; do not restore
+  Worker deployment, remote migrations or automatic report publication.
+- Full business functionality currently runs in the transitional Node runtime
+  through `./start-local.sh`, default URL `http://127.0.0.1:8000`.
+- The Rust replacement is in `backend/`, launched with `./start-rust.sh`.
+  It is NOT feature-complete: see `docs/local-rust-migration.md` for gates.
+  Do not switch the default runtime or delete TypeScript business modules until
+  their Rust replacements pass contract and behavioral acceptance. No Node
+  proxy, subprocess or embedded JS is a completed Rust migration.
 
 ## LLM Runtime Boundary
 
-- Remote LLM calls are allowed only from the local Node development runtime, explicitly marked with `LLM_RUNTIME=local` by the supported local launch scripts.
-- Production must keep `LLM_RUNTIME=production`; never add an LLM fallback, exception, or production override, even when model credentials are present.
+- Model calls are allowed only in the explicit local runtime with
+  `LLM_RUNTIME=local`. Local-only does not mean offline: authorized providers
+  and taskd still require network connectivity and credentials.
+- Keep credentials in ignored local stores; never put them in config or logs.
 
 ## Local Workflow
 
-- Use `./start-local.sh` for the standard local loop because it already builds `web/dist`, typechecks, applies local SQLite migrations, starts the Node runtime, and waits for `/api/health`.
-- The only retained automated test is `npm run test:basic` against a running local Node API.
-- For browser-facing changes, remember that static assets are served from `web/dist`; stale build output is a common false negative.
-
-## Production Workflow
-
-- Production runs on Cloudflare, so local success is not the same as production success.
-- For production-affecting work, verify the correct layer explicitly: `wrangler` config, remote D1 migrations, deploy script behavior, and the real production health/API URL.
-- Do not describe the production runtime as a local long-lived service.
+- `./start-local.sh` builds assets/prompts, typechecks, migrates local SQLite,
+  starts the full transitional Node runtime and waits for health.
+- `./start-rust.sh` builds web assets and starts the partial Rust backend;
+  it never stops an existing service. Use an unused PORT for migration tests.
+- `npm run check:rust` runs formatting, clippy and isolated Rust regressions.
+- `npm run test:basic` remains the full business acceptance baseline against a
+  running local API. Never remove or weaken it to make partial Rust pass.
+- Assets are served from `web/dist`. Rebuild before page acceptance.
+- Cron expressions are in `config/app/local-runtime.json`, timezone UTC.
+- SQLite stays at `LOCAL_DB_PATH`, or `LOCAL_DATA_DIR/stock-info.sqlite`
+  (default `data/local/stock-info.sqlite`); both migrators preserve the sorted
+  historical migration/user_version protocol. Never add a migration table.
 
 ## Verification
 
-- Verify at the highest realistic layer first: real page/API behavior on the target environment, then module-level checks.
-- When a page looks wrong, inspect the real stored content shape or API payload before assuming the frontend renderer is the only issue.
-- When converted knowledge content misroutes, inspect the API response fields that drive the frontend branch, especially access-method style routing.
-- For knowledge import issues, separate local processing, local cache, remote D1 visibility, and remote R2 lifecycle.
-
-## Codex Proof
-
-- Default local proof path: `./start-local.sh`, then `GET http://127.0.0.1:8000/api/health`.
-- For served page or routing changes, verify the affected page manually and run `npm run test:basic` for the retained API baseline.
-- For remote knowledge visibility, prove through `/api/knowledge/docs` or remote D1 checks; prepare/upload logs alone do not prove the page can see the docs.
+- Prove real API/page behavior first, then module checks. Isolated Rust tests
+  do not prove valuation, provider, scheduler or private-portfolio parity.
+- Inspect stored content/API payload before assuming a renderer issue.
+- Separate local processing, local SQLite visibility and local object lifecycle.
+- Never migrate or drop tables in the user's real database merely to test.
+- No cloud resource was deleted or undeployed by the local-only code change.
 
 ## Change Boundaries
 
-- Keep Cloudflare-specific configuration, bindings, migrations, and deploy logic explicit.
-- Do not add local-only shortcuts that obscure the Worker/D1 production contract.
+- Preserve durable ledger namespaces, local data and active sessions.
+- TypeScript/Cloudflare type definitions and historical remote maintenance
+  scripts are transitional source, not a supported deployment workflow.
 
 ## Schema Change Boundaries
 
@@ -52,7 +59,7 @@
 
 - Stock K-line data must use Xueqiu only. Do not add Eastmoney, Tencent, Yahoo, or other stock K-line fallbacks for A-shares, Hong Kong stocks, U.S. stocks, or indices.
 - Fund net-value history remains Eastmoney-only because it is not a stock K-line source.
-- Xueqiu requests require `XUEQIU_COOKIE`, refreshed locally through CDP and written to the ignored local credential store plus production Worker secret before deployment (never commit the Cookie in wrangler vars). When the cookie is unavailable or rejected, surface the failure rather than silently switching data sources.
+- Xueqiu requests require `XUEQIU_COOKIE`, refreshed locally through CDP and written to the ignored local credential store (never commit the Cookie). When the cookie is unavailable or rejected, surface the failure rather than silently switching data sources.
 - Yahoo is allowed for U.S. stock options data and U.S. financial-statement collection. Local U.S. financial-statement requests must use the configured Yahoo proxy; production may access Yahoo finance directly through the unified HTTP client and cache. Do not use Yahoo for stock K-lines, search, Hong Kong financial statements, or other market data.
 
 ## Observation Pool Runtime
@@ -64,17 +71,17 @@
 - `valuation-screen-cache.ts` owns all dashboard writes. GET is read-only;
   POST refresh performs at most two due securities, with fresh results reused.
   The one-minute cron processes at most twelve due securities per invocation;
-  shared SQLite/D1 leases cap dashboard computations at two across callers.
+  shared SQLite leases cap dashboard computations at two across callers.
   Closing a page does not stop cron. Browser polling never schedules securities.
 - Financial statements retain their existing source freshness policy; only
   quote refresh bypasses HTTP cache. Do not force all financial sources on page
   visits. No new tables or LLM work are required for the dashboard.
 - `npm run build:prompts` also generates the deterministic valuation dependency
   revision. Run it after source/config changes; `node scripts/build-valuation-revision.mjs
-  --check` verifies it. The supported local/deploy workflows run this step.
+  --check` verifies it. The supported local workflows run this step.
 - `npm run test:basic` starts with isolated SQLite cache/lease regression checks,
-  then validates the running Node API. Production cron execution, D1 behavior
-  and provider quotas still require separate deployed-environment acceptance.
+  then validates the running local API. Rust cron behavior and provider quotas still require
+  separate runtime acceptance.
 
 ## Observation Research Ledger
 
@@ -102,9 +109,9 @@
   `private-active-portfolio-v1`, with null expiry and optimistic concurrency.
   This namespace is durable private data: never publish, evict as cache, or
   embed it into the public universe/research configuration or web bundle.
-- All portfolio reads/writes are local Node, loopback Host and same-origin only.
+- All portfolio reads/writes are local, loopback Host and same-origin only.
   GET is read-only. The UI polls existing research; it never schedules providers.
-  Production does not expose private portfolio records or execute remote LLMs.
+  Never expose private portfolio records beyond the local runtime.
 - Snapshot prices, quantities, cash and FX are explicitly user-reconciled inputs,
   not live quotes. Missing any price/FX leaves NAV and all weights unavailable.
   Currency must match the security market. Cash is included in weight denominators.

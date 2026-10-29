@@ -1,4 +1,5 @@
 node_modules/
+backend/target/
 .wrangler/
 .dev.vars
 config/research/fund-quarterly-research.local.json
@@ -8,7 +9,7 @@ web/dist/
 data/logs/
 data/knowledge/
 news/
-reports/
+/reports/
 *.log
 *.pid
 .DS_Store
