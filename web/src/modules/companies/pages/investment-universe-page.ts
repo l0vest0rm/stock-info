@@ -1,3 +1,5 @@
+import { useValuationDashboard } from '../composables/use-valuation-dashboard'
+import { VALUATION_FRESHNESS_MS, type DashboardRow as ScreenRow } from '../../../../../shared/valuation-dashboard'
 import { computed, createApp, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { InvestmentOpportunity, OpportunityKind, OpportunityMetric } from '../../../../../shared/investment-opportunity'
 import type { ValuationAssessment } from '../../../../../shared/valuation-assessment'
@@ -144,42 +146,6 @@ type Universe = {
   sectors: Sector[]
   tracks: Track[]
   companies: Company[]
-}
-
-/**
- * A row of the server-computed screen.
- *
- * The page must not compute this itself.  The band, the implied ceiling, the
- * margin of safety and the verdict all depend on statements, a dated quote and
- * the archetype's allowed methods; duplicating that in the browser would give two
- * definitions of "cheap" and eventually two answers.  `GET /api/research/valuation-screen`
- * runs the same `screenValuationCandidate` the daily note quotes.
- */
-type ScreenRow = {
-  opportunity?: InvestmentOpportunity;
-  assessment?: ValuationAssessment;
-  code: string
-  name: string
-  market: string
-  archetype: string
-  verdict: 'research_candidate' | 'watch' | 'blocked'
-  basis: { key: string; label?: string; reportDate: string } | null
-  position: { metric: string; marketCap: number; impliedHigh: number; marginOfSafety: number } | null
-  blockReasons: string[]
-  note: string
-  growth: { verdict: string; ttmGrowth: number | null; reportDate: string | null; note: string | null } | null
-  executable: false
-}
-type ScreenSnapshot = {
-  asOf: string
-  generatedAt: string | null
-  targets: string[]
-  companies: number
-  byVerdict: Record<string, number>
-  blockedDetail: Record<string, number>
-  rows: ScreenRow[]
-  stale: boolean
-  warnings: string[]
 }
 
 const opportunityLabels: Record<OpportunityKind, string> = { historical_discount: '历史折价', earnings_delivery: '盈利兑现', forward_gap: '未来预期差', drawdown: '显著回撤' }
@@ -376,7 +342,7 @@ const InvestmentUniversePage = defineComponent({
     const sort = ref(safeParam('sort', ['industry', 'name', 'priority']) || 'industry')
 
     /**
-     * The server-computed screen, fetched once on mount.
+     * The server-computed screen, read on mount and polled without submitting work.
      *
      * Before this the page could only show the archetype label from the JSON, so
      * every number a reader actually wants — the band, the margin of safety, the
@@ -387,20 +353,12 @@ const InvestmentUniversePage = defineComponent({
      * not fall back to "no candidates", because that reads as a finding about the
      * companies when it is a fact about the request.
      */
-    const screenRows = ref<Map<string, ScreenRow>>(new Map())
-    const screenMeta = ref<ScreenSnapshot | null>(null)
-    const screenError = ref('')
-    const screenLoading = ref(true)
-    const refreshing = ref(false)
-    const completed = ref(0)
-    const refreshErrors = ref(0)
-    const rowState = ref<Record<string, string>>({})
     const valuationFilter = ref('')
     const opportunityFilter = ref(safeParam('opportunity', Object.keys(opportunityStageLabels)))
     const signalFilter = ref(safeParam('signal', Object.keys(opportunityLabels)))
     const freshnessClock = ref(Date.now())
     let freshnessTimer: ReturnType<typeof setInterval> | undefined
-    const freshOpportunity = (row: ScreenRow | null) => !!row?.opportunity && freshnessClock.value - Date.parse(row.opportunity.computedAt) <= 10 * 60000 && !rowState.value[row.code]?.startsWith('刷新失败')
+    const freshOpportunity = (row: ScreenRow | null) => !!row?.opportunity && freshnessClock.value >= Date.parse(row.computation.computedAt) && freshnessClock.value - Date.parse(row.computation.computedAt) < VALUATION_FRESHNESS_MS && row.computation.revision === screenMeta.value?.revision
     const controller = new AbortController()
 
     async function api(path: string, method = 'GET') {
@@ -409,6 +367,8 @@ const InvestmentUniversePage = defineComponent({
       if (!response.ok || body?.code !== 200) throw new Error(body?.msg || 'HTTP ' + response.status)
       return body.data
     }
+    const { screenRows, screenMeta, screenError, screenLoading, refreshing, completed,
+      refreshErrors, rowState, loadScreen } = useValuationDashboard(api, controller.signal)
     const forwardReports = ref<Record<string, ForwardReport[]>>({})
     const forwardState = ref<Record<string, string>>({})
     async function loadForwardReports(company: Company) {
@@ -442,51 +402,6 @@ const InvestmentUniversePage = defineComponent({
         h('p', { class: 'ivu-muted-small' }, '预测可能已过时或尚未兑现；研报PE使用报告当时价格，重算PE使用行情快照而非实时价。负利润不适用PE。未来年度盈利预测不等于内在价值，需结合历史估值、经营质量及悲观情景复核。'),
       ])
     }
-    function acceptRow(row: ScreenRow) {
-      screenRows.value = new Map(screenRows.value).set(row.code.toUpperCase(), row)
-    }
-    async function loadScreen() {
-      if (refreshing.value) return
-      screenError.value = ''
-      try {
-        const snapshot = await api('/api/research/valuation-screen') as ScreenSnapshot
-        screenMeta.value = snapshot
-        for (const row of snapshot.rows) acceptRow(row)
-        screenLoading.value = false
-        refreshing.value = true
-        completed.value = 0
-        refreshErrors.value = 0
-        rowState.value = Object.fromEntries(snapshot.targets.map((code) => [code, '等待刷新']))
-        let cursor = 0
-        async function worker() {
-          while (!controller.signal.aborted) {
-            const code = snapshot.targets[cursor++]
-            if (!code) return
-            rowState.value[code] = '刷新中'
-            try {
-              // Only two in-flight securities. Each response is server-computed
-              // and durably cached; no whole-pool Worker background lifetime.
-              let result = await api('/api/research/valuation-screen/refresh/' + encodeURIComponent(code), 'POST')
-              for (let retry = 0; result.state === 'busy' && retry < 60 && !controller.signal.aborted; retry++) {
-                await new Promise((resolve) => setTimeout(resolve, 3000))
-                result = await api('/api/research/valuation-screen/refresh/' + encodeURIComponent(code), 'POST')
-              }
-              if (result.state !== 'complete' || !result.row) throw new Error('其他页面正在计算，请稍后重试')
-              acceptRow(result.row)
-              rowState.value[code] = '本轮已计算'
-            } catch (error) {
-              if (controller.signal.aborted) return
-              rowState.value[code] = '刷新失败 · 旧结果仅供参考'
-              refreshErrors.value++
-            } finally { completed.value++ }
-          }
-        }
-        await Promise.all([worker(), worker()])
-      } catch (error) {
-        if (!controller.signal.aborted) screenError.value = error instanceof Error ? error.message : String(error)
-      } finally { screenLoading.value = false; refreshing.value = false }
-    }
-
     /** A company's screen row, matched by API code rather than by display name. */
     const screenFor = (company: Company): ScreenRow | null => {
       for (const key of screenKeyCandidates(company)) {
@@ -883,13 +798,15 @@ const InvestmentUniversePage = defineComponent({
     const renderScreenStatus = () => h('section', { class: 'ivu-screen-status', 'aria-live': 'polite' }, [
       h('div', { class: 'ivu-screen-head' }, [
         h('strong', '估值看板 · 后台计算 / 自动缓存'),
-        h('button', { type: 'button', class: 'ivu-open', disabled: refreshing.value || screenLoading.value, onClick: () => void loadScreen() }, '重新计算'),
-        h('span', { class: 'ivu-muted-small' }, screenLoading.value ? '读取缓存…' : refreshing.value ? `后台刷新 ${completed.value}/${screenMeta.value?.companies ?? 0}` : `本轮计算结束 ${completed.value}/${screenMeta.value?.companies ?? 0}`),
+        h('button', { type: 'button', class: 'ivu-open', disabled: screenLoading.value, onClick: () => void loadScreen(true) }, '检查更新'),
+        h('span', { class: 'ivu-muted-small' }, screenLoading.value ? '读取缓存…' : refreshing.value ? `等待服务端更新 · 有效缓存 ${completed.value}/${screenMeta.value?.companies ?? 0}` : `有效缓存 ${completed.value}/${screenMeta.value?.companies ?? 0}`),
       ]),
       refreshing.value ? h('progress', { max: screenMeta.value?.companies || 1, value: completed.value, 'aria-label': '估值刷新进度' }) : null,
       screenError.value ? h('p', { class: 'ivu-screen-warning' }, '读取失败：' + screenError.value) : null,
-      refreshErrors.value ? h('p', { class: 'ivu-screen-warning' }, `${refreshErrors.value}家请求失败；保留的旧结果不代表本轮估值。`) : null,
-      h('span', { class: 'ivu-muted-small' }, '先展示缓存，再逐行更新 · 规则估值非买卖信号 · 东财 / 新浪未来估值参考见详情'),
+      refreshErrors.value ? h('p', { class: 'ivu-screen-warning' }, `${refreshErrors.value}家数据请求失败，已标记阻断；不是公司价值结论。`) : null,
+      h('span', { class: 'ivu-muted-small' }, '规则估值非买卖信号 · 东财 / 新浪未来估值参考见详情'),
+      ...(screenMeta.value?.warnings ?? []).map(text => h('p', { class: 'ivu-muted-small' }, text)),
+      screenMeta.value?.oldestComputedAt ? h('p', { class: 'ivu-muted-small' }, `计算时间范围：${new Date(screenMeta.value.oldestComputedAt).toLocaleString('zh-CN')} — ${new Date(screenMeta.value.generatedAt!).toLocaleString('zh-CN')} · 规则指纹 ${screenMeta.value.revision.slice(0, 12)}`) : null,
     ])
 
     const renderResearchForecastCell = (company: Company) => {

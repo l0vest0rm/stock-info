@@ -54,3 +54,24 @@
 - Fund net-value history remains Eastmoney-only because it is not a stock K-line source.
 - Xueqiu requests require `XUEQIU_COOKIE`, refreshed locally through CDP and written to the ignored local credential store plus production Worker secret before deployment (never commit the Cookie in wrangler vars). When the cookie is unavailable or rejected, surface the failure rather than silently switching data sources.
 - Yahoo is allowed for U.S. stock options data and U.S. financial-statement collection. Local U.S. financial-statement requests must use the configured Yahoo proxy; production may access Yahoo finance directly through the unified HTTP client and cache. Do not use Yahoo for stock K-lines, search, Hong Kong financial statements, or other market data.
+
+## Observation Pool Runtime
+
+- The dashboard is a rolling read model, not a point-in-time backtest dataset.
+  `shared/valuation-dashboard.ts` owns its API contract. Each row carries its
+  computation ID, dependency revision and calculation time; source dates remain
+  separate. Do not describe the newest row timestamp as a common valuation date.
+- `valuation-screen-cache.ts` owns all dashboard writes. GET is read-only;
+  POST refresh performs at most two due securities, with fresh results reused.
+  The one-minute cron processes at most twelve due securities per invocation;
+  shared SQLite/D1 leases cap dashboard computations at two across callers.
+  Closing a page does not stop cron. Browser polling never schedules securities.
+- Financial statements retain their existing source freshness policy; only
+  quote refresh bypasses HTTP cache. Do not force all financial sources on page
+  visits. No new tables or LLM work are required for the dashboard.
+- `npm run build:prompts` also generates the deterministic valuation dependency
+  revision. Run it after source/config changes; `node scripts/build-valuation-revision.mjs
+  --check` verifies it. The supported local/deploy workflows run this step.
+- `npm run test:basic` starts with isolated SQLite cache/lease regression checks,
+  then validates the running Node API. Production cron execution, D1 behavior
+  and provider quotas still require separate deployed-environment acceptance.

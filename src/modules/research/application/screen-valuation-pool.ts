@@ -22,34 +22,8 @@ import universeJson from "../../../../config/investment-universe.json";
 
 type Environment = Pick<Bindings, "DB" | "MARKET_DATA_BUCKET"> & Partial<Pick<Bindings, "XUEQIU_COOKIE">>;
 
-export type ValuationScreenRow = {
-  assessment?: ValuationAssessment;
-  opportunity?: InvestmentOpportunity;
-  code: string;
-  name: string;
-  market: "CN" | "HK" | "US" | "KR";
-  /** The archetype the band engine actually used, not the JSON's copy. */
-  archetype: string;
-  verdict: ValuationScreenResult["verdict"];
-  /** Which band carried the verdict, so a reader can see the method. */
-  basis: ValuationScreenResult["basis"];
-  position: ValuationScreenResult["position"];
-  /**
-   * Domain reasons, plus the two facts that live one layer below the domain:
-   * the quote provider failed, or this row's computation threw.  `valuation-screen`
-   * cannot know either — it is given a quote or not — so they are declared here
-   * rather than widening the domain union and making two of its members
-   * unreachable from its own self-test.
-   */
-  blockReasons: Array<ValuationScreenResult["blockReasons"][number] | "quote_fetch_failed" | "request_failed" | "financial_refresh_failed" | "stale_quote">;
-  note: string;
-  /** Growth reading, present even when it changed nothing. */
-  growth: ValuationScreenResult["growth"] | null;
-  /** Always false; carried on every row so a consumer cannot lose the fact. */
-  executable: false;
-  /** Why the row could not be computed, phrased as a data fact. */
-  unavailableReason?: string;
-};
+import type { ValuationScreenRow } from '../../../../shared/valuation-dashboard';
+export type { ValuationScreenRow } from '../../../../shared/valuation-dashboard';
 
 export type ValuationScreenSnapshot = {
   asOf: string;
@@ -195,9 +169,11 @@ async function screenOne(
     executable: false as const,
   };
 
-  // Refresh each source once, then let the band loader reuse those same snapshots.
+  // Financial statements keep their provider freshness policy; quote refreshes
+  // must not bypass the much slower financial cache on every dashboard sweep.
+  const financialOptions = { ...httpOptions, bypassCache: false };
   const financials = await Promise.all((["income", "balance", "cashflow"] as const).map((type) =>
-    loadFinancialStatementReadModel(env, target.code, type, { httpOptions })));
+    loadFinancialStatementReadModel(env, target.code, type, { httpOptions: financialOptions })));
   const income = financials[0];
   const series = buildQuarterlySeries(target.code, income.rows ?? [], { limit: 12 });
   const growth = ttmGrowth(series.points);
@@ -341,53 +317,13 @@ export async function screenValuationPool(
   };
 }
 
-/**
- * Serve the last computed snapshot, refreshing only when it is absent or old.
- *
- * The page must not wait for a 100-company provider sweep. A stale snapshot is
- * served *with* its age and a `stale` flag rather than silently, because a
- * verdict from three days ago and one from an hour ago are different claims and
- * only the reader can judge which is acceptable.
- */
-export const SCREEN_SNAPSHOT_TTL_MS = 6 * 60 * 60 * 1000;
-const SCREEN_SNAPSHOT_NAMESPACE = "valuation-screen";
-const SCREEN_SNAPSHOT_KEY = "watchlist";
-
-type StoredSnapshot = ValuationScreenSnapshot & { storedAt: number };
-
+/** Compatibility for CLI callers: all dashboard refreshes use the same bounded
+ * per-security cache. No legacy whole-pool cache or unbounded Worker request. */
 export async function loadOrRefreshValuationScreen(
   env: Environment,
   options?: { force?: boolean; httpOptions?: ExternalHttpOptions },
-): Promise<ValuationScreenSnapshot> {
-  const { getKvCache, putKvCache } = await import("../../../db/queries");
-  const now = Date.now();
-
-  if (!options?.force) {
-    const cached = await getKvCache(env.DB, SCREEN_SNAPSHOT_NAMESPACE, SCREEN_SNAPSHOT_KEY, now);
-    if (cached) {
-      try {
-        const stored = JSON.parse(cached.valueJson) as StoredSnapshot;
-        const age = now - stored.storedAt;
-        return { ...stored, stale: age > SCREEN_SNAPSHOT_TTL_MS };
-      } catch {
-        // A corrupt snapshot must not block a refresh; fall through and rebuild.
-      }
-    }
-  }
-
-  const snapshot = await screenValuationPool(env, { httpOptions: options?.httpOptions });
-  const stored: StoredSnapshot = { ...snapshot, storedAt: now };
-  try {
-    await putKvCache(env.DB, {
-      namespace: SCREEN_SNAPSHOT_NAMESPACE,
-      key: SCREEN_SNAPSHOT_KEY,
-      valueJson: JSON.stringify(stored),
-      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
-      updatedAt: now,
-    });
-  } catch {
-    // Serving a fresh computation without persisting it is better than failing
-    // the request; the next call simply recomputes.
-  }
-  return snapshot;
+) {
+  const { readValuationDashboard, refreshValuationDashboardBatch } = await import('./valuation-screen-cache');
+  if (options?.force) await refreshValuationDashboardBatch(env);
+  return readValuationDashboard(env);
 }

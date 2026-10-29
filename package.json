@@ -7,7 +7,7 @@
     "node": "26.10.0"
   },
   "scripts": {
-    "build:prompts": "node scripts/build-prompts.mjs",
+    "build:prompts": "node scripts/build-prompts.mjs && node scripts/build-valuation-revision.mjs",
     "check:investment-universe": "node scripts/validate-investment-universe.mjs && node scripts/validate-investment-daily-report.mjs",
     "check:valuation-inputs": "node scripts/check-valuation-inputs-selftest.mjs",
     "check:valuation-coverage": "node scripts/check-valuation-coverage-selftest.mjs",
@@ -25,7 +25,7 @@
     "dev:knowledge-ingest": "node scripts/knowledge-ingest-scheduler.mjs",
     "dev:web": "cd web && vite --config vite.layout.config.ts",
     "build": "npm run build:prompts && npm run build:web",
-    "build:node": "node scripts/build-node-local-runtime.mjs",
+    "build:node": "node scripts/build-valuation-revision.mjs && node scripts/build-node-local-runtime.mjs",
     "build:web": "cd web && node scripts/build-html.mjs && node scripts/build-vue-pages.mjs",
     "deploy": "./deploy-cloudflare.sh",
     "deploy:cloudflare": "./deploy-cloudflare.sh",
