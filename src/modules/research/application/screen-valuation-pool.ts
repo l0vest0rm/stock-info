@@ -1,3 +1,5 @@
+import { loadObservationVersions } from './observation-research';
+import { expectations, verifyIndustry } from '../domain/observation-research';
 /** Server-only valuation assembly. The dashboard cache schedules bounded,
  * per-security requests; the legacy bulk screen remains available to CLI callers.
  * Failures stay data, not investment conclusions. No LLM or trading execution.
@@ -175,7 +177,7 @@ async function screenOne(
   const financials = await Promise.all((["income", "balance", "cashflow"] as const).map((type) =>
     loadFinancialStatementReadModel(env, target.code, type, { httpOptions: financialOptions })));
   const income = financials[0];
-  const series = buildQuarterlySeries(target.code, income.rows ?? [], { limit: 12 });
+  const series = buildQuarterlySeries(target.code, income.rows ?? [], { limit: 16 });
   const growth = ttmGrowth(series.points);
   const cachedOptions = { ...httpOptions, bypassCache: false };
   const bandCurrency = await reportingCurrency(env, target.code, cachedOptions);
@@ -232,11 +234,18 @@ async function screenOne(
   const assets = numeric(balanceRow?.payload, ['TOTAL_ASSETS', 'totalAssets', 'totaAssets']);
   const liabilities = numeric(balanceRow?.payload, ['TOTAL_LIABILITIES', 'totalLiabilities', 'totalLiab']);
   const cashflowTtm = target.market === 'US' ? null : trailingTwelveMonths(cashRows, (row) => numeric(row.payload, ['NETCASH_OPERATE', 'netcashOperate', 'netCashOperate']));
-  const opportunity = buildInvestmentOpportunity({ assessment, archetype: base.archetype, blockReasons,
+  const research = (await loadObservationVersions(env.DB, target.code, 1))[0];
+  const industry = verifyIndustry(base.archetype, research?.industryFacts ?? []);
+  const modelInput = research?.expectations;
+  const forward = research?.thesis.status === 'reviewed' && modelInput && quote?.marketCap &&
+    modelInput.priceDate === quote.priceAsOf && modelInput.currency === normalizeCurrency(tradingCurrency(target.market)) &&
+    Math.abs(modelInput.marketCap / quote.marketCap - 1) < 0.01
+      ? { model: expectations(modelInput), priceDate: modelInput.priceDate, profitPeriod: modelInput.profitPeriod, currency: modelInput.currency, researchVersion: research.version } : null;
+  const opportunity = buildInvestmentOpportunity({ industry, forward, thesisReview: research?.thesis, assessment, archetype: base.archetype, blockReasons,
     points: series.points, adjustedBars, cashflowTtm, cashflowReportDate: cashDate,
     debtRatio: assets !== null && assets > 0 && liabilities !== null && liabilities >= 0 ? liabilities / assets : null,
     balanceReportDate: balanceRow?.reportDate ?? null, policy: opportunityPolicy });
-  return { ...base, ...result, blockReasons, growth: result.growth ?? null, assessment, opportunity };
+  return { ...base, ...result, blockReasons, growth: result.growth ?? null, assessment, opportunity, researchVersion: research?.version ?? 0 };
 
 }
 

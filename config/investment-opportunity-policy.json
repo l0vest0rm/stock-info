@@ -1,5 +1,5 @@
 {
-  "version": "opportunity-v2-qoq",
+  "version": "opportunity-v4-research-loop",
   "historyPercentileMax": 0.2,
   "ttmGrowthMin": 0.2,
   "quarterRevenueGrowthMin": 0.1,
@@ -7,9 +7,18 @@
   "earningsQuarters": 2,
   "cashConversionMin": 0.8,
   "debtRatioReviewAbove": 0.8,
-  "returns": { "20": -0.15, "60": -0.2, "120": -0.3 },
+  "returns": {
+    "20": -0.15,
+    "60": -0.2,
+    "120": -0.3
+  },
   "drawdown252Max": -0.3,
   "maxQuoteAgeDays": 7,
   "maxFinancialAgeDays": 240,
-  "description": "Research screening policy, not calibrated probabilities. Missing data is never a zero or a pass. Price-related clues are correlated; do not add signal counts into a recommendation score."
+  "description": "Research screening policy, not calibrated probabilities. Missing data is never a zero or a pass. Price-related clues are correlated; do not add signal counts into a recommendation score.",
+  "seasonality": {
+    "lookbackYears": 3,
+    "minimumSamples": 2,
+    "tolerance": 0.05
+  }
 }

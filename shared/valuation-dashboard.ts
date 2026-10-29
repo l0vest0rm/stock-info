@@ -5,6 +5,7 @@ import type { ValuationScreenResult } from '../src/modules/research/domain/valua
 export const VALUATION_FRESHNESS_MS = 10 * 60_000;
 
 export type ValuationScreenRow = {
+  researchVersion?: number;
   assessment?: ValuationAssessment;
   opportunity?: InvestmentOpportunity;
   code: string;
@@ -39,7 +40,7 @@ export type DashboardRow = ValuationScreenRow & {
 
 /** Rolling read model, explicitly NOT a point-in-time backtest snapshot. */
 export type ValuationDashboard = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   mode: 'rolling';
   revision: string;
   freshnessMs: number;

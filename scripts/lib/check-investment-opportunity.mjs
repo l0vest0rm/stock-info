@@ -51,6 +51,71 @@ export function checkInvestmentOpportunity() {
     const loss = run({ points: points.map((r, i) => i === 0 ? { ...r, quarterNetProfit: -5 } : r) });
     assert(loss.quality.profitQoQ < -1); assert.notEqual(loss.stage, 'research_candidate');
   });
+  check('seasonal declines require repeatable formal evidence, not a blanket exemption', () => {
+    const seasonalPoints = [
+      { ...points[0], quarterRevenue: 90, quarterNetProfit: 22.5 }, points[1],
+      ...[2025, 2024, 2023].flatMap(year => [
+        { ...points[0], reportDate: `${year}-06-30`, quarterRevenue: 80, quarterNetProfit: 20, ttmNetProfit: 64 },
+        { ...points[1], reportDate: `${year}-03-31`, quarterRevenue: 100, quarterNetProfit: 25 },
+      ]),
+    ];
+    const o = run({ points: seasonalPoints });
+    assert.equal(o.seasonality.state, 'consistent'); assert.equal(o.stage, 'research_candidate');
+    assert.equal(o.seasonality.revenue.samples.length, 3);
+    assert.equal(o.workflow.thesisStatus, 'not_verified'); assert.equal(o.workflow.queue, 'verify_thesis');
+    const weak = run({ points: seasonalPoints.map((q, i) => i === 0 ? { ...q, quarterRevenue: 70 } : q) });
+    assert.equal(weak.seasonality.state, 'review'); assert.equal(weak.stage, 'clue');
+    const missing = run({ points: seasonalPoints.map((q, i) => i > 3 ? { ...q, provisional: true } : q) });
+    assert.equal(missing.seasonality.state, 'insufficient_data'); assert.notEqual(missing.stage, 'research_candidate');
+    const mixed = run({ points: seasonalPoints.map(q => q.reportDate === '2025-06-30' ? { ...q, quarterRevenue: 110 } : q) });
+    assert.equal(mixed.seasonality.state, 'review');
+    const duplicate = run({ points: [...seasonalPoints, seasonalPoints[0]] });
+    assert.equal(duplicate.seasonality.state, 'insufficient_data');
+    assert.equal(run({ points: seasonalPoints, cashflowTtm: -1 }).stage, 'blocked');
+    assert.equal(run({ points: seasonalPoints, assessment: { ...assessment, status: 'expensive' } }).stage, 'clue');
+  });
+  check('seasonality crosses year boundaries and does not turn losses into seasonal passes', () => {
+    const cross = [2026, 2025, 2024, 2023].flatMap(year => [
+      { ...points[0], reportDate: `${year}-03-31`, quarterRevenue: 80, quarterNetProfit: 20, ttmNetProfit: year === 2026 ? 100 : 64 },
+      { ...points[1], reportDate: `${year - 1}-12-31`, quarterRevenue: 100, quarterNetProfit: 25 },
+    ]);
+    const overrides = { points: cross, now: Date.parse('2026-06-01T12:00:00Z'), cashflowReportDate: '2026-03-31', balanceReportDate: '2026-03-31', assessment: { ...assessment, quote: { date: '2026-06-01' } } };
+    const o = run(overrides);
+    assert.equal(o.seasonality.state, 'consistent');
+    assert.equal(o.seasonality.profit.samples[0].period, '2024-12-31至2025-03-31');
+    assert.equal(o.stage, 'research_candidate');
+    assert.equal(run({ ...overrides, blockReasons: ['currency_mismatch'] }).stage, 'insufficient_data');
+    assert.equal(run({ ...overrides, points: cross.map((q, i) => i === 0 ? { ...q, quarterNetProfit: -1 } : q) }).seasonality.state, 'review');
+    const boundary = cross.map((q, i) => i === 0 ? { ...q, quarterRevenue: 75 } : q);
+    assert.equal(run({ ...overrides, points: boundary }).seasonality.state, 'consistent');
+    boundary[0].quarterRevenue = 74.99;
+    assert.equal(run({ ...overrides, points: boundary }).seasonality.state, 'review');
+  });
+  check('workflow separates missing data, business risk and unverified research', () => {
+    assert.equal(run({ blockReasons: ['quote_fetch_failed'] }).workflow.queue, 'repair_data');
+    assert.equal(run({ cashflowTtm: -1 }).workflow.queue, 'review_risk');
+    for (const [archetype, path] of [['bank', 'financial'], ['insurer', 'financial'], ['cyclical_commodity', 'cyclical'], ['stable_cash_dividend', 'cash_return'], ['pre_profit_milestone', 'milestone']]) {
+      const o = run({ archetype }); assert.equal(o.workflow.path, path);
+      assert(o.workflow.requiredEvidence.length >= 2);
+      if (path !== 'cash_return') assert.notEqual(o.stage, 'research_candidate');
+    }
+    const noSignal = run({ adjustedBars: adjustedBars.map(r => ({ ...r, close: 100 })), assessment: { ...assessment, history: { metric: 'PE(TTM)', windows: [{ years: 3, percentile: .5 }, { years: 5, percentile: .5 }] }, operating: { ttmGrowth: .1 } } });
+    assert.equal(noSignal.workflow.queue, 'monitor');
+  });
+  check('industry evidence, reviewed forward scenarios and invalidations integrate without bypassing data', () => {
+    const industry={version:'fixture',archetype:'bank',state:'pass',checks:[],caveat:'fixture'};
+    assert.equal(run({archetype:'bank',industry}).stage,'research_candidate');
+    assert.notEqual(run({archetype:'bank',industry:{...industry,state:'unknown'}}).stage,'research_candidate');
+    assert.equal(run({industry:{...industry,state:'fail',checks:[{state:'fail',label:'risk'}]}}).stage,'blocked');
+    assert.notEqual(run({industry:{...industry,state:'unknown'}}).stage,'research_candidate');
+    assert.equal(run({archetype:'bank',industry,blockReasons:['currency_mismatch']}).stage,'insufficient_data');
+    assert.equal(run({thesisReview:{status:'invalidated',nextReview:'2026-10-29'}}).stage,'blocked');
+    assert.equal(run({thesisReview:{status:'reviewed',nextReview:'2026-10-01'}}).workflow.thesisStatus,'review_due');
+    assert.notEqual(run({thesisReview:{status:'reviewed',nextReview:'2026-10-01'}}).stage,'research_candidate');
+    const forward={model:{status:'available',impliedGrowth:.12,scenarios:[{name:'base',margin:.2}],caveats:[]},priceDate:'2026-10-28',profitPeriod:'2026-06-30',currency:'CNY',researchVersion:2};
+    assert.equal(signal(run({forward}),'forward_gap').state,'triggered');
+    assert.equal(run({forward:{...forward,priceDate:'2026-10-27'}}).future,null);
+  });
   check('both historical windows required', () => {
     assert.equal(signal(run({ assessment: { ...assessment, history: { metric: 'PE(TTM)', windows: [{ years: 3, percentile: .1 }, { years: 5, percentile: .21 }] } } }), 'historical_discount').state, 'not_triggered');
     assert.equal(signal(run({ assessment: { ...assessment, history: { metric: 'PE(TTM)', windows: [{ years: 3, percentile: .1 }] } } }), 'historical_discount').state, 'insufficient_data');

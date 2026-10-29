@@ -75,3 +75,19 @@
 - `npm run test:basic` starts with isolated SQLite cache/lease regression checks,
   then validates the running Node API. Production cron execution, D1 behavior
   and provider quotas still require separate deployed-environment acceptance.
+
+## Observation Research Ledger
+
+- `shared/observation-research.ts` owns the research editor/history contract.
+  `observation-research.ts` in application owns immutable research versions and
+  outcomes in existing `kv_cache`, namespace `observation-ledger-v1`, with null
+  expiry. Treat this namespace as durable records, not disposable cache.
+- Only the dashboard writer appends daily observation cohorts. GET stays
+  read-only. Research versions invalidate cached results; the current dashboard
+  schema is v5. Local-only editor routes enforce same-origin and loopback Host.
+- Industry inputs are manually sourced/reviewed facts, not fabricated provider
+  coverage. Missing evidence cannot pass. Scenario outputs are conditional
+  earnings/dividend/multiple models, not DCF or consensus forecasts.
+- Historical evaluation starts after actual capture, preserves exclusions and
+  policy versions, and never backfills past cohorts. Matured outcomes are frozen.
+  New functionality does not imply mature forward performance or deployment.

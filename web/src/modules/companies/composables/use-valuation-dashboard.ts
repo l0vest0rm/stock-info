@@ -23,7 +23,7 @@ export function useValuationDashboard(api: (path: string, method?: string) => Pr
     if (nudge) screenLoading.value = true
     try {
       const data = await api('/api/research/valuation-screen' + (nudge ? '/refresh' : ''), nudge ? 'POST' : 'GET') as ValuationDashboard
-      if (data.schemaVersion !== 4 || !Array.isArray(data.pending)) throw new Error('估值接口版本不匹配，请刷新页面')
+      if (data.schemaVersion !== 5 || !Array.isArray(data.pending)) throw new Error('估值接口版本不匹配，请刷新页面')
       screenMeta.value = data
       screenError.value = ''
     } catch (error) {

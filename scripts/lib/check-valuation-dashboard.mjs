@@ -67,7 +67,7 @@ export async function checkValuationDashboard() {
     assert.equal(sqlite.prepare("select count(*) n from kv_cache where namespace like '%lease'").get().n, 0);
     // A different dependency revision must not leak into the read model.
     const changed = { ...first.row, computation: { ...first.row.computation, revision: 'old' } };
-    sqlite.prepare('update kv_cache set value_json=? where namespace=? and key=?').run(JSON.stringify(changed), 'valuation-screen-v4', targets[0].code);
+    sqlite.prepare('update kv_cache set value_json=? where namespace=? and key=?').run(JSON.stringify(changed), 'valuation-screen-v5', targets[0].code);
     assert.equal((await api.readValuationDashboard(env)).rows.length, 2);
     const releaseOld = hold(targets[0].code);
     const old = api.refreshValuationDashboardRow(env, targets[0].code);
@@ -94,6 +94,14 @@ export async function checkValuationDashboard() {
     assert.equal(bounded.rows.length, 2, 'public batch must compute at most two securities');
     assert.equal(bounded.pending.length, 1);
     assert.equal((await api.refreshValuationDashboardBatch(env)).stale, false, 'next invocation must resume remaining work');
-    return { valuationCache: 'passed', checks: ['read-only', 'single-flight', 'global-limit', 'fresh-reuse', 'batch-cache', 'revision', 'fencing', 'lease-recovery'] };
+    // Research edits invalidate cached rows even within the ten-minute window.
+    sqlite.prepare('insert into kv_cache values (?, ?, ?, null, ?)').run('observation-ledger-v1', 'observation-research:v1:' + targets[0].code + ':0000000001', JSON.stringify({code:targets[0].code,version:1}), Date.now());
+    assert(!(await api.readValuationDashboard(env)).rows.some(r=>r.code===targets[0].code));
+    const computeBefore=fixture.compute;
+    fixture.compute=async (...args)=>{const r=await computeBefore(...args);r.rows[0].researchVersion=1;return r};
+    const updated=await api.refreshValuationDashboardRow(env,targets[0].code);
+    assert.equal(updated.row.researchVersion,1);
+    assert.equal((await api.readValuationDashboard(env)).stale,false);
+    return { valuationCache: 'passed', checks: ['read-only', 'single-flight', 'global-limit', 'fresh-reuse', 'batch-cache', 'revision', 'fencing', 'lease-recovery','research-version-invalidation'] };
   } finally { sqlite.close(); delete globalThis[fixtureKey]; }
 }

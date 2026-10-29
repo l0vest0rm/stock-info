@@ -1,3 +1,4 @@
+import { appendObservationCohort, loadObservationVersions } from './observation-research';
 import { getKvCache, listKvCacheByNamespace } from '../../../db/queries';
 import { externalHttpOptions } from '../../../shared/http';
 import type { Bindings } from '../../../types';
@@ -7,7 +8,7 @@ import { VALUATION_FRESHNESS_MS, type DashboardRow, type DashboardRefresh, type 
 import { screenTargets, screenValuationPool } from './screen-valuation-pool';
 
 // Only existing kv_cache. Slots apply across API, cron, tabs and Worker isolates.
-const NAMESPACE = 'valuation-screen-v4';
+const NAMESPACE = 'valuation-screen-v5';
 const LEASE_NAMESPACE = 'valuation-screen-v4-lease';
 const RETENTION_MS = 7 * 86400000;
 const LEASE_MS = 10 * 60_000;
@@ -27,13 +28,18 @@ const fresh = (row: DashboardRow | null, now = Date.now()) => !!row
 
 async function readRow(env: Environment, code: string) {
   const cached = await getKvCache(env.DB, NAMESPACE, code);
-  return cached ? parse(cached.valueJson) : null;
+  const row = cached ? parse(cached.valueJson) : null;
+  const research = (await loadObservationVersions(env.DB, code, 1))[0];
+  return row && (row.researchVersion ?? 0) === (research?.version ?? 0) ? row : null;
 }
 
 export async function readValuationDashboard(env: Environment): Promise<ValuationDashboard> {
   const targets = screenTargets().map(t => t.code);
   const stored = new Map((await listKvCacheByNamespace(env.DB, NAMESPACE))
     .map(r => parse(r.valueJson)).filter((r): r is DashboardRow => !!r).map(r => [r.code, r]));
+  const researchRows = await env.DB.prepare("select json_extract(value_json,'$.code') as code, max(json_extract(value_json,'$.version')) as version from kv_cache where namespace = 'observation-ledger-v1' and key >= 'observation-research:v1:' and key < 'observation-research:v1:~' group by json_extract(value_json,'$.code')").bind().all<{code:string;version:number}>();
+  const researchVersions = new Map(researchRows.results.map(r => [r.code, r.version]));
+  for (const [code, row] of stored) if ((row.researchVersion ?? 0) !== (researchVersions.get(code) ?? 0)) stored.delete(code);
   const rows = targets.flatMap(code => stored.has(code) ? [stored.get(code)!] : []);
   const now = Date.now();
   const pending = targets.filter(code => !fresh(stored.get(code) ?? null, now))
@@ -47,7 +53,7 @@ export async function readValuationDashboard(env: Environment): Promise<Valuatio
   }
   const dates = rows.map(r => r.computation.computedAt).sort();
   return {
-    schemaVersion: 4, mode: 'rolling', revision: revision.revision, freshnessMs: VALUATION_FRESHNESS_MS,
+    schemaVersion: 5, mode: 'rolling', revision: revision.revision, freshnessMs: VALUATION_FRESHNESS_MS,
     asOf: new Date(now).toISOString().slice(0, 10), generatedAt: dates.at(-1) ?? null,
     oldestComputedAt: dates[0] ?? null, companies: targets.length, targets, rows, byVerdict, blockedDetail,
     pending, stale: pending.length > 0,
@@ -100,6 +106,9 @@ export async function refreshValuationDashboardRow(env: Environment, code: strin
       expires_at = excluded.expires_at, updated_at = excluded.updated_at returning key`)
       .bind(NAMESPACE, code, JSON.stringify(row), Date.now() + RETENTION_MS, Date.now(), LEASE_NAMESPACE, key, slot, token, Date.now()).first();
     if (!saved) throw new Error('估值计算租约已过期，旧任务结果未写入');
+    const latestResearch = (await loadObservationVersions(env.DB, code, 1))[0];
+    if ((row.researchVersion ?? 0) !== (latestResearch?.version ?? 0)) return { state: 'busy', row: null };
+    await appendObservationCohort(env.DB, row);
     return { state: 'complete', row };
   } finally {
     try { if (ownsCode) await release(env, key, token); }

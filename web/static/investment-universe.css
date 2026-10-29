@@ -233,3 +233,19 @@ html:has(.ivu-detail-dialog[open]){overflow:hidden}
 .ivu-detail-dialog .ivu-close{cursor:pointer;flex-shrink:0}
 .ivu-detail-dialog .ivu-close:focus-visible{outline:2px solid #278264;outline-offset:3px}
 @media(max-width:767px){.ivu-detail-dialog{width:calc(100% - 16px);max-height:calc(100dvh - 24px)}.ivu-detail-dialog .ivu-detail-header{padding-top:16px}}
+
+/* Source-backed local research workbench. */
+.oru-panel { margin-top: 24px; padding: 20px; border: 1px solid #d6e3dc; border-radius: 12px; background: #f7faf8; }
+.oru-panel details { margin: 14px 0; padding: 12px; border: 1px solid #d6e3dc; border-radius: 8px; background: white; }
+.oru-panel summary { cursor: pointer; font-weight: 650; }
+.oru-panel fieldset { margin: 12px 0; padding: 12px; border: 1px solid #d6e3dc; min-width: 0; }
+.oru-panel legend { font-size: 1rem; font-weight: 600; }
+.oru-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 12px; }
+.oru-field { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
+.oru-panel input, .oru-panel textarea, .oru-panel select { padding: 8px; border: 1px solid #a7bdb2; border-radius: 5px; max-width: 100%; width: 100%; color: #183b31; background: white; }
+.oru-panel textarea { min-height: 76px; }
+.oru-panel button { margin: 6px 8px 6px 0; padding: 8px 14px; border: 1px solid #3c7860; border-radius: 6px; background: #e7f3eb; }
+.oru-panel button:disabled { opacity: .55; }
+.oru-message { padding: 10px; background: #fff3d6; white-space: pre-wrap; }
+.oru-scroll { overflow-x: auto; }
+.oru-panel td, .oru-panel th { padding: 8px; border-bottom: 1px solid #d6e3dc; }

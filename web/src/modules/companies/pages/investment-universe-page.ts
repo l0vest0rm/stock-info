@@ -1,3 +1,4 @@
+import { ObservationResearchPanel } from '../components/observation-research-panel'
 import { useValuationDashboard } from '../composables/use-valuation-dashboard'
 import { VALUATION_FRESHNESS_MS, type DashboardRow as ScreenRow } from '../../../../../shared/valuation-dashboard'
 import { computed, createApp, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -702,6 +703,7 @@ const InvestmentUniversePage = defineComponent({
           h('span', '分级依据：' + (company.basis.join('；') || '待补充')),
         ]),
         renderOpportunityDetail(company),
+        h(ObservationResearchPanel, { code: company.preferredTicker, key: company.id }),
         renderForwardReports(company),
         renderCompanyResearch(company),
         renderValuationDetail(company),
@@ -725,6 +727,19 @@ const InvestmentUniversePage = defineComponent({
       return h('section', { class: 'ivu-opportunity-detail' }, [
         h('div', { class: 'ivu-section-heading' }, [h('h3', '机会研究卡 · 线索 → 验证 → 研究'), h('span', { class: 'ivu-verdict ' + opportunityTone(fresh ? o.stage : '') }, fresh ? opportunityStageLabels[o.stage] : '缓存过期 / 待刷新')]),
         h('p', { class: 'ivu-muted-small' }, `规则版本 ${o.policyVersion} · ${new Date(o.computedAt).toLocaleString('zh-CN')} · 不按信号数量打分`),
+        o.workflow ? h('article', { class: 'ivu-opportunity-review' }, [
+          h('h4', '研究路径 · ' + o.workflow.pathLabel),
+          h('p', (fresh ? queueLabels[o.workflow.queue] : '缓存待刷新') + '：' + (fresh ? o.workflow.nextAction : '不按旧结果安排当前研究优先级。')),
+          h('ul', o.workflow.requiredEvidence.map(t => h('li', t))),
+          h('p', '论点状态：' + ({ not_verified: '待验证', reviewed: '人工复核完成', invalidated: '已失效', review_due: '到期需复核' }[o.workflow.thesisStatus]) + '；详见下方研究闭环记录，量化候选不是交易许可。'),
+        ]) : null,
+        o.seasonality ? h('article', { class: 'ivu-opportunity-review' }, [
+          h('h4', '环比与历史季节性'), h('p', o.seasonality.reason),
+          ...([['营收', o.seasonality.revenue], ['利润', o.seasonality.profit]] as const).map(([label, reading]) => h('div', [
+            h('p', `${label}：本期 ${formatPct(reading.current)} · 历史中位数 ${formatPct(reading.median)} · ${reading.samples.length}个样本`),
+            h('ul', reading.samples.map(sample => h('li', sample.period + '：' + formatPct(sample.value)))),
+          ])),
+        ]) : null,
         h('div', { class: 'ivu-opportunity-gates' }, o.gates.map((g) => h('article', { class: 'ivu-opportunity-gate is-' + g.state }, [h('strong', gateLabels[g.key]), h('span', gateStateLabels[g.state]), ...g.reasons.map((r) => h('p', r))]))),
         h('div', { class: 'ivu-opportunity-signals' }, o.signals.map((signal) => h('article', { class: 'ivu-opportunity-signal' }, [
           h('div', { class: 'ivu-section-heading' }, [h('h4', opportunityLabels[signal.kind]), h('span', { class: 'ivu-verdict ' + (signal.state === 'triggered' ? 'is-watch' : 'is-blocked') }, evidenceLabels[signal.state])]),
@@ -901,15 +916,17 @@ const InvestmentUniversePage = defineComponent({
       ]),
     ))
 
-    const focusMode = ref<'all' | OpportunityKind | 'risk'>('all')
-    const focusLabels = { all: '全部线索', ...opportunityLabels, risk: '风险 / 缺口' }
+    const focusMode = ref<'all' | OpportunityKind | 'risk' | 'repair_data' | 'review_risk' | 'verify_thesis' | 'monitor'>('all')
+    const queueLabels = { repair_data: '数据修复', review_risk: '风险复核', verify_thesis: '论点验证', monitor: '常规观察' }
+    const focusLabels = { all: '全部线索', ...opportunityLabels, ...queueLabels, risk: '风险 / 缺口' }
     const focusGroups = computed(() => {
-      const groups: Record<keyof typeof focusLabels, Company[]> = { all: [], historical_discount: [], earnings_delivery: [], forward_gap: [], drawdown: [], risk: [] }
+      const groups: Record<keyof typeof focusLabels, Company[]> = { all: [], historical_discount: [], earnings_delivery: [], forward_gap: [], drawdown: [], risk: [], repair_data: [], review_risk: [], verify_thesis: [], monitor: [] }
       for (const company of universe.companies) {
         const row = screenFor(company)
         const o = row?.opportunity
         if (!o) continue
         if (!freshOpportunity(row)) { groups.risk.push(company); continue }
+        if (o.workflow) groups[o.workflow.queue].push(company)
         if (['blocked', 'insufficient_data'].includes(o.stage)) groups.risk.push(company)
         const triggered = o.signals.filter((s) => s.state === 'triggered')
         for (const signal of triggered) groups[signal.kind].push(company)
@@ -933,7 +950,7 @@ const InvestmentUniversePage = defineComponent({
         h('span', { class: 'ivu-focus-scope' }, '全池研究入口 · 每行业最多2家 · 最多6家'),
       ]),
       h('div', { class: 'ivu-focus-tabs', role: 'group', 'aria-label': '机会线索分类' }, Object.entries(focusLabels).map(([key, label]) =>
-        h('button', { type: 'button', 'aria-pressed': focusMode.value === key, 'aria-label': label, onClick: () => { focusMode.value = key as keyof typeof focusLabels } }, [label, h('span', key === 'forward_gap' ? '待核验' : String(focusGroups.value[key as keyof typeof focusLabels].length))]))),
+        h('button', { type: 'button', 'aria-pressed': focusMode.value === key, 'aria-label': label, onClick: () => { focusMode.value = key as keyof typeof focusLabels } }, [label, h('span', String(focusGroups.value[key as keyof typeof focusLabels].length))]))),
       focusCards.value.length ? h('div', { class: 'ivu-focus-grid' }, focusCards.value.map((company) => {
         const row = screenFor(company)!
         const o = row.opportunity!
@@ -946,6 +963,7 @@ const InvestmentUniversePage = defineComponent({
           h('div', { class: 'ivu-opportunity-tags' }, clues.map((c) => h('span', opportunityLabels[c.kind]))),
           h('p', { class: 'ivu-focus-reason' }, freshOpportunity(row) ? clues[0]?.summary ?? gate?.reasons[0] ?? '等待证据核查' : '缓存过期或本轮刷新失败，不据此形成当前机会判断。'),
           h('p', { class: 'ivu-focus-reason' }, gate ? `${gateLabels[gate.key]}：${gate.reasons[0]}` : '三道量化初筛通过；仍需核查公告、扣非、现金流与股本稀释。'),
+          o.workflow ? h('p', { class: 'ivu-focus-reason' }, freshOpportunity(row) ? queueLabels[o.workflow.queue] + ' · ' + o.workflow.pathLabel + '：' + o.workflow.nextAction : '待刷新后重新确定研究任务。') : null,
           h('div', { class: 'ivu-focus-metrics' }, [
             h('div', [h('span', a?.method || '主估值方法'), h('strong', a ? metricText(a) : '—')]),
             h('div', [h('span', 'TTM利润同比'), h('strong', formatPct(o.quality.ttmGrowth))]),
@@ -957,8 +975,8 @@ const InvestmentUniversePage = defineComponent({
             h('button', { type: 'button', class: 'ivu-open', 'aria-label': '研究' + company.displayName, onClick: () => chooseCompany(company.id) }, '查看证据链 ↗'),
           ]),
         ])
-      })) : h('div', { class: 'ivu-focus-empty', role: 'status' }, focusMode.value === 'forward_gap' ? '未来预期差未覆盖：已有机构预测参考不会自动成为估值结论。仍需核验来源、预测口径、情景假设和价格隐含预期。' : screenLoading.value || refreshing.value ? '当前已计算结果暂无此类线索，等待本轮刷新。' : '暂无满足规则的线索，不为填满卡片而降低门槛。'),
-      h('details', { class: 'ivu-focus-policy' }, [h('summary', '研究规则、阈值与覆盖边界'), h('p', `历史折价：3年与5年PE分位均≤${formatPct(opportunityPolicy.historyPercentileMax)}；盈利兑现：TTM利润同比≥${formatPct(opportunityPolicy.ttmGrowthMin)}，连续${opportunityPolicy.earningsQuarters}个正式单季营收同比≥${formatPct(opportunityPolicy.quarterRevenueGrowthMin)}、利润同比≥${formatPct(opportunityPolicy.quarterProfitGrowthMin)}，不以PEG直接判低估。回撤：雪球前复权${Object.entries(opportunityPolicy.returns).map(([days, threshold]) => days + '交易日跌幅≥' + formatPct(-threshold)).join('、')}，或距252交易日最高收盘价回撤≥${formatPct(-opportunityPolicy.drawdown252Max)}。金融/周期企业不套用通用增长规则。`), h('p', '量化验证：有效行情和报表、经营现金转化与两年利润/负债初筛、适用主方法下价格未超规则区间。最新正式单季营收、利润环比均需可比且不下降；环比未季调，下降需复核季节性及一次性因素，不直接判定经营恶化。上季基数非正、缺季或预告不计算环比。存在缺口时只保留线索，不自动通过。历史折价与回撤有共同价格因素，命中多个不加分。验证阶段优先，同阶段按观察池顺序，每行业最多2家；与下方筛选独立。'), h('p', `阈值为${opportunityPolicy.version}研究政策，尚未完成样本外收益检验。未来估值、行业相对收益、市场预期差及定性护城河尚需证据；所有结果仅用于研究，不自动交易。`)]),
+      })) : h('div', { class: 'ivu-focus-empty', role: 'status' }, focusMode.value === 'forward_gap' ? '暂无已复核且与当前行情日期、币种、市值匹配的未来情景线索；请在公司详情的研究闭环中补充并核验假设。' : screenLoading.value || refreshing.value ? '当前已计算结果暂无此类线索，等待本轮刷新。' : '暂无满足规则的线索，不为填满卡片而降低门槛。'),
+      h('details', { class: 'ivu-focus-policy' }, [h('summary', '研究规则、阈值与覆盖边界'), h('p', `历史折价：3年与5年PE分位均≤${formatPct(opportunityPolicy.historyPercentileMax)}；盈利兑现：TTM利润同比≥${formatPct(opportunityPolicy.ttmGrowthMin)}，连续${opportunityPolicy.earningsQuarters}个正式单季营收同比≥${formatPct(opportunityPolicy.quarterRevenueGrowthMin)}、利润同比≥${formatPct(opportunityPolicy.quarterProfitGrowthMin)}，不以PEG直接判低估。回撤：雪球前复权${Object.entries(opportunityPolicy.returns).map(([days, threshold]) => days + '交易日跌幅≥' + formatPct(-threshold)).join('、')}，或距252交易日最高收盘价回撤≥${formatPct(-opportunityPolicy.drawdown252Max)}。金融/周期企业不套用通用增长规则。`), h('p', '量化验证：有效行情和报表、经营现金转化与两年利润/负债初筛、适用主方法下价格未超规则区间。正式相邻单季环比必须可比；下降指标需至少两年同季度转换均下降，且本期不弱于历史中位数超过5个百分点，才解除环比待核查。该比较不是季调或因果证明，其他经营门槛不放宽。上季基数非正、缺季或预告不计算环比。存在缺口时只保留线索，不自动通过。历史折价与回撤有共同价格因素，命中多个不加分。验证阶段优先，同阶段按观察池顺序，每行业最多2家；与下方筛选独立。'), h('p', `阈值为${opportunityPolicy.version}研究政策，尚未完成样本外收益检验。未来估值、行业相对收益、市场预期差及定性护城河尚需证据；所有结果仅用于研究，不自动交易。`)]),
     ])
 
     return () => h('main', { class: 'ivu-page' }, [

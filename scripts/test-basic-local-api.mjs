@@ -23,13 +23,15 @@ async function get(path) {
 }
 
 console.log(JSON.stringify(await checkValuationDashboard()));
+const { checkObservationResearch } = await import('./lib/check-observation-research.mjs');
+console.log(JSON.stringify(await checkObservationResearch()));
 
 const health = await get("/api/health");
 assert(health?.d1 === true, "local database health check failed");
 
 // The retained basic entry point also protects the valuation dashboard contract.
 const dashboard = await get('/api/research/valuation-screen');
-assert(dashboard.schemaVersion === 4 && Array.isArray(dashboard.targets), '估值看板契约版本错误');
+assert(dashboard.schemaVersion === 5 && Array.isArray(dashboard.targets), '估值看板契约版本错误');
 assert(dashboard.mode === 'rolling' && /^[a-f0-9]{64}$/.test(dashboard.revision), '滚动模型或依赖版本缺失');
 assert(Array.isArray(dashboard.pending) && dashboard.pending.every(code => dashboard.targets.includes(code)), '待刷新目标无效');
 assert(dashboard.stale === (dashboard.pending.length > 0), '缓存新鲜度与待刷新列表不一致');
@@ -39,7 +41,8 @@ for (const row of dashboard.rows) {
   assert(row.computation?.revision === dashboard.revision && Number.isFinite(Date.parse(row.computation.computedAt)), '计算版本或时间缺失');
   assert(row.executable === false, '估值不得成为自动交易指令');
   assert(row.opportunity?.policyVersion === policy.version, '机会模型缺失或策略版本错误');
-  assert(row.opportunity.signals.length === 4 && row.opportunity.future === null, '四类线索契约或未来留空错误');
+  assert(['not_verified','reviewed','invalidated','review_due'].includes(row.opportunity.workflow?.thesisStatus) && row.opportunity.seasonality?.reason, '研究路径与季节性证据缺失');
+  assert(row.opportunity.signals.length === 4 && (row.opportunity.future === null || row.opportunity.future.model.status === 'available'), '四类线索契约或未来留空错误');
   if (row.opportunity.stage === 'research_candidate') assert(row.opportunity.gates.every((g) => g.state === 'pass'), '候选必须通过全部量化门槛');
   if (!row.assessment) { assert(row.verdict === 'blocked', '缺失估值模型必须阻断'); continue; }
   const a = row.assessment;
