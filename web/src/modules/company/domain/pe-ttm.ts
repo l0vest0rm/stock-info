@@ -35,7 +35,7 @@ function isAnnualReport(row: IncomeReportForPeTtm): boolean {
  * being added to three cumulative interims for 腾讯, and H1 was added as if it
  * were Q2 for 茅台, producing PE 6.23 and 10.86 against true 14.93 and 20.58.
  */
-function isSingleQuarter(row: IncomeReportForPeTtm): boolean {
+export function isSingleQuarter(row: IncomeReportForPeTtm): boolean {
   const contract = String(row.FINANCIAL_SOURCE_CONTRACT ?? '').trim().toLowerCase()
   if (contract.endsWith('incomeqc.v1')) return true
   if (contract.endsWith('income.v1') || contract.endsWith('annual_income.v1')) return false

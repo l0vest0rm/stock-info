@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { checkValuationDashboard } from './lib/check-valuation-dashboard.mjs';
 import policy from '../config/investment-opportunity-policy.json' with { type: 'json' };
+import { checkFinanceDisplaySeries } from './lib/check-finance-display-series.mjs';
 
 // Run after ./start-local.sh has made the Node API healthy.
 const baseUrl = String(process.env.BASIC_TEST_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
@@ -22,6 +23,7 @@ async function get(path) {
   return body.data;
 }
 
+console.log(JSON.stringify(checkFinanceDisplaySeries()));
 console.log(JSON.stringify(await checkValuationDashboard()));
 const { checkObservationResearch } = await import('./lib/check-observation-research.mjs');
 console.log(JSON.stringify(await checkObservationResearch()));
