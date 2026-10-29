@@ -6,6 +6,24 @@ import policy from '../../config/investment-opportunity-policy.json' with { type
 /** Real cache/lease SQL against isolated SQLite; only market computation is a
  * controllable stub. Included in test:basic before network-dependent checks. */
 export async function checkValuationDashboard() {
+  // Spot quotes supply HK/US market cap when Xueqiu daily bars omit it.
+  const quoteBundle = await build({ entryPoints: ['src/adapters/xueqiu.ts'], bundle: true,
+    write: false, format: 'esm', platform: 'node' });
+  const quotes = await import('data:text/javascript;base64,' + Buffer.from(quoteBundle.outputFiles[0].text).toString('base64'));
+  const spot = { symbol: 'NVDA', currency: 'USD', market_capital: 5.2e12, timestamp: Date.parse('2026-10-29T01:00:00Z') };
+  const payload = quote => JSON.stringify({ error_code: 0, data: { quote } });
+  assert.deepEqual(quotes.parseXueqiuQuote(payload(spot), 'NVDA.US'), {
+    currency: 'USD', marketCap: 5.2e12, priceAsOf: '2026-10-28',
+  }, 'use exchange date, not fetch date or UTC date; preserve absolute cap units');
+  assert.equal(quotes.parseXueqiuQuote(payload({ ...spot, symbol: '00700', currency: 'HKD' }), '00700.HK').priceAsOf, '2026-10-29');
+  for (const patch of [{ symbol: 'META' }, { currency: 'CNY' }, { market_capital: null },
+    { market_capital: 0 }, { market_capital: -1 }, { timestamp: null }, { timestamp: 0 }, { timestamp: 1e20 }]) {
+    assert.throws(() => quotes.parseXueqiuQuote(payload({ ...spot, ...patch }), 'NVDA.US'));
+  }
+  for (const text of ['<html>captcha</html>', 'null', '{}', '{"error_code":400016}', '{"error_code":500}']) {
+    assert.throws(() => quotes.parseXueqiuQuote(text, 'NVDA.US'));
+  }
+  await assert.rejects(quotes.fetchXueqiuStockQuote({}, 'NVDA.US', undefined, ''), /XUEQIU_COOKIE/);
   const fixtureKey = '__valuationDashboardFixture';
   const targets = ['600036.SH', '600519.SH', '000001.SZ'].map(code => ({ code }));
   let calls = 0;
@@ -102,6 +120,6 @@ export async function checkValuationDashboard() {
     const updated=await api.refreshValuationDashboardRow(env,targets[0].code);
     assert.equal(updated.row.researchVersion,1);
     assert.equal((await api.readValuationDashboard(env)).stale,false);
-    return { valuationCache: 'passed', checks: ['read-only', 'single-flight', 'global-limit', 'fresh-reuse', 'batch-cache', 'revision', 'fencing', 'lease-recovery','research-version-invalidation'] };
+    return { valuationCache: 'passed', checks: ['spot-quote-validation', 'read-only', 'single-flight', 'global-limit', 'fresh-reuse', 'batch-cache', 'revision', 'fencing', 'lease-recovery','research-version-invalidation'] };
   } finally { sqlite.close(); delete globalThis[fixtureKey]; }
 }

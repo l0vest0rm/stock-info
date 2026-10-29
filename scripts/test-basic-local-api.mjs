@@ -25,9 +25,13 @@ async function get(path) {
 console.log(JSON.stringify(await checkValuationDashboard()));
 const { checkObservationResearch } = await import('./lib/check-observation-research.mjs');
 console.log(JSON.stringify(await checkObservationResearch()));
+const { checkActivePortfolio } = await import('./lib/check-active-portfolio.mjs');
+console.log(JSON.stringify(await checkActivePortfolio()));
 
 const health = await get("/api/health");
 assert(health?.d1 === true, "local database health check failed");
+const portfolio = await get('/api/research/portfolio/workspace');
+assert(portfolio.template.strategy === 'diversified_active' && portfolio.template.rules.maxHoldings === 39 && portfolio.assessment.executable === false, '主动组合私有契约错误');
 
 // The retained basic entry point also protects the valuation dashboard contract.
 const dashboard = await get('/api/research/valuation-screen');

@@ -9,9 +9,9 @@
     "companyIdentity": "operating_company_not_security",
     "watchlistLimit": 100,
     "targetHoldings": {
-      "min": 20,
+      "min": 0,
       "illustrative": 25,
-      "max": 30
+      "max": 39
     },
     "baselineCounts": {
       "sectors": 11,

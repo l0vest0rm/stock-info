@@ -11,10 +11,9 @@ import { trailingTwelveMonths } from "../../finance/domain/ttm-fiscal-calendar";
 import { loadValuationBands } from "../../finance/application/load-valuation-bands";
 import { loadFinancialStatementReadModel } from "../../finance/application/load-financial-statements";
 import { buildQuarterlySeries } from "../../finance/domain/quarterly-ttm-series";
-import { fetchXueqiuStockKline } from "../../../adapters/xueqiu";
+import { fetchXueqiuStockKline, fetchXueqiuStockQuote } from "../../../adapters/xueqiu";
 import { assessValuation, type ValuationAssessment } from "../domain/valuation-assessment";
 import { normalizeCurrency } from "../domain/valuation-screen";
-import { fetchEastmoneyCompanyOverview } from "../../../adapters/eastmoney";
 import { normalizeSecurityCode } from "../../../shared/codes";
 import { externalHttpOptions, type ExternalHttpOptions } from "../../../shared/http";
 import type { Bindings } from "../../../types";
@@ -197,10 +196,10 @@ async function screenOne(
     } else {
       // HK/US K-lines often have no market cap. Use an explicit dated quote,
       // never PE × our own profit (that circularly manufactures a valuation).
-      quoteStage = "东方财富带日期市值";
-      const overview = await fetchEastmoneyCompanyOverview(env.DB, target.code, { ...httpOptions, quoteOnly: true });
-      quote = { currency: tradingCurrency(target.market), priceAsOf: overview.marketDate, marketCap: overview.marketCapYi == null ? null : overview.marketCapYi * 1e8 };
-      quoteMeta = { source: '东方财富行情市值（非K线）', date: overview.marketDate, fetchedAt: new Date(overview.updatedAt).toISOString() };
+      quoteStage = "雪球带日期市值";
+      const spot = await fetchXueqiuStockQuote(env.DB, target.code, httpOptions, env.XUEQIU_COOKIE);
+      quote = spot;
+      quoteMeta = { source: '雪球行情市值（非K线）', date: spot.priceAsOf, fetchedAt: spot.fetchedAt };
     }
   } catch { quoteFailed = true; quoteFailureReason = `${quoteStage}请求失败；请检查数据源连接与凭据。`; }
   const comparableCurrency = !!bandCurrency && normalizeCurrency(bandCurrency) === normalizeCurrency(tradingCurrency(target.market));

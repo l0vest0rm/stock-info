@@ -1,3 +1,6 @@
+import { ObservationInformationPanel } from '../components/observation-information-panel'
+import { portfolioSecurityCode } from '../../../../../shared/active-portfolio'
+import { ActivePortfolioPanel } from '../components/active-portfolio-panel'
 import { ObservationResearchPanel } from '../components/observation-research-panel'
 import { useValuationDashboard } from '../composables/use-valuation-dashboard'
 import { VALUATION_FRESHNESS_MS, type DashboardRow as ScreenRow } from '../../../../../shared/valuation-dashboard'
@@ -703,7 +706,8 @@ const InvestmentUniversePage = defineComponent({
           h('span', '分级依据：' + (company.basis.join('；') || '待补充')),
         ]),
         renderOpportunityDetail(company),
-        h(ObservationResearchPanel, { code: company.preferredTicker, key: company.id }),
+        h(ObservationInformationPanel, { codes: company.securities.map(portfolioSecurityCode), key: company.id + ':information' }),
+        h(ObservationResearchPanel, { code: portfolioSecurityCode({ ticker: company.preferredTicker, market: company.preferredMarket }), key: company.id }),
         renderForwardReports(company),
         renderCompanyResearch(company),
         renderValuationDetail(company),
@@ -982,9 +986,10 @@ const InvestmentUniversePage = defineComponent({
     return () => h('main', { class: 'ivu-page' }, [
       h('div', { class: 'ivu-shell' }, [
         h('header', { class: 'ivu-page-header' }, [
-          h('div', [h('div', { class: 'ivu-eyebrow' }, 'INVESTMENT UNIVERSE'), h('h1', '优质公司观察池'), h('p', '分散行业 · 研究好公司 · 等待合理估值')]),
-          h('div', { class: 'ivu-header-summary' }, [h('strong', String(universe.companies.length)), h('span', '观察公司'), h('i', '/'), h('strong', String(universe.sectors.length)), h('span', '行业'), h('i', '/'), h('strong', '20–30'), h('span', '目标持有')]),
+          h('div', [h('div', { class: 'ivu-eyebrow' }, 'INVESTMENT UNIVERSE'), h('h1', '观察池与主动组合'), h('p', '证据驱动研究 · 组合约束优先 · 必要时才调整')]),
+          h('div', { class: 'ivu-header-summary' }, [h('strong', String(universe.companies.length)), h('span', '观察公司'), h('i', '/'), h('strong', String(universe.sectors.length)), h('span', '行业'), h('i', '/'), h('strong', '≤39'), h('span', '持仓上限')]),
         ]),
+        h(ActivePortfolioPanel, { onSelectSecurity: (code: string) => { const company = universe.companies.find(c => c.securities.some(s => portfolioSecurityCode(s) === code)); if (company) chooseCompany(company.id) } }),
         renderScreenStatus(),
         renderFocus(),
         h('dialog', {
@@ -1002,7 +1007,7 @@ const InvestmentUniversePage = defineComponent({
             h('div', { class: 'ivu-topline' }, [
               h('div', [
                 h('div', { class: 'ivu-eyebrow' }, 'EXPLORE COMPANIES'),
-                h('h2', '完整观察池'),
+                h('h2', { id: 'observation-universe' }, '完整观察池'),
                 h('p', '集中筛选行业、估值与经营状态，横向比较全部候选。'),
               ]),
               h('button', {

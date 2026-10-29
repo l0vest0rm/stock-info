@@ -249,3 +249,17 @@ html:has(.ivu-detail-dialog[open]){overflow:hidden}
 .oru-message { padding: 10px; background: #fff3d6; white-space: pre-wrap; }
 .oru-scroll { overflow-x: auto; }
 .oru-panel td, .oru-panel th { padding: 8px; border-bottom: 1px solid #d6e3dc; }
+
+/* Private portfolio workbench. Keep it legible on narrow screens. */
+.ap-panel{background:#fff;border:1px solid #d8e3df;border-radius:14px;padding:22px;margin:18px 0;color:#183136}
+.ap-panel h2{margin:6px 0 12px}.ap-panel p{line-height:1.65;overflow-wrap:anywhere}
+.ap-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0}
+.ap-panel button,.ap-panel select{border:1px solid #b8cfc7;border-radius:7px;padding:8px 12px;background:#f6faf8;color:#183136;font:inherit}
+.ap-panel button[aria-pressed=true]{background:#1b5750;color:white}.ap-panel button:disabled{opacity:.55}
+.ap-panel button:focus-visible,.ap-panel input:focus-visible,.ap-panel select:focus-visible{outline:3px solid #368d81;outline-offset:2px}
+.ap-task{padding:15px;border:1px solid #d8e3df;border-left:4px solid #51877c;border-radius:8px;margin:12px 0}.ap-task small{overflow-wrap:anywhere}
+.ap-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0;border-color:#d8e3df}
+.ap-field{display:flex;flex-direction:column;gap:7px;font-size:.86rem;min-width:0}.ap-field input{width:100%;min-width:0;border:1px solid #b8cfc7;border-radius:6px;padding:9px;font:inherit;color:#183136;background:white}
+.ap-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.ap-error{color:#963625}.ap-editor{border-top:1px solid #d8e3df;margin-top:18px;padding-top:12px}
+.ap-decision{display:grid;gap:12px;max-width:650px;padding-top:12px}.ap-panel details{margin-top:18px}.ap-panel a{color:#256858}
+@media(max-width:600px){.ap-panel{padding:15px}.ap-columns{grid-template-columns:1fr}.ap-fields{grid-template-columns:1fr}}

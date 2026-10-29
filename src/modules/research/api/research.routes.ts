@@ -1,3 +1,4 @@
+import { activePortfolioRoutes } from './active-portfolio.routes';
 import { observationResearchRoutes } from './observation-research.routes';
 import { Hono } from "hono";
 import { isSupportedCompanyCode, normalizeSecurityCode } from "../../../shared/codes";
@@ -32,6 +33,7 @@ import { canVerifyIdentity, latestEvidenceDate, validateEvidenceRecord } from ".
  */
 export const researchRoutes = new Hono<AppEnv>();
 researchRoutes.route("/", observationResearchRoutes);
+researchRoutes.route("/", activePortfolioRoutes);
 
 researchRoutes.get("/research/valuation-coverage", async (c) => {
   // Deterministic classification only: no price, target value or recommendation.

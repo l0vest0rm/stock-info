@@ -97,6 +97,8 @@ for (const s of data.sectors) {
 assert.equal(seats, data.scope.targetHoldings.illustrative, 'Seat allocation mismatch');
 assert.equal(weight, 100, 'Equity weights must total 100%');
 assert(Number.isInteger(data.scope.targetHoldings.min) && Number.isInteger(data.scope.targetHoldings.max));
+assert.equal(data.scope.targetHoldings.min, 0, 'Active portfolio must not require filling seats');
+assert.equal(data.scope.targetHoldings.max, 39, 'Active portfolio holding cap must remain 39');
 assert(data.scope.targetHoldings.min <= seats && seats <= data.scope.targetHoldings.max);
 for (const t of data.tracks) {
   assert(/^[A-Z]{2,5}-\d{2}$/.test(t.id), 'Invalid track ID: ' + t.id);

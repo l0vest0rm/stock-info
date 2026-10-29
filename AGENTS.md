@@ -91,3 +91,34 @@
 - Historical evaluation starts after actual capture, preserves exclusions and
   policy versions, and never backfills past cohorts. Matured outcomes are frozen.
   New functionality does not imply mature forward performance or deployment.
+
+## Private Active Portfolio
+
+- `shared/active-portfolio.ts` owns the private diversified-active portfolio
+  contract. The maximum is 39 distinct securities across accounts, not a target
+  count; company concentration merges known multiple listings by company ID.
+- `active-portfolio.ts` in application is the sole portfolio ledger writer.
+  It appends versioned records to existing `kv_cache`, namespace
+  `private-active-portfolio-v1`, with null expiry and optimistic concurrency.
+  This namespace is durable private data: never publish, evict as cache, or
+  embed it into the public universe/research configuration or web bundle.
+- All portfolio reads/writes are local Node, loopback Host and same-origin only.
+  GET is read-only. The UI polls existing research; it never schedules providers.
+  Production does not expose private portfolio records or execute remote LLMs.
+- Snapshot prices, quantities, cash and FX are explicitly user-reconciled inputs,
+  not live quotes. Missing any price/FX leaves NAV and all weights unavailable.
+  Currency must match the security market. Cash is included in weight denominators.
+- Site tasks are review requests, never trades. Decisions retain underlying risk
+  and missing-data warnings; semantic evidence changes/new snapshots reopen tasks.
+  Acknowledgement is not evidence that an investment thesis is valid or a trade
+  executed. External push is not enabled; no portfolio return claims are made.
+- `npm run test:basic` includes isolated portfolio arithmetic, private-route,
+  immutable-history and concurrent-write regressions. See
+  `docs/active-portfolio-workflow.md` for supported scope and remaining gates.
+
+- Portfolio what-if proposals are separate from actual snapshots. Comparisons
+  lock original rules/date/FX/price basis; confirmations record a human decision,
+  not a fill. Reject confirmation with unbalanced funds, unknown fees/valuation,
+  >39 securities or stale snapshots. Never copy a proposal into actual holdings
+  without separately reconciled user input. Company dynamic information reads
+  existing entity-linked feed records (extraction integrity is not factual verification), not a new extraction scheduler.
