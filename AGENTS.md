@@ -4,13 +4,15 @@
 
 - This checkout is local-only. Cloudflare deployment is retired; do not restore
   Worker deployment, remote migrations or automatic report publication.
-- Full business functionality currently runs in the transitional Node runtime
-  through `./start-local.sh`, default URL `http://127.0.0.1:8000`.
-- The Rust replacement is in `backend/`, launched with `./start-rust.sh`.
-  It is NOT feature-complete: see `docs/local-rust-migration.md` for gates.
-  Do not switch the default runtime or delete TypeScript business modules until
-  their Rust replacements pass contract and behavioral acceptance. No Node
-  proxy, subprocess or embedded JS is a completed Rust migration.
+- The backend is the native Rust application in `backend/`, launched through
+  `./start-local.sh` (alias `./start-rust.sh`). API/page URL defaults to
+  `http://127.0.0.1:8000`; the local content listener defaults to port 8788.
+- Node is build/test tooling and retained offline analysis/reference source,
+  not a backend runtime or fallback. Do not restore a Node proxy, subprocess
+  business implementation or embedded JS. Retain TypeScript reference modules
+  used by contract/differential tests until their consumers are migrated.
+- See `docs/local-rust-migration.md` for implementation and acceptance scope;
+  healthy listeners alone do not prove business/provider parity.
 
 ## LLM Runtime Boundary
 
@@ -21,18 +23,20 @@
 
 ## Local Workflow
 
-- `./start-local.sh` builds assets/prompts, typechecks, migrates local SQLite,
-  starts the full transitional Node runtime and waits for health.
-- `./start-rust.sh` builds web assets and starts the partial Rust backend;
-  it never stops an existing service. Use an unused PORT for migration tests.
+- `./start-local.sh` delegates to `./start-rust.sh`: builds prompts/web assets
+  and the locked Rust application, then execs the native binary. The binary
+  acquires both listeners before migrating SQLite; an occupied port fails
+  without stopping another service or opening its database.
+- Use unused API/content ports and isolated data/object directories for tests.
+  Typechecks are separate gates, not implicit startup checks.
 - `npm run check:rust` runs formatting, clippy and isolated Rust regressions.
 - `npm run test:basic` remains the full business acceptance baseline against a
-  running local API. Never remove or weaken it to make partial Rust pass.
+  running local API. Never remove or weaken its business assertions to obtain a pass.
 - Assets are served from `web/dist`. Rebuild before page acceptance.
 - Cron expressions are in `config/app/local-runtime.json`, timezone UTC.
 - SQLite stays at `LOCAL_DB_PATH`, or `LOCAL_DATA_DIR/stock-info.sqlite`
-  (default `data/local/stock-info.sqlite`); both migrators preserve the sorted
-  historical migration/user_version protocol. Never add a migration table.
+  (default `data/local/stock-info.sqlite`); the Rust migrator preserves the
+  sorted historical migration/user_version protocol. Never add a migration table.
 
 ## Verification
 
@@ -47,7 +51,10 @@
 
 - Preserve durable ledger namespaces, local data and active sessions.
 - TypeScript/Cloudflare type definitions and historical remote maintenance
-  scripts are transitional source, not a supported deployment workflow.
+  scripts are reference source, not a supported deployment workflow.
+- PDF conversion/cleaning may use the separately installed Python/PyMuPDF tools;
+  this is not a Node backend. Missing reviewed cleaners must fail explicitly,
+  never silently omit cleaning. See README for installation/discovery boundaries.
 
 ## Schema Change Boundaries
 
@@ -60,7 +67,7 @@
 - Stock K-line data must use Xueqiu only. Do not add Eastmoney, Tencent, Yahoo, or other stock K-line fallbacks for A-shares, Hong Kong stocks, U.S. stocks, or indices.
 - Fund net-value history remains Eastmoney-only because it is not a stock K-line source.
 - Xueqiu requests require `XUEQIU_COOKIE`, refreshed locally through CDP and written to the ignored local credential store (never commit the Cookie). When the cookie is unavailable or rejected, surface the failure rather than silently switching data sources.
-- Yahoo is allowed for U.S. stock options data and U.S. financial-statement collection. Local U.S. financial-statement requests must use the configured Yahoo proxy; production may access Yahoo finance directly through the unified HTTP client and cache. Do not use Yahoo for stock K-lines, search, Hong Kong financial statements, or other market data.
+- Yahoo is allowed for U.S. stock options data and U.S. financial-statement collection. Local U.S. financial-statement requests must use the configured Yahoo proxy through the unified HTTP client and cache. Do not use Yahoo for stock K-lines, search, Hong Kong financial statements, or other market data.
 
 ## Observation Pool Runtime
 
@@ -68,7 +75,8 @@
   `shared/valuation-dashboard.ts` owns its API contract. Each row carries its
   computation ID, dependency revision and calculation time; source dates remain
   separate. Do not describe the newest row timestamp as a common valuation date.
-- `valuation-screen-cache.ts` owns all dashboard writes. GET is read-only;
+- `backend/src/dashboard.rs` and its submodules own runtime dashboard writes;
+  `valuation-screen-cache.ts` is the retained TypeScript contract oracle. GET is read-only;
   POST refresh performs at most two due securities, with fresh results reused.
   The one-minute cron processes at most twelve due securities per invocation;
   shared SQLite leases cap dashboard computations at two across callers.
@@ -86,8 +94,9 @@
 ## Observation Research Ledger
 
 - `shared/observation-research.ts` owns the research editor/history contract.
-  `observation-research.ts` in application owns immutable research versions and
-  outcomes in existing `kv_cache`, namespace `observation-ledger-v1`, with null
+  `backend/src/observation.rs` owns runtime immutable research versions and
+  outcomes (the application `observation-research.ts` remains a test oracle)
+  in existing `kv_cache`, namespace `observation-ledger-v1`, with null
   expiry. Treat this namespace as durable records, not disposable cache.
 - Only the dashboard writer appends daily observation cohorts. GET stays
   read-only. Research versions invalidate cached results; the current dashboard
@@ -104,8 +113,9 @@
 - `shared/active-portfolio.ts` owns the private diversified-active portfolio
   contract. The maximum is 39 distinct securities across accounts, not a target
   count; company concentration merges known multiple listings by company ID.
-- `active-portfolio.ts` in application is the sole portfolio ledger writer.
-  It appends versioned records to existing `kv_cache`, namespace
+- `backend/src/portfolio.rs` and its submodules are the sole runtime portfolio
+  ledger writer; the application `active-portfolio.ts` is retained for tests.
+  The writer appends versioned records to existing `kv_cache`, namespace
   `private-active-portfolio-v1`, with null expiry and optimistic concurrency.
   This namespace is durable private data: never publish, evict as cache, or
   embed it into the public universe/research configuration or web bundle.

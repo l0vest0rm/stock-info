@@ -10,6 +10,29 @@ use std::{
 };
 use tokio::sync::Semaphore;
 
+/// Provider error text is available only to source-specific validators; neither
+/// Display nor Debug can leak response bodies, credentials or query strings.
+pub struct ProviderRejection {
+    pub status: reqwest::StatusCode,
+    pub body: String,
+    host: String,
+}
+impl std::fmt::Display for ProviderRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "provider rejected request: host={} status={}",
+            self.host, self.status
+        )
+    }
+}
+impl std::fmt::Debug for ProviderRejection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+impl std::error::Error for ProviderRejection {}
+
 struct RequestPolicy {
     timeout: Duration,
     retry: bool,
@@ -240,7 +263,24 @@ impl HttpClient {
                 Ok(mut response) => {
                     let status = response.status();
                     if !status.is_success() {
-                        bail!("provider rejected request: host={host} status={status}");
+                        let mut bytes = Vec::new();
+                        while bytes.len() < 16_384 {
+                            let Some(chunk) = response
+                                .chunk()
+                                .await
+                                .map_err(|error| error.without_url())?
+                            else {
+                                break;
+                            };
+                            let count = chunk.len().min(16_384 - bytes.len());
+                            bytes.extend_from_slice(&chunk[..count]);
+                        }
+                        return Err(ProviderRejection {
+                            status,
+                            body: String::from_utf8_lossy(&bytes).into_owned(),
+                            host: host.to_owned(),
+                        }
+                        .into());
                     }
                     let headers = response.headers().clone();
                     if response

@@ -12,6 +12,7 @@ import { convertResponse, parseResponseData } from '../../api'
 import { createBsTable } from '../../bs-table'
 import { createCompanyTableRuntime } from '../../modules/company/runtime/company-table-runtime'
 import { trailingQuarterlyParentNetProfits } from '../../modules/company/domain/pe-ttm'
+import { financeDisplayIncomeRows } from '../../modules/company/domain/finance-display-series'
 import { addFollowedCompany, removeFollowedCompany } from '../../modules/companies/domain/follow-storage'
 import { calculateKlineDrawdowns } from '../../modules/market/domain/kline-drawdown'
 import { findInsertIndex, findTsIndex } from '../../chart'
@@ -2516,7 +2517,7 @@ function formatFinanceData(codes: string[]) {
     //利润表
     let cacheKey = `${code}-fsi`
     let reportYear = ''
-    const cacheData = cache[cacheKey] as any[]
+    const cacheData = financeDisplayIncomeRows(cache[cacheKey] as any[], compareType === 'yearly')
     for (const report of cacheData) {
       if (compareType ==='yearly' && report.reportDate.substring(0, 4) === reportYear && reports.length > 0) {
         //累加年度的

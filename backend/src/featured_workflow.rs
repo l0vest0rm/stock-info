@@ -106,6 +106,41 @@ async fn python(script: &Path, args: &[&Path]) -> Result<Vec<u8>> {
     }
     Ok(output.stdout)
 }
+/// Resolve a separately installed, reviewed PDF-cleaning skill. Explicit
+/// configuration is authoritative: never silently substitute a missing override.
+fn resolve_cleaner(root: &Path, configured: &str, home: Option<&Path>) -> Result<PathBuf> {
+    let candidates = if configured.is_empty() {
+        let mut candidates = Vec::new();
+        if let Some(parent) = root.parent() {
+            candidates.push(parent.join("skills/attachments-to-markdown/scripts/clean-pdf.py"));
+        }
+        if let Some(home) = home {
+            for path in [
+                ".codex/skills/attachments-to-markdown/scripts/clean-pdf.py",
+                ".agents/skills/attachments-to-markdown/scripts/clean-pdf.py",
+                "git/skills/attachments-to-markdown/scripts/clean-pdf.py",
+            ] {
+                candidates.push(home.join(path));
+            }
+        }
+        candidates
+    } else {
+        vec![absolute(root, configured)]
+    };
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return Ok(candidate.canonicalize()?);
+        }
+    }
+    bail!(
+        "Required reviewed PDF cleaner is unavailable; set FEATURED_PDF_CLEANER to clean-pdf.py. Checked: {}. Raw PDF cleaning is not skipped.",
+        candidates
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+}
 async fn clean(state: &AppState, dir: &Path, bytes: &[u8]) -> Result<PathBuf> {
     let output = dir.join("original.pdf");
     let audit = dir.join("original.pdf.json");
@@ -125,23 +160,20 @@ async fn clean(state: &AppState, dir: &Path, bytes: &[u8]) -> Result<PathBuf> {
     let cleaned = staging.path().join("cleaned.pdf");
     fs::write(&input, bytes)?;
     let configured = state.setting("FEATURED_PDF_CLEANER");
-    let cleaner = if configured.is_empty() {
-        PathBuf::from("/Users/terry/git/skills/attachments-to-markdown/scripts/clean-pdf.py")
-    } else {
-        PathBuf::from(configured)
-    };
-    if !cleaner.is_file() {
-        bail!(
-            "Required PDF cleaner is unavailable at {}; set FEATURED_PDF_CLEANER to the reviewed clean-pdf.py implementation. Raw PDF cleaning is not skipped.",
-            cleaner.display()
-        );
-    }
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let cleaner = resolve_cleaner(&state.root, &configured, home.as_deref())?;
+    let cleaner_hash = hash(&fs::read(&cleaner)?);
     python(&cleaner, &[&input, Path::new("--output"), &cleaned]).await?;
+    if hash(&fs::read(&cleaner)?) != cleaner_hash {
+        bail!("PDF cleaner changed during processing; output was not published");
+    }
     let mut record = read(&cleaned.with_extension("pdf.json"))?;
     if record["source_sha256"] != hash(bytes) {
         bail!("PDF cleaner source checksum mismatch");
     }
     record["output_sha256"] = json!(hash(&fs::read(&cleaned)?));
+    record["processor"] =
+        json!({"kind":"local-pdf-cleaner","script":cleaner,"sha256":cleaner_hash});
     record
         .as_object_mut()
         .context("invalid PDF audit")?
@@ -725,6 +757,30 @@ mod tests {
                 .to_string()
                 .contains("coverage")
         );
+    }
+    #[test]
+    fn cleaner_resolution_prefers_explicit_and_supports_adjacent_skill_checkout() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("stock-info");
+        fs::create_dir(&project).unwrap();
+        let sibling = root
+            .path()
+            .join("skills/attachments-to-markdown/scripts/clean-pdf.py");
+        fs::create_dir_all(sibling.parent().unwrap()).unwrap();
+        fs::write(&sibling, b"# reviewed fixture").unwrap();
+        assert_eq!(
+            resolve_cleaner(&project, "", None).unwrap(),
+            sibling.canonicalize().unwrap()
+        );
+        let configured = project.join("custom.py");
+        fs::write(&configured, b"# explicit fixture").unwrap();
+        assert_eq!(
+            resolve_cleaner(&project, "custom.py", None).unwrap(),
+            configured.canonicalize().unwrap()
+        );
+        assert!(resolve_cleaner(&project, "missing-explicit.py", None).is_err());
+        fs::remove_file(&sibling).unwrap();
+        assert!(resolve_cleaner(&project, "", None).is_err());
     }
     #[test]
     fn unknown_completed_checkpoint_blocks_replay_without_explicit_confirmation() {

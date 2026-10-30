@@ -3,4 +3,4 @@ set -eu
 
 cd "$(dirname "$0")"
 
-exec node scripts/cleanup-knowledge-docs.mjs --local --apply
+exec ./start-rust.sh --maintenance cleanup-docs --local --apply

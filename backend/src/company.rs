@@ -196,35 +196,41 @@ async fn company_profile(state: &AppState, code: &str) -> Result<Value> {
 pub async fn overview(state: &AppState, raw_code: &str) -> Result<Value> {
     let code = codes::normalize(raw_code);
     let today = chrono::Utc::now().date_naive().to_string();
-    let mut overview = if codes::eastmoney_secid(&code).is_some() {
-        let (mut eastmoney, rows) = tokio::try_join!(
-            eastmoney_overview(state, &code),
-            crate::market::load_kline(state, &code, "normal", "1990-01-01", &today)
-        )?;
-        let latest = rows
-            .iter()
-            .rfind(|row| row.get("close").is_some())
-            .with_context(|| format!("Xueqiu K-line is empty for company overview: {code}"))?;
-        apply_xueqiu(&mut eastmoney, latest);
-        eastmoney
-    } else {
-        let security =
-            crate::market::search_securities(state, code.split('.').next().unwrap_or(&code));
-        let kline = crate::market::load_kline(state, &code, "normal", "1990-01-01", &today);
-        let (security, rows) = tokio::join!(security, kline);
-        let securities = security.unwrap_or_default();
-        let name = securities
-            .iter()
-            .find(|row| row["code"].as_str() == Some(&code))
-            .and_then(|row| row["name"].as_str())
-            .unwrap_or(&code);
-        let rows = rows
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|row| number(&row["close"]).is_some())
-            .collect::<Vec<_>>();
-        global_overview(&code, name, &rows, chrono::Utc::now().timestamp_millis())
-    };
+    anyhow::ensure!(
+        codes::supported(&code),
+        "unsupported company overview code: {code}"
+    );
+    // Overview has one price source: Xueqiu. Identity and industry facts do not
+    // require Eastmoney's separate quote service (whose prices are not used).
+    let (name, rows, profile) = tokio::try_join!(
+        company_name(state, &code),
+        crate::market::load_kline(state, &code, "normal", "1990-01-01", &today),
+        company_profile(state, &code)
+    )?;
+    let latest = rows
+        .iter()
+        .rfind(|row| number(&row["close"]).is_some_and(|price| price > 0.0))
+        .with_context(|| {
+            format!("Xueqiu K-line has no valid price for company overview: {code}")
+        })?;
+    let mut overview = global_overview(&code, &name, &rows, chrono::Utc::now().timestamp_millis());
+    apply_xueqiu(&mut overview, latest);
+    overview["companyProfile"] = profile;
+    if number(&latest["marketCapital"]).is_none_or(|cap| cap <= 0.0) {
+        // HK K-lines do not carry market capital. Fill only this field through
+        // the validated same-source quote contract, never another K-line source.
+        let quote = crate::xueqiu::stock_quote(state, &code, false)
+            .await
+            .with_context(|| {
+                format!("Xueqiu market capital unavailable for company overview: {code}")
+            })?;
+        overview["marketCapYi"] = json!(
+            number(&quote["marketCap"])
+                .filter(|cap| *cap > 0.0)
+                .context("Xueqiu company overview market capital is invalid")?
+                / 100_000_000.0
+        );
+    }
     let cap = number(&overview["marketCapYi"]).map(|n| n * 100_000_000.0);
     match crate::finance::load_latest(state, &code, cap).await {
         Ok(valuation) => {
@@ -240,6 +246,33 @@ pub async fn overview(state: &AppState, raw_code: &str) -> Result<Value> {
         }
     }
     Ok(overview)
+}
+
+async fn company_name(state: &AppState, code: &str) -> Result<String> {
+    let rows = state
+        .db
+        .query(
+            "SELECT short_name FROM stock WHERE code=?",
+            vec![code.into()],
+        )
+        .await?;
+    if let Some(name) = rows
+        .first()
+        .and_then(|row| row["short_name"].as_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+    {
+        return Ok(name.to_string());
+    }
+    crate::market::search_securities(state, code.split('.').next().unwrap_or(code))
+        .await?
+        .iter()
+        .find(|row| row["code"].as_str() == Some(code))
+        .and_then(|row| row["name"].as_str())
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .with_context(|| format!("company identity unavailable for exact code: {code}"))
 }
 
 pub fn apply_xueqiu(overview: &mut Value, latest: &Value) {

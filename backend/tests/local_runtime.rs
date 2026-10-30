@@ -516,3 +516,50 @@ async fn http_download_limits_reject_declared_and_streamed_oversize() {
         server.await.unwrap();
     }
 }
+
+#[tokio::test]
+async fn provider_rejection_keeps_validator_body_out_of_error_strings() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0; 4096];
+        let _ = stream.read(&mut request).await;
+        let body = r#"{"error_code":"400016","private":"never-log-me"}"#;
+        stream
+            .write_all(
+                format!(
+                    "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+    });
+    let error = stock_info_local::http::HttpClient::new()
+        .unwrap()
+        .text(
+            &format!("http://{address}/?token=secret"),
+            reqwest::Method::GET,
+            reqwest::header::HeaderMap::new(),
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert!(!format!("{error:?} {error:#}").contains("never-log-me"));
+    assert!(!format!("{error:?} {error:#}").contains("token=secret"));
+    let rejection = error
+        .downcast_ref::<stock_info_local::http::ProviderRejection>()
+        .unwrap();
+    assert_eq!(rejection.status, StatusCode::BAD_REQUEST);
+    assert!(
+        stock_info_local::xueqiu::validate_body(&rejection.body)
+            .unwrap_err()
+            .to_string()
+            .contains("Cookie")
+    );
+    server.await.unwrap();
+}

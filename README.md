@@ -1,489 +1,119 @@
 # stock-info
 
-## 本地 Rust 重构状态
-
-本分支改为**仅本地运行**，不再支持 Cloudflare 部署。完整保留现有功能的 Rust
-重构正在进行，**尚未完成**；当前完整业务仍使用 `./start-local.sh` 的 Node
-运行时，Rust 验证入口为 `./start-rust.sh`。不要把 Rust 健康检查成功当作整站
-迁移完成。具体共享契约、数据边界及全量验收门槛见
-[本地 Rust 后端迁移](docs/local-rust-migration.md)。
-
-本地 cron 已改用 `config/app/local-runtime.json`；自动向生产同步研究结果已移除。
-Cloudflare 部署、回滚、远端迁移与远端上传 npm 命令已移除。现有线上资源未被操作。
-`npm run check:rust` 验证 Rust 格式、clippy 和隔离回归；`npm run test:basic`
-仍是完整业务基线，不能为迁移删减断言。
-
-以下为迁移前功能说明，涉及 Worker/D1/R2/生产部署的段落仅供历史参考，
-不再是本分支支持的操作流程。迁移完成后将统一替换这些历史说明。
-
-项目整体设计见 [架构文档](docs/architecture.md)；AI 产业标的研究见 [赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)；宽基式投资的[初版历史赛道图谱](docs/宽基式优质公司组合_细分赛道与98家观察池_2026-10-27.md)保留作对照。当前[观察池主数据](config/investment-universe.json)已调整为**A股优先**（A股78、美股15、港股5家）；[每日复盘规则](docs/investment-daily-review-playbook.md)、[维护指南](docs/investment-universe-usage.md)规定证据与策略判断要求。交互页面为 [`/investment-universe.html`](web/src/investment-universe.html)（顶栏「观察池」）。首次每日行情与估值核验尚未执行，不代表已经形成买入或换仓建议。
-
-Cloudflare Workers 股票信息站。当前知识链路已收敛到固定形态：
-
-- D1：文档索引库，只负责列表、筛选、排序、搜索、正文引用
-- R2 + `content.tinfo.cc`：正文对象存储，浏览器直接访问
-- R2 + `market-data.tinfo.cc`：市场历史快照对象存储，浏览器可直接访问
-- Worker API：只返回结构化业务数据，不中转正文
-- 旧知识 Importer pipeline：负责非资讯信息流文档的清洗、preview、标签、压缩、对象写入、D1 upsert
-- 资讯信息流：本地独立采集/工程去重/`gpt-6-luna` 打标，远端仅批量接收有许可且已打标的独有内容
-- Cleanup pipeline：周期性清理未引用正文对象
-- Observability：分开看 Worker、D1、R2 和正文域名缓存
-
-## 已实现
-
-- `GET /`：`Vue + Vite` 搜索与详情页
-- `GET /api/health`：Worker 与 D1 健康检查
-- `GET /api/search?q=600519`：证券搜索，先查 D1，未命中再查 Eastmoney
-- `GET /api/kline?code=600519&from=2026-06-01&to=2026-06-24`：股票 K 线
-- `GET /api/kline?code=019785.OF&from=2026-06-01&to=2026-06-24`：基金净值
-- `GET /api/finance/income?code=600519`：A 股利润表
-- `GET /api/finance/balance?code=600519`：A 股资产负债表
-- `GET /api/finance/cashflow?code=600519`：A 股现金流量表
-
-市场历史快照对象路径：
-
-- `https://market-data.tinfo.cc/kline/{fq}/{code}.json`
-- `https://market-data.tinfo.cc/fund-nav/{code}.json`
-- `https://market-data.tinfo.cc/financial-statements/{statementType}/{code}.json`
+本地股票信息与投资研究站。后端为 `backend/` 中的原生 Rust 应用（Axum / Tokio /
+SQLite），前端为 Vue / Vite。**不再部署 Cloudflare**；没有 Node 后端代理或业务兜底。
+Node 仅用于前端、提示词构建、工程测试和保留的离线分析工具。
 
 ## 本地运行
 
-```bash
-npm install --no-audit --no-fund --omit=optional
-npm install --no-audit --no-fund --ignore-scripts
-npm run db:migrate:local
-npm run build
-npm run dev:local
-```
+需要 Rust 工具链、Node.js 26.10.0，以及 npm 本地依赖指向的相邻 `shared-ts` 工作区。
 
-macOS 上也可以直接用根目录脚本：
-
-```bash
-chmod +x ./start-local.sh
+```sh
+npm install --include=dev --no-audit --no-fund
 ./start-local.sh
 ```
 
-默认访问地址是 `http://127.0.0.1:8000`。
-
-本地服务就绪后，运行唯一保留的基本接口测试：
-
-```bash
-npm run test:basic
-```
-
-它通过后端 API 检查中际旭创（`300308.SZ`）的日 K 线、三张财报、PE(TTM) 和市值。需要可用的雪球 Cookie 与上游行情／财报服务；失败时不会切换 K 线来源。
-
-### 资讯信息流
-
-本地页面为 `/news.html`，接口为 `/api/knowledge/feed` 和 `/api/knowledge/feed/facets`。
-新资讯由外部订阅或导入方调用带 Bearer secret 的 `POST /api/internal/knowledge/import`，stock-info 不再监听 JSONL 目录采集。短纯文本（不超过 4 KiB）直接存 D1/本地 SQLite，长正文存 R2/本地对象目录，详见 [外部知识导入设计](docs/knowledge-import.md)。外部导入展示为来源原文，不冒充旧提取链路的语义记录。旧文件处理与模型提取脚本仅保留供手工历史回填；生产 Worker 不调用模型。历史链路的手动处理和检查：
-
-```bash
-npm run process:feed -- --max-documents 200 --max-tags 20
-npm run reconcile:feed:dry-run # 去重规则更新后检查存量同标题重复卡片
-npm run publish:feed:dry-run
-```
-
-腾讯自选股、财联社采集全文已获远端发布许可，但 `publishRemote` 开关仍关闭；手动执行发布器的 `--apply` 也会跳过远端操作。先验收本地采集、去重与打标效果，之后再应用远端 D1 迁移、验证批量发布与生产只读 API，并单独开启发布开关。链路边界见 [架构文档](docs/architecture.md)。
-
-`start-local.sh` 最终以前台 `local-supervisor` 运行，并管理 `local-http` 与
-`local-scheduler` 两个常驻角色。`local-http` 同时监听 8000 API
-与 8788 知识正文端点；宏观数据直接请求 allowlist 官方来源，8791 不再有本地 relay。
-调度器直接读取 `wrangler.jsonc` 的 `triggers.crons`，按 Cloudflare 一致的 UTC cron
-配置调用共享 scheduled 分发函数；以后新增定时任务只维护线上同一份配置。Supervisor 的
-JSON 行日志可按 `run_id`、`role`、`event` 与任务字段关联。需要立即手动执行所有已配置
-cron 时，可以在已构建 Node runtime 后运行：
-
-```bash
-npm run dev:cron:once
-```
-
-知识库的 PDF 转 Markdown 不会在本地启动或运行期间自动执行：
-`config/knowledge/knowledge-processing.json` 中的 `automation` 默认关闭。需要处理时，显式运行
-`npm run process:knowledge` 或 `./process-knowledge-local-full.sh`；前者是增量处理，后者是全量重跑。
-
-第一步用 `--omit=optional` 跳过容易卡住的可选依赖构建；第二步补齐
-`rollup` 的平台包，但禁用安装脚本，避免 `fsevents` 之类的可选包拖慢安装。
-
-## 中证 800 + 中证 1000 股票行业与别名
-
-`npm run sync:csi-stock-universe` 从东财 `RPT_INDEX_CONSTITUENT` 获取中证 800（000906）和中证 1000（000852）的完整成分股，再从 `RPT_F10_ORG_BASICINFO.EM2016` 取得三级行业。默认只预览；确认后运行 `npm run sync:csi-stock-universe -- --apply`，原子写入本地 Node SQLite 的 `stock` 和 `stock_alias`。缺失或不完整的接口数据会令整次同步失败，不会部分写入。已有 `stock.short_name` 和 `updated_at` 不覆盖；东财简称作为名称映射写入。代码写在 `stock.code`，不重复存入别名表。可用 `--indexes 000906,000852`、`--db PATH`、`--batch-size` 和 `--concurrency` 复用此脚本；生产 D1 不会被该本地命令修改。
-
-## 港股大市值与活跃股票身份
-
-`npm run sync:hk-popular-stocks` 从东财港股主板行情按总市值取前 200 只、按成交额取前 100 只，合并去重并排除同一股票的 8xxxx 人民币柜台。默认只预览；`npm run sync:hk-popular-stocks -- --apply` 原子写入本地 `stock` 与 `stock_alias`，保留已有规范简称。可用 `--market-cap-count`、`--turnover-count`、`--db` 调整范围。身份记录只增不删，不代表当前或历史指数成员关系。东财港股行业 `f100` 与 A 股 EM2016 三级分类不是同一口径，因此本脚本不填充 `industry_level_1/2/3`；生产 D1 不会被该命令修改。
-
-
-## 知识处理脚本
-
-知识处理现在分成“本地处理”和“数据库导入”两步：
-
-- 本地处理写本地 D1 + 本地正文缓存
-- 远端导入才写 Cloudflare D1 / R2
-- 两边都使用相同的 `knowledge-content/*` 内容键
-
-对象上传到 R2 时统一带：
-
-- `Cache-Control: public, max-age=31536000, immutable`
-- 内容哈希 key
-- 浏览器直连 `KNOWLEDGE_CONTENT_PUBLIC_BASE_URL`
-
-### 资讯流信息提取
-
-历史资讯提取仅由本地 Node 运行时处理；`npm run process:feed` 是手工回填旧文件的入口，不再是新资讯的默认采集入口。生产 Worker 不调用模型。旧“信息整理”页面和知识文档单篇信息预处理入口已停用，历史数据库表保留供已有数据读取或归档。
-
-### `./process-knowledge-local-full.sh`
-
-用途：本地全量重跑知识处理。
-
-它会做这些事：
-
-- 调用 `scripts/process-knowledge-local-full.mjs`
-- 以本地模式运行 `process-knowledge-once.mjs`
-- 执行 `full-rescan`
-- 忽略年龄限制
-- 把 `processedDir` 也作为额外输入目录重新扫描
-- 结果写入本地 Node SQLite，并把正文内容写入本地正文缓存，内容键统一为 `knowledge-content/*`
-- 更新本地同步状态文件 `knowledge-remote-sync.jsonl`
-- 知识导入不再自动调用旧单篇信息抽取接口；资讯流提取由独立的本地 `npm run process:feed` 链路执行
-- 本地导入直接对 `data/local/stock-info.sqlite` 执行分块事务；远端导入仍使用 `wrangler d1 execute --remote`
-- 增量判断使用排除抓取时间、来源文件名和 mtime 等易变字段后的内容指纹；同步账本会在导入完成后原子压缩，只保留每篇文档在各目标上的最新状态
-
-本地数据库默认是 `data/local/stock-info.sqlite`；所有本地脚本、导入与 Node HTTP
-运行时均优先使用同一个 `LOCAL_DB_PATH`。需要使用其他路径时，可以显式设置：
-
-```bash
-LOCAL_DB_PATH=/absolute/path/to/stock-info.sqlite ./process-knowledge-local-full.sh
-```
-
-### 同步标普 500 股票身份
-
-运行 `npm run db:migrate:local` 后，执行 `npm run sync:sp500-stocks`，从
-`datasets/s-and-p-500-companies` 维护的成分股 CSV 获取最新列表，并将每个证券的
-`SYMBOL.US` 写入 `stock`，将英文证券名写入 `stock_alias`。完整代码和 ticker
-由读取程序根据 `stock.code` 识别，不重复存储为别名。
-可先加 `-- --dry-run` 检查来源与数量；`-- --input /path/to/constituents.csv`
-可使用保存的 CSV 重跑。需要同步生产 D1 时，显式使用
-`npm run sync:sp500-stocks -- --remote`（需先完成远端迁移和 Wrangler 认证）。
-脚本可重复运行，不覆盖已有的规范简称和别名，也不删除退指成分股的股票身份；
-`stock`/`stock_alias` 是身份表，不存储指数成员有效期或历史名单。
-
-韩国三星电子、SK 海力士和精选日本热门股票的身份清单位于
-`config/asia-popular-stocks.json`。运行 `npm run sync:asia-popular-stocks` 写入本地
-`stock`/`stock_alias`；`-- --dry-run` 预览，`-- --remote` 才写入生产 D1。
-可用 `-- --manifest /path/to/stocks.json` 复用脚本处理同一格式的人工核对清单。
-韩国使用 `.KS`，日本东京证交所使用 `.T`；清单只存名称类别名，不存代码变体。这只是股票身份/别名同步，
-不代表当前行情、K 线或研究 API 已支持这些市场。
-
-适合什么时候用：
-
-- 想在本地完整重建一次知识库
-- 想重新生成最新的 `knowledge-import-*.jsonl`
-- 想在本地重建 SQLite，同时保持与生产一致的正文 key/元数据形态
-
-如果需要把历史 `localfs:` 记录迁到统一的 `knowledge-content/*`，可直接执行：
-
-```bash
-npm run migrate:knowledge:localfs
-```
-
-## 过期清理
-
-先清过期文档索引：
-
-```bash
-./cleanup-knowledge-local.sh
-./cleanup-knowledge-remote.sh
-```
-
-也可以分别 dry-run / apply：
-
-```bash
-npm run cleanup:knowledge:docs:local:dry-run
-npm run cleanup:knowledge:docs:local
-npm run cleanup:knowledge:docs:remote:dry-run
-npm run cleanup:knowledge:docs:remote
-```
-
-`cleanup-knowledge-docs.mjs` 会按 `storageRetention.knowledgeDocsMaxAgeDays`
-计算 cutoff，删除早于 cutoff 的 `knowledge_docs`；关联的 tags / content refs /
-security links 由外键级联删除。
-
-`./cleanup-knowledge-remote.sh` 只清 remote D1 文档索引。R2 正文对象是否过期由
-Cloudflare lifecycle rule 控制；如果需要手动核对 orphan，可单独运行下面的正文清理 dry-run。
-
-## 正文清理
-
-正文清理默认是单独手工执行，不会在 `deploy-cloudflare.sh` 里自动触发。本地模式对比
-Node SQLite 引用和 `KNOWLEDGE_CONTENT_LOCAL_DIR` 文件；远端模式对比 Cloudflare D1 引用和 R2 对象。
-
-本地先跑 dry-run：
-
-```bash
-npm run cleanup:knowledge:content:local:dry-run
-```
-
-本地真正删除：
-
-```bash
-npm run cleanup:knowledge:content:local
-```
-
-远端需要时先跑 dry-run，找出超过保留期的未引用对象：
-
-```bash
-npm run cleanup:knowledge:content
-```
-
-真正删除：
-
-```bash
-npm run cleanup:knowledge:content:apply
-```
-
-远端清理依赖下面这些环境变量：
-
-```bash
-export CLOUDFLARE_R2_ENDPOINT=...
-export CLOUDFLARE_R2_ACCESS_KEY_ID=...
-export CLOUDFLARE_R2_SECRET_ACCESS_KEY=...
-```
-
-它会：
-
-- 读取 `knowledge_doc_content_refs` 和 `knowledge_filtered_doc_content_refs`
-- 列出 `knowledge-content/*` 对象
-- 报告缺失引用和未引用对象
-- `--apply` 时删除超出保留期的 orphan 对象
-- 覆盖更新 `kv_cache` 中 `knowledge_maintenance` namespace 的该类清理 JSON 状态
-
-## 可观测性
-
-汇总 Cloudflare 侧核心指标：
-
-```bash
-npm run report:cloudflare:observability -- --hours 24
-```
-
-脚本会分别尝试读取：
-
-- Worker requests / errors / subrequests / CPU 分位数
-- D1 read/write queries、rows、query duration 分位数
-- `wrangler d1 insights` 查询热点
-- R2 操作量和对象存储规模
-- `content.tinfo.cc` 的缓存命中情况
-
-需要的环境变量：
-
-```bash
-export CLOUDFLARE_API_TOKEN=...
-export CLOUDFLARE_ACCOUNT_ID=...
-export CLOUDFLARE_ZONE_ID=...
-export CLOUDFLARE_D1_DATABASE_ID=...
-export CLOUDFLARE_WORKER_SCRIPT_NAME=stock-info
-export KNOWLEDGE_CONTENT_BUCKET=stock-info-knowledge-content
-export KNOWLEDGE_CONTENT_HOSTNAME=content.tinfo.cc
-```
-
-### `./import-knowledge-docs-remote-latest.sh`
-
-用途：补齐本地 `knowledge-import-*.jsonl` 历史清单里尚未进入远端的文档。
-
-它会做这些事：
-
-- 自动读取 `config/knowledge/knowledge-processing.json` 里的 `workDir`、`stateDir`、`database`
-- 扫描 `workDir` 中全部 `knowledge-import-*.jsonl`
-- 同一 `docId` 只保留最新一份清单中的版本
-- 远端补齐时额外按时间窗过滤：研报最近 30 天，新闻最近 14 天
-- 调用远端专用导入脚本
-- 上传正文内容到 Cloudflare R2
-- 写入远端 D1
-- 把导入结果和同步状态写回 `knowledge-remote-sync.jsonl`
-- 如果本地同步状态里已经记录过同一份源文件指纹，则直接跳过，避免重复上传和重复写 D1
-- 默认使用更激进的远端导入参数：`KNOWLEDGE_CONTENT_UPLOAD_CONCURRENCY=24`、`KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES=2000000`
-- 导入时会按文档块流式处理，默认 `KNOWLEDGE_IMPORT_DOC_CHUNK_SIZE=400`：每块先 prepare/upload，再立刻批量写远端 D1，让页面尽快看到增量结果
-- 如果需要保守一点或继续提速，可以在命令前显式覆盖这些环境变量
-
-适合什么时候用：
-
-- 本地 `process-knowledge-local-full.sh` 跑完以后
-- 想把本地历史处理结果补齐到 Cloudflare
-
-### `./import-filtered-knowledge-docs-remote-latest.sh`
-
-用途：把最近一次生成的 `knowledge-filtered-*.jsonl` 导入远端复核表。
-
-它会做这些事：
-
-- 自动选取 `workDir` 中最新的 `knowledge-filtered-*.jsonl`
-- 上传相关正文到 Cloudflare R2
-- 写入远端 `knowledge_filtered_docs`
-- 同样复用本地同步状态文件，已同步的同源文档会跳过
-- 同样默认使用 `KNOWLEDGE_CONTENT_UPLOAD_CONCURRENCY=24` 和 `KNOWLEDGE_IMPORT_MAX_SQL_BATCH_BYTES=2000000`
-- 同样按 `KNOWLEDGE_IMPORT_DOC_CHUNK_SIZE` 分块流式导入，避免先把全部正文 prepare 完才开始远端可见
-
-适合什么时候用：
-
-- 你启用了 filtered docs 导入
-- 想把筛掉的候选也同步到远端做人工复核
-
-## 验证
-
-```bash
-npm run typecheck
-curl -s 'http://localhost:8000/api/health'
-curl -s 'http://localhost:8000/api/search?q=600519'
-curl -s 'http://localhost:8000/api/kline?code=600519&from=2026-06-01&to=2026-06-24'
-```
-
-页面资源由 Wrangler `assets` 从 `web/dist` 提供，`/api/*` 继续由 Hono Worker 处理。
-
-## 当前分支约定
-
-当前先只用 `main`。
-
-- 本地开发完成后，直接 push 到 `main`
-- 生产发布统一走本机 token 部署脚本
-- 等功能稳定后，再考虑加 `staging`
-
-## Cloudflare 部署前配置
-
-### 1. 创建资源
-
-创建 D1：
-
-   ```bash
-   wrangler d1 create stock_info
-   ```
-
-### 2. 填写 `wrangler.jsonc`
-
-把创建出来的 D1 `database_id` 填入默认配置。
-
-### 3. 先初始化远端表结构
-
-```bash
-npm run db:migrate:remote
-```
-
-## Cloudflare 手动部署建议
-
-不要手工上传 `dist`。这个项目包含：
-
-- Worker 代码
-- `web/dist` 静态资源
-- D1 binding
-- `wrangler.jsonc` 环境配置
-
-当前生产发布建议是在本机先构建，再通过 `CLOUDFLARE_API_TOKEN` 手动部署。
-
-### 当前建议的 Cloudflare 配置
-
-- 关闭或删除 Cloudflare 上现有的 `stock-info` Git 自动部署，避免和手动部署互相覆盖
-- 确认 `tinfo.cc` 这个 zone 在同一个 Cloudflare 账号下
-- 确认 token 具备 Worker deploy、D1 migration 和域名路由相关权限
-- `wrangler.jsonc` 中生产域名使用 `tinfo.cc` custom domain
-
-### 本地手动部署前准备
-
-```bash
-export CLOUDFLARE_API_TOKEN=...
-```
-
-发布前预检：
-
-```bash
-npm run preflight:cloudflare:release
-```
-
-它会检查：
-
-- token 有效性，以及当前仓库所需的 zone/Worker/D1/R2 访问权限
-- `wrangler.jsonc` 中配置的 R2 bucket 是否存在
-- `knowledge-content/*` cleanup dry-run
-- Cloudflare observability snapshot
-
-如果缺少 cleanup/observability 所需环境变量，会提示跳过；需要强制 observability 成功时可执行：
-
-```bash
-./scripts/preflight-cloudflare-release.sh --strict-observability
-```
-
-### 本地手动部署
-
-部署前先通过 Chrome DevTools Protocol 生成并验证雪球 K 线 Cookie。该命令更新本地 `.dev.vars` 和忽略的本地 credential store；部署脚本另行上传 Worker secret：
-
-```bash
+- 默认页面/API：`http://127.0.0.1:8000`；知识正文兼容端口：`http://127.0.0.1:8788`。
+- `start-local.sh` 与 `start-rust.sh` 使用同一原生后端，构建提示词、页面和 Rust 后直接
+  exec 二进制。端口占用会报错，不会终止已有服务；Ctrl-C 请求优雅退出并等待已接受任务。
+- 默认只监听 loopback，不提供远程登录服务。`/api/health` 返回运行时与 SQLite 健康状态，
+  不代表提供方凭据、模型服务或所有业务都可用。
+- 静态资源来自 `web/dist`，Bootstrap、ECharts、Marked 等页面依赖随本地构建提供，
+  不依赖运行时 CDN。源码变更后需要重建。
+
+### 数据与凭据
+
+SQLite 使用 `LOCAL_DB_PATH`，否则为 `LOCAL_DATA_DIR/stock-info.sqlite`，默认
+`data/local/stock-info.sqlite`。市场对象默认位于数据目录的 `market-data/`，正文对象
+默认位于 `knowledge-content/`；分别可用 `LOCAL_MARKET_DATA_DIR` 和
+`KNOWLEDGE_CONTENT_LOCAL_DIR` 覆盖。启动脚本会兼容检测已有的旧正文缓存位置，
+迁移验证时请显式指定独立目录，避免触及原有对象。
+
+保留全部 156 个历史迁移及 `user_version` 协议，不增加迁移记录表。本次没有新增或删除表；
+最终 14 张表与消费者见 [表结构审计](docs/rust-schema-audit.md)。`kv_cache` 同时包含缓存
+和永久研究/私有组合账本，不能整表清空。未使用的账户表也未擅自删除。
+
+凭据放在忽略提交的 `.dev.vars`、环境变量及本地 credential store，不能写入版本化配置、
+命令参数或日志。启动脚本显式设置 `LLM_RUNTIME=local`；直接执行原生二进制时必须显式
+设置该值才能运行模型任务。本地运行不等于离线：行情、财报、官方来源、taskd 和模型
+仍依赖可用网络、代理及授权凭据。
+
+### 雪球 Cookie 与数据来源
+
+股票 K 线只使用雪球，基金净值历史只使用东方财富。Yahoo 只用于美股财报及期权，
+美股财报使用配置的 Yahoo 代理；不得作为股票 K 线或其他市场数据的备用源。
+
+```sh
 npm run refresh:xueqiu-cookie
 ```
 
-```bash
-npm run deploy
+此命令使用本机 Chrome CDP，在保存前验证真实雪球 K 线，写入忽略的 `.dev.vars` 与
+本地 credential store。默认使用临时 profile 的可见 Chrome；`XUEQIU_CDP_URL` 可指定
+已有可见 CDP Chrome，`XUEQIU_CHROME_HEADLESS=1` 仅供诊断，不能假设能通过雪球防护。
+启动时验证凭据，默认每三小时主动刷新，失败五分钟后重试；失效会明确失败而不换源。
+
+### PDF 与专题报告依赖
+
+PDF 渲染、提取和专题报告清理需要 Python 3、PyMuPDF，以及单独安装并审查的
+`attachments-to-markdown` skill（保留其脚本、配置和相关资源，不只复制单个脚本）。
+清理器依次查找相邻 `skills/attachments-to-markdown/scripts/clean-pdf.py` 和用户
+`.codex/skills`、`.agents/skills`、`git/skills` 下的同路径。
+`FEATURED_PDF_CLEANER=/absolute/path/to/clean-pdf.py` 可显式指定；指定路径无效时不再回退。
+缺少清理器会明确失败，不跳过清理。清理审计保留处理器路径/哈希，原始正文、页码和证据可追溯。
+
+## 功能与命令
+
+完整业务接口由 Rust 模块提供：证券搜索、行情与财报、公司与基金、公告/研报发现、
+观察池与估值、不可变研究历史、私有组合及 what-if、知识库/资讯、宏观研究、期权、
+13F/机构持仓、专题报告、taskd/模型任务与后台调度。接口延续现有 `{code,msg,data}` 契约。
+私有组合和研究编辑仅允许本机同源访问，不对外发布；确认操作不是交易执行。
+
+| 操作 | 入口 |
+| --- | --- |
+| 本地服务 / 原生 CLI 帮助 | `./start-local.sh` / `./start-rust.sh --help` |
+| 仅迁移本地数据库 | `npm run db:migrate:local` |
+| 手动执行一轮后台任务 | `npm run dev:cron:once` |
+| 知识增量 / 历史全量 / 资讯处理 | `npm run process:knowledge` / `./process-knowledge-local-full.sh` / `npm run process:feed` |
+| 资讯对账 / 相关性回填预览 | `npm run reconcile:feed:dry-run` / `npm run backfill:feed:relevance:dry-run` |
+| 证券身份同步 | `npm run sync:csi-stock-universe`、`sync:sp500-stocks`、`sync:hk-popular-stocks`、`sync:asia-popular-stocks` |
+| 研究 | `npm run research:earnings`、`research:fund-quarterly`、`analyze:buy-point` |
+| 存储检查 / 正文清理预览 | `npm run stats:knowledge:storage` / `npm run cleanup:knowledge:content:local:dry-run` |
+
+修改型命令应先查看帮助和 dry-run；维护删除需要显式 `--apply`。研究输出写入忽略的
+`reports/` 或 `data/local/`。所有支持入口仅操作本地数据，不提供远端迁移、上传、部署或自动发布。
+
+Cron 配置唯一来源是 `config/app/local-runtime.json`，时区 UTC；Rust 进程内调度器
+执行财报补齐、滚动观察池、宏观与结果对账等任务。关闭页面不会取消后台任务。
+知识处理的自动化开关来自 `config/knowledge/knowledge-processing.json`，默认关闭；
+手动处理和模型调用仍需明确授权及运行环境。
+
+## 验证
+
+```sh
+npm run check:rust             # 格式、严格 clippy、Rust 隔离回归
+npm run check:rust-routes      # 原路由合同与原生装配守卫
+npm run check:no-new-tables
+npm run check:runtime-boundaries
+npm run typecheck
+npm run check:web-assets
+npm run test:basic             # 另一个终端中，对运行中的本地 API 验证
 ```
 
-脚本会按下面顺序执行：
+`test:basic` 包含隔离账本/缓存/并发检查，以及 `300308.SZ` 的真实 K 线、三张财报、
+PE(TTM)、市值及研报前瞻引用检查。它需要有效雪球 Cookie、财报/研报上游与已有历史数据；
+不得删减断言或编造缓存以获得通过。`BASIC_TEST_BASE_URL` 可指定独立验收端口。
+隔离测试不代表真实模型、所有市场提供方、长期调度配额或全部页面交互已经验收。
 
-- `npm run typecheck`
-- `npm run build`
-- `wrangler deploy --dry-run`
-- `./scripts/preflight-cloudflare-release.sh`
-- 检查 `wrangler.jsonc` 中配置的 R2 buckets 是否已存在
-- `wrangler d1 migrations apply stock_info --remote`
-- `wrangler deploy`
-- 验证生产 `/api/health` 和 `002463.SZ` 的 `/api/kline`
+验证时使用独立端口、数据库及对象目录，不能为测试迁移、清空用户真实数据库。
+实现与验收边界见 [Rust 迁移说明](docs/local-rust-migration.md)、[架构](docs/architecture.md)
+及 [项目指令](AGENTS.md)。保留的 TypeScript 业务模块供差分测试/参考，旧 Cloudflare
+维护源码不构成支持的运行流程；本次没有删除或下线任何既有云资源。
 
-`XUEQIU_COOKIE` 作为 Worker secret 管理，不写入版本化 `wrangler.jsonc`。执行 `npm run refresh:xueqiu-cookie` 从 CDP 刷新并验证后写入忽略的 `.dev.vars` 和本地 credential store；本地调度器默认每 3 小时刷新，失败 5 分钟后重试，不改生产。标准发布在部署前重新通过雪球 K 线验证本地凭据，并经 stdin 上传 Worker secret；不要把 Cookie 放到命令行参数或日志。
+## 研究与业务说明
 
-雪球网页可匿名查看 K 线；刷新脚本不要求登录。雪球目前只给新开的无头 Chrome 一个防护 Cookie，无法完成匿名 K 线请求；脚本因此默认使用短暂打开的可见 Chrome，在临时 profile 中访问雪球接口以建立匿名 Cookie，按 `stock.xueqiu.com` API 域名提取，并在保存前验证真实 K 线。若本机无法显示 Chrome，可用 `XUEQIU_CDP_URL` 连接已运行的可见 CDP Chrome；`XUEQIU_CHROME_HEADLESS=1` 仅供诊断，不是当前可用的刷新方式。本地刷新不会自动更新生产 Worker secret；可单独执行 `npm run sync:xueqiu-secret`，或通过 `npm run deploy` 更新并验证生产。本地 `/api/health` 只证明服务和数据库存活，不证明雪球会话有效。
+- [观察池主数据](config/investment-universe.json)、[每日复盘规则](docs/investment-daily-review-playbook.md)、[维护指南](docs/investment-universe-usage.md)
+- [私有组合工作流](docs/active-portfolio-workflow.md)
+- [AI 产业细分赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)
 
-发布脚本执行前后端类型检查及 schema、运行时、提示词和发布输入守卫；旧单元／页面 smoke 测试已移除。页面入口与环境策略统一定义在 `config/app/page-manifest.json`；本地构建默认 `WEB_RUNTIME=local`，生产构建使用 `npm run build:web:production`。相邻共享包的 Git revision 和实际 dist 内容由 `config/app/release-inputs.lock.json` 锁定，升级共享包时先构建并审查，再执行 `node scripts/check-release-inputs.mjs --update` 更新锁文件。发布不允许未审查的共享包漂移。
-
-
-只做打包检查但不真正上线：
-
-```bash
-./deploy-cloudflare.sh --dry-run-only
-```
-
-跳过远端 migration：
-
-```bash
-./deploy-cloudflare.sh --skip-migrate
-```
-
-首发时如果还没创建 R2 bucket，可以显式让脚本创建：
-
-```bash
-./deploy-cloudflare.sh --create-missing-r2
-```
-
-跳过 preflight：
-
-```bash
-./deploy-cloudflare.sh --skip-preflight
-```
-
-### 回退
-
-直接回到上一版：
-
-```bash
-npm run rollback:cloudflare
-```
-
-指定 Worker version 回退：
-
-```bash
-./rollback-cloudflare.sh <version-id>
-```
-
-注意：Cloudflare Worker 可以回退版本，但 D1 不会自动回退，所以 migration 需要保持向前兼容。
-
-## 免费额度策略
-
-- 不做全市场抓取。
-- 请求路径先查 D1，缓存新鲜时直接返回。
-- 未命中时只补当前查询目标。
-- Cron 当前只记录 skipped job，不执行批量同步。
-- 财务数据默认只抓近 5 年报表日期窗口。
-- 需要留档的超大 Markdown 等对象可以进 R2，但仍应优先让 Worker 请求路径只读 D1/R2，不做在线重处理。
+历史文档中关于 Worker/D1/R2 或线上发布的段落仅描述旧系统，不是当前部署指令。
+观察池输出是带独立计算时间和来源日期的滚动读模型，不是共同估值日回测，也不是买卖建议。

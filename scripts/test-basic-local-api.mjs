@@ -2,7 +2,7 @@
 import { checkValuationDashboard } from './lib/check-valuation-dashboard.mjs';
 import policy from '../config/investment-opportunity-policy.json' with { type: 'json' };
 
-// Run after ./start-local.sh has made the Node API healthy.
+// Run after ./start-local.sh has made the native local API healthy.
 const baseUrl = String(process.env.BASIC_TEST_BASE_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const code = "300308.SZ";
 const timeoutMs = Number(process.env.BASIC_TEST_TIMEOUT_MS || 60000);

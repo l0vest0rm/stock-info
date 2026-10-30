@@ -44,7 +44,10 @@ fn headers(cookie: &str) -> Result<HeaderMap> {
             "user-agent",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36",
         ),
-        ("accept", "application/json"),
+        (
+            "accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        ),
         ("accept-language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7"),
         ("cache-control", "no-cache"),
         ("pragma", "no-cache"),
@@ -167,10 +170,22 @@ async fn validated_cached(
                 .await?;
         }
     }
-    let text = state
+    let text = match state
         .http
         .text(url, Method::GET, headers(&cookie)?, None)
-        .await?;
+        .await
+    {
+        Ok(text) => text,
+        Err(error) => {
+            if let Some(rejection) = error.downcast_ref::<crate::http::ProviderRejection>() {
+                // Xueqiu returns expired-cookie/captcha JSON with HTTP 400/403.
+                // Classify it before the generic HTTP error without accepting
+                // non-success market data or ever caching rejection bodies.
+                validate_body(&rejection.body)?;
+            }
+            return Err(error);
+        }
+    };
     let body = validate_body(&text)?;
     validate(&body)?;
     state.db.execute("INSERT INTO http_cache(cache_key,url,method,status,headers_json,body_text,expires_at,updated_at) VALUES(?,?,'GET',200,'{}',?,?,?) ON CONFLICT(cache_key) DO UPDATE SET body_text=excluded.body_text,status=200,expires_at=excluded.expires_at,updated_at=excluded.updated_at",vec![key.into(),url.into(),text.clone().into(),(now+600_000).into(),now.into()]).await?;

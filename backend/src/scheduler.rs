@@ -144,7 +144,23 @@ impl Scheduler {
     }
 }
 
-pub fn start(state: AppState) -> Result<Scheduler> {
+async fn maintain_cookie<V, R, VF, RF>(startup: bool, validate: V, refresh: R) -> Result<Value>
+where
+    V: FnOnce() -> VF,
+    R: FnOnce() -> RF,
+    VF: std::future::Future<Output = Result<Value>>,
+    RF: std::future::Future<Output = Result<Value>>,
+{
+    // Startup may reuse a validated existing session. A scheduled renewal must
+    // actually refresh, even if the old cookie is still valid at that instant:
+    // otherwise it may be revoked before the next three-hour check.
+    if startup && let Ok(value) = validate().await {
+        return Ok(value);
+    }
+    refresh().await
+}
+
+pub async fn start(state: AppState) -> Result<Scheduler> {
     let config_path = state.setting("LOCAL_CRON_CONFIG");
     let config = state.config(if config_path.is_empty() {
         "config/app/local-runtime.json"
@@ -175,6 +191,43 @@ pub fn start(state: AppState) -> Result<Scheduler> {
     let run_ingest_on_start = automation["runOnStart"] == true;
     let (stop, mut stopping) = watch::channel(false);
     let disabled = state.setting("LOCAL_SCHEDULER") == "0";
+    let cookie_enabled = state.setting("XUEQIU_COOKIE_REFRESH") != "0";
+    let cookie_interval = state
+        .setting("XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS")
+        .parse::<i64>()
+        .ok()
+        .filter(|v| *v >= 300)
+        .unwrap_or(10_800);
+    let cookie_retry = state
+        .setting("XUEQIU_COOKIE_REFRESH_RETRY_SECONDS")
+        .parse::<i64>()
+        .ok()
+        .filter(|v| *v >= 60 && *v <= cookie_interval)
+        .unwrap_or(300);
+    let initial_cookie_due = if !disabled && cookie_enabled {
+        let result = maintain_cookie(
+            true,
+            || crate::cookie_refresh::validate(&state),
+            || crate::cookie_refresh::refresh(&state),
+        )
+        .await;
+        if let Err(error) = &result {
+            event(
+                "local-scheduler",
+                "cookie_startup_failed",
+                json!({"error":error.to_string(),"retry_in_seconds":cookie_retry}),
+            );
+        }
+        Utc::now().timestamp_millis()
+            + 1000
+                * if result.is_ok() {
+                    cookie_interval
+                } else {
+                    cookie_retry
+                }
+    } else {
+        0
+    };
     let task = tokio::spawn(async move {
         if disabled {
             event(
@@ -191,20 +244,7 @@ pub fn start(state: AppState) -> Result<Scheduler> {
         let mut last_minute = None;
         let mut last_reconcile = None;
         let mut last_subscription = None;
-        let cookie_due = Arc::new(AtomicI64::new(0));
-        let cookie_enabled = state.setting("XUEQIU_COOKIE_REFRESH") != "0";
-        let cookie_interval = state
-            .setting("XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS")
-            .parse::<i64>()
-            .ok()
-            .filter(|v| *v >= 300)
-            .unwrap_or(10_800);
-        let cookie_retry = state
-            .setting("XUEQIU_COOKIE_REFRESH_RETRY_SECONDS")
-            .parse::<i64>()
-            .ok()
-            .filter(|v| *v >= 60 && *v <= cookie_interval)
-            .unwrap_or(300);
+        let cookie_due = Arc::new(AtomicI64::new(initial_cookie_due));
         let mut first = true;
         loop {
             tokio::select! {
@@ -235,7 +275,8 @@ pub fn start(state: AppState) -> Result<Scheduler> {
                                 "reconcile"=>Ok(reconcile(&state).await),
                                 "subscription"=>crate::runtime_jobs::subscribe(&state).await,
                                 "cookie"=>{
-                                    let result=match crate::cookie_refresh::validate(&state).await {Ok(value)=>Ok(value),Err(_)=>crate::cookie_refresh::refresh(&state).await};
+                                    let startup=cookie_due.load(Ordering::Relaxed)==0;
+                                    let result=maintain_cookie(startup,||crate::cookie_refresh::validate(&state),||crate::cookie_refresh::refresh(&state)).await;
                                     cookie_due.store(Utc::now().timestamp_millis()+1000*if result.is_ok(){cookie_interval}else{cookie_retry},Ordering::Relaxed);
                                     result
                                 },
@@ -286,5 +327,37 @@ mod tests {
         ] {
             assert!(Cron::parse(invalid).is_err(), "{invalid}");
         }
+    }
+}
+
+#[cfg(test)]
+mod cookie_schedule_tests {
+    use super::*;
+    #[tokio::test]
+    async fn scheduled_cookie_renewal_is_not_just_validation() {
+        let reused = maintain_cookie(
+            true,
+            || async { Ok(json!({"validated":true})) },
+            || async { panic!("valid startup cookie must be reused") },
+        )
+        .await
+        .unwrap();
+        assert_eq!(reused["validated"], true);
+        let renewed = maintain_cookie(
+            false,
+            || async { panic!("scheduled refresh must not just validate old cookie") },
+            || async { Ok(json!({"refreshed":true})) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(renewed["refreshed"], true);
+        let recovered = maintain_cookie(
+            true,
+            || async { bail!("expired") },
+            || async { Ok(json!({"refreshed":true})) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(recovered["refreshed"], true);
     }
 }

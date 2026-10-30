@@ -125,7 +125,8 @@ async fn main() -> Result<()> {
     let assets = env::var_os("LOCAL_ASSETS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("web/dist"));
-    let jobs = scheduler::start(state.clone())?;
+    let mut shutdown_signal = tokio::spawn(shutdown());
+    let jobs = scheduler::start(state.clone()).await?;
     let mut content_state = state.clone();
     content_state.authority = content_address.to_string();
     let (stop, stopped) = watch::channel(false);
@@ -148,7 +149,7 @@ async fn main() -> Result<()> {
     let (api_done, content_done, early_result) = tokio::select! {
         result = &mut api_task => (true, false, Some(result)),
         result = &mut content_task => (false, true, Some(result)),
-        _ = shutdown() => (false, false, None),
+        _ = &mut shutdown_signal => (false, false, None),
     };
     jobs.request_stop();
     let _ = stop.send(true);
@@ -265,6 +266,15 @@ fn knowledge_config(state: &AppState, options: &Value) -> Result<Value> {
     if !config.is_object() {
         bail!("knowledge configuration must be an object");
     }
+    // The historical local-full command processes existing inboxes and the
+    // configured archive; it does not fetch new reports or impose age limits.
+    if options["localFull"] == true {
+        config["fullRescan"] = json!(true);
+        config["disableAgeLimit"] = json!(true);
+        config["remote"] = json!(false);
+    } else if options["local"] == true {
+        config["remote"] = json!(false);
+    }
     if let Some(inbox) = options["inbox"].as_str() {
         config["inboxDir"] = json!(inbox);
         config["inputDirs"] = json!([inbox]);
@@ -272,6 +282,25 @@ fn knowledge_config(state: &AppState, options: &Value) -> Result<Value> {
     if let Some(extra) = options["extraInput"].as_array() {
         let mut dirs = config["inputDirs"].as_array().cloned().unwrap_or_default();
         dirs.extend(extra.iter().cloned());
+        config["inputDirs"] = json!(dirs);
+    }
+    if options["localFull"] == true {
+        let processed = config["processedDir"]
+            .as_str()
+            .filter(|path| !path.is_empty())
+            .unwrap_or("/Users/terry/git/data/stock-info/knowledge/processed")
+            .to_owned();
+        let mut dirs = config["inputDirs"]
+            .as_array()
+            .filter(|dirs| !dirs.is_empty())
+            .cloned()
+            .unwrap_or_else(|| {
+                vec![
+                    json!("/Users/terry/git/data/news"),
+                    json!("/Users/terry/git/data/reports"),
+                ]
+            });
+        dirs.push(json!(processed));
         config["inputDirs"] = json!(dirs);
     }
     for (option, key) in [
@@ -298,6 +327,7 @@ fn parse_options(command: &str, args: &[String]) -> Result<Value> {
             "archiveProcessed",
             "fullRescan",
             "noAgeLimit",
+            "localFull",
         ],
         "--process-feed" => &[
             "mode",
@@ -450,6 +480,7 @@ fn parse_options(command: &str, args: &[String]) -> Result<Value> {
             "archiveProcessed",
             "fullRescan",
             "noAgeLimit",
+            "localFull",
             "disableRetention",
             "skipRunRecord",
             "includeConsensus",
@@ -670,6 +701,56 @@ mod tests {
         assert_eq!(
             knowledge_config(&state, &json!({"extraInput":["extra"]})).unwrap()["inputDirs"],
             json!(["old-root", "extra"])
+        );
+    }
+    #[test]
+    fn knowledge_local_full_preserves_existing_only_archive_workflow() {
+        let shell = include_str!("../../process-knowledge-local-full.sh");
+        assert!(shell.contains("exec ./start-rust.sh --process-knowledge-existing --local-full"));
+        assert!(!shell.contains("exec node"));
+        let package: Value = serde_json::from_str(include_str!("../../package.json")).unwrap();
+        assert_eq!(
+            package["scripts"]["process:knowledge:local:full"],
+            "./start-rust.sh --process-knowledge-existing --local-full"
+        );
+        assert!(
+            include_str!("../../cleanup-knowledge-local.sh")
+                .contains("exec ./start-rust.sh --maintenance cleanup-docs --local --apply")
+        );
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("config/knowledge")).unwrap();
+        let config_path = root
+            .path()
+            .join("config/knowledge/knowledge-processing.json");
+        std::fs::write(&config_path, r#"{"inputDirs":["news","reports"],"processedDir":"configured archive","remote":true,"fullRescan":false,"disableAgeLimit":false}"#).unwrap();
+        let db = Database::open(root.path().join("db.sqlite")).unwrap();
+        let state = AppState::new(db, root.path().to_path_buf(), "127.0.0.1:8000".into()).unwrap();
+        let options =
+            parse_options("--process-knowledge-existing", &args(&["--local-full"])).unwrap();
+        let config = knowledge_config(&state, &options).unwrap();
+        assert_eq!(
+            config["inputDirs"],
+            json!(["news", "reports", "configured archive"])
+        );
+        assert_eq!(config["fullRescan"], true);
+        assert_eq!(config["disableAgeLimit"], true);
+        assert_eq!(config["remote"], false);
+        std::fs::write(&config_path, r#"{"inputDirs":["news"]}"#).unwrap();
+        assert_eq!(
+            knowledge_config(&state, &options).unwrap()["inputDirs"],
+            json!([
+                "news",
+                "/Users/terry/git/data/stock-info/knowledge/processed"
+            ])
+        );
+        std::fs::write(&config_path, r#"{"inputDirs":[]}"#).unwrap();
+        assert_eq!(
+            knowledge_config(&state, &options).unwrap()["inputDirs"],
+            json!([
+                "/Users/terry/git/data/news",
+                "/Users/terry/git/data/reports",
+                "/Users/terry/git/data/stock-info/knowledge/processed"
+            ])
         );
     }
     #[test]

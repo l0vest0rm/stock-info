@@ -2,10 +2,14 @@ use anyhow::{Result, bail};
 use chrono::{DateTime, NaiveDate};
 use regex::Regex;
 use serde_json::{Map, Value, json};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-fn regex(pattern: &str) -> Regex {
-    Regex::new(pattern).expect("static report regex")
+macro_rules! regex {
+    ($pattern:literal) => {{
+        static REGEX: std::sync::LazyLock<Regex> =
+            std::sync::LazyLock::new(|| Regex::new($pattern).expect("static report regex"));
+        &*REGEX
+    }};
 }
 
 pub fn text(value: &Value) -> String {
@@ -99,7 +103,7 @@ fn object(value: &Value) -> Map<String, Value> {
 
 pub fn normalize_date(value: &str) -> String {
     let raw = value.trim();
-    if let Some(captures) = regex(r"^(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})").captures(raw) {
+    if let Some(captures) = regex!(r"^(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})").captures(raw) {
         let year = captures[1].parse::<i32>().unwrap_or_default();
         let month = captures[2].parse::<u32>().unwrap_or_default();
         let day = captures[3].parse::<u32>().unwrap_or_default();
@@ -132,7 +136,7 @@ pub fn canonical_url(value: &str) -> String {
         return String::new();
     }
     url.set_fragment(None);
-    let excluded = regex(r"(?i)^(?:utm_|spm|from|source|ref|referrer|share|clickid|sessionid)");
+    let excluded = regex!(r"(?i)^(?:utm_|spm|from|source|ref|referrer|share|clickid|sessionid)");
     let mut pairs = url
         .query_pairs()
         .filter(|(key, _)| !excluded.is_match(key))
@@ -183,7 +187,7 @@ pub fn normalize_title(value: &str) -> String {
         .max();
     let prefix = colon.map(|index| &trimmed[..index]).unwrap_or("");
     let has_prefix =
-        regex(r"^[\u{4e00}-\u{9fa5}A-Za-z0-9]+(?:\(\d{6}(?:\.[A-Z]{2})?\))\s*$").is_match(prefix);
+        regex!(r"^[\u{4e00}-\u{9fa5}A-Za-z0-9]+(?:\(\d{6}(?:\.[A-Z]{2})?\))\s*$").is_match(prefix);
     let mut core = if has_prefix {
         let index = colon.unwrap();
         trimmed[index + trimmed[index..].chars().next().unwrap().len_utf8()..].to_string()
@@ -191,16 +195,16 @@ pub fn normalize_title(value: &str) -> String {
         trimmed.to_string()
     };
     if !has_prefix {
-        core = regex(r"^[\u{4e00}-\u{9fa5}A-Za-z0-9]+(?:\(\d{6}(?:\.[A-Z]{2})?\))\s*[：:]?")
+        core = regex!(r"^[\u{4e00}-\u{9fa5}A-Za-z0-9]+(?:\(\d{6}(?:\.[A-Z]{2})?\))\s*[：:]?")
             .replace(&core, "")
             .into_owned();
     }
-    dedup_text(&regex(r"[，,、。！？!?\-]").replace_all(&core, ""))
+    dedup_text(&regex!(r"[，,、。！？!?\-]").replace_all(&core, ""))
 }
 
 fn normalize_org(value: &str) -> String {
-    let without_hk = regex(r"[（(]香港[）)]").replace_all(value, "");
-    dedup_text(&regex(r"(股份)?有限责任公司|股份有限公司|有限公司").replace_all(&without_hk, ""))
+    let without_hk = regex!(r"[（(]香港[）)]").replace_all(value, "");
+    dedup_text(&regex!(r"(股份)?有限责任公司|股份有限公司|有限公司").replace_all(&without_hk, ""))
 }
 
 pub fn dedup_keys(item: &Value) -> Vec<String> {
@@ -328,6 +332,11 @@ fn merge_primary(primary: &Value, supplement: &Value) -> Value {
 
 pub fn merge_reports(primary: &[Value], supplements: &[Value]) -> Vec<Value> {
     let mut merged: Vec<Value> = Vec::new();
+    let mut merged_keys: Vec<Vec<String>> = Vec::new();
+    // Match the earliest current row, not the first incoming key. A merge can
+    // change a row's identity keys; update this index rather than remembering
+    // historical aliases (which would change the original dedup semantics).
+    let mut index_by_key = HashMap::<String, BTreeSet<usize>>::new();
     let mut seen = HashSet::new();
     for item in primary.iter().chain(supplements) {
         let item = normalize_provenance(item);
@@ -335,20 +344,46 @@ pub fn merge_reports(primary: &[Value], supplements: &[Value]) -> Vec<Value> {
         if keys.is_empty() {
             if item["provenance"] == "web_search" {
                 merged.push(item);
+                merged_keys.push(keys);
             }
             continue;
         }
-        if let Some(index) = merged
+        let matching_index = keys
             .iter()
-            .position(|prior| dedup_keys(prior).iter().any(|prior| keys.contains(prior)))
-        {
+            .filter_map(|key| {
+                index_by_key
+                    .get(key)
+                    .and_then(|indices| indices.first())
+                    .copied()
+            })
+            .min();
+        if let Some(index) = matching_index {
             merged[index] = merge_primary(&merged[index], &item);
+            for key in &merged_keys[index] {
+                if let Some(indices) = index_by_key.get_mut(key) {
+                    indices.remove(&index);
+                    if indices.is_empty() {
+                        index_by_key.remove(key);
+                    }
+                }
+            }
+            merged_keys[index] = dedup_keys(&merged[index]);
+            for key in &merged_keys[index] {
+                index_by_key.entry(key.clone()).or_default().insert(index);
+            }
             continue;
         }
+        // Keep the original seen set separate: only newly inserted rows add
+        // keys, and stale initial keys still suppress a later unmatched row.
         if keys.iter().any(|key| seen.contains(key)) {
             continue;
         }
-        seen.extend(keys);
+        seen.extend(keys.iter().cloned());
+        let index = merged.len();
+        for key in &keys {
+            index_by_key.entry(key.clone()).or_default().insert(index);
+        }
+        merged_keys.push(keys);
         merged.push(item);
     }
     merged.sort_by_key(|item| std::cmp::Reverse(sort_time(item)));
@@ -369,15 +404,15 @@ fn raw_ids(value: &Value) -> HashSet<String> {
         .map(|key| text(&value[*key]))
         .chain(raw_urls(value));
     for raw in values {
-        if let Some(info) = regex(r"(?i)AP\d{12,}").find(&raw) {
+        if let Some(info) = regex!(r"(?i)AP\d{12,}").find(&raw) {
             ids.insert(info.as_str().to_uppercase());
         }
         if let Some(captures) =
-            regex(r"(?i)(?:rptid|reportid)[/_-]?([A-Za-z0-9_-]+)").captures(&raw)
+            regex!(r"(?i)(?:rptid|reportid)[/_-]?([A-Za-z0-9_-]+)").captures(&raw)
         {
             ids.insert(captures[1].to_lowercase());
         }
-        if regex(r"^\d{8,}$").is_match(&raw) {
+        if regex!(r"^\d{8,}$").is_match(&raw) {
             ids.insert(raw);
         }
     }
@@ -462,7 +497,7 @@ pub fn format_for_llm(content: &str) -> String {
         .replace("\r\n", "\n")
         .replace('\r', "\n")
         .replace(['\u{00a0}', '\u{200b}', '\u{feff}'], " ");
-    let cjk = regex(r"([\u{3400}-\u{9fff}])[\t ]+([\u{3400}-\u{9fff}])");
+    let cjk = regex!(r"([\u{3400}-\u{9fff}])[\t ]+([\u{3400}-\u{9fff}])");
     for _ in 0..4 {
         let next = cjk.replace_all(&formatted, "$1$2").into_owned();
         if next == formatted {
@@ -470,7 +505,7 @@ pub fn format_for_llm(content: &str) -> String {
         }
         formatted = next;
     }
-    regex(r"(?-u:\b)(20\d?)\s(\d)")
+    regex!(r"(?-u:\b)(20\d?)\s(\d)")
         .replace_all(&formatted, "$1$2")
         .into_owned()
 }
@@ -623,7 +658,7 @@ pub fn aggregate(code: &str, items: &[Value]) -> Value {
 
 fn discovery_url(value: &Value) -> String {
     let raw = text(value);
-    let markdown = regex(r"(?i)^\[[^\]]*\]\((https?://[^\s)]+)\)$");
+    let markdown = regex!(r"(?i)^\[[^\]]*\]\((https?://[^\s)]+)\)$");
     canonical_url(
         markdown
             .captures(&raw)
@@ -742,7 +777,7 @@ pub fn normalize_forward(item: &Value) -> Value {
             .filter(|number| number.is_finite())
     };
     let publication = text(&item["publishDate"]);
-    let year = regex(r"^(\d{4})[-/]")
+    let year = regex!(r"^(\d{4})[-/]")
         .captures(&publication)
         .and_then(|captures| captures[1].parse::<i64>().ok())
         .unwrap_or_default();
@@ -815,6 +850,84 @@ pub fn normalize_forward(item: &Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Frozen straightforward implementation used to verify the indexed join's
+    // first-match, key mutation, stale seen-set and stable ordering semantics.
+    fn reference_merge(primary: &[Value], supplements: &[Value]) -> Vec<Value> {
+        let mut merged = Vec::new();
+        let mut seen = HashSet::new();
+        for item in primary.iter().chain(supplements) {
+            let item = normalize_provenance(item);
+            let keys = dedup_keys(&item);
+            if keys.is_empty() {
+                if item["provenance"] == "web_search" {
+                    merged.push(item);
+                }
+                continue;
+            }
+            if let Some(index) = merged
+                .iter()
+                .position(|prior| dedup_keys(prior).iter().any(|key| keys.contains(key)))
+            {
+                merged[index] = merge_primary(&merged[index], &item);
+                continue;
+            }
+            if keys.iter().any(|key| seen.contains(key)) {
+                continue;
+            }
+            seen.extend(keys);
+            merged.push(item);
+        }
+        merged.sort_by_key(|item| std::cmp::Reverse(sort_time(item)));
+        merged
+    }
+
+    #[test]
+    fn indexed_merge_preserves_first_match_mutating_keys_and_stale_seen_keys() {
+        let primary = vec![
+            json!({"detailUrl":"https://example.com/old","infoCode":"first","publishDate":"2026-10-29","marker":"first"}),
+            json!({"url":"https://example.com/second","infoCode":"second","publishDate":"2026-10-29","marker":"second"}),
+            json!({"provenance":"web_search","marker":"keyless"}),
+        ];
+        let supplements = vec![
+            json!({"url":"https://example.com/new","infoCode":"first","extra":"acquired"}),
+            // The old URL is no longer a current key, but remains seen.
+            json!({"url":"https://example.com/old","marker":"must-not-insert"}),
+            // URL points at the second row, native id at the first: earliest wins.
+            json!({"url":"https://example.com/second","infoCode":"first","bridge":true}),
+            json!({"url":"https://example.com/new","extra2":true}),
+        ];
+        let expected = reference_merge(&primary, &supplements);
+        let actual = merge_reports(&primary, &supplements);
+        assert_eq!(actual, expected);
+        assert_eq!(actual.len(), 3);
+        assert_eq!(actual[0]["marker"], "first");
+        assert_eq!(actual[0]["bridge"], true);
+        assert_eq!(actual[0]["extra2"], true);
+    }
+
+    #[test]
+    fn indexed_merge_handles_a_thousand_reports_with_bounded_work_and_deterministic_output() {
+        let primary = (0..1000).map(|i| json!({"code":"600036.SH","title":format!("业绩研究第{i}期"),"orgName":"研究证券股份有限公司","publishDate":"2026-10-29","infoCode":format!("AP{i:012}"),"url":format!("https://example.com/{i}"),"forecasts":[{"year":2027,"eps":i}]})).collect::<Vec<_>>();
+        let supplements = (0..1000).rev().map(|i| json!({"infoCode":format!("AP{i:012}"),"detailUrl":format!("https://supplement.example/{i}"),"forecasts":[{"year":2027,"eps":-1,"netProfit":i+1}]})).collect::<Vec<_>>();
+        let started = std::time::Instant::now();
+        let actual = merge_reports(&primary, &supplements);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "1000-report indexed merge exceeded a generous five-second local processing budget"
+        );
+        assert_eq!(actual.len(), 1000);
+        for (i, item) in actual.iter().enumerate() {
+            assert_eq!(item["infoCode"], format!("AP{i:012}"));
+            assert_eq!(item["forecasts"][0]["eps"], i);
+            assert_eq!(item["forecasts"][0]["netProfit"], i + 1);
+        }
+        assert_eq!(actual, merge_reports(&primary, &supplements));
+        assert_eq!(
+            merge_reports(&primary[..100], &supplements[900..]),
+            reference_merge(&primary[..100], &supplements[900..])
+        );
+    }
+
     #[test]
     fn parses_forecasts_without_fabricating_missing_values() {
         let analysis=parse_analysis("```json\n{\"forecasts\":[{\"year\":2027,\"revenue\":\"1,200\",\"profitGrowth\":\"-5%\"},{\"year\":2026,\"eps\":0},{\"year\":2029,\"profitGrowth\":10}],\"targetPrice\":-1}\n```").unwrap();

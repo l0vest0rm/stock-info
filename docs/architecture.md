@@ -1,27 +1,92 @@
 # stock-info 架构
 
-## 运行时与边界
+## 原生本地运行时
 
-本仓库是共享业务核心的模块化单体。生产运行在 Cloudflare Worker，本地开发运行在 Node；两者复用 Hono 路由、业务模块和定时任务分发，不共享数据库实例。
+本项目是本地模块化单体，后端为 Rust / Axum / Tokio / Rusqlite。Cloudflare
+Worker 部署已经退役，不存在受支持的 Node 后端或远端发布路径。
 
 ```text
-浏览器 → web/dist → src/app/router.ts → src/modules/* → 平台绑定与上游适配器
-                         ├─ 生产：src/app/worker.ts → Cloudflare D1 / R2 / Assets
-                         └─ 本地：src/platform/node/* → SQLite / 本地对象目录 / 静态文件
+浏览器 → web/dist → backend/src/lib.rs（Axum 装配）→ Rust 业务模块
+                      ├─ SQLite：现有索引、缓存、不可变账本
+                      ├─ 本地对象目录：正文、PDF、市场历史快照
+                      └─ 统一 HTTP / taskd 适配器 → 获授权上游
+原生调度器 / CLI ────────────────────────────┘
 ```
 
-- `src/app/router.ts` 是 HTTP 路由与页面策略的装配点；`config/app/page-manifest.json` 同时约束页面构建和本地专属页面的可见性。
-- `src/app/scheduled.ts` 分发生产 Worker scheduled event；本地调度器读取 `wrangler.jsonc` 中相同的 cron 定义并调用它。资讯由外部订阅方／导入方推送，不运行本地 JSONL 监听器。
-- `src/modules/*` 承载按领域划分的 API、应用与领域逻辑；`src/adapters`、`src/platform`、`src/db` 负责外部源及运行时能力。共享业务代码不得直接依赖本地文件系统或 Node 专有数据库实现。
-- `migrations/` 是 D1 schema 来源；本地 SQLite 通过适配层执行同一套迁移。结构化索引和不超过 4 KiB 的纯文本正文保存在 D1/SQLite；长正文及附件保存在 R2/本地对象目录。知识文档详情 API 统一返回内联 `content` 或对象 `content_url`。
+- `./start-local.sh` 委托 `./start-rust.sh` 构建提示词、前端和 Rust，再 exec
+  原生二进制。Node 只用于构建、工程测试、差分合同 oracle 和保留的离线分析工具。
+- `backend/src/main.rs` 管理命令行、两个 loopback 监听器及优雅关闭；8000 为默认
+  API/页面端口，8788 为兼容正文端口。先绑定两个端口，成功后才打开/迁移数据库。
+  端口冲突不终止已有进程；退出等待被接受的业务任务与调度器收尾。
+- `backend/src/lib.rs` 装配 API 与静态资源。`config/app/page-manifest.json` 约束
+  页面构建与可见性；`web/dist` 提供本地静态依赖。私有 API 不挂载到正文监听器，
+  正文 CORS 仅允许对应本地 API origin。
+- `AppState` 共享 `Database`、`HttpClient`、项目根、authority 和 `TaskTracker`。
+  后台业务通过跟踪器登记，浏览器断开不等于取消已接受的工作。
 
-## 数据与任务链路
+## 模块与数据合同
 
-- 行情、财务、基金、宏观、知识、资讯和投资研究各由相应业务模块提供 API。股票 K 线只使用雪球；基金净值历史只使用东方财富。美股财务使用 Yahoo，且本地须经配置的代理；上游失败不静默换源。
-- 外部来源通过带独立 Bearer secret 的 `POST /api/internal/knowledge/import` 提交文本版本；stock-info 不负责采集，也不以 JSONL 作为主输入或持久层。导入端负责来源授权、选题／相关性筛选及来源身份；服务端验证输入、计算稳定版本 ID 与 SHA-256、按正文 UTF-8 字节数选择 D1 内联或 R2 对象，最后原子写入 D1 索引。相同版本重试幂等，正文变化产生新版本。详见 [外部知识导入设计](knowledge-import.md)。
-- 新导入的 `information_feed` 为来源原文卡片，不冒充已验证的信息提取记录或语义标签。旧 `feed.version=v1` 的本地文件处理、投资相关性门禁、模型提取和受控发布链路仅用于历史数据／手动回填；生产 Worker 仍不调用模型。旧 `information-feed-policy.json`、焦点证券与 `information-feed.json` 的参数只约束旧链路，不应被解释为新导入的服务端采集配置。
-- `knowledge_information_records` 仅供已提取的资讯记录及历史提取、发布、回填和对账链路使用；新来源原文导入不自动填充此表，也不提供独立实体记录查询 API。通用知识库过期清理和黑名单过滤按 `source_type` 排除 `information_feed`。历史迁移保留不改写。
-- 公司投资研究区分来源资料、确定性派生观察、模型草稿和用户研究结论。经营公司与上市证券不是同一对象；未经确认的映射不得把证券行情或来源记录升级为共享公司事实。
+| 领域 | Rust 所有者 |
+| --- | --- |
+| 搜索、股票 K 线、基金净值、市场快照 | `market.rs`、`xueqiu.rs`、`eastmoney.rs` |
+| 各市场财报、季度/TTM/普通股权益 | `finance.rs`、`finance/` |
+| 公司、公告/研报、基金 | `company.rs`、`company/`、`fund.rs` |
+| 滚动估值与覆盖度 | `dashboard.rs`、`dashboard/`、`coverage.rs` |
+| 观察研究、不可变历史与 cohort | `observation.rs` |
+| 私有组合、任务、what-if | `portfolio.rs`、`portfolio/` |
+| 知识、资讯、导入、正文与维护 | `knowledge.rs`、`knowledge/`、`feed_processing/`、`maintenance.rs` |
+| 研究、taskd/LLM 与原生研究 CLI | `research.rs`、`research/`、`research_cli/` |
+| 宏观、期权、13F | `macro_data/`、`options.rs`、`thirteenf.rs` |
+| 专题报告、PDF 工程处理 | `featured_reports.rs`、`featured_workflow.rs`、`featured_workflow/` |
+| 回调、订阅、原生同步与调度 | `runtime_jobs.rs`、`sync_cli/`、`scheduler.rs` |
+
+HTTP 延续 `{code,msg,data}` 和既有字段语义；未知 API 为 404，退役的通用模型入口
+明确拒绝而非执行旧业务。内部错误响应脱敏，不把 SQL、路径、私有记录或提供方响应泄露给客户端。
+
+`db.rs` 在阻塞线程中执行 SQLite；历史 SQL 按文件名排序，选择、执行和
+`user_version` 递增同属迁移事务。156 个历史文件产生 14 张表，无新增表、删表或迁移
+跟踪表。详见 [结构审计](rust-schema-audit.md)。`users` / `auth_sessions` 不再有
+Rust 消费者，但未擅自删除历史账户与会话。
+
+`kv_cache` 不只是缓存：`observation-ledger-v1` 与
+`private-active-portfolio-v1` 是 null expiry 的永久账本。版本写入须不可变、事务化
+并保留 CAS；不能用普通缓存 upsert 或整表清理替代。私有数据仅允许 loopback Host
+和同源请求，不得进入公开配置、前端 bundle 或推送发布。
+
+## 数据源与本地对象
+
+- 股票 K 线只用雪球，基金净值历史只用东方财富。Yahoo 只用于美股财报与期权；
+  美股财报经配置代理，不作为其他行情或市场的兜底。无有效雪球 Cookie 时明确失败。
+- `http.rs` 统一超时、按域并发、代理和缓存；提供方响应验证先于缓存持久化。
+  非成功响应只保留有界的内部校验信息，不在日志/错误格式化中泄露响应体。
+- `storage.rs` 提供路径/符号链接边界检查及原子对象写入。市场对象和知识正文使用
+  各自本地目录；数据库和文件系统不是一个原子事务，孤儿对象需按引用和保留期审计，
+  不能因此删除永久账本。
+- 外部导入使用独立 Bearer secret 的 `POST /api/internal/knowledge/import`。
+  导入方负责授权、相关性与来源身份；服务端验证、计算稳定版本 ID 与 SHA-256，
+  ≤4 KiB 纯文本存 SQLite 内联列，长正文先落本地对象再写数据库引用。重试幂等，
+  原文变更产生新版本；来源原文不冒充模型提取记录或已验证事实。
+- 历史文件提取/回填与外部原文导入是不同合同。原生订阅回调与本地工程处理入口
+  保持各自认证、原始输入和去重边界，不把回调交付直接升级为已处理知识。
+
+## 调度与研究隔离
+
+`config/app/local-runtime.json` 是 UTC cron 唯一来源。Rust 调度器执行财报补齐、
+每分钟观察池及宏观任务，同时对账已提交任务。观察池 GET 只读；HTTP refresh 至多
+处理 2 个到期证券，cron 每次至多 12 个，共享 SQLite lease/fencing 限制全局同时
+计算 2 个。计算时间、依赖 revision、来源日期分别保留，不制造共同估值日。
+
+启动时先验证/必要时刷新雪球 Cookie；定期主动更新，失败按重试间隔处理。
+`LOCAL_SCHEDULER=0` 可关闭调度器，`XUEQIU_COOKIE_REFRESH=0` 可关闭其凭据维护，
+隔离测试应显式选择，不能把关闭调度后的 API smoke 当作调度验收。
+
+只有显式 `LLM_RUNTIME=local` 才允许模型工作。配置凭据不自动启用模型，GET 和
+历史结果读取不应提交模型任务。taskd 提交、恢复、结果对账、配额与模型草稿的状态
+不能混同为用户研究结论；必须分别验证。没有自动远端发布或真实交易执行。
+
+PDF 工程处理可调用独立安装的 Python / PyMuPDF 和经审查的 PDF cleaner，
+不使用 Node 业务运行时。清理器显式路径优先，缺失失败，不以原文直通替代；处理
+审计记录输入/输出与处理器哈希。安装和发现规则见 [README](../README.md)。
 
 ### 资讯提取合同
 
@@ -30,16 +95,18 @@
 - 类别覆盖公司指标与事件、产业经营供需及宏观经济。`production_volume` 区分实际产量与产能/出货；`operating_status` 与 `project_progress` 区分运营变化和建设节点；`inflation` 区分总体物价判断与商品价格、政策立场。新增需求、供给、库存、经济运行、财政、汇率、流动性、资源发现及交易状态后共 69 类，不增设“行业观点”等跨业务兜底。类别说明明确重叠边界，已有投资和资本开支类别允许行业合计预测，不为信息类型或主体范围另建类别。
 - 白名单是相关性门禁，不是强制产出要求。提取保留原文已有的有价值分析，不生成自己的推论；无法归类的重要信息保存在待审候选中，候选不自动成为正式类别。确无有效信息才返回空结果。
 - 提示词与解析器共同约束期间、类型和字段。解析失败保留失败状态及具体字段原因，不静默丢掉不合规条目或硬改类别；数值预测的原始单位、期间和口径约束保持不变。
-- 历史文件处理链路的当前提取合同以 `config/knowledge/information-feed.json` 的 `tagContract` 和生成的合同为准；`information-feed-legacy-contracts.json` 显式列出可读取的历史合同。本地旧存储回填不把历史结果冒充新提示词产物。新增类别不追改旧记录的类别或哈希，重提取才生成新合同记录；历史链路的远端发布仍受独立上线门禁约束。
+- 历史文件处理链路的当前提取合同以 `config/knowledge/information-feed.json` 的 `tagContract` 和生成的合同为准；`information-feed-legacy-contracts.json` 显式列出可读取的历史合同。本地旧存储回填不把历史结果冒充新提示词产物。新增类别不追改旧记录的类别或哈希，重提取才生成新合同记录；不再提供远端发布流程。
 
-## LLM 与发布隔离
+## 工程与验收
 
-远程模型调用仅允许显式 `LLM_RUNTIME=local` 的本地 Node 处理链路；生产固定 `LLM_RUNTIME=production`，只读取已物化结果或接收受控发布，不执行模型提取或回退调用。本地任务结果、远端 D1/R2 可见性和生产页面必须分别验收。
+- `npm run check:rust`：格式、严格 clippy 与隔离 Rust 回归。
+- `npm run check:rust-routes`：原路径合同及原生路由装配守卫。
+- `npm run check:no-new-tables`、`check:runtime-boundaries`：结构与本地运行边界。
+- `npm run typecheck`、`check:web-assets`：前端/参考源码类型与本地资源。
+- `npm run test:basic`：保留完整断言，对真实运行中的 API 验证市场/财报/估值及
+  前瞻引用，前置隔离账本、缓存和并发回归。上游不可用应诊断，不应删减断言。
 
-## 开发与验证入口
-
-- 本地：`./start-local.sh` 构建前端和 Node 产物、类型检查、迁移本地 SQLite，并在 `http://127.0.0.1:8000` 提供服务；`GET /api/health` 是基础健康检查。
-- 唯一保留的自动化测试：本地服务启动后运行 `npm run test:basic`，通过后端 API 验证中际旭创的日 K 线、三张财报、PE(TTM) 和市值。页面／路由与资讯链路变更另行手工验收。
-- 生产：`wrangler.jsonc`、远端 D1 migration、部署脚本和真实生产 URL 分别检查；本地 Node 验证不能替代生产验证。生产只使用 Cloudflare Worker、D1、R2 和 Assets，不作为长驻 Node 服务运行。
-
-研究输出和运行时审计属于生成物，默认写到忽略的 `reports/` 或 `data/local/`，不写入 `docs/`。
+按 [迁移验收说明](local-rust-migration.md) 区分隔离合同、真实上游、页面和后台证据。
+单次健康检查或模块测试不证明完整业务，也不证明真实模型、长期配额和所有外部源可用。
+测试不得迁移/删除用户真实数据库；研究结果和审计生成物写入忽略目录。
+本地代码变更没有删除或下线既有云资源，历史远端维护源码不构成部署授权或支持流程。
