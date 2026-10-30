@@ -614,7 +614,7 @@ fn report_quarter(value: &str) -> Option<i64> {
         .position(|s| value.contains(s))
         .map(|quarter| year * 4 + quarter as i64)
 }
-fn report_dates(years: i32) -> Vec<String> {
+pub(crate) fn report_dates(years: i32) -> Vec<String> {
     let now = Utc::now().with_timezone(&chrono_tz::Asia::Shanghai);
     let mut dates = vec![];
     for offset in 0..years {

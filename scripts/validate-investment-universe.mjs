@@ -14,7 +14,7 @@ if (args.has('--help')) {
   process.exit(0);
 }
 const data = JSON.parse(readFileSync(resolve(root, 'config/investment-universe.json'), 'utf8'));
-// Mirrors src/modules/research/domain/valuation-coverage.ts. The sync script
+// Vocabulary contract shared with backend/src/coverage.rs. The sync script
 // derives these values; this guard only rejects unknown vocabulary.
 const VALUATION_ARCHETYPES = ['bank','insurer','exchange','payment','property_operator','cyclical_commodity','stable_cash_dividend','growth_manufacturing','software_platform','pre_profit_milestone','healthcare_services','other'];
 const FACTOR_KEYS = ['ai_capex','semiconductor_cycle','memory_price_cycle','china_consumption','commodity_price','interest_rate','policy_regulation','fx','platform_regulation','property_cycle','new_energy_price_war','grid_capex','medicare_pricing','geopolitical_export_control'];
@@ -23,7 +23,7 @@ const list = (x, label) => assert(Array.isArray(x), 'Expected array: ' + label);
 const unique = (x, label) => assert.equal(new Set(x).size, x.length, 'Duplicate ' + label);
 const dateOrNull = (x, label) => assert(x === null || (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)), 'Bad date: ' + label);
 
-// Mirrors src/modules/research/domain/evidence-record.ts. Evidence is a
+// Structured evidence contract shared with backend/src/research/evidence.rs. Evidence is a
 // structured record, not free text: a source, the security it speaks about, the
 // registry document id, a publication date and a locator. Secondary sources
 // (news, rumours) are refused here as well, so they cannot enter the file at all.

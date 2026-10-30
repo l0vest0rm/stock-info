@@ -1,0 +1,100 @@
+{
+  "sourceCommit": "9ebbeef",
+  "scripts": [
+    {
+      "script": "scripts/check-valuation-inputs-selftest.mjs",
+      "sha256": "8d407fd2d396c26a4068f3b6a9cfd3f21975d1315c20adc5167ac90e831afba5",
+      "assertions": 31
+    },
+    {
+      "script": "scripts/check-valuation-coverage-selftest.mjs",
+      "sha256": "eba51b6ceaf9c472b6cd379d676565e73342a4a50670916b0faf3db3fd72d4b4",
+      "assertions": 55
+    },
+    {
+      "script": "scripts/check-ttm-fiscal-calendar-selftest.mjs",
+      "sha256": "1096ea942d26ba9d73619c53388c6c544b4d69e42e88502c836ac55e5e9701b6",
+      "assertions": 27
+    },
+    {
+      "script": "scripts/check-quarterly-series-selftest.mjs",
+      "sha256": "746fe23176c9234c3a81e7ff0b2188129bf8399fc51f91b803dd5fc8416b8ab7",
+      "assertions": 23
+    },
+    {
+      "script": "scripts/check-financial-read-model-selftest.mjs",
+      "sha256": "26fcedc4fb8debdcd085e93693ae49f3f80ded971354973112ae8633bba92ebf",
+      "assertions": 10
+    },
+    {
+      "script": "scripts/check-income-window-selftest.mjs",
+      "sha256": "8181ad5a09a2ce5fec30c40311ba230b4d0aafd5147e7e73b1e63996ff5a757b",
+      "assertions": 6
+    },
+    {
+      "script": "scripts/check-valuation-bands-selftest.mjs",
+      "sha256": "edbcfd84699bb28b97d335fe82ddbc2060514f94f75bc000a6839d206cf2ec02",
+      "assertions": 55
+    },
+    {
+      "script": "scripts/check-mid-cycle-earnings-selftest.mjs",
+      "sha256": "1cea5cc3098d8f97a5335f4343b7803789a4fa811ff0c759cd265e67fa1120c0",
+      "assertions": 24
+    },
+    {
+      "script": "scripts/check-comparability-matrix-selftest.mjs",
+      "sha256": "13cb3af149eecf9aefedd0759bd529bcac8d5e48eeee24927728b63a59afeff9",
+      "assertions": 30
+    },
+    {
+      "script": "scripts/check-valuation-band-review-selftest.mjs",
+      "sha256": "c32125a2da69c10f7ac235289995da315712279b22b5c0bc536abf661f487593",
+      "assertions": 40
+    },
+    {
+      "script": "scripts/check-valuation-screen-selftest.mjs",
+      "sha256": "c3491aa9f2cc3239aab84e4750bea333b5b00e8e0d2cfcd7733e2eff5e230da8",
+      "assertions": 52
+    },
+    {
+      "script": "scripts/check-eastmoney-quote-selftest.mjs",
+      "sha256": "c5c5195bb191384cf70e674be2cfddc71b869ae2d8dbd291830a4434ebfa0134",
+      "assertions": 16
+    },
+    {
+      "script": "scripts/check-valuation-multiple-calibration-selftest.mjs",
+      "sha256": "32bce2b0b8df8c07e5d4bc06cd9d3af01c44c72dd468ea38b82a1fb7d6369ce9",
+      "assertions": 49
+    },
+    {
+      "script": "scripts/check-growth-veto-selftest.mjs",
+      "sha256": "132f6d3cabcdadeadb624df2a633fcca9609e497748e442819cb41b4edfb0f75",
+      "assertions": 41
+    },
+    {
+      "script": "scripts/check-point-in-time-pe-selftest.mjs",
+      "sha256": "e3ca47f350f4a6e814c4db8b4518cdeb92fcea88f4962c7f9395770be8c0017b",
+      "assertions": 31
+    },
+    {
+      "script": "scripts/check-income-contracts-selftest.mjs",
+      "sha256": "388b03251ba44cb712998da65b7a3e455eea2de41e5ce005df511bb77fc2c5b2",
+      "assertions": 11
+    },
+    {
+      "script": "scripts/check-evidence-record-selftest.mjs",
+      "sha256": "fe14b570f2799ae277937d21517c184f87923cef60e6e29d4a3040b0f219a67c",
+      "assertions": 22
+    },
+    {
+      "script": "scripts/check-common-equity-selftest.mjs",
+      "sha256": "116868599628d20b52f908ae25a91983633b1e17d3ce9c058e0dd554a557527f",
+      "assertions": 13
+    },
+    {
+      "script": "scripts/check-ttm-annual-base-selftest.mjs",
+      "sha256": "84cb3c3907f7b83bfb375298abb451bb968a4d3907c1b030cebe9b3234e044f6",
+      "assertions": 3
+    }
+  ]
+}

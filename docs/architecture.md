@@ -3,7 +3,9 @@
 ## 原生本地运行时
 
 本项目是本地模块化单体，后端为 Rust / Axum / Tokio / Rusqlite。Cloudflare
-Worker 部署已经退役，不存在受支持的 Node 后端或远端发布路径。
+部署代码和远端维护入口已删除，不存在 Node 后端或远端发布路径。
+旧后端 `src/` 整树及其 TypeScript/JavaScript 实现不再保留；Git 历史可供追溯，
+但不是运行时依赖。
 
 ```text
 浏览器 → web/dist → backend/src/lib.rs（Axum 装配）→ Rust 业务模块
@@ -14,7 +16,8 @@ Worker 部署已经退役，不存在受支持的 Node 后端或远端发布路�
 ```
 
 - `./start-local.sh` 委托 `./start-rust.sh` 构建提示词、前端和 Rust，再 exec
-  原生二进制。Node 只用于构建、工程测试、差分合同 oracle 和保留的离线分析工具。
+  原生二进制。Node 只用于前端/提示词构建、测试编排和支持的离线分析工具。
+  Rust 回归不再运行原后端 TypeScript oracle，而读取冻结的完整 JSON 历史期望。
 - `backend/src/main.rs` 管理命令行、两个 loopback 监听器及优雅关闭；8000 为默认
   API/页面端口，8788 为兼容正文端口。先绑定两个端口，成功后才打开/迁移数据库。
   端口冲突不终止已有进程；退出等待被接受的业务任务与调度器收尾。
@@ -39,6 +42,11 @@ Worker 部署已经退役，不存在受支持的 Node 后端或远端发布路�
 | 宏观、期权、13F | `macro_data/`、`options.rs`、`thirteenf.rs` |
 | 专题报告、PDF 工程处理 | `featured_reports.rs`、`featured_workflow.rs`、`featured_workflow/` |
 | 回调、订阅、原生同步与调度 | `runtime_jobs.rs`、`sync_cli/`、`scheduler.rs` |
+| 无状态离线分析 JSON 桥 | `analysis_cli.rs` |
+
+`shared/` 仅保留前端 API 合同/类型，web 域持有前端专用校验，不再依赖旧后端
+TS 源码。离线分析脚本用原生 `--analysis-json` 复用确定性计算：JSON 输入/输出，
+不打开数据库、不读取凭据、不调用提供方，也不启动监听器。
 
 HTTP 延续 `{code,msg,data}` 和既有字段语义；未知 API 为 404，退役的通用模型入口
 明确拒绝而非执行旧业务。内部错误响应脱敏，不把 SQL、路径、私有记录或提供方响应泄露给客户端。
@@ -90,6 +98,9 @@ PDF 工程处理可调用独立安装的 Python / PyMuPDF 和经审查的 PDF cl
 
 ### 资讯提取合同
 
+- `config/generated/information-records-contract.json` 保存当前和允许读取的历史提取合同；
+  由 `npm run build:prompts` 生成，保持原始合同版本/哈希，Rust 直接消费 JSON，
+  不再从后端生成 TypeScript 中解析。移动文件不是重写历史合同或改变记录来源的理由。
 - `config/knowledge/knowledge-ontology.json` 是主体类型、信息类型、业务类别和期间约束的唯一目录。模型输入包含主体类型、类别中文名及必要的语义边界；`npm run build:prompts` 同时从该目录生成前端类别标签，不能单独维护另一套类别。
 - 主体、信息类型、业务类别是三个独立维度。公司专属事项仍以公司为主体；行业层面的事实或判断可以“光刻胶”等明确主题为主体，不要求整篇文章没有公司名，也不另建“行业观点”类别。匿名公司的具体事项不能改挂到产品主题上。
 - 类别覆盖公司指标与事件、产业经营供需及宏观经济。`production_volume` 区分实际产量与产能/出货；`operating_status` 与 `project_progress` 区分运营变化和建设节点；`inflation` 区分总体物价判断与商品价格、政策立场。新增需求、供给、库存、经济运行、财政、汇率、流动性、资源发现及交易状态后共 69 类，不增设“行业观点”等跨业务兜底。类别说明明确重叠边界，已有投资和资本开支类别允许行业合计预测，不为信息类型或主体范围另建类别。
@@ -102,11 +113,18 @@ PDF 工程处理可调用独立安装的 Python / PyMuPDF 和经审查的 PDF cl
 - `npm run check:rust`：格式、严格 clippy 与隔离 Rust 回归。
 - `npm run check:rust-routes`：原路径合同及原生路由装配守卫。
 - `npm run check:no-new-tables`、`check:runtime-boundaries`：结构与本地运行边界。
-- `npm run typecheck`、`check:web-assets`：前端/参考源码类型与本地资源。
+- `npm run typecheck`、`check:web-assets`：前端/共享合同类型与本地资源。
 - `npm run test:basic`：保留完整断言，对真实运行中的 API 验证市场/财报/估值及
   前瞻引用，前置隔离账本、缓存和并发回归。上游不可用应诊断，不应删减断言。
+
+`backend/tests/fixtures/README.md` 和 provenance 清单说明冻结期望来源。机会评估与
+screen/PIT 分别保留完整 343 和 65 组输入/期望，Rust 保持完整字段、数组长度与数值
+容差断言，不因删除 TS oracle 而只比子集。其他既有 JSON goldens 同样保留；
+不得用被测 Rust 实现重生成期望。旧未挂载工作台和已退役表的无消费者应用代码删除，
+不构成新增数据库表或恢复旧 API 的理由。
 
 按 [迁移验收说明](local-rust-migration.md) 区分隔离合同、真实上游、页面和后台证据。
 单次健康检查或模块测试不证明完整业务，也不证明真实模型、长期配额和所有外部源可用。
 测试不得迁移/删除用户真实数据库；研究结果和审计生成物写入忽略目录。
-本地代码变更没有删除或下线既有云资源，历史远端维护源码不构成部署授权或支持流程。
+代码清理没有删除或下线既有云资源，也不授权清空用户数据。忽略的 `.dev.vars`、
+`.wrangler` 本地数据、SQLite、对象文件和既有研究报告必须保留，不以工具名称判定可删。

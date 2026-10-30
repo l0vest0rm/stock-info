@@ -1,3 +1,8 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest, screenValuationCandidate } from './lib/rust-analysis.mjs';
+const nativeConstants = callRustSelftest('constants');
+const normalizeCurrency = (...args) => callRustSelftest('normalizeCurrency', ...args);
+const SCREEN_MARGIN_OF_SAFETY = nativeConstants.SCREEN_MARGIN_OF_SAFETY;
 /**
  * Deterministic check for the research-candidate screen (P3-2).
  * Run: node scripts/check-valuation-screen-selftest.mjs
@@ -19,11 +24,7 @@
  * - and no path can ever emit `consider_buy` / `consider_add`.
  */
 import assert from "node:assert/strict";
-import {
-  normalizeCurrency,
-  SCREEN_MARGIN_OF_SAFETY,
-  screenValuationCandidate,
-} from "../src/modules/research/domain/valuation-screen.ts";
+
 
 const YI = 100_000_000;
 

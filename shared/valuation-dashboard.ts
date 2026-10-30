@@ -1,6 +1,6 @@
 import type { InvestmentOpportunity } from './investment-opportunity';
 import type { ValuationAssessment } from './valuation-assessment';
-import type { ValuationScreenResult } from '../src/modules/research/domain/valuation-screen';
+import type { ValuationScreenResult } from './valuation-screen';
 
 export const VALUATION_FRESHNESS_MS = 10 * 60_000;
 

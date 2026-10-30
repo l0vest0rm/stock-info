@@ -2,16 +2,18 @@
 // Development-only contract inventory. This is not a backend runtime and does
 // not claim that matching method/path registrations prove behavioral parity.
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const FROZEN_CONTRACT_SHA256 = 'f682a1b1238d56e6f669eb769c48033feb0db559e482bcdd79a79056a5e680e7';
 const args = new Set(process.argv.slice(2));
 if ([...args].some(arg => !['--write', '--self-test', '--json', '--help'].includes(arg))) throw new Error('Unknown route-audit option');
 if (args.has('--help')) {
-  console.log('Usage: node scripts/check-rust-route-parity.mjs [--write] [--json] [--self-test]\nAudits local TypeScript route contracts, mounted Rust Router composition, content routes and active frontend API references. --write records docs/rust-route-parity.json. No HTTP calls or database changes.');
+  console.log('Usage: node scripts/check-rust-route-parity.mjs [--write] [--json] [--self-test]\nAudits the frozen original local API contract, mounted Rust Router composition, content routes and active frontend API references. --write records docs/rust-route-parity.json. No HTTP calls or database changes.');
   process.exit(0);
 }
 
@@ -49,56 +51,20 @@ function resolveTsImport(file, name) {
   return [path, `${path}.ts`, `${path}.mjs`, `${path}.js`, resolve(path, 'index.ts')].find(existsSync) ?? null;
 }
 
-function legacyInventory() {
-  const symbols = new Map();
-  function load(file) {
-    file = rel(resolve(root, file));
-    const source = tsSource(file), imports = new Map();
-    for (const statement of source.statements) {
-      if (!ts.isImportDeclaration(statement) || !statement.importClause || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-      const dependency = resolveTsImport(file, statement.moduleSpecifier.text);
-      if (!dependency) continue;
-      const bindings = statement.importClause.namedBindings;
-      if (bindings && ts.isNamedImports(bindings)) for (const item of bindings.elements) imports.set(item.name.text, { file: rel(dependency), name: (item.propertyName ?? item.name).text });
-    }
-    const declarations = new Map();
-    visit(source, node => {
-      if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression) || !ts.isIdentifier(node.expression.expression)) return;
-      const owner = node.expression.expression.text, method = node.expression.name.text;
-      if (![...methods].map(method => method.toLowerCase()).includes(method) && method !== 'route') return;
-      if (!node.arguments.length) return;
-      const path = literal(node.arguments[0]);
-      if (path === null || !path.startsWith('/')) return;
-      const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
-      const record = { path, source: `${file}:${line}` };
-      if (method === 'route') {
-        const target = node.arguments[1];
-        if (!target || !ts.isIdentifier(target)) throw new Error(`Unsupported dynamic Hono mount: ${record.source}`);
-        record.mount = imports.get(target.text) ?? { file, name: target.text };
-      } else record.method = method.toUpperCase();
-      if (!declarations.has(owner)) declarations.set(owner, []);
-      declarations.get(owner).push(record);
-    });
-    for (const [name, routes] of declarations) symbols.set(`${file}:${name}`, routes);
-    return declarations;
+// Frozen before deleting the original backend. Updating Rust registrations or
+// writing an audit report must never silently redefine the expected contract.
+function expectedContracts() {
+  const fixture = JSON.parse(read('config/contracts/local-api-routes.json'));
+  assert.equal(fixture.schemaVersion, 1);
+  assert.equal(fixture.expected.length, 115, 'Frozen local API inventory was truncated');
+  assert.equal(dedup(fixture.expected).length, 115, 'Duplicate frozen route contracts');
+  const digest = createHash('sha256').update(JSON.stringify(fixture.expected)).digest('hex');
+  assert.equal(digest, FROZEN_CONTRACT_SHA256, 'Historical route contracts changed; review the contract explicitly');
+  for (const route of fixture.expected) {
+    assert(['http', 'content'].includes(route.listener));
+    assert(methods.has(route.method) && route.path.startsWith('/') && typeof route.source === 'string');
   }
-  const loaded = new Set();
-  const expand = (file, name, prefix, seen = new Set()) => {
-    if (!loaded.has(file)) { loaded.add(file); load(file); }
-    const id = `${file}:${name}`;
-    if (seen.has(id)) throw new Error(`Circular Hono route mount: ${id}`);
-    return (symbols.get(id) ?? []).flatMap(route => route.mount
-      ? expand(route.mount.file, route.mount.name, joinPath(prefix, route.path), new Set([...seen, id]))
-      : [{ listener: 'http', ...route, path: joinPath(prefix, route.path) }]);
-  };
-  const routes = expand('src/app/router.ts', 'app', '');
-  // Production-only ingress/auth are intentionally absent from the local app,
-  // not silently accepted missing business APIs. Their source predicates are
-  // checked so an unrelated route can never enter this exception by filename.
-  const excluded = routes.filter(route => route.path.startsWith('/api/auth/') || route.path === '/api/internal/report-sync');
-  assert.match(read('src/modules/auth/auth.ts'), /if\s*\(isLocalDevelopmentRuntime\(c\.env\)\)\s*return\s+c\.json\([\s\S]{0,100}?404\)/);
-  assert.match(read('src/modules/report-sync/api/report-sync.routes.ts'), /APP_RUNTIME\s*!==\s*["']cloudflare["'][\s\S]{0,100}?404/);
-  return { routes: routes.filter(route => !excluded.includes(route)), excluded: excluded.map(route => ({ ...route, reason: route.path.startsWith('/api/auth/') ? 'Already returns404 in the supported local runtime; Rust must not expose a login surface.' : 'Cloudflare-only report publication ingress; retired by the local-only requirement.' })) };
+  return fixture;
 }
 
 // Preserve positions but mask strings/comments/character literals. This small
@@ -273,29 +239,6 @@ function braceDepth(mask, start, end) {
   return depth;
 }
 
-function specialContracts() {
-  // These paths are dispatched before Hono, so an API-only scan loses them.
-  // Tie every explicit inventory entry to the owning source, without claiming
-  // that these literal guards prove each handler's validation/body behavior.
-  const server = read('src/platform/node/local-server.ts');
-  assert(server.includes('/api/local/information-feed/rejected'));
-  const callback = read('scripts/lib/sub2me-callback.mjs');
-  assert(callback.includes('/api/local/sub2me/callback') && callback.includes('request.method !== "POST"'));
-  const featured = read('scripts/lib/featured-report-local.mjs');
-  assert(featured.includes('/__review') && featured.includes('original\\.pdf|content\\.json'));
-  const content = read('scripts/local-knowledge-content-server.mjs');
-  for (const path of ['/__health', '/__convert-report', '/__convert-sec-filing', '/knowledge-content/', '/featured-reports/']) assert(content.includes(path));
-  return [
-    { listener: 'http', method: 'GET', path: '/api/local/information-feed/rejected', source: 'src/platform/node/local-server.ts' },
-    { listener: 'http', method: 'POST', path: '/api/local/sub2me/callback', source: 'scripts/lib/sub2me-callback.mjs' },
-    ...['original.pdf', 'content.json'].flatMap(artifact => ['GET', 'HEAD'].map(method => ({ listener: 'http', method, path: `/__review/:code/${artifact}`, source: 'scripts/lib/featured-report-local.mjs' }))),
-    { listener: 'http', method: 'ALL', path: '/__review/:code/save', source: 'scripts/lib/featured-report-review.mjs' },
-    { listener: 'content', method: 'GET', path: '/__health', source: 'scripts/local-knowledge-content-server.mjs' },
-    ...['/__convert-report', '/__convert-sec-filing'].map(path => ({ listener: 'content', method: 'POST', path, source: 'scripts/local-knowledge-content-server.mjs' })),
-    ...['/knowledge-content/*', '/featured-reports/*'].flatMap(path => ['GET', 'HEAD', 'OPTIONS'].map(method => ({ listener: 'content', method, path, source: 'scripts/local-knowledge-content-server.mjs' }))),
-  ];
-}
-
 function frontendPaths(expression, constants = new Map(), seen = new Set()) {
   if (ts.isParenthesizedExpression(expression)) return frontendPaths(expression.expression, constants, seen);
   if (ts.isIdentifier(expression) && constants.has(expression.text) && !seen.has(expression.text)) {
@@ -393,6 +336,7 @@ function selfTest() {
     ['backend/src/unmounted.rs', 'pub fn routes(){ Router::new().route("/hidden",delete(secret)) }'],
   ]);
   const inventory = rustInventory(fixture);
+  assert(!inventory.mounted.some(candidate => covers(candidate, { listener: 'http', method: 'GET', path: '/api/missing-business-handler' })), 'Missing business handlers must not pass registration parity');
   assert(inventory.mounted.some(route => key(route) === 'http POST /api/finance/:segment'));
   assert(inventory.mounted.some(route => key(route) === 'http GET /api/stock/:segment'));
   assert(inventory.mounted.some(route => key(route) === 'http GET /'));
@@ -402,12 +346,13 @@ function selfTest() {
   assert(inventory.defined.some(route => route.path === '/api/hidden'));
   const dynamic = new Map([['backend/src/lib.rs', 'pub fn router(){Router::new().route(path,get(read))}']]);
   assert.throws(() => rustInventory(dynamic), /Dynamic Rust route/);
-  console.log('Route audit parser regressions passed.');
+  expectedContracts();
+  console.log('Route audit parser and frozen-contract regressions passed.');
 }
 
 if (args.has('--self-test')) { selfTest(); process.exit(0); }
-const legacy = legacyInventory(), rust = rustInventory();
-const expected = dedup([...legacy.routes, ...specialContracts()]);
+const historical = expectedContracts(), rust = rustInventory();
+const expected = dedup(historical.expected);
 const missing = expected.filter(route => !rust.mounted.some(candidate => covers(candidate, route)));
 const frontend = frontendReferences();
 const frontendMissing = frontend.references.filter(route => {
@@ -422,7 +367,7 @@ const result = {
   schemaVersion: 1,
   scope: 'Source-registration parity only; does not prove payload, arithmetic, authentication, provider, scheduler or UI behavior.',
   counts: { expected: expected.length, mountedRust: rust.mounted.length, definedRust: rust.defined.length, missing: missing.length, frontendReferences: frontend.references.length, frontendMissing: frontendMissing.length },
-  expected, excludedProductionOnly: legacy.excluded, mountedRust: rust.mounted,
+  expected, excludedProductionOnly: historical.excludedProductionOnly, mountedRust: rust.mounted,
   missing: missing.map(route => ({ ...route, definedButNotMounted: rust.defined.filter(candidate => canonical(candidate.path) === canonical(route.path) && (candidate.method === route.method || candidate.method === 'ALL')) })),
   frontend: { ...frontend, missing: frontendMissing, unresolvedDynamicTails: frontendMissing.filter(route => route.path.endsWith(':segment')) },
   diagnostics,

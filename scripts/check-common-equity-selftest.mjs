@@ -1,12 +1,12 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const commonEquity = (...args) => callRustSelftest('commonEquity', ...args);
+const buildValuationInputs = (...args) => callRustSelftest('buildValuationInputs', ...args);
+const buildValuationBands = (...args) => callRustSelftest('buildValuationBands', ...args);
 import assert from 'node:assert/strict';
-import { build } from 'esbuild';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { commonEquity } from '../src/modules/finance/domain/common-equity.ts';
-import { buildValuationInputs } from '../src/modules/finance/domain/valuation-inputs.ts';
-import { buildValuationBands } from '../src/modules/finance/domain/valuation-bands.ts';
+
+
+
 const facts = { TOTAL_PARENT_EQUITY: 1345033000000, OTHER_EQUITY_TOOL: 199989000000, PERPETUAL_BOND: 199989000000, PREFERRED_SHARES: null };
 const cap = 1062512095170;
 assert.equal(commonEquity(facts).value, 1145044000000, 'aggregate is subtracted once');
@@ -27,12 +27,6 @@ const bandInput = { code: balance.code, archetype: 'bank', asOf: { balance: bala
 const pb = buildValuationBands(bandInput).bands.find((b) => b.key === 'pb');
 assert.equal((cap / pb.denominator.value).toFixed(2), '0.93');
 assert.equal(buildValuationBands({ ...bandInput, balance: { parentEquity: facts.TOTAL_PARENT_EQUITY } }).bands.find((b) => b.key === 'pb').status, 'insufficient_data');
-const dir = await mkdtemp(join(tmpdir(), 'common-equity-'));
-try {
-  const outfile = join(dir, 'valuation.mjs');
-  await build({ entryPoints: ['src/modules/finance/application/latest-financial-valuation.ts'], bundle: true, platform: 'node', format: 'esm', outfile, logLevel: 'silent' });
-  const { deriveLatestFinancialValuation } = await import(pathToFileURL(outfile));
-  const value = deriveLatestFinancialValuation({ marketCapitalization: cap, availableAt: '2026-10-28', incomeRows: [], balanceRows: [balance], cashflowRows: [] });
-  assert.equal(value.pb, cap / pb.denominator.value, 'generic PB and bands agree');
-} finally { await rm(dir, { recursive: true, force: true }); }
+const value = callRustSelftest('deriveLatestFinancialValuation', { marketCapitalization: cap, availableAt: '2026-10-28', incomeRows: [], balanceRows: [balance], cashflowRows: [] });
+assert.equal(value.pb, cap / pb.denominator.value, 'generic PB and bands agree');
 console.log('common-equity regression checks passed');

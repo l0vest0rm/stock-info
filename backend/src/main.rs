@@ -9,7 +9,7 @@ use std::{
 use stock_info_local::{AppState, content_router, db::Database, router, scheduler};
 use tokio::sync::watch;
 
-const HELP: &str = "stock-info-local [COMMAND] [OPTIONS]\nRun from the repository root. No command starts both loopback HTTP listeners.\nCommands: --migrate-only, --cron-once, --refresh-xueqiu-cookie,\n  --validate-xueqiu-cookie, --process-knowledge, --process-knowledge-existing,\n  --process-feed, --reconcile-feed, --backfill-feed-relevance,\n  --backfill-information-records, --prepare-featured-report,\n  --publish-featured-report, --review-featured-report, --maintenance OP, --research OP, --sync OP\nWorkflow flags use kebab-case; destructive maintenance requires --apply.\nHOST must be a loopback IP; PORT defaults to 8000; KNOWLEDGE_CONTENT_LOCAL_PORT to 8788.\nLOCAL_DB_PATH or LOCAL_DATA_DIR select SQLite. Existing migrations are preserved.\nModel work requires explicit LLM_RUNTIME=local. Credentials are read from ignored .dev.vars.";
+const HELP: &str = "stock-info-local [COMMAND] [OPTIONS]\nRun from the repository root. No command starts both loopback HTTP listeners.\nCommands: --migrate-only, --cron-once, --refresh-xueqiu-cookie,\n  --validate-xueqiu-cookie, --process-knowledge, --process-knowledge-existing,\n  --process-feed, --reconcile-feed, --backfill-feed-relevance,\n  --backfill-information-records, --prepare-featured-report,\n  --publish-featured-report, --review-featured-report, --maintenance OP, --research OP, --sync OP, --analysis-json\n--analysis-json reads pure offline JSON from stdin without opening SQLite.\nWorkflow flags use kebab-case; destructive maintenance requires --apply.\nHOST must be a loopback IP; PORT defaults to 8000; KNOWLEDGE_CONTENT_LOCAL_PORT to 8788.\nLOCAL_DB_PATH or LOCAL_DATA_DIR select SQLite. Existing migrations are preserved.\nModel work requires explicit LLM_RUNTIME=local. Credentials are read from ignored .dev.vars.";
 
 fn port(name: &str, fallback: &str) -> Result<u16> {
     let value = env::var(name).unwrap_or_else(|_| fallback.into());
@@ -22,18 +22,32 @@ fn port(name: &str, fallback: &str) -> Result<u16> {
     Ok(port)
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    let command = args.first().map(String::as_str).unwrap_or("");
+    // Pure offline analysis never opens SQLite, listeners, credentials or providers.
+    if command == "--analysis-json" {
+        if args.len() != 1 {
+            bail!("--analysis-json reads one JSON value from stdin and takes no options");
+        }
+        let input: Value = serde_json::from_reader(std::io::stdin())?;
+        println!("{}", stock_info_local::analysis_cli::evaluate(&input)?);
+        return Ok(());
+    }
+    tokio::runtime::Runtime::new()?.block_on(run())
+}
+
+async fn run() -> Result<()> {
     let root = env::current_dir()?;
-    // Existing shell settings win. The binary never enables model execution
-    // merely because credentials exist in this ignored local file.
-    let _ = dotenvy::from_path(root.join(".dev.vars"));
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args.first().is_some_and(|s| s == "--help" || s == "-h") {
         println!("{HELP}");
         return Ok(());
     }
     let command = args.first().map(String::as_str).unwrap_or("");
+    // Existing shell settings win. The binary never enables model execution
+    // merely because credentials exist in this ignored local file.
+    let _ = dotenvy::from_path(root.join(".dev.vars"));
     let commands = [
         "",
         "--migrate-only",
@@ -403,6 +417,7 @@ fn parse_options(command: &str, args: &[String]) -> Result<Value> {
         ],
         "--maintenance" => &[
             "operation",
+            "dbFile",
             "file",
             "config",
             "apply",

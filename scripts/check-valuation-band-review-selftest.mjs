@@ -1,3 +1,6 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest, diffBandSnapshots, snapshotFromReadModel } from './lib/rust-analysis.mjs';
+const buildValuationBands = (...args) => callRustSelftest('buildValuationBands', ...args);
 /**
  * Deterministic check for valuation band vintages.
  * Run: node scripts/check-valuation-band-review-selftest.mjs
@@ -12,11 +15,8 @@
  * A snapshot also must never carry a price: it is written into committed files.
  */
 import assert from "node:assert/strict";
-import {
-  diffBandSnapshots,
-  snapshotFromReadModel,
-} from "../src/modules/research/domain/valuation-band-review.ts";
-import { buildValuationBands } from "../src/modules/finance/domain/valuation-bands.ts";
+
+
 
 const YI = 100_000_000;
 

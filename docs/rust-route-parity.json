@@ -780,13 +780,13 @@
       "listener": "content",
       "method": "OPTIONS",
       "path": "/featured-reports/{*key}",
-      "source": "backend/src/lib.rs:196"
+      "source": "backend/src/lib.rs:218"
     },
     {
       "listener": "content",
       "method": "OPTIONS",
       "path": "/knowledge-content/{*key}",
-      "source": "backend/src/lib.rs:195"
+      "source": "backend/src/lib.rs:214"
     },
     {
       "listener": "content",
@@ -810,19 +810,19 @@
       "listener": "http",
       "method": "ALL",
       "path": "/api/auth/{*path}",
-      "source": "backend/src/lib.rs:143"
+      "source": "backend/src/lib.rs:159"
     },
     {
       "listener": "http",
       "method": "ALL",
       "path": "/api/llm-tasks",
-      "source": "backend/src/lib.rs:152"
+      "source": "backend/src/lib.rs:168"
     },
     {
       "listener": "http",
       "method": "ALL",
       "path": "/api/llm-tasks/{*path}",
-      "source": "backend/src/lib.rs:153"
+      "source": "backend/src/lib.rs:169"
     },
     {
       "listener": "http",
@@ -840,13 +840,13 @@
       "listener": "http",
       "method": "ALL",
       "path": "/login.html",
-      "source": "backend/src/lib.rs:172"
+      "source": "backend/src/lib.rs:188"
     },
     {
       "listener": "http",
       "method": "GET",
       "path": "/",
-      "source": "backend/src/lib.rs:164"
+      "source": "backend/src/lib.rs:180"
     },
     {
       "listener": "http",
@@ -930,7 +930,7 @@
       "listener": "http",
       "method": "GET",
       "path": "/api/companies/follow/forecast",
-      "source": "backend/src/lib.rs:155"
+      "source": "backend/src/lib.rs:171"
     },
     {
       "listener": "http",
@@ -1116,7 +1116,7 @@
       "listener": "http",
       "method": "GET",
       "path": "/api/health",
-      "source": "backend/src/lib.rs:154"
+      "source": "backend/src/lib.rs:170"
     },
     {
       "listener": "http",
@@ -1452,7 +1452,7 @@
       "listener": "http",
       "method": "GET",
       "path": "/home.html",
-      "source": "backend/src/lib.rs:168"
+      "source": "backend/src/lib.rs:184"
     },
     {
       "listener": "http",
@@ -1530,7 +1530,7 @@
       "listener": "http",
       "method": "POST",
       "path": "/api/companies/follow/forecast",
-      "source": "backend/src/lib.rs:155"
+      "source": "backend/src/lib.rs:171"
     },
     {
       "listener": "http",
@@ -1667,9 +1667,7 @@
       "shared/observation-research.ts",
       "shared/valuation-assessment.ts",
       "shared/valuation-dashboard.ts",
-      "src/modules/featured-reports/domain/content.ts",
-      "src/modules/research/domain/growth-veto.ts",
-      "src/modules/research/domain/valuation-screen.ts",
+      "shared/valuation-screen.ts",
       "web/src/analysis-task-queue.ts",
       "web/src/api.ts",
       "web/src/app/layout/components/app-footer.ts",
@@ -1708,6 +1706,7 @@
       "web/src/modules/companies/runtime/companies-filter-runtime.ts",
       "web/src/modules/companies/runtime/companies-follow-runtime.ts",
       "web/src/modules/companies/runtime/companies-holding-runtime.ts",
+      "web/src/modules/company/domain/finance-display-series.ts",
       "web/src/modules/company/domain/pe-ttm.ts",
       "web/src/modules/company/domain/trade-analysis.ts",
       "web/src/modules/company/pages/company-dividend-page.ts",
@@ -1730,6 +1729,7 @@
       "web/src/modules/company/runtime/company-report-contract.ts",
       "web/src/modules/company/runtime/company-table-runtime.ts",
       "web/src/modules/company/runtime/company-trade-runtime.ts",
+      "web/src/modules/featured-reports/domain/content.ts",
       "web/src/modules/featured-reports/pages/featured-report-page.ts",
       "web/src/modules/fund/pages/fund-notice-page.ts",
       "web/src/modules/fund/pages/fund-page.ts",
@@ -2008,13 +2008,13 @@
         "listener": "http",
         "method": "UNSPECIFIED",
         "path": "/api/finance/sharechange",
-        "source": "web/src/platform/legacy/legacy-runtime.ts:3109"
+        "source": "web/src/platform/legacy/legacy-runtime.ts:3110"
       },
       {
         "listener": "http",
         "method": "UNSPECIFIED",
         "path": "/api/fund/companies",
-        "source": "web/src/platform/legacy/legacy-runtime.ts:3123"
+        "source": "web/src/platform/legacy/legacy-runtime.ts:3124"
       },
       {
         "listener": "http",

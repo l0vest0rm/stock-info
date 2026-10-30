@@ -1,0 +1,22 @@
+{
+  "sourceCommit": "9ebbeef4da933cf210b76fe5261badf19fafb512",
+  "purpose": "Frozen complete original TypeScript contract outputs before removing retired backend; not regenerated from Rust. Synthetic isolated inputs only.",
+  "fixtures": [
+    {
+      "file": "dashboard_domain_opportunity.json.gz",
+      "caseCount": 343,
+      "decodedSha256": "0acfdb6cef7a4e8a928c542b3aa7892d7cdf604af487502f4de5fe9724f177a9",
+      "generatorSha256": "6684f83fe6ae10c390b555d50a20149b8cea94d283dde4149289acbde1c5aa07",
+      "originalTestSource": "backend/tests/dashboard_domain_opportunity.rs",
+      "originalTestSourceSha256": "d19b2c2ef168274b5fc6bcb2a64b7bb150330134fba4477bc920a44c0194baec"
+    },
+    {
+      "file": "dashboard_screen_diff.json.gz",
+      "caseCount": 65,
+      "decodedSha256": "0a22600da2c33f9fe34b42ac927b04b759cbc39a3aeb7e7951663d76e3c3ff5b",
+      "generatorSha256": "80458a07236948257cf3f89043575d44a7954261f46b2993c682331abcf1c147",
+      "originalTestSource": "backend/tests/dashboard_screen_diff.rs",
+      "originalTestSourceSha256": "b47c8eb8e892628d82e817b19b682542b17fed0eac6911ccec07b7803639b5d1"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
@@ -25,10 +26,20 @@ const softMarkers = [
 const root = resolve(new URL("..", import.meta.url).pathname);
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
-  console.log("Usage: node scripts/check-no-inline-prompts.mjs [--root PATH]\n\nRejects prompt-like string literals embedded directly in source code. Markdown prompt sources under prompts/** and generated prompt-text files are allowed.");
+  console.log("Usage: node scripts/check-no-inline-prompts.mjs [--root PATH] [--self-test]\n\nRejects Rust/frontend/build-tool prompt-like string literals embedded directly in source code. Markdown prompt sources under prompts/** and generated prompt-text files are allowed.");
   process.exit(0);
 }
 
+if (args.selfTest) {
+  const prompt = '你是严谨的投资研究员，不得使用模型记忆填补缺失资料。只根据给定证据进行核对，然后根据输入完成事实完整且可追溯的研究结论。';
+  const raw = `/* ignored r#"${prompt}"# /* nested */ */ fn f(value: &'static str) { let p = r##"${prompt}"##; let c = 'x'; }`;
+  assert.deepEqual(extractRustStringLiterals(raw).map(item => item.content), [prompt]);
+  assert(isPromptLikeLiteral(extractRustStringLiterals(raw)[0].content));
+  assert.deepEqual(extractRustStringLiterals('fn f(){let p = "{{INPUT_DATA}}"; // ignored "not a string"\n}').map(item => item.content), ['{{INPUT_DATA}}']);
+  assert(!isPromptLikeLiteral('{{INPUT_DATA}}'));
+  console.log('Rust inline-prompt lexical regressions passed.');
+  process.exit(0);
+}
 const scanRoot = resolve(root, args.root || ".");
 const files = sourceFiles(scanRoot);
 const violations = files.flatMap((file) => findViolations(file, scanRoot));
@@ -41,10 +52,11 @@ if (violations.length > 0) {
 }
 
 function parseArgs(argv) {
-  const parsed = { root: "", help: false };
+  const parsed = { root: "", help: false, selfTest: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--root") parsed.root = requiredValue(argv, ++index, arg);
+    else if (arg === "--self-test") parsed.selfTest = true;
     else if (arg === "--help" || arg === "-h") parsed.help = true;
     else throw new Error(`unknown argument: ${arg}`);
   }
@@ -58,12 +70,11 @@ function requiredValue(argv, index, flag) {
 }
 
 function sourceFiles(scanRoot) {
-  const include = new Set([".mjs", ".cjs", ".js", ".ts", ".tsx", ".mts", ".cts"]);
-  const excludedDirectories = new Set([".git", ".wrangler", "node_modules", "dist", "coverage", "data", "docs", "prompts", "tmp"]);
+  const include = new Set([".mjs", ".cjs", ".js", ".ts", ".tsx", ".mts", ".cts", ".rs"]);
+  const excludedDirectories = new Set([".git", ".wrangler", "node_modules", "dist", "coverage", "data", "docs", "prompts", "tmp", "target"]);
   const excludedFiles = new Set([
     "scripts/check-no-inline-prompts.mjs",
     "scripts/generated/prompt-text.mjs",
-    "src/generated/prompt-text.ts",
   ]);
   const files = [];
   const visit = (directory) => {
@@ -89,7 +100,7 @@ function findViolations(file, scanRoot) {
   const source = readFileSync(file, "utf8");
   if (!containsPromptMarker(source)) return [];
   const violations = [];
-  for (const match of extractStringLiterals(source)) {
+  for (const match of (file.endsWith(".rs") ? extractRustStringLiterals(source) : extractStringLiterals(source))) {
     const content = match.content;
     if (!isPromptLikeLiteral(content)) continue;
     violations.push({
@@ -287,4 +298,51 @@ function preview(content) {
 function extension(name) {
   const index = name.lastIndexOf(".");
   return index === -1 ? "" : name.slice(index);
+}
+
+// Rust lifetimes and nested comments are not JavaScript quotes/comments. Scan
+// native source explicitly so r#"raw prompts"# cannot escape the same policy.
+function extractRustStringLiterals(source) {
+  const literals = [];
+  let index = 0, line = 1;
+  const advance = stop => { line += (source.slice(index, stop).match(/\n/g) || []).length; index = stop; };
+  while (index < source.length) {
+    if (source.startsWith("//", index)) {
+      const end = source.indexOf("\n", index + 2);
+      advance(end < 0 ? source.length : end);
+      continue;
+    }
+    if (source.startsWith("/*", index)) {
+      let cursor = index + 2, depth = 1;
+      while (cursor < source.length && depth) {
+        if (source.startsWith("/*", cursor)) { depth++; cursor += 2; }
+        else if (source.startsWith("*/", cursor)) { depth--; cursor += 2; }
+        else cursor++;
+      }
+      if (depth) throw new Error("Unterminated Rust comment");
+      advance(cursor);
+      continue;
+    }
+    const raw = /^(?:b)?r(#{0,255})"/.exec(source.slice(index));
+    if (raw) {
+      const start = index + raw[0].length;
+      const end = source.indexOf('"' + raw[1], start);
+      if (end < 0) throw new Error("Unterminated Rust raw string");
+      literals.push({ content: source.slice(start, end), line });
+      advance(end + 1 + raw[1].length);
+      continue;
+    }
+    if (source[index] === '"') {
+      const parsed = readQuotedLiteral(source, index, line, '"');
+      literals.push({ content: parsed.content, line });
+      index = parsed.index; line = parsed.line;
+      continue;
+    }
+    // Only a closed char literal is skipped. Apostrophes in 'static/'a must
+    // not consume the following native code or hide later prompt literals.
+    const character = /^'(?:\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|.)|[^'\\\n])'/.exec(source.slice(index));
+    if (character) { advance(index + character[0].length); continue; }
+    advance(index + 1);
+  }
+  return literals;
 }

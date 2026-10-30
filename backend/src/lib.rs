@@ -1,3 +1,4 @@
+pub mod analysis_cli;
 pub mod cache_policy;
 pub mod codes;
 pub mod company;
@@ -22,6 +23,7 @@ pub mod options;
 pub mod portfolio;
 pub mod research;
 pub mod research_cli;
+pub mod retired_selftest_bridge;
 pub mod runtime_jobs;
 pub mod scheduler;
 pub mod storage;

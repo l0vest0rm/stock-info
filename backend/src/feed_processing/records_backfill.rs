@@ -42,15 +42,10 @@ fn clear_legacy(meta: &mut Value) {
     }
 }
 fn legacy_contract() -> Result<Value> {
-    let generated = include_str!("../../../src/generated/information-records-contract.ts");
-    let text = generated
-        .split_once("export const LEGACY_FEED_EXTRACTION_CONTRACT = ")
-        .context("missing legacy contract")?
-        .1
-        .split_once(';')
-        .context("unterminated contract")?
-        .0;
-    Ok(serde_json::from_str(text)?)
+    crate::knowledge::information_records::extraction_contracts()?
+        .into_iter()
+        .find(|contract| contract["contractVersion"] == "feed-tag-v5")
+        .context("missing v5 legacy extraction contract")
 }
 fn query(conn: &Connection, sql: &str, values: &[&dyn rusqlite::ToSql]) -> Result<Vec<Value>> {
     let mut statement = conn.prepare(sql)?;

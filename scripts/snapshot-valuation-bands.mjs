@@ -21,7 +21,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { diffBandSnapshots, snapshotFromReadModel } from '../src/modules/research/domain/valuation-band-review.ts';
+import { diffBandSnapshots, snapshotFromReadModel } from './lib/rust-analysis.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);

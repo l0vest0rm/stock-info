@@ -1,3 +1,10 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest, buildPointInTimePeSeries } from './lib/rust-analysis.mjs';
+const nativeConstants = callRustSelftest('constants');
+const KNOWN_WITHOUT_NOTICE_DAYS = nativeConstants.KNOWN_WITHOUT_NOTICE_DAYS;
+const addDays = (...args) => callRustSelftest('addDays', ...args);
+const isKnowableAt = (...args) => callRustSelftest('isKnowableAt', ...args);
+const noticeDateOf = (...args) => callRustSelftest('noticeDateOf', ...args);
 /**
  * Deterministic check for the point-in-time PE rebuild.
  * Run: node scripts/check-point-in-time-pe-selftest.mjs
@@ -19,13 +26,7 @@
  * 5. the audit trail names the rows actually used.
  */
 import assert from "node:assert/strict";
-import {
-  KNOWN_WITHOUT_NOTICE_DAYS,
-  addDays,
-  buildPointInTimePeSeries,
-  isKnowableAt,
-  noticeDateOf,
-} from "../src/modules/research/domain/point-in-time-pe.ts";
+
 
 let passed = 0;
 const check = (name, fn) => {

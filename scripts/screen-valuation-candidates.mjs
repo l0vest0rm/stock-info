@@ -22,7 +22,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { screenValuationCandidate } from '../src/modules/research/domain/valuation-screen.ts';
+import { screenValuationCandidate } from './lib/rust-analysis.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);

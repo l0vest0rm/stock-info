@@ -2,11 +2,12 @@
 
 本地股票信息与投资研究站。后端为 `backend/` 中的原生 Rust 应用（Axum / Tokio /
 SQLite），前端为 Vue / Vite。**不再部署 Cloudflare**；没有 Node 后端代理或业务兜底。
-Node 仅用于前端、提示词构建、工程测试和保留的离线分析工具。
+旧后端 `src/`、Cloudflare 代码及后端 TypeScript/JavaScript 实现已移除；Node 仅用于
+前端、提示词构建、测试编排和支持的离线分析工具，后端目录不保留 JS/TS 实现。
 
 ## 本地运行
 
-需要 Rust 工具链、Node.js 26.10.0，以及 npm 本地依赖指向的相邻 `shared-ts` 工作区。
+需要 Rust 工具链与 Node.js 26.10.0；不再依赖相邻 `shared-ts` 工作区或 Cloudflare 工具链。
 
 ```sh
 npm install --include=dev --no-audit --no-fund
@@ -78,9 +79,16 @@ PDF 渲染、提取和专题报告清理需要 Python 3、PyMuPDF，以及单独
 | 证券身份同步 | `npm run sync:csi-stock-universe`、`sync:sp500-stocks`、`sync:hk-popular-stocks`、`sync:asia-popular-stocks` |
 | 研究 | `npm run research:earnings`、`research:fund-quarterly`、`analyze:buy-point` |
 | 存储检查 / 正文清理预览 | `npm run stats:knowledge:storage` / `npm run cleanup:knowledge:content:local:dry-run` |
+| PDF 元数据回填预览 | `npm run backfill:knowledge:pdf-metadata`（默认 dry-run；确认后追加 `-- --apply`） |
+
+PDF 元数据回填的 `--db-file PATH` 只接受已存在的 SQLite，不会创建或迁移该指定库。
 
 修改型命令应先查看帮助和 dry-run；维护删除需要显式 `--apply`。研究输出写入忽略的
 `reports/` 或 `data/local/`。所有支持入口仅操作本地数据，不提供远端迁移、上传、部署或自动发布。
+
+离线分析脚本需要估值筛选、PIT 或快照比较等共享计算时，通过原生 `--analysis-json`
+桥传递纯 JSON；桥不打开数据库、不读取凭据、不请求提供方，也不启动 HTTP 服务。
+前端 API 类型位于 `shared/`，前端专用校验留在 web 域，不复用已删除的后端 TS 模块。
 
 Cron 配置唯一来源是 `config/app/local-runtime.json`，时区 UTC；Rust 进程内调度器
 执行财报补齐、滚动观察池、宏观与结果对账等任务。关闭页面不会取消后台任务。
@@ -99,15 +107,16 @@ npm run check:web-assets
 npm run test:basic             # 另一个终端中，对运行中的本地 API 验证
 ```
 
-`test:basic` 包含隔离账本/缓存/并发检查，以及 `300308.SZ` 的真实 K 线、三张财报、
+`test:basic` 编排原生隔离账本/缓存/并发检查，以及 `300308.SZ` 的真实 K 线、三张财报、
 PE(TTM)、市值及研报前瞻引用检查。它需要有效雪球 Cookie、财报/研报上游与已有历史数据；
 不得删减断言或编造缓存以获得通过。`BASIC_TEST_BASE_URL` 可指定独立验收端口。
 隔离测试不代表真实模型、所有市场提供方、长期调度配额或全部页面交互已经验收。
 
 验证时使用独立端口、数据库及对象目录，不能为测试迁移、清空用户真实数据库。
 实现与验收边界见 [Rust 迁移说明](docs/local-rust-migration.md)、[架构](docs/architecture.md)
-及 [项目指令](AGENTS.md)。保留的 TypeScript 业务模块供差分测试/参考，旧 Cloudflare
-维护源码不构成支持的运行流程；本次没有删除或下线任何既有云资源。
+及 [项目指令](AGENTS.md)。旧后端差分期望已冻结为完整 JSON fixture，保留来源版本与
+哈希，Rust 测试不依赖 Node 或旧后端源码；不能用当前 Rust 输出重写期望值。
+云部署/远端维护源码与依赖已删除，本次没有删除或下线任何既有云资源。
 
 ## 研究与业务说明
 
@@ -115,5 +124,6 @@ PE(TTM)、市值及研报前瞻引用检查。它需要有效雪球 Cookie、财
 - [私有组合工作流](docs/active-portfolio-workflow.md)
 - [AI 产业细分赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)
 
-历史文档中关于 Worker/D1/R2 或线上发布的段落仅描述旧系统，不是当前部署指令。
+历史提交中的云部署流程不再受支持。旧部署工具产生的本地数据、忽略的凭据和既有研究报告
+不属于待删源码，不能因代码清理而删除。
 观察池输出是带独立计算时间和来源日期的滚动读模型，不是共同估值日回测，也不是买卖建议。

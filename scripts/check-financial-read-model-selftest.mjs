@@ -1,3 +1,6 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const buildFinancialStatementReadModel = (...args) => callRustSelftest('buildFinancialStatementReadModel', ...args);
 /**
  * Deterministic check for the read-model warning contract.
  * Run: node scripts/check-financial-read-model-selftest.mjs
@@ -7,28 +10,12 @@
  * two Eastmoney families the row count still looks healthy, so the model must
  * say so explicitly instead of degrading valuation silently.
  *
- * The module imports a sibling without an extension, which is valid for the
- * production bundler (`moduleResolution: "Bundler"`) but not for Node's type
- * stripping.  A scoped resolve hook fills the gap so the check runs against
- * the real source instead of a copy of the rules.
+ * The native bridge runs the production read-model implementation.
  */
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
 
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    try {
-      return nextResolve(specifier, context);
-    } catch (error) {
-      if (specifier.startsWith(".") && !/\.[cm]?[jt]s$/.test(specifier)) {
-        return nextResolve(`${specifier}.ts`, context);
-      }
-      throw error;
-    }
-  },
-});
 
-const { buildFinancialStatementReadModel } = await import("../src/modules/finance/domain/financial-read-model.ts");
+
 
 const row = (reportDate, contract, revenue) => ({
   code: "600036.SH",

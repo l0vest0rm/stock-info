@@ -60,7 +60,7 @@ type Company = {
   evidenceRefs: EvidenceRecord[]
   lastEvidenceDate: string | null
   valuationAsOf: string | null
-  /** Derived by scripts/sync-investment-universe-valuation.mjs; see src/modules/research/domain/valuation-coverage.ts. */
+  /** Derived by the native valuation sync command; see backend/src/coverage.rs. */
   valuationArchetype: string
 }
 type ResearchForecastYear = {
@@ -264,8 +264,8 @@ type TieredCompany = Company & { priority: string; watchStatus: string; basis: s
 type TierInput = Pick<Company, 'valuationArchetype' | 'factorExposures' | 'securities' | 'evidenceRefs'>
 
 /**
- * The tiering rule lives in `src/modules/research/domain/valuation-coverage.ts`
- * and is written into the universe by the sync script.  The page reads those
+ * The tiering rule lives in `backend/src/coverage.rs`
+ * and is written into the universe by the native sync command.  The page reads those
  * fields and only falls back to the same rule locally for an older build, so the
  * page and the file can never disagree about why a company is L3.
  */

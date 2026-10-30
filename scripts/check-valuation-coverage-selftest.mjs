@@ -1,11 +1,18 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const buildValuationCoverage = (...args) => callRustSelftest('buildValuationCoverage', ...args);
+const companyValuationArchetype = (...args) => callRustSelftest('companyValuationArchetype', ...args);
+const companyValuationCoverage = (...args) => callRustSelftest('companyValuationCoverage', ...args);
+const resolveValuationArchetype = (...args) => callRustSelftest('resolveValuationArchetype', ...args);
+const sameSecurity = (...args) => callRustSelftest('sameSecurity', ...args);
 /**
  * Deterministic check for the watchlist valuation coverage classification.
  * Run: node scripts/check-valuation-coverage-selftest.mjs
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildValuationCoverage, companyValuationArchetype, companyValuationCoverage, resolveValuationArchetype } from "../src/modules/research/domain/valuation-coverage.ts";
-import { sameSecurity } from "../src/shared/codes.ts";
+
+
 
 // JSON modules need an explicit import attribute; validate the config files the
 // domain reads so a malformed profile never reaches a worker bundle.

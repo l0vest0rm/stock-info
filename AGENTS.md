@@ -7,10 +7,15 @@
 - The backend is the native Rust application in `backend/`, launched through
   `./start-local.sh` (alias `./start-rust.sh`). API/page URL defaults to
   `http://127.0.0.1:8000`; the local content listener defaults to port 8788.
-- Node is build/test tooling and retained offline analysis/reference source,
-  not a backend runtime or fallback. Do not restore a Node proxy, subprocess
-  business implementation or embedded JS. Retain TypeScript reference modules
-  used by contract/differential tests until their consumers are migrated.
+- Node is frontend/build tooling, test orchestration and supported offline
+  analysis, not a backend runtime or fallback. The retired backend `src/`
+  tree and backend JavaScript/TypeScript implementations are removed. Do not
+  restore them, a Node business proxy/subprocess, or embedded JS.
+- Original-backend expected results are frozen complete JSON fixtures with
+  provenance in `backend/tests/fixtures/`; Rust tests consume them without Node.
+  Never regenerate expected outputs from the Rust implementation under test.
+- Frontend contracts belong in `shared/`; frontend-only validation belongs in
+  the web domain. Do not recreate a second backend in shared TypeScript.
 - See `docs/local-rust-migration.md` for implementation and acceptance scope;
   healthy listeners alone do not prove business/provider parity.
 
@@ -50,8 +55,13 @@
 ## Change Boundaries
 
 - Preserve durable ledger namespaces, local data and active sessions.
-- TypeScript/Cloudflare type definitions and historical remote maintenance
-  scripts are reference source, not a supported deployment workflow.
+- Cloud deployment, remote-maintenance code and its runtime dependencies are
+  removed. Historical commits remain the source-history reference, not a
+  supported deployment workflow. Do not delete `.dev.vars`, local `.wrangler`
+  data, reports or other durable user data merely because old cloud code is gone.
+- Supported offline analysis may call the native `--analysis-json` bridge.
+  Keep that bridge stateless: pure JSON input/output, no SQLite, providers,
+  credentials or listeners. It is not permission to restore Node business code.
 - PDF conversion/cleaning may use the separately installed Python/PyMuPDF tools;
   this is not a Node backend. Missing reviewed cleaners must fail explicitly,
   never silently omit cleaning. See README for installation/discovery boundaries.
@@ -75,8 +85,8 @@
   `shared/valuation-dashboard.ts` owns its API contract. Each row carries its
   computation ID, dependency revision and calculation time; source dates remain
   separate. Do not describe the newest row timestamp as a common valuation date.
-- `backend/src/dashboard.rs` and its submodules own runtime dashboard writes;
-  `valuation-screen-cache.ts` is the retained TypeScript contract oracle. GET is read-only;
+- `backend/src/dashboard.rs` and its submodules own all dashboard writes.
+  Frozen original-backend fixtures preserve prior expectations; GET is read-only;
   POST refresh performs at most two due securities, with fresh results reused.
   The one-minute cron processes at most twelve due securities per invocation;
   shared SQLite leases cap dashboard computations at two across callers.
@@ -95,8 +105,7 @@
 
 - `shared/observation-research.ts` owns the research editor/history contract.
   `backend/src/observation.rs` owns runtime immutable research versions and
-  outcomes (the application `observation-research.ts` remains a test oracle)
-  in existing `kv_cache`, namespace `observation-ledger-v1`, with null
+  outcomes in existing `kv_cache`, namespace `observation-ledger-v1`, with null
   expiry. Treat this namespace as durable records, not disposable cache.
 - Only the dashboard writer appends daily observation cohorts. GET stays
   read-only. Research versions invalidate cached results; the current dashboard
@@ -114,7 +123,8 @@
   contract. The maximum is 39 distinct securities across accounts, not a target
   count; company concentration merges known multiple listings by company ID.
 - `backend/src/portfolio.rs` and its submodules are the sole runtime portfolio
-  ledger writer; the application `active-portfolio.ts` is retained for tests.
+  ledger writer. Contract fixtures and native tests preserve arithmetic,
+  private-route, immutable-history and concurrency requirements.
   The writer appends versioned records to existing `kv_cache`, namespace
   `private-active-portfolio-v1`, with null expiry and optimistic concurrency.
   This namespace is durable private data: never publish, evict as cache, or

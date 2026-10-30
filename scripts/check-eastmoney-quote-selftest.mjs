@@ -1,3 +1,7 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const eastmoneyMarketCapYi = (...args) => callRustSelftest('eastmoneyMarketCapYi', ...args);
+const eastmoneyPriceDivisor = (...args) => callRustSelftest('eastmoneyPriceDivisor', ...args);
 /**
  * Deterministic check for Eastmoney quote field scaling.
  * Run: node scripts/check-eastmoney-quote-selftest.mjs
@@ -10,7 +14,7 @@
  * The real payloads below are copied from live responses on 2026-10-28.
  */
 import assert from "node:assert/strict";
-import { eastmoneyMarketCapYi, eastmoneyPriceDivisor } from "../src/shared/eastmoney-quote.ts";
+
 
 let passed = 0;
 const check = (name, fn) => {

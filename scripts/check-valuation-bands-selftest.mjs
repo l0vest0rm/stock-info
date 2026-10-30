@@ -1,3 +1,6 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const buildValuationBands = (...args) => callRustSelftest('buildValuationBands', ...args);
 /**
  * Deterministic check for the conservative valuation bands.
  * Run: node scripts/check-valuation-bands-selftest.mjs
@@ -9,7 +12,7 @@
  * - a missing quote only removes the implied column, it does not break anchors
  */
 import assert from "node:assert/strict";
-import { buildValuationBands } from "../src/modules/finance/domain/valuation-bands.ts";
+
 
 const YI = 100_000_000;
 const base = {

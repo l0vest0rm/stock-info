@@ -2,7 +2,7 @@ import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { validateContent, type FeaturedContent } from '../../../../../src/modules/featured-reports/domain/content';
+import { validateContent, type FeaturedContent } from '../domain/content';
 import styles from './featured-report.css?inline';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;

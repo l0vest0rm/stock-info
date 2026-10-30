@@ -42,7 +42,7 @@ import {
   MIN_MEANINGFUL_COVERAGE,
   measureBandCoverage,
   sortedUsableValues,
-} from '../src/modules/research/domain/valuation-multiple-calibration.ts';
+} from './lib/rust-analysis.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);

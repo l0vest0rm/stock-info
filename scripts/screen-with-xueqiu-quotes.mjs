@@ -2,19 +2,10 @@
 /**
  * Diagnostic screen using Xueqiu quotes.
  *
- * The production quote path is Eastmoney `push2delay`, and this script does not
- * change that.  It exists because that endpoint is occasionally unreachable
- * (empty reply from the server) while Xueqiu's K-line is not, and when the quote
- * feed is down the screen returns `quote_fetch_failed` for almost the whole
- * pool — which tells you nothing about whether the *rule* is working.
- *
- * So this runs the same `screenValuationCandidate` on quotes taken from Xueqiu,
- * purely to answer "what would the rule say today".  Xueqiu's K-line carries a
- * daily market capitalisation and a daily PE, so the two inputs the screen needs
- * are both available from a source the repository already trusts for prices.
- *
- * It is NOT a fallback wired into the API.  The production path stays
- * Eastmoney-only, and a failure there is still reported as a failure.
+ * Runs the native valuation screen on daily Xueqiu observations without
+ * changing configuration, providers, prices or the active dashboard. The
+ * daily market capitalization and PE are read from the existing Xueqiu API.
+ * This is an offline research diagnostic, not an automatic provider fallback.
  *
  * Read-only. No price is emitted, no target, no instruction.
  *
@@ -25,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { screenValuationCandidate } from "../src/modules/research/domain/valuation-screen.ts";
+import { screenValuationCandidate } from './lib/rust-analysis.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);

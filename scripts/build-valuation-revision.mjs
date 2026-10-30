@@ -8,7 +8,7 @@ function files(dir) {
 }
 // Conservative dependency closure: invalidate rather than serve a result made
 // with old adapter/financial/domain logic. No timestamps or secrets are inputs.
-const inputs = [...files(resolve(root, 'src')), ...files(resolve(root, 'backend/src')), ...files(resolve(root, 'shared')),
+const inputs = [...files(resolve(root, 'backend/src')), ...files(resolve(root, 'shared')),
   resolve(root, 'backend/Cargo.toml'), resolve(root, 'backend/Cargo.lock'),
   ...files(resolve(root, 'config/research')), resolve(root, 'config/generated/eastmoney-company-em2016-profiles.json'),
   resolve(root, 'config/investment-universe.json'), resolve(root, 'config/investment-opportunity-policy.json')].sort();

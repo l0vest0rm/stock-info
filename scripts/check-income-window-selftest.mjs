@@ -1,3 +1,6 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const genReportDates = (...args) => callRustSelftest('genReportDates', ...args);
 /**
  * Deterministic check for the F10 report-date window.
  * Run: node scripts/check-income-window-selftest.mjs
@@ -8,7 +11,7 @@
  * silently detached those anchors and left `ttm*` null on 招商银行 / 中国平安.
  */
 import assert from "node:assert/strict";
-import { genReportDates } from "../src/adapters/eastmoney-report-window.ts";
+
 
 const isQuarterEnd = (date) => /^\d{4}-(03-31|06-30|09-30|12-31)$/.test(date);
 

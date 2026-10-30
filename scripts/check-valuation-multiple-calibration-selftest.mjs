@@ -1,3 +1,5 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest, BAND_MULTIPLE_FIELDS, MIN_MEANINGFUL_COVERAGE, bandExcludesMostHistory, measureBandCoverage, quantileOfSorted, sortedUsableValues, summarizeMultipleDistribution, usableMultipleValues } from './lib/rust-analysis.mjs';
 /**
  * Deterministic check for valuation multiple calibration.
  * Run: node scripts/check-valuation-multiple-calibration-selftest.mjs
@@ -11,16 +13,7 @@
  * claim entirely.
  */
 import assert from "node:assert/strict";
-import {
-  BAND_MULTIPLE_FIELDS,
-  MIN_MEANINGFUL_COVERAGE,
-  bandExcludesMostHistory,
-  measureBandCoverage,
-  quantileOfSorted,
-  sortedUsableValues,
-  summarizeMultipleDistribution,
-  usableMultipleValues,
-} from "../src/modules/research/domain/valuation-multiple-calibration.ts";
+
 
 let passed = 0;
 const check = (name, fn) => {

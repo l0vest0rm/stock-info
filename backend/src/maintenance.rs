@@ -1,5 +1,7 @@
 //! Explicit local maintenance commands. Dry-runs never delete data, and remote
 //! switches are rejected before either SQLite or object-store mutations.
+mod pdf_metadata;
+
 use crate::{AppState, knowledge::ingest::writer};
 use anyhow::{Context, Result, bail};
 use chrono::{Duration, Utc};
@@ -128,6 +130,7 @@ pub async fn run(state: &AppState, operation: &str, options: &Value) -> Result<V
         "import-filtered" => import(state, options, true).await,
         "migrate-localfs" => migrate(state, options).await,
         "cleanup-docs" => cleanup_docs(state, options).await,
+        "pdf-metadata" => pdf_metadata::run(state, options).await,
         "cleanup-content" => cleanup_content(state, options).await,
         "filter-existing" => filter_existing(state, options).await,
         "storage-stats" => storage_stats(state, options).await,

@@ -58,7 +58,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildPointInTimePeSeries } from "../src/modules/research/domain/point-in-time-pe.ts";
+import { buildPointInTimePeSeries } from './lib/rust-analysis.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);

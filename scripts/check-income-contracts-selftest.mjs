@@ -1,3 +1,6 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const isCumulativeIncomeRow = (...args) => callRustSelftest('isCumulativeIncomeRow', ...args);
 /**
  * Contract check for the income row shapes the TTM formula consumes.
  * Run: node scripts/check-income-contracts-selftest.mjs
@@ -14,7 +17,7 @@
  * answer has to fail loudly here rather than look like missing data downstream.
  */
 import assert from "node:assert/strict";
-import { isCumulativeIncomeRow } from "../src/modules/finance/domain/income-row-contracts.ts";
+
 
 // A-share cumulative family and the annual 12M family.
 assert.equal(isCumulativeIncomeRow({ FINANCIAL_SOURCE_CONTRACT: "eastmoney_f10_income.v1" }), true);

@@ -1,3 +1,11 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest, screenValuationCandidate } from './lib/rust-analysis.mjs';
+const nativeConstants = callRustSelftest('constants');
+const IMPLAUSIBLE_GROWTH_THRESHOLD = nativeConstants.IMPLAUSIBLE_GROWTH_THRESHOLD;
+const SHRINKING_EARNINGS_THRESHOLD = nativeConstants.SHRINKING_EARNINGS_THRESHOLD;
+const WEAK_GROWTH_THRESHOLD = nativeConstants.WEAK_GROWTH_THRESHOLD;
+const assessGrowthAgainstBand = (...args) => callRustSelftest('assessGrowthAgainstBand', ...args);
+const growthVetoesNomination = (...args) => callRustSelftest('growthVetoesNomination', ...args);
 /**
  * Deterministic check for the growth veto.
  * Run: node scripts/check-growth-veto-selftest.mjs
@@ -17,14 +25,8 @@
  * the band itself from growth — so that conclusion cannot be quietly reversed.
  */
 import assert from "node:assert/strict";
-import {
-  IMPLAUSIBLE_GROWTH_THRESHOLD,
-  SHRINKING_EARNINGS_THRESHOLD,
-  WEAK_GROWTH_THRESHOLD,
-  assessGrowthAgainstBand,
-  growthVetoesNomination,
-} from "../src/modules/research/domain/growth-veto.ts";
-import { screenValuationCandidate } from "../src/modules/research/domain/valuation-screen.ts";
+
+
 
 let passed = 0;
 const check = (name, fn) => {

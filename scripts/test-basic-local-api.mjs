@@ -29,7 +29,7 @@ const { checkActivePortfolio } = await import('./lib/check-active-portfolio.mjs'
 console.log(JSON.stringify(await checkActivePortfolio()));
 
 const health = await get("/api/health");
-assert(health?.d1 === true, "local database health check failed");
+assert(health?.d1 === true && health?.sqlite === true && health?.runtime === "rust", "native local database/runtime health check failed");
 const portfolio = await get('/api/research/portfolio/workspace');
 assert(portfolio.template.strategy === 'diversified_active' && portfolio.template.rules.maxHoldings === 39 && portfolio.assessment.executable === false, '主动组合私有契约错误');
 
@@ -60,19 +60,7 @@ for (const row of dashboard.rows) {
 }
 const invalid = await fetch(new URL('/api/research/valuation-screen/refresh/INVALID', baseUrl), { method: 'POST' });
 assert(invalid.status === 400, '不得通过刷新端点抓取观察池外任意证券');
-const { bandPosition, assessValuation } = await import('../src/modules/research/domain/valuation-assessment.ts');
-for (const [cap, expected] of [[79, 'undervalued'], [80, 'fair_low'], [129, 'fair_low'], [130, 'fair'], [180, 'fair'], [216, 'expensive'], [217, 'very_expensive'], [-1, 'unknown'], [NaN, 'unknown']]) {
-  assert(bandPosition(cap, 80, 180) === expected, `估值档位边界错误：${cap}`);
-}
-const baseBand = { key: 'pe_ttm', label: 'PE', role: 'primary', status: 'available', unit: 'multiple', range: { low: 8, high: 18 }, denominator: { value: 10, reportDate: '2026-06-30' }, assumptions: [] };
-const input = { result: { verdict: 'watch', basis: { key: 'pe_ttm' }, position: { marketCap: 100 }, growth: { verdict: 'supports', ttmGrowth: .1 }, note: 'fixture' }, bands: { bands: [baseBand], warnings: [] }, series: { points: [] }, statements: [], bars: [], quote: null, historyComparable: true };
-const assessed = assessValuation(input);
-assert(assessed.conservativeMargin === -.25, '安全边际必须锚定价值下限，而非上限');
-assert(assessed.history.windows.every((w) => w.percentile === null), '缺历史不得回填分位');
-assert(assessValuation({ ...input, bands: { bands: [{ ...baseBand, role: 'auxiliary' }], warnings: [] } }).status === 'unknown', '辅助PE不得判定银行/保险低估');
-assert(assessValuation({ ...input, result: { ...input.result, verdict: 'blocked' } }).status === 'unknown', '阻断结果不得产生估值档位');
-const yieldResult = assessValuation({ ...input, result: { ...input.result, basis: { key: 'fcf_yield' } }, bands: { bands: [{ ...baseBand, key: 'fcf_yield', unit: 'percent', range: { low: 3, high: 6 } }], warnings: [] } });
-assert(Math.abs(yieldResult.conservativeMargin - .4) < 1e-9, '收益率区间必须反向换算价值，再计算安全边际');
+// Native retired_baseline_contract keeps all former band/assessment assertions.
 console.log(JSON.stringify({ valuationDashboard: 'passed', cachedRows: dashboard.rows.length, targets: dashboard.companies }));
 
 const { checkInvestmentOpportunity } = await import('./lib/check-investment-opportunity.mjs');
@@ -111,15 +99,8 @@ console.log(JSON.stringify({
 }, null, 2));
 
 // Existing provider forecasts must retain publication-relative years and access control.
-const { normalizeForwardReference } = await import('../src/modules/company/domain/report-forward-reference.ts');
-const normalizedForward = normalizeForwardReference({ publishDate: '2025-09-20', predictThisYearEps: '2', predictNextYearEps: '3', predictNextYearPe: '12', forecasts: [{ year: 2026, eps: 4 }] });
-assert(normalizedForward.forecasts[0].year === 2025 && normalizedForward.forecasts[1].year === 2026, '预测年份必须锚定发布日期');
-assert(normalizedForward.forecasts[1].eps === 4 && normalizedForward.forecasts[1].pe === 12, '已保存提取优先且保留提供商PE');
-assert(normalizeForwardReference({ predictThisYearEps: '2' }).forecasts.length === 0, '无发布日期不得猜预测年份');
-assert(normalizeForwardReference({ publishDate: '2026-01-01', predictThisYearEps: '' }).forecasts.length === 0, '空预测不得变成0');
-const { projectCompanyReportItemsForSession } = await import('../src/modules/company/api/company-report-access.ts');
-const anonymousReport = projectCompanyReportItemsForSession([{ code, infoCode: 'AP123', url: 'https://pdf.dfcfw.com/example.pdf' }], false)[0];
-assert(anonymousReport.reportCarrier === '东方财富' && anonymousReport.reportLocked && !anonymousReport.url && !anonymousReport.infoCode && !anonymousReport.reportUrl, '来源标记不得绕过研报链接权限');
+// Native retired_baseline_contract checks forecast normalization, field redaction,
+// and fail-closed access for non-local/cross-origin report clients.
 const reportReferences = await get(`/api/company/reports?code=${code}&readOnly=1`);
 assert(Array.isArray(reportReferences) && reportReferences.length > 0, '只读研报参考缺失');
 assert(reportReferences.every((r) => typeof r.reportCarrier === 'string'), '研报来源缺失');

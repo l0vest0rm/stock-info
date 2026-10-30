@@ -1,0 +1,366 @@
+[
+  {
+    "file": "20261029-中信证券-招商银行-600036-盈利改善.pdf",
+    "expected": {
+      "originalStem": "20261029-中信证券-招商银行-600036-盈利改善",
+      "normalizedStem": "20261029 中信证券 招商银行 600036 盈利改善",
+      "publishedAt": "2026-10-29",
+      "sourceName": "中信证券",
+      "targetName": "招商银行",
+      "targetCode": "600036.SH",
+      "reportType": "company_report",
+      "title": "盈利改善"
+    }
+  },
+  {
+    "file": "个股_20260102_国信证券_腾讯控股_00700.HK_增长.pdf",
+    "expected": {
+      "originalStem": "个股_20260102_国信证券_腾讯控股_00700.HK_增长",
+      "normalizedStem": "个股 20260102 国信证券 腾讯控股 00700.HK 增长",
+      "publishedAt": "2026-01-02",
+      "sourceName": "国信证券",
+      "targetName": "腾讯控股",
+      "targetCode": "00700.HK",
+      "reportType": "company_report",
+      "title": "增长"
+    }
+  },
+  {
+    "file": "行业-20260231-华泰证券-半导体行业-需求.pdf",
+    "expected": {
+      "originalStem": "行业-20260231-华泰证券-半导体行业-需求",
+      "normalizedStem": "行业 20260231 华泰证券 半导体行业 需求",
+      "publishedAt": "2026-02-31",
+      "sourceName": "华泰证券",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "industry_report",
+      "title": "半导体行业 需求"
+    }
+  },
+  {
+    "file": "20261029-机构-USUSAA.N-标题.pdf",
+    "expected": {
+      "originalStem": "20261029-机构-USUSAA.N-标题",
+      "normalizedStem": "20261029 机构 USUSAA.N 标题",
+      "publishedAt": "2026-10-29",
+      "sourceName": "机构",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "USUSAA.N 标题"
+    }
+  },
+  {
+    "file": "公司-20260101-机构-苹果-USAAPL.OQ-增长.pdf",
+    "expected": {
+      "originalStem": "公司-20260101-机构-苹果-USAAPL.OQ-增长",
+      "normalizedStem": "公司 20260101 机构 苹果 USAAPL.OQ 增长",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "苹果",
+      "targetCode": "AAPL.US",
+      "reportType": "company_report",
+      "title": "增长"
+    }
+  },
+  {
+    "file": "公司-20260101-机构-台积电-2330.TW-增长.pdf",
+    "expected": {
+      "originalStem": "公司-20260101-机构-台积电-2330.TW-增长",
+      "normalizedStem": "公司 20260101 机构 台积电 2330.TW 增长",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "台积电",
+      "targetCode": "2330.TW",
+      "reportType": "company_report",
+      "title": "增长"
+    }
+  },
+  {
+    "file": "20260101-券商-小米集团(01810.HK)-更新.pdf",
+    "expected": {
+      "originalStem": "20260101-券商-小米集团(01810.HK)-更新",
+      "normalizedStem": "20260101 券商 小米集团(01810.HK) 更新",
+      "publishedAt": "2026-01-01",
+      "sourceName": "券商",
+      "targetName": "小米集团",
+      "targetCode": "01810.HK",
+      "reportType": "company_report",
+      "title": "小米集团(01810.HK) 更新"
+    }
+  },
+  {
+    "file": "20260101-券商-招商银行（600036）-更新.pdf",
+    "expected": {
+      "originalStem": "20260101-券商-招商银行（600036）-更新",
+      "normalizedStem": "20260101 券商 招商银行（600036） 更新",
+      "publishedAt": "2026-01-01",
+      "sourceName": "券商",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "招商银行（600036） 更新"
+    }
+  },
+  {
+    "file": "公司-20260101-机构-名称-430047-北交所.pdf",
+    "expected": {
+      "originalStem": "公司-20260101-机构-名称-430047-北交所",
+      "normalizedStem": "公司 20260101 机构 名称 430047 北交所",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "company_report",
+      "title": "名称 430047 北交所"
+    }
+  },
+  {
+    "file": "20260101_机构_标题.PDF",
+    "expected": {
+      "originalStem": "20260101_机构_标题",
+      "normalizedStem": "20260101 机构 标题",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "标题"
+    }
+  },
+  {
+    "file": "no_date-title.pdf",
+    "expected": {
+      "originalStem": "no_date-title",
+      "normalizedStem": "no date title",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "no date title"
+    }
+  },
+  {
+    "file": "2026-10-29-机构-标题.pdf",
+    "expected": {
+      "originalStem": "2026-10-29-机构-标题",
+      "normalizedStem": "2026 10 29 机构 标题",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "2026 10 29 机构 标题"
+    }
+  },
+  {
+    "file": "前缀-前缀-前缀-20260101-机构-标题.pdf",
+    "expected": {
+      "originalStem": "前缀-前缀-前缀-20260101-机构-标题",
+      "normalizedStem": "前缀 前缀 前缀 20260101 机构 标题",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "前缀 前缀 前缀 20260101 机构 标题"
+    }
+  },
+  {
+    "file": "__.pdf",
+    "expected": {
+      "originalStem": "",
+      "normalizedStem": "",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": ""
+    }
+  },
+  {
+    "file": ".pdf",
+    "expected": {
+      "originalStem": ".pdf",
+      "normalizedStem": ".pdf",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": ".pdf"
+    }
+  },
+  {
+    "file": "/nested/path/ 20260101_机构_标题 .pdf",
+    "expected": {
+      "originalStem": "20260101_机构_标题",
+      "normalizedStem": "20260101 机构 标题",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "标题"
+    }
+  },
+  {
+    "file": "20260101-机构-公司-600036.SH.pdf",
+    "expected": {
+      "originalStem": "20260101-机构-公司-600036.SH",
+      "normalizedStem": "20260101 机构 公司 600036.SH",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "公司",
+      "targetCode": "600036.SH",
+      "reportType": "company_report",
+      "title": "公司 (600036.SH)"
+    }
+  },
+  {
+    "file": "20260101-机构-公司-123.HK-标题.pdf",
+    "expected": {
+      "originalStem": "20260101-机构-公司-123.HK-标题",
+      "normalizedStem": "20260101 机构 公司 123.HK 标题",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "公司",
+      "targetCode": "123.HK",
+      "reportType": "company_report",
+      "title": "标题"
+    }
+  },
+  {
+    "file": "20260101-机构-公司-6488.TWO-标题.pdf",
+    "expected": {
+      "originalStem": "20260101-机构-公司-6488.TWO-标题",
+      "normalizedStem": "20260101 机构 公司 6488.TWO 标题",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "公司",
+      "targetCode": "6488.TWO",
+      "reportType": "company_report",
+      "title": "标题"
+    }
+  },
+  {
+    "file": "19991231-机构-标题.pdf",
+    "expected": {
+      "originalStem": "19991231-机构-标题",
+      "normalizedStem": "19991231 机构 标题",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "19991231 机构 标题"
+    }
+  },
+  {
+    "file": "21001231-机构-标题.pdf",
+    "expected": {
+      "originalStem": "21001231-机构-标题",
+      "normalizedStem": "21001231 机构 标题",
+      "publishedAt": "2100-12-31",
+      "sourceName": "机构",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "标题"
+    }
+  },
+  {
+    "file": "21010101-机构-标题.pdf",
+    "expected": {
+      "originalStem": "21010101-机构-标题",
+      "normalizedStem": "21010101 机构 标题",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "21010101 机构 标题"
+    }
+  },
+  {
+    "file": "20260001-机构-标题.pdf",
+    "expected": {
+      "originalStem": "20260001-机构-标题",
+      "normalizedStem": "20260001 机构 标题",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "20260001 机构 标题"
+    }
+  },
+  {
+    "file": "20261232-机构-标题.pdf",
+    "expected": {
+      "originalStem": "20261232-机构-标题",
+      "normalizedStem": "20261232 机构 标题",
+      "publishedAt": "",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "20261232 机构 标题"
+    }
+  },
+  {
+    "file": "20260101-标题.pdf",
+    "expected": {
+      "originalStem": "20260101-标题",
+      "normalizedStem": "20260101 标题",
+      "publishedAt": "2026-01-01",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "标题"
+    }
+  },
+  {
+    "file": "20260101.pdf",
+    "expected": {
+      "originalStem": "20260101",
+      "normalizedStem": "20260101",
+      "publishedAt": "2026-01-01",
+      "sourceName": "",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "20260101"
+    }
+  },
+  {
+    "file": "20260101-机构-公司-ABC.AMEX-标题.pdf",
+    "expected": {
+      "originalStem": "20260101-机构-公司-ABC.AMEX-标题",
+      "normalizedStem": "20260101 机构 公司 ABC.AMEX 标题",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "",
+      "targetCode": "",
+      "reportType": "research_report",
+      "title": "公司 ABC.AMEX 标题"
+    }
+  },
+  {
+    "file": "20260101-机构-公司-USABC.AMEX-标题.pdf",
+    "expected": {
+      "originalStem": "20260101-机构-公司-USABC.AMEX-标题",
+      "normalizedStem": "20260101 机构 公司 USABC.AMEX 标题",
+      "publishedAt": "2026-01-01",
+      "sourceName": "机构",
+      "targetName": "公司",
+      "targetCode": "ABC.US",
+      "reportType": "company_report",
+      "title": "标题"
+    }
+  }
+]

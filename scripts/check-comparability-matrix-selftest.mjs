@@ -1,3 +1,8 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const buildComparabilityMatrix = (...args) => callRustSelftest('buildComparabilityMatrix', ...args);
+const capitalIntensityClass = (...args) => callRustSelftest('capitalIntensityClass', ...args);
+const comparisonRulesFor = (...args) => callRustSelftest('comparisonRulesFor', ...args);
 /**
  * Deterministic check for the comparability matrix.
  * Run: node scripts/check-comparability-matrix-selftest.mjs
@@ -7,25 +12,7 @@
  * reported with their reason, never silently dropped.
  */
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
 
-// The domain imports `./valuation-coverage` and the JSON configs without
-// extensions; that is valid for the bundler but not for Node's type stripping,
-// so a scoped resolve hook lets this check exercise the real source.
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    try {
-      return nextResolve(specifier, context);
-    } catch (error) {
-      if (specifier.startsWith(".") && !/\.[cm]?[jt]s$/.test(specifier)) {
-        return nextResolve(`${specifier}.ts`, context);
-      }
-      throw error;
-    }
-  },
-});
-
-const { buildComparabilityMatrix, capitalIntensityClass, comparisonRulesFor } = await import("../src/modules/research/domain/comparability-matrix.ts");
 
 // 1. Capital-intensity classes follow the measured thresholds.
 assert.equal(capitalIntensityClass(0.07), "light", "中际旭创");

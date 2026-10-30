@@ -7,25 +7,13 @@ pub const MAX_EXTRACTION_ATTEMPTS: u64 = 5;
 pub const INFORMATION_STORAGE_VERSION: &str = "information-records-v1";
 
 pub fn extraction_contracts() -> Result<Vec<Value>> {
-    const GENERATED: &str = include_str!(concat!(
+    let generated: Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../src/generated/information-records-contract.ts"
-    ));
-    let constant = |name: &str| -> Result<Value> {
-        let marker = format!("export const {name} = ");
-        let rest = GENERATED
-            .split_once(&marker)
-            .with_context(|| format!("missing generated contract {name}"))?
-            .1;
-        Ok(serde_json::from_str(
-            rest.split_once(';')
-                .context("unterminated generated contract")?
-                .0,
-        )?)
-    };
-    let mut contracts = vec![constant("FEED_EXTRACTION_CONTRACT")?];
+        "/../config/generated/information-records-contract.json"
+    )))?;
+    let mut contracts = vec![generated["current"].clone()];
     contracts.extend(
-        constant("LEGACY_FEED_EXTRACTION_CONTRACTS")?
+        generated["legacy"]
             .as_array()
             .context("legacy contracts must be an array")?
             .iter()

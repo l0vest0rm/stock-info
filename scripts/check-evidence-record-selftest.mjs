@@ -1,3 +1,10 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const canVerifyIdentity = (...args) => callRustSelftest('canVerifyIdentity', ...args);
+const evidenceCoverage = (...args) => callRustSelftest('evidenceCoverage', ...args);
+const identityReport = (...args) => callRustSelftest('identityReport', ...args);
+const latestEvidenceDate = (...args) => callRustSelftest('latestEvidenceDate', ...args);
+const validateEvidenceRecord = (...args) => callRustSelftest('validateEvidenceRecord', ...args);
 /**
  * Deterministic check for the watchlist evidence contract.
  * Run: node scripts/check-evidence-record-selftest.mjs
@@ -7,13 +14,7 @@
  * identity, and `lastEvidenceDate` is derived rather than typed.
  */
 import assert from "node:assert/strict";
-import {
-  canVerifyIdentity,
-  evidenceCoverage,
-  identityReport,
-  latestEvidenceDate,
-  validateEvidenceRecord,
-} from "../src/modules/research/domain/evidence-record.ts";
+
 
 const filing = (overrides = {}) => ({
   source: "cninfo_filing",

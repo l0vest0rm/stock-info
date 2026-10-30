@@ -1,10 +1,13 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const buildValuationInputs = (...args) => callRustSelftest('buildValuationInputs', ...args);
 /**
  * Deterministic check for the per-industry valuation-input arithmetic.
  * Run: node scripts/check-valuation-inputs-selftest.mjs (requires a prior
- * `npm run typecheck:server`; Node strips the TypeScript types at import).
+ * `npm run build:rust`; domain arithmetic executes in the native binary).
  */
 import assert from "node:assert/strict";
-import { buildValuationInputs } from "../src/modules/finance/domain/valuation-inputs.ts";
+
 
 const row = (statementType, reportDate, payload) => ({
   code: "TEST",

@@ -1,3 +1,8 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const buildQuarterlySeries = (...args) => callRustSelftest('buildQuarterlySeries', ...args);
+const incomeFamilyOf = (...args) => callRustSelftest('incomeFamilyOf', ...args);
+const previousQuarterEnd = (...args) => callRustSelftest('previousQuarterEnd', ...args);
 /**
  * Deterministic check for the quarterly series assembly.
  * Run: node scripts/check-quarterly-series-selftest.mjs
@@ -8,7 +13,7 @@
  * carries three observations — cumulative 年报, cumulative interim, and Q4.
  */
 import assert from "node:assert/strict";
-import { buildQuarterlySeries, incomeFamilyOf, previousQuarterEnd } from "../src/modules/finance/domain/quarterly-ttm-series.ts";
+
 
 const YI = 100_000_000;
 

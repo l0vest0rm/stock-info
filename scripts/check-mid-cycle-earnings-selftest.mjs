@@ -1,3 +1,8 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const nativeConstants = callRustSelftest('constants');
+const buildMidCycleEarnings = (...args) => callRustSelftest('buildMidCycleEarnings', ...args);
+const MID_CYCLE_MIN_YEARS = nativeConstants.MID_CYCLE_MIN_YEARS;
 /**
  * Deterministic check for mid-cycle earnings.
  * Run: node scripts/check-mid-cycle-earnings-selftest.mjs
@@ -6,7 +11,7 @@
  * loss years kept, and no centre below the minimum sample.
  */
 import assert from "node:assert/strict";
-import { buildMidCycleEarnings, MID_CYCLE_MIN_YEARS } from "../src/modules/finance/domain/mid-cycle-earnings.ts";
+
 
 const YI = 100_000_000;
 const annual = (year, parentNetProfit, extra = {}) => ({

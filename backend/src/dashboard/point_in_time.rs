@@ -172,7 +172,7 @@ fn net_profit(row: &Value) -> Option<f64> {
     .iter()
     .find_map(|key| number(&row["payload"][key]))
 }
-fn knowable(row: &Value, as_of: &str) -> bool {
+pub(crate) fn knowable(row: &Value, as_of: &str) -> bool {
     let report = text(&row["reportDate"]);
     if report > as_of {
         return false;

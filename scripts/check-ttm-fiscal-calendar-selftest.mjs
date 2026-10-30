@@ -1,3 +1,12 @@
+// Retained assertion coverage; all domain computations execute in native Rust.
+import { callRustSelftest } from './lib/rust-analysis.mjs';
+const annualBaseFor = (...args) => callRustSelftest('annualBaseFor', ...args);
+const isFiscalYearRow = (...args) => callRustSelftest('isFiscalYearRow', ...args);
+const priorSamePeriodFor = (...args) => callRustSelftest('priorSamePeriodFor', ...args);
+const shiftMonths = (...args) => callRustSelftest('shiftMonths', ...args);
+const trailingTwelveMonths = (...args) => callRustSelftest('trailingTwelveMonths', ...args);
+const buildQuarterlySeries = (...args) => callRustSelftest('buildQuarterlySeries', ...args);
+const incomeFamilyOf = (...args) => callRustSelftest('incomeFamilyOf', ...args);
 /**
  * Fiscal-calendar check for trailing-twelve-month arithmetic.
  * Run: node scripts/check-ttm-fiscal-calendar-selftest.mjs
@@ -20,14 +29,8 @@
  * null rather than promote an interim to fiscal year.
  */
 import assert from "node:assert/strict";
-import {
-  annualBaseFor,
-  isFiscalYearRow,
-  priorSamePeriodFor,
-  shiftMonths,
-  trailingTwelveMonths,
-} from "../src/modules/finance/domain/ttm-fiscal-calendar.ts";
-import { buildQuarterlySeries, incomeFamilyOf } from "../src/modules/finance/domain/quarterly-ttm-series.ts";
+
+
 
 const YI = 100_000_000;
 
