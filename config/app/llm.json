@@ -1,0 +1,6 @@
+{
+  "model": "deepseek-v4.1-flash",
+  "baseUrl": "http://127.0.0.1:9470/v1",
+  "apiKeyEnv": "ROUTING_API_KEY",
+  "protocol": "chat_completions"
+}

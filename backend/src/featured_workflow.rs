@@ -215,7 +215,15 @@ async fn llm(
             .root
             .join(format!("prompts/featured-report-{kind}.md")),
     )?;
-    let key = domain::cache_key(kind, &prompt, &input)?;
+    let legacy_key = domain::cache_key(kind, &prompt, &input)?;
+    let routing = crate::llm::config(state)?;
+    let basis = format!(
+        "{legacy_key}:{}:{}:{:?}",
+        routing.model, routing.base_url, routing.protocol
+    );
+    let key = format!("{:x}", sha2::Sha256::digest(basis.as_bytes()));
+    // Completed old-model checkpoints are not rewritten or automatically replayed.
+    let legacy_path = dir.join("cache").join(format!("{legacy_key}.json"));
     let path = dir.join("cache").join(format!("{key}.json"));
     let validate = |value: &Value| -> Result<()> {
         match kind {
@@ -243,12 +251,16 @@ async fn llm(
             _ => bail!("unknown translation step"),
         }
     };
-    if path.exists() {
-        let value = read(&path)?;
+    let completed_path = if path.exists() { &path } else { &legacy_path };
+    if completed_path.exists() {
+        let value = read(completed_path)?;
         validate(&value)?;
         // A sidecar records that this exact checkpoint was recognized, without
         // rewriting the original completed model output.
-        fs::write(path.with_extension("accepted"), b"legacy-key-compatible\n")?;
+        fs::write(
+            completed_path.with_extension("accepted"),
+            b"legacy-key-compatible\n",
+        )?;
         return Ok(value);
     }
     ensure_cache_replay_allowed(
@@ -257,7 +269,7 @@ async fn llm(
     )?;
     // Never automatically replay an ambiguous model execution or malformed
     // result. Valid completed steps persist and a later human retry reuses them.
-    let options = json!({"model":"gpt-5.6-luna","instructions":prompt,"input":[{"role":"user","content":[{"type":"input_text","text":serde_json::to_string(&input)?}]}],"maxTokens":if matches!(kind,"whole"|"translate") {16000} else {10000},"timeoutMs":240000});
+    let options = json!({"model":crate::llm::config(state)?.model,"instructions":prompt,"input":[{"role":"user","content":[{"type":"input_text","text":serde_json::to_string(&input)?}]}],"maxTokens":if matches!(kind,"whole"|"translate") {16000} else {10000},"timeoutMs":240000});
     let text = tokio::time::timeout(
         Duration::from_secs(240),
         taskd::direct_text(state, &options),
@@ -357,7 +369,7 @@ pub async fn prepare(state: &AppState, options: &Value) -> Result<Value> {
     if !dir.join("manifest.json").exists() {
         write(
             &dir.join("manifest.json"),
-            &json!({"reportId":report_id,"source":input,"model":"gpt-5.6-luna","pageCount":source["pageCount"]}),
+            &json!({"reportId":report_id,"source":input,"model":crate::llm::config(state)?.model,"pageCount":source["pageCount"]}),
         )?;
     }
     if options["extractOnly"] == true {
@@ -710,6 +722,12 @@ pub async fn review(mut state: AppState, directory: &Path, port: u16) -> Result<
 mod tests {
     use super::*;
     fn state(root: &Path) -> AppState {
+        fs::create_dir_all(root.join("config/app")).unwrap();
+        fs::write(
+            root.join("config/app/llm.json"),
+            include_str!("../../config/app/llm.json"),
+        )
+        .unwrap();
         AppState::new(
             crate::db::Database::open(root.join("test.sqlite")).unwrap(),
             root.into(),

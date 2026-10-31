@@ -582,7 +582,7 @@ async fn analyze(state: &AppState, title: &str, content: &str, events: Events) -
         .trim()
         .replacen("{{TITLE}}", title, 1)
         .replacen("{{CONTENT}}", &content, 1);
-    let options = json!({"model":"gpt-5.6-luna","instructions":instructions,"input":[{"role":"user","content":[{"type":"input_text","text":user}]}],"maxTokens":4096});
+    let options = json!({"model":crate::llm::config(state)?.model,"instructions":instructions,"input":[{"role":"user","content":[{"type":"input_text","text":user}]}],"maxTokens":4096});
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<String>();
     let forward = tokio::spawn(async move {
         while let Some(delta) = receiver.recv().await {

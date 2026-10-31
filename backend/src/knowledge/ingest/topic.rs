@@ -2,7 +2,7 @@
 use crate::AppState;
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
 
 fn text(v: &Value) -> &str {
     v.as_str().unwrap_or("").trim()
@@ -185,12 +185,6 @@ fn local_decision(doc: &Value, filter: &Value) -> (Value, bool) {
     local["method"] = json!("local");
     (local, uncertain)
 }
-fn choose(values: impl IntoIterator<Item = String>, fallback: &str) -> String {
-    values
-        .into_iter()
-        .find(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| fallback.into())
-}
 
 pub async fn evaluate(
     state: &AppState,
@@ -213,32 +207,9 @@ pub async fn evaluate(
     {
         return Ok((decisions, vec![]));
     }
-    let model = choose(
-        [
-            state.setting("KNOWLEDGE_PROCESS_TOPIC_LLM_MODEL"),
-            state.setting("KNOWLEDGE_PROCESS_LLM_MODEL"),
-            text(&filter["llmModel"]).into(),
-        ],
-        "gpt-5.6-luna",
-    );
-    let base = choose(
-        [
-            state.setting("KNOWLEDGE_PROCESS_TOPIC_LLM_BASE_URL"),
-            state.setting("KNOWLEDGE_PROCESS_LLM_BASE_URL"),
-            text(&config["llm"]["baseUrl"]).into(),
-            state.setting("OPENAI_BASE_URL"),
-            state.setting("LLM_BASE_URL"),
-        ],
-        "https://api.m2ai.cc/api/v1/openai",
-    );
-    let key_env = choose(
-        [
-            state.setting("KNOWLEDGE_PROCESS_TOPIC_LLM_API_KEY_ENV"),
-            text(&filter["llmApiKeyEnv"]).into(),
-        ],
-        "OPENAI_API_KEY",
-    );
-    let key = choose([state.setting(&key_env), state.setting("LLM_API_KEY")], "");
+    let routing = crate::llm::config(state)?;
+    let model = routing.model;
+    let key = state.setting(&routing.api_key_env);
     if key.is_empty() {
         for i in uncertain {
             decisions[i]["method"] = json!("local_missing_llm_key");
@@ -267,13 +238,9 @@ pub async fn evaluate(
             .collect::<Vec<_>>();
         let user = user_template.replace("{{ITEMS_JSON}}", &serde_json::to_string(&items)?);
         let prompt = json!({"system":system,"user":user});
-        let mut response = request(&base, &key, &model, &system, &user).await?;
-        let mut parsed = parse_json(&response.0);
-        if parsed.is_none() && (response.0.is_empty() || response.1) {
-            response = request(&base, &key, &model, &system, &user).await?;
-            parsed = parse_json(&response.0);
-        }
-        let parsed = parsed.context("knowledge topic LLM returned invalid JSON")?;
+        // Invalid/truncated responses fail without automatically replaying model work.
+        let response = request(state, &system, &user).await?;
+        let parsed = parse_json(&response).context("knowledge topic LLM returned invalid JSON")?;
         for (index, doc_index) in batch.iter().enumerate() {
             let result = rows(&parsed["items"])
                 .filter(|r| r["index"].as_u64() == Some(index as u64))
@@ -306,95 +273,10 @@ fn parse_json(raw: &str) -> Option<Value> {
     let value: Value = serde_json::from_str(raw.get(first..=last)?).ok()?;
     value.is_object().then_some(value)
 }
-fn output_text(value: &Value) -> String {
-    rows(&value["output"])
-        .flat_map(|item| rows(&item["content"]))
-        .filter_map(|p| p["text"].as_str())
-        .collect::<Vec<_>>()
-        .join("")
-}
-fn event(raw: &str, output: &mut String) -> Result<Option<bool>> {
-    let data = raw
-        .lines()
-        .filter_map(|line| line.strip_prefix("data:").map(str::trim))
-        .collect::<Vec<_>>()
-        .join("\n");
-    if data.is_empty() || data == "[DONE]" {
-        return Ok(None);
-    }
-    let value: Value = serde_json::from_str(&data).context("invalid Responses stream event")?;
-    match text(&value["type"]) {
-        "response.output_text.delta" => output.push_str(value["delta"].as_str().unwrap_or("")),
-        "response.completed" | "response.incomplete" => {
-            if output.is_empty() {
-                *output = output_text(&value["response"]);
-            }
-            return Ok(Some(value["type"] == "response.incomplete"));
-        }
-        "response.failed" | "error" => bail!("knowledge topic Responses stream failed"),
-        _ => {}
-    }
-    Ok(None)
-}
-async fn request(
-    base: &str,
-    key: &str,
-    model: &str,
-    system: &str,
-    user: &str,
-) -> Result<(String, bool)> {
-    let url = reqwest::Url::parse(&format!("{}/responses", base.trim_end_matches('/')))?;
-    if !matches!(url.scheme(), "http" | "https") {
-        bail!("invalid topic LLM URL scheme");
-    }
-    let client = reqwest::Client::builder().no_proxy().build()?;
-    let mut response=tokio::time::timeout(Duration::from_secs(120),client.post(url).bearer_auth(key).header("accept","text/event-stream").json(&json!({"model":model,"instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":user}]}],"store":false,"stream":true})).send()).await.context("topic LLM startup timeout")??;
-    if !response.status().is_success() {
-        bail!(
-            "topic LLM request failed: status={}",
-            response.status().as_u16()
-        );
-    }
-    let mut pending = Vec::new();
-    let mut output = String::new();
-    let mut received = 0usize;
-    while let Some(chunk) = tokio::time::timeout(Duration::from_secs(120), response.chunk())
-        .await
-        .context("topic LLM stream idle timeout")??
-    {
-        received += chunk.len();
-        if received > 16 * 1024 * 1024 {
-            bail!("topic LLM response exceeds safety limit");
-        }
-        pending.extend_from_slice(&chunk);
-        loop {
-            let lf = pending
-                .windows(2)
-                .position(|b| b == b"\n\n")
-                .map(|i| (i, 2));
-            let crlf = pending
-                .windows(4)
-                .position(|b| b == b"\r\n\r\n")
-                .map(|i| (i, 4));
-            let bound = match (lf, crlf) {
-                (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
-                (a, b) => a.or(b),
-            };
-            let Some((end, width)) = bound else {
-                break;
-            };
-            let bytes = pending.drain(..end + width).collect::<Vec<_>>();
-            if let Some(incomplete) = event(std::str::from_utf8(&bytes)?, &mut output)? {
-                return Ok((output.trim().into(), incomplete));
-            }
-        }
-    }
-    if !pending.is_empty()
-        && let Some(incomplete) = event(std::str::from_utf8(&pending)?, &mut output)?
-    {
-        return Ok((output.trim().into(), incomplete));
-    }
-    bail!("topic LLM stream ended without terminal evidence")
+async fn request(state: &AppState, system: &str, user: &str) -> Result<String> {
+    crate::research::taskd::direct_text(state, &json!({
+        "instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":user}]}]
+    })).await
 }
 
 #[cfg(test)]
@@ -432,58 +314,5 @@ mod tests {
         assert_eq!(d["keep"], false);
         let (d, _) = local_decision(&json!({"title":"天气半导体","stockLinks":[{}]}), &f);
         assert_eq!(d["keep"], true);
-    }
-    #[test]
-    fn stream_terminal_and_unicode() {
-        let mut out = String::new();
-        assert_eq!(
-            event(
-                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"中文\"}\n\n",
-                &mut out
-            )
-            .unwrap(),
-            None
-        );
-        assert_eq!(
-            event(
-                "data: {\"type\":\"response.completed\",\"response\":{}}\n\n",
-                &mut out
-            )
-            .unwrap(),
-            Some(false)
-        );
-        assert_eq!(out, "中文");
-        assert!(event("data: {\"type\":\"response.failed\"}", &mut out).is_err());
-    }
-    #[tokio::test]
-    async fn streaming_http_preserves_terminal_boundary() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut request_bytes = vec![0; 8192];
-            let read = socket.read(&mut request_bytes).await.unwrap();
-            let request_text = String::from_utf8_lossy(&request_bytes[..read]);
-            assert!(request_text.starts_with("POST /responses HTTP/1.1"));
-            assert!(request_text.contains("Bearer test-only"));
-            let payload = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"中文\"}\n\ndata: {\"type\":\"response.incomplete\",\"response\":{}}\n\n";
-            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", payload.len()).as_bytes()).await.unwrap();
-            for byte in payload.as_bytes() {
-                socket.write_all(&[*byte]).await.unwrap();
-            }
-        });
-        let (output, incomplete) = request(
-            &format!("http://{address}"),
-            "test-only",
-            "test-model",
-            "system",
-            "user",
-        )
-        .await
-        .unwrap();
-        assert_eq!(output, "中文");
-        assert!(incomplete);
-        server.await.unwrap();
     }
 }

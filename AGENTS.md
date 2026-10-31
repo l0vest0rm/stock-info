@@ -25,6 +25,11 @@
   `LLM_RUNTIME=local`. Local-only does not mean offline: authorized providers
   and taskd still require network connectivity and credentials.
 - Keep credentials in ignored local stores; never put them in config or logs.
+- Direct API routing is centralized in `config/app/llm.json` (model, baseUrl,
+  apiKeyEnv, protocol); default DeepSeek uses `ROUTING_API_KEY` and Chat Completions.
+  Protocol/stream differences belong in the shared native `llm-client` crate.
+  Run `npm run build:prompts` after model changes to update extraction provenance.
+  Taskd ChatGPT web research is intentionally separate and unchanged.
 
 ## Local Workflow
 

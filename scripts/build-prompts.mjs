@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -18,7 +18,7 @@ const contract = {
   promptHash: hash(feedPrompt('document-analysis-system.md') + feedPrompt('document-analysis-user.md')),
   categoryCatalogHash: feedCategoryCatalogHash(),
   candidatePolicyHash: hash(JSON.stringify(feedConfig.companyCandidates || {})),
-  model: 'gpt-6-luna',
+  model: JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'config/app/llm.json'), 'utf8')).model,
 };
 const legacyContracts = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'config/knowledge/information-feed-legacy-contracts.json'), 'utf8'));
 if (!Array.isArray(legacyContracts) || new Set([contract, ...legacyContracts].map((entry) => entry.contractVersion)).size !== legacyContracts.length + 1) {
@@ -28,9 +28,24 @@ if (!Array.isArray(legacyContracts) || new Set([contract, ...legacyContracts].ma
 // most recent previous prompt. Readers accept every explicitly frozen contract.
 const legacyContract = legacyContracts.find((entry) => entry.contractVersion === 'feed-tag-v5');
 if (!legacyContract) throw new Error('v5 feed extraction contract is required for the storage backfill');
+// Keep the checked-in manifest's exact previous model contracts when routing
+// changes. A config-only model switch must not make historical records disappear.
+// Never widen acceptance by omitting the model or any provenance fingerprint.
+const manifestPath = resolve(PROJECT_ROOT, 'config/generated/information-records-contract.json');
+const previous = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : null;
+const fields = ['contractVersion', 'promptHash', 'categoryCatalogHash', 'candidatePolicyHash', 'model'];
+const identity = (entry) => {
+  if (!entry || Object.keys(entry).length !== fields.length || fields.some((key) => typeof entry[key] !== 'string' || !entry[key])) {
+    throw new Error('invalid frozen feed extraction contract');
+  }
+  return JSON.stringify(fields.map((key) => entry[key]));
+};
+const history = new Map();
+for (const entry of [...legacyContracts, ...(previous?.legacy || []), ...(previous?.current ? [previous.current] : [])]) {
+  if (identity(entry) !== identity(contract)) history.set(identity(entry), entry);
+}
 mkdirSync(resolve(PROJECT_ROOT, 'config/generated'), { recursive: true });
-writeFileSync(resolve(PROJECT_ROOT, 'config/generated/information-records-contract.json'),
-  JSON.stringify({ current: contract, legacy: legacyContracts }, null, 2) + '\n');
+writeFileSync(manifestPath, JSON.stringify({ current: contract, legacy: [...history.values()] }, null, 2) + '\n');
 
 // The ontology owns category names; UI labels must not become a second catalog.
 const ontology = JSON.parse(readFileSync(resolve(PROJECT_ROOT, 'config/knowledge/knowledge-ontology.json'), 'utf8'));

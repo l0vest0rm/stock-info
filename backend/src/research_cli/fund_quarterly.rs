@@ -290,31 +290,6 @@ async fn evidence(state: &AppState, item: &Value, ctx: &ContextData) -> Result<V
     )
 }
 
-fn resolve_key(state: &AppState, llm: &Value, env_name: &str) -> Result<String> {
-    if !s(llm, "apiKey").trim().is_empty() {
-        return Ok(s(llm, "apiKey").trim().to_string());
-    }
-    if !s(llm, "apiKeyFile").is_empty() {
-        let raw = s(llm, "apiKeyFile");
-        let home = std::env::var("HOME").unwrap_or_default();
-        let path = if raw == "~" {
-            PathBuf::from(home)
-        } else if let Some(rest) = raw.strip_prefix("~/") {
-            PathBuf::from(home).join(rest)
-        } else {
-            state.root.join(raw)
-        };
-        let credentials = read_optional(&path, Value::Null)?;
-        let field = option(llm, "apiKeyField", "OPENAI_API_KEY");
-        if let Some(key) = credentials[field].as_str().filter(|s| !s.trim().is_empty()) {
-            return Ok(key.trim().into());
-        }
-    }
-    [state.setting(env_name), state.setting("LLM_API_KEY")]
-        .into_iter()
-        .find(|s| !s.trim().is_empty())
-        .context("missing fund research LLM credential")
-}
 async fn generate(
     state: &AppState,
     config: &Value,
@@ -332,28 +307,7 @@ async fn generate(
         &json!({"EVIDENCE_PATH":path_string(evidence_path),"OUTPUT_PATH":path_string(output),"EVIDENCE_JSON":serde_json::to_string_pretty(evidence)?}),
     )?;
     let llm = &config["llm"];
-    let model = state.setting("FUND_RESEARCH_LLM_MODEL");
-    let model = if model.is_empty() {
-        s(llm, "model").to_string()
-    } else {
-        model
-    };
-    let base = [
-        state.setting("FUND_RESEARCH_LLM_BASE_URL"),
-        state.setting("LLM_BASE_URL"),
-        s(llm, "baseUrl").into(),
-    ]
-    .into_iter()
-    .find(|s| !s.trim().is_empty())
-    .context("fund research LLM URL missing")?;
-    let env = state.setting("FUND_RESEARCH_LLM_API_KEY_ENV");
-    let env = if env.is_empty() {
-        s(llm, "apiKeyEnv")
-    } else {
-        &env
-    };
-    let key = resolve_key(state, llm, env)?;
-    let result=taskd::direct_text_with_credential(state,&json!({"model":model,"instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":prompt}]}],"maxTokens":llm["maxOutputTokens"],"temperature":llm["temperature"]}),&base,&key).await?;
+    let result=taskd::direct_text(state,&json!({"instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":prompt}]}],"maxTokens":llm["maxOutputTokens"],"temperature":llm["temperature"]})).await?;
     domain::validate_generated_report(&domain::strip_markdown_fence(&result), &evidence["fund"])
 }
 

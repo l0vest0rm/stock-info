@@ -41,6 +41,31 @@ SQLite 使用 `LOCAL_DB_PATH`，否则为 `LOCAL_DATA_DIR/stock-info.sqlite`，�
 设置该值才能运行模型任务。本地运行不等于离线：行情、财报、官方来源、taskd 和模型
 仍依赖可用网络、代理及授权凭据。
 
+### 直接模型 API
+
+所有直接 API 调用（资讯提取、主题审核、研报提取/翻译、基金研究）统一读取
+`config/app/llm.json`：`deepseek-v4.1-flash`、`http://127.0.0.1:9470/v1`、
+`chat_completions`，凭据仅从 `ROUTING_API_KEY` 环境变量读取（也可放在忽略的
+`.dev.vars`）。旧的 OPENAI/FUND_RESEARCH/KNOWLEDGE_PROCESS 路由覆盖和 Codex
+认证文件不再用于这些调用，避免误用旧模型或凭据；各功能原有启用开关不变。
+
+协议适配、文本历史转换、SSE/终止证据和模型一致性检查在共享原生
+`../input-helper/input-gateway/crates/llm-client/src/direct.rs`，不在业务层区分模型。
+切回 GPT 只需修改此 JSON 中的模型、地址、凭据环境变量名和协议
+（`responses` 或 `chat_completions`），然后执行 `npm run build:prompts` 并构建/重启。
+该生成步骤同步资讯提取模型指纹，并在版本化生成清单中保留旧模型的完整提取合同；
+不要删除生成清单后重新生成。已完成翻译检查点保留，不冒充新模型输出。
+
+宏观/财务/投资分析和研报发现的 **taskd ChatGPT 网页研究保留原流程**；它们不使用
+此直接 API 配置，已有任务、联网检索、引用和恢复协议不变。
+
+`npm run check:llm` 验证配置切换/历史保留、两种协议、流式终止及禁止重放。
+真实模型烟测只发送合成 JSON 请求，使用临时数据库，不提交 taskd 任务：
+
+```sh
+LLM_RUNTIME=local cargo test --locked --manifest-path backend/Cargo.toml --test llm_runtime real_configured_llm_stream_and_json -- --ignored
+```
+
 ### 雪球 Cookie 与数据来源
 
 股票 K 线只使用雪球，基金净值历史只使用东方财富。Yahoo 只用于美股财报及期权，

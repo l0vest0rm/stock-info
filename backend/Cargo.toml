@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+llm-client = { path = "../../input-helper/input-gateway/crates/llm-client" }
 acquisition = { path = "../../sub2me/crates/acquisition", features = ["app-capture"] }
 anyhow = "1"
 axum = "0.8"

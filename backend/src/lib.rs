@@ -17,6 +17,7 @@ mod follow;
 pub mod fund;
 pub mod http;
 pub mod knowledge;
+pub mod llm;
 pub mod macro_data;
 pub mod maintenance;
 pub mod market;

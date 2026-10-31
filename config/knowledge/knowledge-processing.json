@@ -50,9 +50,6 @@
   "maxMarkdownChars": 30000,
   "llm": {
     "enabled": false,
-    "model": "gpt-5.6-luna",
-    "baseUrl": "https://api.m2ai.cc/api/v1/openai",
-    "apiKeyEnv": "OPENAI_API_KEY",
     "maxInputChars": 12000,
     "maxTokens": 1200
   },

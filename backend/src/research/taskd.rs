@@ -374,82 +374,28 @@ pub async fn direct_text(state: &AppState, options: &Value) -> Result<String> {
     direct_text_events(state, options, None).await
 }
 
-/// Trusted native CLI configuration only. Keep endpoint and credentials out of
-/// untrusted HTTP options; no process-global environment mutation is needed.
-pub async fn direct_text_with_credential(
-    state: &AppState,
-    options: &Value,
-    base_url: &str,
-    api_key: &str,
-) -> Result<String> {
-    require_direct_local(state)?;
-    let key = required(api_key, "local direct LLM credential")?;
-    direct_text_endpoint_events(state, options, base_url, &key, None).await
-}
+pub use llm_client::direct::is_explicit_terminal_failure;
 
-/// Caller-owned trusted application configuration, kept separate from the
-/// request's model/prompt JSON so an API body cannot redirect credential use.
-pub struct DirectEndpoint {
-    pub base_url: String,
-    pub api_key_env: String,
-}
-
-#[derive(Debug)]
-struct DirectTerminalFailure(String);
-impl fmt::Display for DirectTerminalFailure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-impl std::error::Error for DirectTerminalFailure {}
-pub fn is_explicit_terminal_failure(error: &anyhow::Error) -> bool {
-    error.downcast_ref::<DirectTerminalFailure>().is_some()
-}
-
-pub async fn direct_text_configured(
-    state: &AppState,
-    options: &Value,
-    endpoint: &DirectEndpoint,
-) -> Result<String> {
-    direct_text_configured_events(state, options, endpoint, None).await
-}
-pub async fn direct_text_configured_events(
-    state: &AppState,
-    options: &Value,
-    endpoint: &DirectEndpoint,
-    events: Option<tokio::sync::mpsc::UnboundedSender<String>>,
-) -> Result<String> {
-    require_direct_local(state)?;
-    let key = [
-        state.setting(&endpoint.api_key_env),
-        state.setting("LLM_API_KEY"),
-    ]
-    .into_iter()
-    .find(|value| !value.trim().is_empty())
-    .context("local direct LLM credential is not configured")?;
-    direct_text_endpoint_events(state, options, &endpoint.base_url, &key, events).await
-}
 pub async fn direct_text_events(
     state: &AppState,
     options: &Value,
     events: Option<tokio::sync::mpsc::UnboundedSender<String>>,
 ) -> Result<String> {
     require_direct_local(state)?;
-    let key = [
-        state.setting("OPENAI_API_KEY"),
-        state.setting("LLM_API_KEY"),
-    ]
-    .into_iter()
-    .find(|s| !s.trim().is_empty())
-    .context("local direct LLM credential is not configured")?;
-    let base = [
-        state.setting("OPENAI_BASE_URL"),
-        state.setting("LLM_BASE_URL"),
-    ]
-    .into_iter()
-    .find(|s| !s.trim().is_empty())
-    .unwrap_or_else(|| "https://api.m2ai.cc/api/v1/openai".into());
-    direct_text_endpoint_events(state, options, &base, &key, events).await
+    let config = crate::llm::config(state)?;
+    let key = required(
+        &state.setting(&config.api_key_env),
+        "configured LLM API key",
+    )?;
+    let mut options = options.clone();
+    if let Some(expected) = options.get("expectedModel") {
+        anyhow::ensure!(
+            expected.as_str() == Some(&config.model),
+            "LLM contract model differs from config; run npm run build:prompts"
+        );
+    }
+    options["model"] = json!(config.model);
+    llm_client::direct::text_once(&options, &config.base_url, config.protocol, &key, events).await
 }
 
 fn require_direct_local(state: &AppState) -> Result<()> {
@@ -459,273 +405,9 @@ fn require_direct_local(state: &AppState) -> Result<()> {
     Ok(())
 }
 
-async fn direct_text_endpoint_events(
-    state: &AppState,
-    options: &Value,
-    base: &str,
-    key: &str,
-    events: Option<tokio::sync::mpsc::UnboundedSender<String>>,
-) -> Result<String> {
-    require_direct_local(state)?;
-    let expected_model = options
-        .get("expectedModel")
-        .map(|value| required(text(value), "expected response model"))
-        .transpose()?;
-    let base = required(base, "local direct LLM base URL")?;
-    let url = Url::parse(&base)?;
-    if !matches!(url.scheme(), "https" | "http")
-        || !url.username().is_empty()
-        || url.password().is_some()
-    {
-        bail!("invalid local direct LLM base URL");
-    }
-    let mut input = options["input"]
-        .as_array()
-        .context("direct LLM input must be an array")?
-        .clone();
-    for message in &mut input {
-        if message["role"] == "assistant" {
-            for part in message["content"]
-                .as_array_mut()
-                .context("invalid direct LLM message content")?
-            {
-                if part["type"] != "input_text" {
-                    bail!("Responses assistant history supports text only");
-                }
-                part["type"] = json!("output_text");
-            }
-        }
-    }
-    let body = json!({"model":options["model"],"instructions":options.get("instructions").cloned().unwrap_or_else(||json!("")),"input":input,"store":false,"stream":true});
-    // Responses streaming deliberately omits max_output_tokens/temperature,
-    // matching the shared client's stream-only provider contract.
-    let client = Client::builder().no_proxy().build()?;
-    let mut response = tokio::time::timeout(
-        Duration::from_secs(120),
-        client
-            .post(format!("{}/responses", base.trim_end_matches('/')))
-            .bearer_auth(key)
-            .header("accept", "text/event-stream")
-            .json(&body)
-            .send(),
-    )
-    .await
-    .context("LLM stream did not start within 120000ms")??;
-    if !response.status().is_success() {
-        bail!(
-            "responses stream failed: status={}",
-            response.status().as_u16()
-        );
-    }
-    let mut pending = Vec::<u8>::new();
-    let mut output = String::new();
-    loop {
-        let chunk = tokio::time::timeout(Duration::from_secs(120), response.chunk())
-            .await
-            .context("LLM stream idle timeout")??;
-        let Some(chunk) = chunk else {
-            break;
-        };
-        pending.extend_from_slice(&chunk);
-        // Byte-buffer event framing preserves split UTF-8 sequences.
-        loop {
-            let lf = pending
-                .windows(2)
-                .position(|w| w == b"\n\n")
-                .map(|p| (p, 2));
-            let crlf = pending
-                .windows(4)
-                .position(|w| w == b"\r\n\r\n")
-                .map(|p| (p, 4));
-            let boundary = match (lf, crlf) {
-                (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
-                (a, b) => a.or(b),
-            };
-            let Some((end, width)) = boundary else {
-                break;
-            };
-            let bytes = pending.drain(..end + width).collect::<Vec<_>>();
-            if consume_checked_event(
-                &String::from_utf8(bytes)?,
-                &mut output,
-                events.as_ref(),
-                expected_model.as_deref(),
-            )? {
-                return Ok(output.trim().to_string());
-            }
-        }
-        if let Ok(raw) = std::str::from_utf8(&pending)
-            && event_payload(raw).is_some_and(|event| {
-                matches!(
-                    text(&event["type"]),
-                    "response.completed" | "response.failed" | "response.incomplete" | "error"
-                )
-            })
-            && consume_checked_event(raw, &mut output, events.as_ref(), expected_model.as_deref())?
-        {
-            return Ok(output.trim().to_string());
-        }
-        if events.as_ref().is_some_and(|channel| channel.is_closed()) {
-            bail!("direct LLM stream consumer disconnected");
-        }
-    }
-    bail!(
-        "LLM stream ended before response.completed after partial output ({} chars)",
-        output.chars().count()
-    )
-}
-
-fn response_text(value: &Value) -> String {
-    if let Some(text) = value["text"].as_str() {
-        return text.to_string();
-    }
-    if let Some(text) = value["output_text"].as_str() {
-        return text.to_string();
-    }
-    let mut chunks = Vec::new();
-    let items = if value.is_array() {
-        value.as_array()
-    } else {
-        value["output"]
-            .as_array()
-            .or_else(|| value["content"].as_array())
-    };
-    for item in items.into_iter().flatten() {
-        if let Some(text) = item["text"].as_str() {
-            chunks.push(text.to_string());
-        }
-        for content in item["content"].as_array().into_iter().flatten() {
-            if let Some(text) = content["text"].as_str() {
-                chunks.push(text.to_string());
-            }
-        }
-    }
-    chunks.join("\n")
-}
-fn event_payload(raw: &str) -> Option<Value> {
-    let data = raw
-        .lines()
-        .filter_map(|line| line.trim().strip_prefix("data:"))
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && *line != "[DONE]")
-        .collect::<Vec<_>>()
-        .join("\n");
-    serde_json::from_str(&data).ok()
-}
-fn consume_event(
-    raw: &str,
-    output: &mut String,
-    events: Option<&tokio::sync::mpsc::UnboundedSender<String>>,
-) -> Result<bool> {
-    let Some(event) = event_payload(raw) else {
-        return Ok(false);
-    };
-    let emit = |delta: &str, output: &mut String| {
-        output.push_str(delta);
-        if let Some(channel) = events {
-            let _ = channel.send(delta.to_string());
-        }
-    };
-    match text(&event["type"]) {
-        "response.output_text.delta" => {
-            if let Some(delta) = event["delta"].as_str() {
-                emit(delta, output);
-            }
-        }
-        "response.output_text.done" if output.is_empty() => {
-            if let Some(delta) = event["text"].as_str() {
-                emit(delta, output);
-            }
-        }
-        "response.content_part.added" | "response.content_part.done" if output.is_empty() => {
-            if matches!(text(&event["part"]["type"]), "output_text" | "text")
-                && let Some(delta) = event["part"]["text"].as_str()
-            {
-                emit(delta, output);
-            }
-        }
-        "response.output_item.added" | "response.output_item.done" if output.is_empty() => {
-            emit(&response_text(&event["item"]), output);
-        }
-        "response.completed" => {
-            if output.is_empty() {
-                emit(&response_text(&event["response"]), output);
-            }
-            if output.trim().is_empty() {
-                return Err(DirectTerminalFailure(
-                    "LLM stream completed without output text".into(),
-                )
-                .into());
-            }
-            return Ok(true);
-        }
-        "response.failed" | "error" | "response.incomplete" => {
-            let message = [
-                &event["response"]["error"]["message"],
-                &event["response"]["incomplete_details"]["reason"],
-                &event["error"]["message"],
-            ]
-            .into_iter()
-            .map(text)
-            .find(|s| !s.is_empty())
-            .unwrap_or("provider returned an incomplete response");
-            return Err(DirectTerminalFailure(format!(
-                "LLM stream failed: {}",
-                message.chars().take(400).collect::<String>()
-            ))
-            .into());
-        }
-        _ => {}
-    }
-    Ok(false)
-}
-
-fn consume_checked_event(
-    raw: &str,
-    output: &mut String,
-    events: Option<&tokio::sync::mpsc::UnboundedSender<String>>,
-    expected_model: Option<&str>,
-) -> Result<bool> {
-    if let Some(expected) = expected_model
-        && let Some(event) = event_payload(raw)
-        && event["type"] == "response.completed"
-        && event["response"]["model"].as_str() != Some(expected)
-    {
-        bail!("LLM terminal response model does not match expected model");
-    }
-    consume_event(raw, output, events)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn caller_can_require_an_exact_terminal_model_before_committing_text() {
-        let raw = |model: Value| {
-            format!(
-                "data: {}\n\n",
-                json!({"type":"response.completed","response":{"model":model,"output_text":"validated text"}})
-            )
-        };
-        for model in [Value::Null, json!("gpt-6"), json!("gpt-6-luna-alias")] {
-            let error =
-                consume_checked_event(&raw(model), &mut String::new(), None, Some("gpt-6-luna"))
-                    .unwrap_err();
-            assert!(!is_explicit_terminal_failure(&error));
-        }
-        let mut text = String::new();
-        assert!(
-            consume_checked_event(
-                &raw(json!("gpt-6-luna")),
-                &mut text,
-                None,
-                Some("gpt-6-luna")
-            )
-            .unwrap()
-        );
-        assert_eq!(text, "validated text");
-        assert!(consume_checked_event(&raw(Value::Null), &mut String::new(), None, None).unwrap());
-    }
     #[test]
     fn report_wire_envelope_preserves_frozen_input_without_private_diagnostics() {
         let options = json!({"name":"research:financial-analysis:600036.SH","taskType":"webqa.chatgpt.v1","model":"gpt-5.6-luna","reasoningEffort":"xhigh","waitTimeoutMs":7200000,"prompt":"冻结输入：你好","businessInput":{"securityCode":"600036.SH","snapshotId":"fnv-test"},"diagnostics":{"securityCode":"600036.SH","private":"not-a-wire-field"}});
@@ -762,43 +444,6 @@ mod tests {
         assert_eq!(
             extract_result(&result).unwrap()["content"]["markdown"],
             "answer"
-        );
-    }
-    #[test]
-    fn streaming_requires_explicit_completion_and_preserves_deltas() {
-        let mut output = String::new();
-        assert!(
-            !consume_event(
-                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"你好\"}\n\n",
-                &mut output,
-                None
-            )
-            .unwrap()
-        );
-        assert_eq!(output, "你好");
-        assert!(
-            consume_event(
-                "data: {\"type\":\"response.completed\",\"response\":{}}\n\n",
-                &mut output,
-                None
-            )
-            .unwrap()
-        );
-        assert!(
-            consume_event(
-                "data: {\"type\":\"response.failed\",\"error\":{\"message\":\"failed\"}}\n\n",
-                &mut output,
-                None
-            )
-            .is_err()
-        );
-        assert!(
-            consume_event(
-                "data: {\"type\":\"response.completed\",\"response\":{}}\n\n",
-                &mut String::new(),
-                None
-            )
-            .is_err()
         );
     }
 }
