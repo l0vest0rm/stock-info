@@ -219,5 +219,11 @@
     "entry": "src/modules/companies/pages/investment-universe-page.ts",
     "runtime": "all",
     "legacy": false
+  },
+  {
+    "path": "/acquisitions.html",
+    "entry": "src/modules/acquisition/acquisition-page.ts",
+    "runtime": "local",
+    "legacy": false
   }
 ]

@@ -1,0 +1,366 @@
+# Versioned flow only. Targets, task settings and credentials are stored in local SQLite.
+name: x-users
+request:
+  url: https://x.com/i/api/graphql/qtvmQffnepvr0oPe4A8MqQ/UserOriginalsTimeline
+  headers:
+    Accept: application/json
+    x-twitter-auth-type: OAuth2Session
+    x-twitter-active-user: 'yes'
+    User-Agent: Mozilla/5.0
+    Referer: https://x.com/
+  cookie_headers:
+    x-csrf-token: ct0
+  timeout_seconds: 30
+  retries: 0
+  query:
+    variables: '{"userId":"{{input.user_id}}","count":20,"includePromotedContent":false,"withVoice":true}'
+    features: '{"rweb_video_screen_enabled":false,"rweb_cashtags_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":false,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":false,"verified_phone_label_enabled":false,"creator_subscriptions_tweet_preview_api_enabled":false,"responsive_web_graphql_timeline_navigation_enabled":false,"premium_content_api_read_enabled":false,"communities_web_enable_tweet_community_results_fetch":false,"c9s_tweet_anatomy_moderator_badge_enabled":false,"responsive_web_grok_analyze_button_fetch_trends_enabled":false,"responsive_web_grok_analyze_post_followups_enabled":false,"rweb_cashtags_composer_attachment_enabled":false,"responsive_web_jetfuel_frame":false,"rweb_sports_post_context_enabled":false,"responsive_web_grok_share_attachment_enabled":false,"responsive_web_grok_annotations_enabled":false,"articles_preview_enabled":true,"responsive_web_edit_tweet_api_enabled":true,"rweb_conversational_replies_downvote_enabled":false,"graphql_is_translatable_rweb_tweet_is_translatable_enabled":false,"view_counts_everywhere_api_enabled":false,"longform_notetweets_consumption_enabled":true,"responsive_web_twitter_article_tweet_consumption_enabled":false,"content_disclosure_indicator_enabled":false,"content_disclosure_ai_generated_indicator_enabled":false,"responsive_web_grok_show_grok_translated_post":false,"responsive_web_grok_analysis_button_from_backend":false,"post_ctas_fetch_enabled":false,"freedom_of_speech_not_reach_fetch_enabled":false,"standardized_nudges_misinfo":false,"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled":false,"longform_notetweets_rich_text_read_enabled":true,"longform_notetweets_inline_media_enabled":true,"responsive_web_nested_quote_preview_enabled":false,"responsive_web_grok_image_annotation_enabled":false,"responsive_web_grok_imagine_annotation_enabled":false,"responsive_web_grok_community_note_auto_translation_is_enabled":false,"responsive_web_enhance_cards_enabled":false}'
+    fieldToggles: '{"withPayments":false,"withAuxiliaryUserLabels":false,"withArticleRichContentState":false,"withArticlePlainText":true,"withArticleSummaryText":false,"withArticleVoiceOver":false,"withGrokAnalyze":false,"withDisallowedReplyControls":false}'
+  session_headers:
+    Authorization:
+      field: app_bearer
+      prefix: 'Bearer '
+runtime:
+  type: http
+parser:
+  format: json
+  selection:
+    required_array: data.user.result.timeline.timeline.instructions
+    reject_nonempty:
+    - errors
+    paths:
+    - data.user.result.timeline.timeline.instructions[*].entries[*].content.itemContent
+    - data.user.result.timeline.timeline.instructions[*].entries[*].content.items[*].item.itemContent
+    unwrap_paths:
+    - tweet_results.result.tweet
+    - tweet_results.result
+    candidate_skip:
+    - path: itemType
+      equals: TimelineUser
+    - path: itemType
+      equals: TimelineTimelineCursor
+    accept:
+      path: __typename
+      equals: Tweet
+    skip:
+    - path: __typename
+      equals: TweetTombstone
+    - path: __typename
+      equals: TweetUnavailable
+storage:
+  source: x
+  key_path: id
+session:
+  http:
+    origins:
+    - https://x.com
+    max_age_seconds: 21600
+    manual_renewal: true
+    renewal: []
+    login_url: https://x.com/i/flow/login
+    validation:
+      request:
+        url: https://x.com/i/api/graphql/qtvmQffnepvr0oPe4A8MqQ/UserOriginalsTimeline
+        headers:
+          Accept: application/json
+          x-twitter-auth-type: OAuth2Session
+          x-twitter-active-user: 'yes'
+          User-Agent: Mozilla/5.0
+          Referer: https://x.com/
+        cookie_headers:
+          x-csrf-token: ct0
+        timeout_seconds: 30
+        retries: 0
+        query:
+          variables: '{"userId":"{{input.user_id}}","count":20,"includePromotedContent":false,"withVoice":true}'
+          features: '{"rweb_video_screen_enabled":false,"rweb_cashtags_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":false,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":false,"verified_phone_label_enabled":false,"creator_subscriptions_tweet_preview_api_enabled":false,"responsive_web_graphql_timeline_navigation_enabled":false,"premium_content_api_read_enabled":false,"communities_web_enable_tweet_community_results_fetch":false,"c9s_tweet_anatomy_moderator_badge_enabled":false,"responsive_web_grok_analyze_button_fetch_trends_enabled":false,"responsive_web_grok_analyze_post_followups_enabled":false,"rweb_cashtags_composer_attachment_enabled":false,"responsive_web_jetfuel_frame":false,"rweb_sports_post_context_enabled":false,"responsive_web_grok_share_attachment_enabled":false,"responsive_web_grok_annotations_enabled":false,"articles_preview_enabled":true,"responsive_web_edit_tweet_api_enabled":true,"rweb_conversational_replies_downvote_enabled":false,"graphql_is_translatable_rweb_tweet_is_translatable_enabled":false,"view_counts_everywhere_api_enabled":false,"longform_notetweets_consumption_enabled":true,"responsive_web_twitter_article_tweet_consumption_enabled":false,"content_disclosure_indicator_enabled":false,"content_disclosure_ai_generated_indicator_enabled":false,"responsive_web_grok_show_grok_translated_post":false,"responsive_web_grok_analysis_button_from_backend":false,"post_ctas_fetch_enabled":false,"freedom_of_speech_not_reach_fetch_enabled":false,"standardized_nudges_misinfo":false,"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled":false,"longform_notetweets_rich_text_read_enabled":true,"longform_notetweets_inline_media_enabled":true,"responsive_web_nested_quote_preview_enabled":false,"responsive_web_grok_image_annotation_enabled":false,"responsive_web_grok_imagine_annotation_enabled":false,"responsive_web_grok_community_note_auto_translation_is_enabled":false,"responsive_web_enhance_cards_enabled":false}'
+          fieldToggles: '{"withPayments":false,"withAuxiliaryUserLabels":false,"withArticleRichContentState":false,"withArticlePlainText":true,"withArticleSummaryText":false,"withArticleVoiceOver":false,"withGrokAnalyze":false,"withDisallowedReplyControls":false}'
+        session_headers:
+          Authorization:
+            field: app_bearer
+            prefix: 'Bearer '
+      parser:
+        format: json
+        selection:
+          required_array: data.user.result.timeline.timeline.instructions
+          reject_nonempty:
+          - errors
+          paths:
+          - data.user.result.timeline.timeline.instructions[*].entries[*].content.itemContent
+          - data.user.result.timeline.timeline.instructions[*].entries[*].content.items[*].item.itemContent
+          unwrap_paths:
+          - tweet_results.result.tweet
+          - tweet_results.result
+          candidate_skip:
+          - path: itemType
+            equals: TimelineUser
+          - path: itemType
+            equals: TimelineTimelineCursor
+          accept:
+            path: __typename
+            equals: Tweet
+          skip:
+          - path: __typename
+            equals: TweetTombstone
+          - path: __typename
+            equals: TweetUnavailable
+    auth_failure_statuses:
+    - 401
+    - 403
+    auth_failure_checks:
+    - path: errors[0].code
+      equals: 32
+    - path: errors[0].code
+      equals: 89
+    - path: errors[0].code
+      equals: 135
+    - path: errors[0].code
+      equals: 215
+    - path: errors[0].code
+      equals: 326
+polling:
+  input_resolver:
+    profile_origin: https://x.com
+    request:
+      url: https://x.com/i/api/graphql/KybxDj9RrADIITXlGG8kpw/UserByScreenName
+      headers:
+        Accept: application/json
+        x-twitter-auth-type: OAuth2Session
+        x-twitter-active-user: 'yes'
+        User-Agent: Mozilla/5.0
+        Referer: https://x.com/
+      cookie_headers:
+        x-csrf-token: ct0
+      timeout_seconds: 30
+      retries: 0
+      query:
+        variables: '{"screen_name":"{{input.username}}","withSafetyModeUserFields":true}'
+        features: '{"hidden_profile_subscriptions_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":false,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":false,"verified_phone_label_enabled":false,"subscriptions_verification_info_is_identity_verified_enabled":false,"subscriptions_verification_info_verified_since_enabled":false,"highlights_tweets_tab_ui_enabled":false,"responsive_web_twitter_article_notes_tab_enabled":false,"subscriptions_feature_can_gift_premium":false,"creator_subscriptions_tweet_preview_api_enabled":false,"responsive_web_graphql_timeline_navigation_enabled":false}'
+        fieldToggles: '{"withPayments":false,"withAuxiliaryUserLabels":false}'
+      session_headers:
+        Authorization:
+          field: app_bearer
+          prefix: 'Bearer '
+    parser:
+      format: json
+      items_path: data.user.result
+      success:
+        path: data.user.result.__typename
+        equals: User
+    id_path: rest_id
+    username_path: core.screen_name
+  request_delay_ms: 1000
+  streams:
+  - name: post
+    state_version: 1
+    field_cases:
+      kind:
+      - when_present: legacy.in_reply_to_status_id_str
+        value: reply
+      - when_present: quoted_status_result
+        value: quote
+    request:
+      url: https://x.com/i/api/graphql/qtvmQffnepvr0oPe4A8MqQ/UserOriginalsTimeline
+      headers:
+        Accept: application/json
+        x-twitter-auth-type: OAuth2Session
+        x-twitter-active-user: 'yes'
+        User-Agent: Mozilla/5.0
+        Referer: https://x.com/
+      cookie_headers:
+        x-csrf-token: ct0
+      timeout_seconds: 30
+      retries: 0
+      query:
+        variables: '{"userId":"{{input.user_id}}","count":20,"includePromotedContent":false,"withVoice":true}'
+        features: '{"rweb_video_screen_enabled":false,"rweb_cashtags_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":false,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":false,"verified_phone_label_enabled":false,"creator_subscriptions_tweet_preview_api_enabled":false,"responsive_web_graphql_timeline_navigation_enabled":false,"premium_content_api_read_enabled":false,"communities_web_enable_tweet_community_results_fetch":false,"c9s_tweet_anatomy_moderator_badge_enabled":false,"responsive_web_grok_analyze_button_fetch_trends_enabled":false,"responsive_web_grok_analyze_post_followups_enabled":false,"rweb_cashtags_composer_attachment_enabled":false,"responsive_web_jetfuel_frame":false,"rweb_sports_post_context_enabled":false,"responsive_web_grok_share_attachment_enabled":false,"responsive_web_grok_annotations_enabled":false,"articles_preview_enabled":true,"responsive_web_edit_tweet_api_enabled":true,"rweb_conversational_replies_downvote_enabled":false,"graphql_is_translatable_rweb_tweet_is_translatable_enabled":false,"view_counts_everywhere_api_enabled":false,"longform_notetweets_consumption_enabled":true,"responsive_web_twitter_article_tweet_consumption_enabled":false,"content_disclosure_indicator_enabled":false,"content_disclosure_ai_generated_indicator_enabled":false,"responsive_web_grok_show_grok_translated_post":false,"responsive_web_grok_analysis_button_from_backend":false,"post_ctas_fetch_enabled":false,"freedom_of_speech_not_reach_fetch_enabled":false,"standardized_nudges_misinfo":false,"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled":false,"longform_notetweets_rich_text_read_enabled":true,"longform_notetweets_inline_media_enabled":true,"responsive_web_nested_quote_preview_enabled":false,"responsive_web_grok_image_annotation_enabled":false,"responsive_web_grok_imagine_annotation_enabled":false,"responsive_web_grok_community_note_auto_translation_is_enabled":false,"responsive_web_enhance_cards_enabled":false}'
+        fieldToggles: '{"withPayments":false,"withAuxiliaryUserLabels":false,"withArticleRichContentState":false,"withArticlePlainText":true,"withArticleSummaryText":false,"withArticleVoiceOver":false,"withGrokAnalyze":false,"withDisallowedReplyControls":false}'
+      session_headers:
+        Authorization:
+          field: app_bearer
+          prefix: 'Bearer '
+    parser:
+      format: json
+      selection:
+        required_array: data.user.result.timeline.timeline.instructions
+        reject_nonempty:
+        - errors
+        paths:
+        - data.user.result.timeline.timeline.instructions[*].entries[*].content.itemContent
+        - data.user.result.timeline.timeline.instructions[*].entries[*].content.items[*].item.itemContent
+        unwrap_paths:
+        - tweet_results.result.tweet
+        - tweet_results.result
+        candidate_skip:
+        - path: itemType
+          equals: TimelineUser
+        - path: itemType
+          equals: TimelineTimelineCursor
+        accept:
+          path: __typename
+          equals: Tweet
+        skip:
+        - path: __typename
+          equals: TweetTombstone
+        - path: __typename
+          equals: TweetUnavailable
+    pagination:
+      query: variables
+      initial: '0'
+      omit_initial_cursor: true
+      cursor_query_field: cursor
+      stop_on_short_page: false
+      response_cursor:
+        path: data.user.result.timeline.timeline.instructions[*].entries[*].content
+        matches:
+          path: cursorType
+          equals: Bottom
+        value_path: value
+        missing_is_end: true
+      page_size: 20
+      max_pages: 100
+      timestamp_path: legacy.created_at
+      timestamp_pattern: '%a %b %d %H:%M:%S %z %Y'
+      lookback_seconds: 86400
+      overlap_seconds: 600
+    filter_equals:
+      legacy.user_id_str: '{{input.user_id}}'
+    exclude_present:
+    - legacy.retweeted_status_result
+    fields:
+      id: '{{item.rest_id}}'
+      native_id: '{{item.rest_id}}'
+      kind: post
+      tracked_user_id: '{{input.user_id}}'
+      tracked_username: '{{input.username}}'
+      url: https://x.com/{{input.username}}/status/{{item.rest_id}}
+  - name: reply
+    state_version: 1
+    field_cases:
+      kind:
+      - when_present: legacy.in_reply_to_status_id_str
+        value: reply
+      - when_present: quoted_status_result
+        value: quote
+    request:
+      url: https://x.com/i/api/graphql/9FLI4sKKO6rEojPOEHT7BA/UserRepliesTimeline
+      headers:
+        Accept: application/json
+        x-twitter-auth-type: OAuth2Session
+        x-twitter-active-user: 'yes'
+        User-Agent: Mozilla/5.0
+        Referer: https://x.com/
+      cookie_headers:
+        x-csrf-token: ct0
+      timeout_seconds: 30
+      retries: 0
+      query:
+        variables: '{"userId":"{{input.user_id}}","count":20,"includePromotedContent":false,"withVoice":true}'
+        features: '{"rweb_video_screen_enabled":false,"rweb_cashtags_enabled":false,"profile_label_improvements_pcf_label_in_post_enabled":false,"responsive_web_profile_redirect_enabled":false,"rweb_tipjar_consumption_enabled":false,"verified_phone_label_enabled":false,"creator_subscriptions_tweet_preview_api_enabled":false,"responsive_web_graphql_timeline_navigation_enabled":false,"premium_content_api_read_enabled":false,"communities_web_enable_tweet_community_results_fetch":false,"c9s_tweet_anatomy_moderator_badge_enabled":false,"responsive_web_grok_analyze_button_fetch_trends_enabled":false,"responsive_web_grok_analyze_post_followups_enabled":false,"rweb_cashtags_composer_attachment_enabled":false,"responsive_web_jetfuel_frame":false,"rweb_sports_post_context_enabled":false,"responsive_web_grok_share_attachment_enabled":false,"responsive_web_grok_annotations_enabled":false,"articles_preview_enabled":true,"responsive_web_edit_tweet_api_enabled":true,"rweb_conversational_replies_downvote_enabled":false,"graphql_is_translatable_rweb_tweet_is_translatable_enabled":false,"view_counts_everywhere_api_enabled":false,"longform_notetweets_consumption_enabled":true,"responsive_web_twitter_article_tweet_consumption_enabled":false,"content_disclosure_indicator_enabled":false,"content_disclosure_ai_generated_indicator_enabled":false,"responsive_web_grok_show_grok_translated_post":false,"responsive_web_grok_analysis_button_from_backend":false,"post_ctas_fetch_enabled":false,"freedom_of_speech_not_reach_fetch_enabled":false,"standardized_nudges_misinfo":false,"tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled":false,"longform_notetweets_rich_text_read_enabled":true,"longform_notetweets_inline_media_enabled":true,"responsive_web_nested_quote_preview_enabled":false,"responsive_web_grok_image_annotation_enabled":false,"responsive_web_grok_imagine_annotation_enabled":false,"responsive_web_grok_community_note_auto_translation_is_enabled":false,"responsive_web_enhance_cards_enabled":false}'
+        fieldToggles: '{"withPayments":false,"withAuxiliaryUserLabels":false,"withArticleRichContentState":false,"withArticlePlainText":true,"withArticleSummaryText":false,"withArticleVoiceOver":false,"withGrokAnalyze":false,"withDisallowedReplyControls":false}'
+      session_headers:
+        Authorization:
+          field: app_bearer
+          prefix: 'Bearer '
+    parser:
+      format: json
+      selection:
+        required_array: data.user.result.timeline.timeline.instructions
+        reject_nonempty:
+        - errors
+        paths:
+        - data.user.result.timeline.timeline.instructions[*].entries[*].content.itemContent
+        - data.user.result.timeline.timeline.instructions[*].entries[*].content.items[*].item.itemContent
+        unwrap_paths:
+        - tweet_results.result.tweet
+        - tweet_results.result
+        candidate_skip:
+        - path: itemType
+          equals: TimelineUser
+        - path: itemType
+          equals: TimelineTimelineCursor
+        accept:
+          path: __typename
+          equals: Tweet
+        skip:
+        - path: __typename
+          equals: TweetTombstone
+        - path: __typename
+          equals: TweetUnavailable
+    pagination:
+      query: variables
+      initial: '0'
+      omit_initial_cursor: true
+      cursor_query_field: cursor
+      stop_on_short_page: false
+      response_cursor:
+        path: data.user.result.timeline.timeline.instructions[*].entries[*].content
+        matches:
+          path: cursorType
+          equals: Bottom
+        value_path: value
+        missing_is_end: true
+      page_size: 20
+      max_pages: 100
+      timestamp_path: legacy.created_at
+      timestamp_pattern: '%a %b %d %H:%M:%S %z %Y'
+      lookback_seconds: 86400
+      overlap_seconds: 600
+    filter_equals:
+      legacy.user_id_str: '{{input.user_id}}'
+    exclude_present:
+    - legacy.retweeted_status_result
+    fields:
+      id: '{{item.rest_id}}'
+      native_id: '{{item.rest_id}}'
+      kind: post
+      tracked_user_id: '{{input.user_id}}'
+      tracked_username: '{{input.username}}'
+      url: https://x.com/{{input.username}}/status/{{item.rest_id}}
+tags:
+- key: author
+  sources:
+  - from: record
+    path: core.user_results.result.core.screen_name
+- key: content_type
+  sources:
+  - from: record
+    path: kind
+content:
+  social:
+    name: [core.user_results.result.core.name, core.user_results.result.legacy.name, tracked_username]
+    username: [core.user_results.result.core.screen_name, core.user_results.result.legacy.screen_name, tracked_username]
+    avatar_url: [core.user_results.result.avatar.image_url, core.user_results.result.legacy.profile_image_url_https]
+    verified: [core.user_results.result.is_blue_verified, core.user_results.result.legacy.verified]
+    replies: [legacy.reply_count]
+    reposts: [legacy.retweet_count]
+    likes: [legacy.favorite_count]
+    views: [views.count]
+    reply_to: [legacy.in_reply_to_screen_name]
+    reply_url_template: "https://x.com/{legacy.in_reply_to_screen_name}/status/{legacy.in_reply_to_status_id_str}"
+    quote: [quoted_status_result.result.tweet, quoted_status_result.result]
+    url_template: "https://x.com/{core.user_results.result.core.screen_name}/status/{rest_id}"
+  source_name: X
+  title:
+  - core.user_results.result.core.name
+  - tracked_username
+  body:
+  - note_tweet.note_tweet_results.result.text
+  - legacy.full_text
+  body_format: text
+  source_url:
+  - url
+  published_at:
+  - legacy.created_at
+  time_pattern: '%a %b %d %H:%M:%S %z %Y'
+  author:
+  - core.user_results.result.core.screen_name
+  - tracked_username
+  kind:
+  - kind
+schema_version: 2
+site: x
+target_kind: user
+input_fields:
+- user_id
+- username

@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+acquisition = { path = "../../sub2me/crates/acquisition", features = ["app-capture"] }
 anyhow = "1"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
@@ -20,7 +21,7 @@ flate2 = "1"
 brotli = "8"
 tokio-tungstenite = "0.28"
 tempfile = "3"
-rusqlite = { version = "0.37", features = ["bundled", "backup"] }
+rusqlite = { version = "=0.41.1", features = ["bundled", "backup"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "brotli", "deflate"] }
 sha2 = "0.10"
 regex = "1"

@@ -1,0 +1,141 @@
+# Versioned flow only. Targets, task settings and credentials are stored in local SQLite.
+name: reuters-section
+request:
+  url: https://www.reuters.com/pf/api/v3/content/fetch/articles-by-section-alias-or-id-v1
+  method: GET
+  timeout_seconds: 20
+  retries: 1
+  headers:
+    Accept: application/json
+    User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36
+    Referer: '{{input.referer}}'
+  query:
+    query: '{"uri":"{{input.uri}}","website":"reuters","section_id":"{{input.section_id}}","fetch_type":"section","size":20,"arc-site":"reuters","offset":0}'
+runtime:
+  type: http
+parser:
+  format: json
+  success:
+    path: statusCode
+    equals: 200
+  items_path: result.articles
+storage:
+  source: reuters
+  key_path: id
+session:
+  http:
+    login_url: https://www.reuters.com/
+    origins:
+    - https://www.reuters.com
+    max_age_seconds: 21600
+    renewal:
+    - url: https://www.reuters.com/
+      method: GET
+      timeout_seconds: 20
+      retries: 0
+      headers:
+        Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0
+          Safari/537.36
+    validation:
+      request:
+        url: https://www.reuters.com/pf/api/v3/content/fetch/articles-by-section-alias-or-id-v1
+        method: GET
+        timeout_seconds: 20
+        retries: 0
+        headers:
+          Accept: application/json
+          User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0
+            Safari/537.36
+          Referer: '{{input.referer}}'
+        query:
+          query: '{"uri":"{{input.uri}}","website":"reuters","section_id":"{{input.section_id}}","fetch_type":"section","size":1,"arc-site":"reuters","offset":0}'
+      parser:
+        format: json
+        success:
+          path: statusCode
+          equals: 200
+        items_path: result.articles
+    auth_failure_statuses:
+    - 401
+    - 403
+feed:
+  state_version: 1
+  cursor_query: query
+  cursor_template: '{"uri":"{{input.uri}}","website":"reuters","section_id":"{{input.section_id}}","fetch_type":"section","size":20,"arc-site":"reuters","offset":{{cursor}}}'
+  initial: 0
+  step: 20
+  page_size: 20
+  max_pages: 20
+  timestamp_path: display_time
+  lookback_seconds: 172800
+  overlap_seconds: 600
+  request_delay_ms: 1000
+  fields:
+    acquisition_category: '{{input.category}}'
+  detail:
+    destination: acquisition_detail
+    required_paths:
+    - content_elements
+    request:
+      url: https://www.reuters.com{{item.canonical_url}}
+      method: GET
+      timeout_seconds: 20
+      retries: 1
+      same_origin_redirects: true
+      headers:
+        Accept: application/json
+        User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0
+          Safari/537.36
+      query:
+        outputType: json
+    parser:
+      format: json
+      items_path: '[*].data.article'
+tags:
+- key: source_category
+  sources:
+  - from: record
+    path: acquisition_category
+content:
+  source_name: '{{input.source_name}}'
+  title:
+  - acquisition_detail.title
+  - title
+  summary:
+  - acquisition_detail.description
+  - description
+  body: []
+  body_segments:
+    path: acquisition_detail.content_elements
+    type_path: type
+    types:
+    - paragraph
+    - heading
+    - inline_items
+    text_paths:
+    - content
+    inline_path: items
+    inline_text_paths:
+    - content
+    - symbol
+  body_format: html
+  source_url:
+  - acquisition_detail.canonical_url
+  - acquisition_detail.website_url
+  - url
+  url_base: https://www.reuters.com
+  published_at:
+  - acquisition_detail.published_time
+  - published_time
+  time_format: iso8601
+  author: []
+schema_version: 2
+site: reuters
+target_kind: section
+input_fields:
+- section_id
+- uri
+- referer
+- category
+- source_name

@@ -1,0 +1,119 @@
+# Versioned flow only. Targets, task settings and credentials are stored in local SQLite.
+name: tencent-stock-news
+request:
+  url: https://proxy.finance.qq.com/cgi/cgi-bin/zixuananalysis/cmpStockList
+  method: GET
+  captured_query: true
+  timeout_seconds: 20
+  retries: 2
+  headers:
+    accept: application/json,*/*
+    accept-encoding: identity
+    referer: http://zixuanguapp.finance.qq.com
+runtime:
+  type: http
+session:
+  app_capture:
+    application: /Applications/腾讯自选股.app
+    process_name: QQStock
+    executable_suffix: /Wrapper/QQStock.app/QQStock
+    host: proxy.finance.qq.com
+    max_age_seconds: 21600
+    timeout_seconds: 90
+    auth_failure_statuses:
+    - 401
+    auth_failure_checks:
+    - path: code
+      equals: 12
+    capture_request_path: /cgi/cgi-bin/zixuananalysis/cmpStockList
+    allowed_headers:
+    - user-agent
+parser:
+  format: json
+  success:
+    path: code
+    equals: 0
+  items_path: data.groupInfoList
+storage:
+  source: tencent_stock_news
+  key_path: id
+workflow:
+  max_inputs: 100
+  max_items_per_input: 20
+  request_delay_ms: 250
+  inputs:
+    filter_path: groupId
+    values_path: stockList
+    variable: symbol
+  list:
+    request:
+      url: https://proxy.finance.qq.com/cgi/cgi-bin/news/info/news
+      method: GET
+      timeout_seconds: 20
+      retries: 2
+      headers:
+        accept: application/json,*/*
+        accept-encoding: identity
+        referer: http://zixuanguapp.finance.qq.com
+      query:
+        symbol: '{{input.symbol}}'
+        type: '3'
+        n: '20'
+        app: zxg
+    parser:
+      format: json
+      success:
+        path: code
+        equals: 0
+      items_path: data.data
+  detail:
+    request:
+      url: https://proxy.finance.qq.com/ifzqgtimg/appstock/news/newsInfo/getNewsContent
+      method: GET
+      timeout_seconds: 20
+      retries: 2
+      headers:
+        accept: application/json,*/*
+        accept-encoding: identity
+        referer: http://zixuanguapp.finance.qq.com
+      query:
+        id: '{{item.id}}'
+    parser:
+      format: json
+      success:
+        path: code
+        equals: 0
+      items_path: data.data
+  copy_fields:
+  - from: item
+    path: url
+    to: url
+tags:
+- key: stock_code
+  sources:
+  - from: record
+    path: stockInfo[*].symbol
+  normalize:
+  - trim
+  - uppercase
+  validate:
+    pattern: ^(SH[0-9]{6}|SZ[0-9]{6}|BJ[0-9]{6}|HK[0-9]{5}|US[A-Z0-9][A-Z0-9.\^-]*)$
+content:
+  title:
+  - title
+  summary:
+  - summary
+  body:
+  - content.text
+  body_format: html
+  source_url:
+  - url
+  published_at:
+  - publish_time
+  time_format: unix_seconds
+  source_name: 腾讯自选股
+schema_version: 2
+site: tencent
+target_kind: group
+input_fields:
+- group_id

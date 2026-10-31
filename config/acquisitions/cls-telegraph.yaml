@@ -1,0 +1,63 @@
+# Versioned flow only. Targets, task settings and credentials are stored in local SQLite.
+name: cls-telegraph
+request:
+  url: https://www.cls.cn/v1/roll/get_roll_list
+  method: GET
+  timeout_seconds: 20
+  retries: 2
+  headers:
+    Accept: application/json, text/plain, */*
+    Referer: https://www.cls.cn/telegraph
+    User-Agent: Mozilla/5.0 (compatible; Sub2Me/0.1)
+  query:
+    app: CailianpressWeb
+    last_time: '{{now_unix+1}}'
+    os: web
+    refresh_type: '1'
+    rn: '50'
+    sv: 8.7.9
+  signing:
+    parameter: sign
+    case_insensitive_sort: true
+    hash_pipeline:
+    - sha1
+    - md5
+runtime:
+  type: http
+parser:
+  format: json
+  success:
+    path: errno
+    equals: 0
+  items_path: data.roll_data
+storage:
+  source: cls_telegraph
+  key_path: id
+pagination:
+  cursor_query: last_time
+  cursor_path: ctime
+  page_size: 50
+  max_pages: 50
+  lookback_seconds: 172800
+  overlap_seconds: 300
+content:
+  title:
+  - title
+  - content
+  summary:
+  - brief
+  - content
+  body:
+  - content
+  source_url:
+  - shareurl
+  url_template: https://www.cls.cn/detail/{id}
+  published_at:
+  - ctime
+  time_format: unix_seconds
+  source_name: 财联社电报
+schema_version: 2
+site: cls
+target_kind: feed
+input_fields:
+- feed

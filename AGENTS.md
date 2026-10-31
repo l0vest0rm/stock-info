@@ -30,8 +30,10 @@
 
 - `./start-local.sh` delegates to `./start-rust.sh`: builds prompts/web assets
   and the locked Rust application, then execs the native binary. The binary
-  acquires both listeners before migrating SQLite; an occupied port fails
-  without stopping another service or opening its database.
+  acquires both listeners before migrating SQLite. Before building, server
+  startup sends SIGTERM only to this checkout's old native listeners and waits
+  up to 30 seconds for exit; unrelated listeners and CLI commands are untouched.
+  The binary itself still fails on occupied ports without opening its database.
 - Use unused API/content ports and isolated data/object directories for tests.
   Typechecks are separate gates, not implicit startup checks.
 - `npm run check:rust` runs formatting, clippy and isolated Rust regressions.
@@ -149,3 +151,33 @@
   >39 securities or stale snapshots. Never copy a proposal into actual holdings
   without separately reconciled user input. Company dynamic information reads
   existing entity-linked feed records (extraction integrity is not factual verification), not a new extraction scheduler.
+
+## Embedded Acquisition
+
+- `backend/src/acquisition_runtime.rs` embeds the shared Rust crate at
+  `../sub2me/crates/acquisition`; there is no acquisition subprocess or new DB.
+- `0149_acquisition.sql` is the acquisition-table addition explicitly approved
+  in the 2026-10-31 embedding request. Future schema additions still require
+  approval, the schema guard allowlist and regression coverage. The host's
+  sorted migration/user_version protocol remains authoritative.
+- Flow YAML lives in `config/acquisitions` or `LOCAL_ACQUISITION_CONFIG_DIR`.
+  `--acquisition list|put|status|run|session-import|import-sub2me` manages host-local tasks;
+  new tasks are paused. Normal server startup schedules active tasks in-process;
+  `LOCAL_SCHEDULER=0` disables collection too. No credentials/tasks are seeded.
+- `0150_compact_acquisition.sql` is the compact-schema refactor approved in the
+  same embedding discussion: only acquisition_tasks/runs/sessions remain. The
+  host owns migration ordering; legacy embedded records are moved to knowledge_docs
+  before redundant tables are dropped. Back up real data before explicit cutover.
+- `KnowledgeStorage` implements replacement `RecordStorage`, not a post-write
+  projection: raw/canonical content/tags use existing knowledge_docs with inline
+  bodies; scope checkpoint and business rows commit together. No shadow result
+  table, automatic publication, LLM invocation or relevance-gate bypass.
+- Explicit import-sub2me reads a stopped source DB and imports only acquisition
+  tasks/targets, bound sessions/caches and checkpoints, preserving status. It never
+  copies article/editorial/publication queues or silently runs during startup.
+- The shared native SQLite dependency chain pins rusqlite 0.41.1 with bundled
+  SQLite 3.54.1 (2026-10-31), including llm-client and CEA. Keep consumers aligned;
+  use checked SQL integer conversions rather than binding platform-sized usize.
+- `backend/tests/acquisition_runtime.rs` verifies schema equality, host migration
+  ownership, real loopback HTTP collection, scheduler execution, restart dedupe,
+  paused registration and invalid-target rollback in isolated databases.

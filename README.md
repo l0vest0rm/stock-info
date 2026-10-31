@@ -16,7 +16,9 @@ npm install --include=dev --no-audit --no-fund
 
 - 默认页面/API：`http://127.0.0.1:8000`；知识正文兼容端口：`http://127.0.0.1:8788`。
 - `start-local.sh` 与 `start-rust.sh` 使用同一原生后端，构建提示词、页面和 Rust 后直接
-  exec 二进制。端口占用会报错，不会终止已有服务；Ctrl-C 请求优雅退出并等待已接受任务。
+  exec 二进制。构建前检查两个端口，先用 SIGTERM 停止本 checkout 的旧原生实例，最多等待
+  30 秒优雅退出；超时不强杀，其他服务占用则报错。CLI 命令不停止服务。
+  Ctrl-C 请求优雅退出并等待已接受任务。
 - 默认只监听 loopback，不提供远程登录服务。`/api/health` 返回运行时与 SQLite 健康状态，
   不代表提供方凭据、模型服务或所有业务都可用。
 - 静态资源来自 `web/dist`，Bootstrap、ECharts、Marked 等页面依赖随本地构建提供，
@@ -127,3 +129,7 @@ PE(TTM)、市值及研报前瞻引用检查。它需要有效雪球 Cookie、财
 历史提交中的云部署流程不再受支持。旧部署工具产生的本地数据、忽略的凭据和既有研究报告
 不属于待删源码，不能因代码清理而删除。
 观察池输出是带独立计算时间和来源日期的滚动读模型，不是共同估值日回测，也不是买卖建议。
+
+### Embedded acquisition
+
+The Rust backend embeds the shared `../sub2me/crates/acquisition` crate. Acquisition runs in-process and writes to the existing `LOCAL_DB_PATH`; no extra service/database or automatic model/publication task is created. Only three acquisition control tables are required; results use existing `knowledge_docs` through replacement `RecordStorage`, without `acquisition_records`. See [task configuration and explicit Sub2Me handoff](config/acquisitions/README.md). New tasks start paused; an explicit handoff preserves the source task status.

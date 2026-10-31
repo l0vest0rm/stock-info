@@ -16,11 +16,7 @@ impl Database {
         let sql = sql.into();
         self.run(move |conn| {
             let mut stmt = conn.prepare(&sql)?;
-            let names: Vec<String> = stmt
-                .column_names()
-                .iter()
-                .map(|name| name.to_string())
-                .collect();
+            let names: Vec<String> = stmt.column_names().map(|name| name.to_string()).collect();
             let values = params.iter().map(sql_value).collect::<Vec<_>>();
             let rows = stmt
                 .query_map(rusqlite::params_from_iter(values), |row| {
@@ -90,6 +86,10 @@ impl Database {
         Ok(db)
     }
 
+    pub fn path(&self) -> &Path {
+        self.0.as_ref()
+    }
+
     pub fn connect(&self) -> Result<Connection> {
         let conn = Connection::open(self.0.as_ref())?;
         conn.busy_timeout(Duration::from_secs(30))?;
@@ -120,7 +120,10 @@ impl Database {
             // Read version after taking the write lock. Concurrent migrators
             // must not both apply a migration selected before either commits.
             let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-            let version: usize = tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
+            let stored_version: i64 =
+                tx.pragma_query_value(None, "user_version", |row| row.get(0))?;
+            let version =
+                usize::try_from(stored_version).context("negative SQLite user_version")?;
             if version > files.len() {
                 bail!(
                     "database version {version} exceeds {} migration files",
@@ -132,7 +135,7 @@ impl Database {
             };
             tx.execute_batch(&fs::read_to_string(file)?)
                 .with_context(|| format!("migration failed: {}", file.display()))?;
-            tx.pragma_update(None, "user_version", version + 1)?;
+            tx.pragma_update(None, "user_version", i64::try_from(version + 1)?)?;
             tx.commit()?;
             applied += 1;
         }

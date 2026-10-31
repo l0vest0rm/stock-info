@@ -1,0 +1,157 @@
+# Versioned flow only. Targets, task settings and credentials are stored in local SQLite.
+name: xueqiu-vip
+request:
+  url: https://www.xueqiu.com/v4/statuses/user_timeline.json
+  query:
+    user_id: '{{input.user_id}}'
+    page: '1'
+  headers: &id001
+    Accept: application/json
+    Referer: https://www.xueqiu.com/
+    User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36
+    X-Requested-With: XMLHttpRequest
+  timeout_seconds: 20
+  retries: 1
+runtime:
+  type: http
+parser:
+  format: json
+  items_path: statuses
+storage:
+  source: xueqiu_vip
+  key_path: id
+session:
+  http:
+    login_url: https://www.xueqiu.com/
+    origins:
+    - https://www.xueqiu.com
+    max_age_seconds: 21600
+    renewal:
+    - url: https://www.xueqiu.com/
+      headers: *id001
+      retries: 0
+    renew_remove_cookies:
+    - xq_a_token
+    - xqat
+    login_required_checks:
+    - path: error_code
+      equals: '10022'
+    - path: error_code
+      equals: 10022
+    validation:
+      request:
+        url: https://www.xueqiu.com/statuses/user/comments.json
+        query:
+          user_id: '{{input.user_id}}'
+          size: '20'
+          since_id: '0'
+        headers: *id001
+      parser:
+        format: json
+        items_path: items
+    auth_failure_statuses:
+    - 401
+    auth_failure_checks:
+    - path: error_code
+      equals: '10022'
+    - path: error_code
+      equals: '400016'
+    - path: error_code
+      equals: 10022
+    - path: error_code
+      equals: 400016
+polling:
+  request_delay_ms: 500
+  streams:
+  - name: post
+    state_version: 1
+    request:
+      url: https://www.xueqiu.com/v4/statuses/user_timeline.json
+      query:
+        user_id: '{{input.user_id}}'
+        page: '1'
+      headers: *id001
+      retries: 1
+    parser:
+      format: json
+      items_path: statuses
+    pagination:
+      query: page
+      initial: '1'
+      page_size: 20
+      max_pages: 100
+      timestamp_path: created_at
+      timestamp_divisor: 1000
+      lookback_seconds: 86400
+      overlap_seconds: 600
+    fields:
+      id: post:{{item.id}}
+      native_id: '{{item.id}}'
+      kind: post
+      tracked_user_id: '{{input.user_id}}'
+      tracked_user_name: '{{input.name}}'
+      url: https://www.xueqiu.com/{{input.user_id}}/{{item.id}}
+  - name: reply
+    state_version: 1
+    request:
+      url: https://www.xueqiu.com/statuses/user/comments.json
+      query:
+        user_id: '{{input.user_id}}'
+        size: '20'
+        since_id: '0'
+      headers: *id001
+      retries: 1
+    parser:
+      format: json
+      items_path: items
+    pagination:
+      query: max_id
+      initial: '-1'
+      next_cursor_response_path: next_max_id
+      page_size: 20
+      max_pages: 100
+      timestamp_path: created_at
+      timestamp_divisor: 1000
+      lookback_seconds: 86400
+      overlap_seconds: 600
+    fields:
+      url: https://www.xueqiu.com/{{item.status.user_id}}/{{item.statusId}}
+      id: reply:{{item.id}}
+      native_id: '{{item.id}}'
+      kind: reply
+      tracked_user_id: '{{input.user_id}}'
+      tracked_user_name: '{{input.name}}'
+tags:
+- key: author
+  sources:
+  - from: record
+    path: tracked_user_name
+- key: content_type
+  sources:
+  - from: record
+    path: kind
+content:
+  title:
+  - title
+  - tracked_user_name
+  summary: []
+  body:
+  - text
+  - description
+  body_format: html
+  source_url:
+  - url
+  published_at:
+  - created_at
+  time_format: unix_milliseconds
+  source_name: 雪球大 V
+  author:
+  - tracked_user_name
+  kind:
+  - kind
+schema_version: 2
+site: xueqiu
+target_kind: user
+input_fields:
+- user_id
+- name

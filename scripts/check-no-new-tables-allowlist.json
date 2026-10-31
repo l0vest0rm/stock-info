@@ -200,5 +200,18 @@
   "sync_jobs",
   "users",
   "watchlist_items",
-  "featured_reports"
+  "featured_reports",
+  "tasks",
+  "task_runs",
+  "acquisition_records",
+  "acquisition_record_tags",
+  "acquisition_poll_watermarks",
+  "acquisition_sessions",
+  "acquisition_targets",
+  "acquisition_task_targets",
+  "acquisition_session_state",
+  "acquisition_control_imports",
+  "acquisition_target_memberships",
+  "acquisition_tasks",
+  "acquisition_runs"
 ]

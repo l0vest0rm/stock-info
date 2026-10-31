@@ -9,7 +9,7 @@ use std::{
 use stock_info_local::{AppState, content_router, db::Database, router, scheduler};
 use tokio::sync::watch;
 
-const HELP: &str = "stock-info-local [COMMAND] [OPTIONS]\nRun from the repository root. No command starts both loopback HTTP listeners.\nCommands: --migrate-only, --cron-once, --refresh-xueqiu-cookie,\n  --validate-xueqiu-cookie, --process-knowledge, --process-knowledge-existing,\n  --process-feed, --reconcile-feed, --backfill-feed-relevance,\n  --backfill-information-records, --prepare-featured-report,\n  --publish-featured-report, --review-featured-report, --maintenance OP, --research OP, --sync OP, --analysis-json\n--analysis-json reads pure offline JSON from stdin without opening SQLite.\nWorkflow flags use kebab-case; destructive maintenance requires --apply.\nHOST must be a loopback IP; PORT defaults to 8000; KNOWLEDGE_CONTENT_LOCAL_PORT to 8788.\nLOCAL_DB_PATH or LOCAL_DATA_DIR select SQLite. Existing migrations are preserved.\nModel work requires explicit LLM_RUNTIME=local. Credentials are read from ignored .dev.vars.";
+const HELP: &str = "stock-info-local [COMMAND] [OPTIONS]\nRun from the repository root. No command starts both loopback HTTP listeners.\nCommands: --acquisition list|put|status|run|session-import --file PATH --task NAME --status active|paused|disabled, --migrate-only, --cron-once, --refresh-xueqiu-cookie,\n  --validate-xueqiu-cookie, --process-knowledge, --process-knowledge-existing,\n  --process-feed, --reconcile-feed, --backfill-feed-relevance,\n  --backfill-information-records, --prepare-featured-report,\n  --publish-featured-report, --review-featured-report, --maintenance OP, --research OP, --sync OP, --analysis-json\n--analysis-json reads pure offline JSON from stdin without opening SQLite.\nWorkflow flags use kebab-case; destructive maintenance requires --apply.\nHOST must be a loopback IP; PORT defaults to 8000; KNOWLEDGE_CONTENT_LOCAL_PORT to 8788.\nLOCAL_DB_PATH or LOCAL_DATA_DIR select SQLite. Existing migrations are preserved.\nModel work requires explicit LLM_RUNTIME=local. Credentials are read from ignored .dev.vars.";
 
 fn port(name: &str, fallback: &str) -> Result<u16> {
     let value = env::var(name).unwrap_or_else(|_| fallback.into());
@@ -51,6 +51,7 @@ async fn run() -> Result<()> {
     let commands = [
         "",
         "--migrate-only",
+        "--acquisition",
         "--cron-once",
         "--refresh-xueqiu-cookie",
         "--validate-xueqiu-cookie",
@@ -140,6 +141,7 @@ async fn run() -> Result<()> {
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("web/dist"));
     let mut shutdown_signal = tokio::spawn(shutdown());
+    let collector = stock_info_local::acquisition_runtime::start(&state)?;
     let jobs = scheduler::start(state.clone()).await?;
     let mut content_state = state.clone();
     content_state.authority = content_address.to_string();
@@ -166,6 +168,9 @@ async fn run() -> Result<()> {
         _ = &mut shutdown_signal => (false, false, None),
     };
     jobs.request_stop();
+    if let Some(ref collector) = collector {
+        collector.request_stop();
+    }
     let _ = stop.send(true);
     let api_result = if api_done { None } else { Some(api_task.await) };
     let content_result = if content_done {
@@ -174,6 +179,9 @@ async fn run() -> Result<()> {
         Some(content_task.await)
     };
     jobs.stop().await;
+    if let Some(collector) = collector {
+        collector.shutdown().await?;
+    }
     state.tasks.close();
     state.tasks.wait().await;
     for result in [early_result, api_result, content_result]
@@ -187,6 +195,7 @@ async fn run() -> Result<()> {
 
 async fn run_command(state: &AppState, command: &str, options: &Value) -> Result<Value> {
     match command {
+        "--acquisition" => stock_info_local::acquisition_runtime::command(state, options).await,
         "--cron-once" => scheduler::run_once(state).await,
         "--refresh-xueqiu-cookie" => stock_info_local::cookie_refresh::refresh(state).await,
         "--validate-xueqiu-cookie" => stock_info_local::cookie_refresh::validate(state).await,
@@ -333,6 +342,7 @@ fn parse_options(command: &str, args: &[String]) -> Result<Value> {
     let mut options = serde_json::Map::new();
     let mut index = 0;
     let allowed: &[&str] = match command {
+        "--acquisition" => &["operation", "file", "task", "status"],
         "--process-knowledge" | "--process-knowledge-existing" => &[
             "config",
             "inbox",
@@ -445,7 +455,7 @@ fn parse_options(command: &str, args: &[String]) -> Result<Value> {
             let key = match command {
                 "--prepare-featured-report" => "input",
                 "--publish-featured-report" | "--review-featured-report" => "directory",
-                "--maintenance" | "--sync" => "operation",
+                "--maintenance" | "--sync" | "--acquisition" => "operation",
                 "--research" => {
                     if !options.contains_key("operation") {
                         "operation"

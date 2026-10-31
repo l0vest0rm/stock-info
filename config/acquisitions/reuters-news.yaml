@@ -1,0 +1,55 @@
+# Versioned flow only. Targets, task settings and credentials are stored in local SQLite.
+name: reuters-news
+request:
+  url: https://www.reuters.com/arc/outboundfeeds/news-sitemap/
+  method: GET
+  query:
+    outputType: xml
+  timeout_seconds: 20
+  retries: 2
+  headers:
+    Accept: application/xml, text/xml
+    User-Agent: Mozilla/5.0 (compatible; Sub2Me/0.1)
+runtime:
+  type: http
+parser:
+  format: xml
+  items_path: urlset/url
+  fields:
+    url:
+      path: loc
+    title:
+      path: news/title
+    published_at:
+      path: news/publication_date
+    last_modified_at:
+      path: lastmod
+    publisher:
+      path: news/publication/name
+    language:
+      path: news/publication/language
+    keywords:
+      path: news/keywords
+    stock_tickers:
+      path: news/stock_tickers
+storage:
+  source: reuters_news
+  key_path: url
+content:
+  source_name: 路透社
+  title:
+  - title
+  summary: []
+  body: []
+  source_url:
+  - url
+  published_at:
+  - published_at
+  time_format: iso8601
+  author: []
+  kind: []
+schema_version: 2
+site: reuters
+target_kind: feed
+input_fields:
+- feed

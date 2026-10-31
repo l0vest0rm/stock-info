@@ -1,11 +1,17 @@
 #!/bin/sh
-# Native Rust application. Never stops or replaces an occupied service.
+# Native Rust application. Gracefully replace only this checkout's old server.
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+# Optional trusted, owner-managed local SDK executable/state configuration.
+# Keep machine paths out of committed flow definitions and preserve explicit env.
+ACQUISITION_RUNTIME_ENV="${LOCAL_ACQUISITION_RUNTIME_ENV:-data/local/acquisition-runtime.env}"
+if [ -f "$ACQUISITION_RUNTIME_ENV" ]; then . "$ACQUISITION_RUNTIME_ENV"; fi
 export LLM_RUNTIME=local
 unset PRODUCTION_REPORT_SYNC_URL REPORT_SYNC_TOKEN
 export PORT="${PORT:-8000}"
 export KNOWLEDGE_CONTENT_LOCAL_PORT="${KNOWLEDGE_CONTENT_LOCAL_PORT:-${LOCAL_CONTENT_PORT:-8788}}"
+# Only server startup replaces listeners; offline/maintenance CLI leaves them alone.
+if [ "$#" -eq 0 ]; then node scripts/prepare-local-ports.mjs; fi
 CONTENT_HOST=${HOST:-127.0.0.1}
 case "$CONTENT_HOST" in *:*) CONTENT_HOST="[$CONTENT_HOST]" ;; esac
 export KNOWLEDGE_CONTENT_PUBLIC_BASE_URL="${KNOWLEDGE_CONTENT_PUBLIC_BASE_URL:-http://${CONTENT_HOST}:${KNOWLEDGE_CONTENT_LOCAL_PORT}}"

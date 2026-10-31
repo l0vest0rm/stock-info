@@ -184,7 +184,7 @@ pub(crate) async fn import_payload(state: &AppState, payload: Value) -> ApiResul
     state.db.run(move|conn|{
         let tx=conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         tx.execute("INSERT INTO knowledge_docs(doc_id,source_type,report_type,source_name,title,url,published_at,fetched_at,discovery_method,access_method,summary,content_preview,inline_content,inline_content_sha256,metadata_json,sort_time,source_name_normalized,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(doc_id) DO NOTHING",rusqlite::params_from_iter(params.iter().map(crate::db::sql_value)))?;
-        if let Some(key)=persisted_key {tx.execute("INSERT INTO knowledge_doc_content_refs(doc_id,content_key,content_url,content_type,content_encoding,content_bytes,content_sha256,updated_at) VALUES(?,?,'','text/plain; charset=utf-8','identity',?,?,?) ON CONFLICT(doc_id) DO NOTHING",rusqlite::params![persisted_id,key,bytes,persisted_hash,millis])?;}
+        if let Some(key)=persisted_key {tx.execute("INSERT INTO knowledge_doc_content_refs(doc_id,content_key,content_url,content_type,content_encoding,content_bytes,content_sha256,updated_at) VALUES(?,?,'','text/plain; charset=utf-8','identity',?,?,?) ON CONFLICT(doc_id) DO NOTHING",rusqlite::params![persisted_id,key,i64::try_from(bytes)?,persisted_hash,millis])?;}
         tx.commit()?;Ok(())
     }).await?;
     Ok(ok(

@@ -51,7 +51,6 @@ fn query(conn: &Connection, sql: &str, values: &[&dyn rusqlite::ToSql]) -> Resul
     let mut statement = conn.prepare(sql)?;
     let names = statement
         .column_names()
-        .into_iter()
         .map(str::to_owned)
         .collect::<Vec<_>>();
     Ok(statement

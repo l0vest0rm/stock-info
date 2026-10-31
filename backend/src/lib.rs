@@ -1,3 +1,5 @@
+pub mod acquisition_runtime;
+pub mod acquisition_status;
 pub mod analysis_cli;
 pub mod cache_policy;
 pub mod codes;
@@ -146,6 +148,7 @@ pub fn router(state: AppState, assets: &Path) -> Router {
         .merge(knowledge::routes())
         .merge(research::routes())
         .merge(runtime_jobs::routes())
+        .merge(acquisition_status::routes())
         .merge(company::routes())
         .merge(fund::routes())
         .merge(featured_reports::routes())
@@ -380,3 +383,7 @@ fn allowed_authority(host: &str, expected: &str) -> bool {
     ["127.0.0.1", "localhost", "[::1]"].contains(&host.host())
         && host.port_u16() == expected.port_u16()
 }
+
+mod acquisition_storage;
+
+mod acquisition_import;

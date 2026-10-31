@@ -536,7 +536,7 @@ async fn ingest_one(
     let sort_db = sort.clone();
     state.db.run(move|db|{let tx=db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;let now=Utc::now().timestamp_millis();
         tx.execute("insert into knowledge_docs(doc_id,source_type,report_type,source_name,title,url,published_at,fetched_at,event_time,access_method,summary,content_preview,metadata_json,sort_time,source_name_normalized,updated_at) values (?,'information_feed',?,?,?,?,?,?,?,'markdown',?,?,?,?,?,?)",params![id_for_db,text(&source["contentType"]),text(&source["sourceName"]),text(&source["title"]),text(&source["url"]),text(&source["publishedAt"]),text(&source["fetchedAt"]),text(&sort_db),body.chars().take(600).collect::<String>(),body.chars().take(280).collect::<String>(),meta_for_db,text(&sort_db),text(&source["sourceName"]).to_lowercase(),now])?;
-        tx.execute("insert into knowledge_doc_content_refs(doc_id,content_key,content_url,content_type,content_encoding,content_bytes,content_sha256,updated_at) values (?,?,'','text/markdown; charset=utf-8','identity',?,?,?)",params![id_for_db,key_for_db,body.len(),content_hash,now])?;tx.commit()?;Ok(())}).await?;
+        tx.execute("insert into knowledge_doc_content_refs(doc_id,content_key,content_url,content_type,content_encoding,content_bytes,content_sha256,updated_at) values (?,?,'','text/markdown; charset=utf-8','identity',?,?,?)",params![id_for_db,key_for_db,i64::try_from(body.len())?,content_hash,now])?;tx.commit()?;Ok(())}).await?;
     // Re-read the committed row; classification of following items sees exactly stored metadata.
     if let Some(mut row) = rows(state).await?.into_iter().find(|r| r["doc_id"] == id) {
         row["body"] = read_body(state, &key).await?.unwrap_or_default().into();

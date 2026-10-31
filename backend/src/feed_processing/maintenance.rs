@@ -47,11 +47,7 @@ fn candidate(row: &Value, meta: &Value, body: &str) -> Value {
 fn snapshot(conn: &rusqlite::Connection, id: &str) -> Result<Value> {
     let sql = format!("select * from ({SNAPSHOT_SQL}) where doc_id=?");
     let mut stmt = conn.prepare(&sql)?;
-    let keys = stmt
-        .column_names()
-        .into_iter()
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
+    let keys = stmt.column_names().map(str::to_owned).collect::<Vec<_>>();
     let row = stmt.query_row([id], |r| {
         let mut out = serde_json::Map::new();
         for (i, k) in keys.iter().enumerate() {
