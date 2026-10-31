@@ -32,6 +32,7 @@ pub mod scheduler;
 pub mod storage;
 pub mod sync_cli;
 pub mod thirteenf;
+pub mod web_workflow;
 pub mod xueqiu;
 
 use axum::{
@@ -148,6 +149,7 @@ pub fn router(state: AppState, assets: &Path) -> Router {
         .merge(market::routes())
         .merge(knowledge::routes())
         .merge(research::routes())
+        .merge(web_workflow::routes())
         .merge(runtime_jobs::routes())
         .merge(acquisition_status::routes())
         .merge(company::routes())
@@ -327,7 +329,7 @@ async fn api_not_found() -> ApiError {
 async fn retired_scheduler() -> ApiError {
     ApiError(
         StatusCode::GONE,
-        "local generic LLM scheduler was removed; use a direct business operation or taskd".into(),
+        "local generic LLM scheduler was removed; use a direct business operation or local CEA workflow".into(),
     )
 }
 

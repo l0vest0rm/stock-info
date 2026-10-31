@@ -38,7 +38,7 @@ SQLite 使用 `LOCAL_DB_PATH`，否则为 `LOCAL_DATA_DIR/stock-info.sqlite`，�
 
 凭据放在忽略提交的 `.dev.vars`、环境变量及本地 credential store，不能写入版本化配置、
 命令参数或日志。启动脚本显式设置 `LLM_RUNTIME=local`；直接执行原生二进制时必须显式
-设置该值才能运行模型任务。本地运行不等于离线：行情、财报、官方来源、taskd 和模型
+设置该值才能运行模型任务。本地运行不等于离线：行情、财报、官方来源、CEA 网页研究和模型
 仍依赖可用网络、代理及授权凭据。
 
 ### 直接模型 API
@@ -56,11 +56,31 @@ SQLite 使用 `LOCAL_DB_PATH`，否则为 `LOCAL_DATA_DIR/stock-info.sqlite`，�
 该生成步骤同步资讯提取模型指纹，并在版本化生成清单中保留旧模型的完整提取合同；
 不要删除生成清单后重新生成。已完成翻译检查点保留，不冒充新模型输出。
 
-宏观/财务/投资分析和研报发现的 **taskd ChatGPT 网页研究保留原流程**；它们不使用
-此直接 API 配置，已有任务、联网检索、引用和恢复协议不变。
+宏观/财务/投资分析和研报发现改为 **本机 CEA SDK workflow 直接执行**，不再连接
+taskd，不使用上述直接 API 配置。请先启动已安装的本机 CEA Server，并在所选持久
+Profile 登录 ChatGPT。默认端点 `ws://127.0.0.1:9876/api/v1/ws`，可用 `CEA_ENDPOINT`
+覆盖；Profile 可用 `LOCAL_WEB_RESEARCH_PROFILE` 覆盖。
+
+`config/app/web-research.json` 单独配置网页模型、模型菜单位置和思考强度，YAML 在
+`config/workflows/chatgpt-research.yaml`。模型菜单位置仅用于定位，发送前必须精确
+读回模型名及思考强度；不匹配就失败，不默默换模型。当前配置选 `GPT-5.6 Sol`。
+原生 SDK 新增的通用 `text_equals`/`text_contains` 谓词随相邻 CEA 源码构建，不要求
+替换正在运行的 CEA Server。
+
+执行记录与租约保存在现有 `kv_cache`，不新增数据库表。网页结果仍写入原有业务
+namespace；每次运行的冻结 YAML、输入、SDK checkpoint 与结果位于私有
+`LOCAL_DATA_DIR/web-research/` 和执行记录中。`LOCAL_SCHEDULER=0` 仅关闭 cron，
+不关闭用户明确提交任务的执行器。页面关闭不停止执行；后端退出会停止本地动作，
+重启后从已确认 checkpoint 续执行，已提交动作不自动重放。
+
+本机执行诊断：`GET /api/research/web-workflows/{runId}`；恢复及停止分别为同路径的
+`POST /resume`、`POST /cancel`。停止不撤回 ChatGPT 已收到的请求。执行 ID 与模型
+来源不混用：旧 taskd 报告保留，旧在途任务须人工核对，不能转成新的 CEA 任务。
+私有执行文件不由内容监听器公开提供，也不自动发布报告。
+数据库字段、状态机和验收边界见 [本机网页研究](docs/local-web-research.md)。
 
 `npm run check:llm` 验证配置切换/历史保留、两种协议、流式终止及禁止重放。
-真实模型烟测只发送合成 JSON 请求，使用临时数据库，不提交 taskd 任务：
+真实模型烟测只发送合成 JSON 请求，使用临时数据库，不提交网页研究任务：
 
 ```sh
 LLM_RUNTIME=local cargo test --locked --manifest-path backend/Cargo.toml --test llm_runtime real_configured_llm_stream_and_json -- --ignored
@@ -93,7 +113,7 @@ PDF 渲染、提取和专题报告清理需要 Python 3、PyMuPDF，以及单独
 
 完整业务接口由 Rust 模块提供：证券搜索、行情与财报、公司与基金、公告/研报发现、
 观察池与估值、不可变研究历史、私有组合及 what-if、知识库/资讯、宏观研究、期权、
-13F/机构持仓、专题报告、taskd/模型任务与后台调度。接口延续现有 `{code,msg,data}` 契约。
+13F/机构持仓、专题报告、CEA 网页研究/模型任务与后台调度。接口延续现有 `{code,msg,data}` 契约。
 私有组合和研究编辑仅允许本机同源访问，不对外发布；确认操作不是交易执行。
 
 | 操作 | 入口 |

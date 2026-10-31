@@ -1,6 +1,7 @@
 //! Durable investment reports. GET reads only the local projection; only an
 //! explicit enqueue submits work, and recovery reopens the recorded task.
-use super::{repository, taskd};
+use super::repository;
+use crate::web_workflow;
 use crate::{AppState, codes, db::Database, http::number};
 use anyhow::{Context, Result, bail};
 use chrono::{Datelike, SecondsFormat, Utc};
@@ -8,9 +9,8 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 pub const NAMESPACE: &str = "research_investment_analysis";
-pub const PROMPT_VERSION: &str = "investment-analysis.taskd.v8";
+pub const PROMPT_VERSION: &str = "investment-analysis.cea.v9";
 pub const INPUT_SCHEMA_VERSION: &str = "investment-analysis-input.v3";
-const MODEL: &str = "gpt-5.6-luna";
 
 pub fn task_name(code: &str) -> String {
     format!("research:investment-analysis:{code}")
@@ -85,11 +85,17 @@ fn parse_task(value: &Value) -> Value {
         "updatedAt":value["updatedAt"].as_i64().map_or_else(||json!(updated),|n|json!(n)),
         "completedAt":value["completedAt"].as_i64().map_or_else(||json!(number(&value["completedAt"])),|n|json!(n)),
         "errorMessage":nonempty(&value["errorMessage"])});
-    if !value["taskId"].is_null() {
-        task["taskId"] = value["taskId"]
-            .as_i64()
-            .map_or_else(|| json!(number(&value["taskId"])), |n| json!(n));
+    for key in [
+        "taskId",
+        "runId",
+        "engine",
+        "revision",
+        "recoveryRequired",
+        "lastStep",
+    ] {
+        task[key] = value[key].clone();
     }
+
     task
 }
 
@@ -206,20 +212,20 @@ pub async fn enqueue(state: &AppState, code: &str, reasoning: Option<&str>) -> R
     let current = read_stored(&state.db, &code).await?;
     let reasoning = reasoning_effort(reasoning)?;
     let input = &prepared["input"];
-    let task = taskd::submit_report(state,&json!({
-        "name":task_name(&code),"taskType":"webqa.chatgpt.v1","model":MODEL,"reasoningEffort":reasoning,
+    let task = web_workflow::submit_report(state,&json!({
+        "name":task_name(&code),"taskType":"webqa.chatgpt.v1","model":web_workflow::model(state)?,"reasoningEffort":reasoning,
         "waitTimeoutMs":7_200_000,"prompt":prepared["prompt"],"businessInput":input,
-        "diagnostics":{"securityCode":code,"model":MODEL,"reasoningEffort":reasoning,"promptVersion":input["promptVersion"],"schemaVersion":input["schemaVersion"]}
+        "diagnostics":{"securityCode":code,"model":web_workflow::model(state)?,"reasoningEffort":reasoning,"promptVersion":input["promptVersion"],"schemaVersion":input["schemaVersion"]}
     })).await?;
     let input_json = json!(serde_json::to_string(input)?);
     let stored = merge(
         current.as_ref(),
         &json!({"pendingProjection":true,"pendingInputJson":input_json,
         "inputJson":if current.as_ref().is_some_and(|c|!text(&c["markdown"]).is_empty()){current.as_ref().unwrap()["inputJson"].clone()}else{input_json},
-        "task":taskd::task_view(&task),"recovery":no_recovery()}),
+        "task":web_workflow::task_view(&task),"recovery":no_recovery()}),
     );
     repository::save(&state.db, NAMESPACE, &code, &stored, None).await?;
-    Ok(json!({"accepted":true,"task":taskd::task_view(&task),"input":input}))
+    Ok(json!({"accepted":true,"task":web_workflow::task_view(&task),"input":input}))
 }
 
 fn business_input(task: &Value) -> Value {
@@ -239,7 +245,7 @@ async fn persist_task(
     task: &Value,
     recovery: &Value,
 ) -> Result<Value> {
-    let mut patch = json!({"task":if task.is_null(){Value::Null}else{taskd::task_view(task)},"recovery":recovery});
+    let mut patch = json!({"task":if task.is_null(){Value::Null}else{web_workflow::task_view(task)},"recovery":recovery});
     if text(&current["markdown"]).is_empty() && input.is_object() {
         patch["inputJson"] = json!(serde_json::to_string(input)?);
     }
@@ -249,10 +255,11 @@ async fn persist_task(
 }
 
 fn recovery_after(current: &Value, task: &Value) -> Value {
-    if current["phase"] == "recovering" && taskd::is_terminal(task) {
+    if current["phase"] == "recovering" && web_workflow::is_terminal(task) {
         return json!({"phase":"manual_required","reason":if text(&task["errorMessage"]).is_empty(){"找回后的任务没有产生可验证的完成结果。"}else{text(&task["errorMessage"])}});
     }
-    if task["status"] == "failed" && !taskd::has_recoverable_checkpoint(&task["checkpoint"]) {
+    if task["status"] == "failed" && !web_workflow::has_recoverable_checkpoint(&task["checkpoint"])
+    {
         let unknown = text(&task["errorMessage"])
             .to_lowercase()
             .starts_with("outcomeunknown:");
@@ -272,14 +279,17 @@ pub async fn reconcile_one(state: &AppState, code: &str) -> Result<()> {
     if current["task"].is_null()
         || (!text(&current["markdown"]).is_empty()
             && current["pendingProjection"] != true
-            && !taskd::is_pending(&current["task"]))
+            && !web_workflow::is_pending(&current["task"]))
     {
         return Ok(());
     }
+    if super::repository::unchanged_failed_execution(&state.db, &current["task"]).await? {
+        return Ok(());
+    }
     let observed = async {
-        match taskd::observe(state,&current["task"]).await? {
+        match web_workflow::observe(state,&current["task"]).await? {
             None => { persist_task(state,&code,&current,&object_json(&current["inputJson"]),&Value::Null,
-                &json!({"phase":"manual_required","reason":"taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。"})).await?; }
+                &json!({"phase":"manual_required","reason":"本机已找不到原任务，无法确认已提交的 ChatGPT 会话。"})).await?; }
             Some(task) if task["status"] == "succeeded" => {
                 let mut input = business_input(&task);
                 if !input.is_object() {
@@ -301,12 +311,12 @@ pub async fn reconcile_one(state: &AppState, code: &str) -> Result<()> {
         Ok::<_,anyhow::Error>(())
     }.await;
     if let Err(error) = observed {
-        if taskd::is_read_unavailable(&error) {
+        if web_workflow::is_read_unavailable(&error) {
             return Err(error);
         }
         let stored = merge(
             Some(&current),
-            &json!({"recovery":{"phase":"manual_required","reason":error.to_string()}}),
+            &json!({"task":repository::projection_failed_task(&state.db, &current["task"], &error.to_string()).await?,"recovery":{"phase":"manual_required","reason":error.to_string()}}),
         );
         repository::save(&state.db, NAMESPACE, &code, &stored, Some(&current)).await?;
         return Err(error);
@@ -330,18 +340,22 @@ pub async fn resume(state: &AppState, code: &str) -> Result<Value> {
         bail!("investment analysis has no recorded task to recover");
     }
     ensure_local(state, "recovery")?;
-    let (remote, recoverable) =
-        taskd::recover_with_status(state, &stored["task"], &["failed"]).await?;
+    let (remote, recoverable) = web_workflow::recover_with_status(
+        state,
+        &stored["task"],
+        &["failed", "interrupted", "succeeded"],
+    )
+    .await?;
     let mut recovery = stored["recovery"].clone();
     match remote.as_ref() {
         None => {
-            recovery = json!({"phase":"manual_required","reason":"taskd 已找不到原任务，无法确认已提交的 ChatGPT 会话。"})
+            recovery = json!({"phase":"manual_required","reason":"本机已找不到原任务，无法确认已提交的 ChatGPT 会话。"})
         }
         Some(_) if recoverable => {
-            recovery = json!({"phase":"recovering","reason":"正在只读找回已提交的 ChatGPT 结果；不会重发提示词。"})
+            recovery = json!({"phase":"recovering","reason":"正在续接原执行 checkpoint；不会重放已派发动作。"})
         }
         Some(remote) if remote["status"] == "failed" => {
-            recovery = json!({"phase":"manual_required","reason":if taskd::has_recoverable_checkpoint(&remote["checkpoint"]){"taskd 未能重新排队原任务，无法确认已提交的 ChatGPT 会话。"}else{"任务缺少可验证的原会话 checkpoint，无法安全找回，也不会重发提示词。"}})
+            recovery = json!({"phase":"manual_required","reason":if web_workflow::has_recoverable_checkpoint(&remote["checkpoint"]){"本机执行器未能重新排队原任务，无法确认已提交的 ChatGPT 会话。"}else{"任务缺少可验证的原会话 checkpoint，无法安全找回，也不会重发提示词。"}})
         }
         Some(_) => {}
     }
@@ -366,7 +380,7 @@ pub fn validate_terminal_evidence(evidence: &Value) -> Result<()> {
     if text(&evidence["schemaVersion"]) != "webqa.completion-evidence.v1"
         || text(&evidence["outcome"]) != "succeeded"
     {
-        bail!("investment analysis taskd result lacks terminal WebQA completion evidence");
+        bail!("investment analysis web_workflow result lacks terminal WebQA completion evidence");
     }
     Ok(())
 }
@@ -387,7 +401,7 @@ pub fn validate_markdown(markdown: &str) -> Result<()> {
 }
 
 async fn project(state: &AppState, input: &Value, task: &Value, expected: &Value) -> Result<()> {
-    let result = taskd::extract_result(&task["result"])?;
+    let result = web_workflow::extract_result(&task["result"])?;
     validate_terminal_evidence(&result["terminalEvidence"])?;
     let markdown = text(&result["content"]["markdown"]);
     validate_markdown(markdown)?;
@@ -398,7 +412,7 @@ async fn project(state: &AppState, input: &Value, task: &Value, expected: &Value
     let stored = json!({"pendingProjection":false,"pendingInputJson":null,"inputJson":serde_json::to_string(input)?,
         "markdown":markdown,"citationsJson":serde_json::to_string(&result["citations"])?,"sourcesJson":serde_json::to_string(&result["sources"])?,
         "terminalEvidenceJson":serde_json::to_string(&result["terminalEvidence"])?,"projectedAt":Utc::now().timestamp_millis(),
-        "task":taskd::task_view(task),"recovery":no_recovery()});
+        "task":web_workflow::task_view(task),"recovery":no_recovery()});
     repository::save(&state.db, NAMESPACE, code, &stored, Some(expected)).await
 }
 
@@ -684,7 +698,7 @@ mod tests {
         let input = json!({"schemaVersion":INPUT_SCHEMA_VERSION,"security":{"code":"AAPL.US"}});
         let pending = merge(
             None,
-            &json!({"pendingProjection":true,"pendingInputJson":serde_json::to_string(&input).unwrap(),"task":taskd::task_view(&task)}),
+            &json!({"pendingProjection":true,"pendingInputJson":serde_json::to_string(&input).unwrap(),"task":web_workflow::task_view(&task)}),
         );
         write_stored(&state.db, "AAPL.US", &pending).await.unwrap();
         project(&state, &input, &task, &pending).await.unwrap();
@@ -717,7 +731,7 @@ mod tests {
         let mut task = completed_task();
         let pending = merge(
             None,
-            &json!({"markdown":"old validated report","task":taskd::task_view(&task),"pendingProjection":true}),
+            &json!({"markdown":"old validated report","task":web_workflow::task_view(&task),"pendingProjection":true}),
         );
         write_stored(&state.db, "AAPL.US", &pending).await.unwrap();
         task["result"]["terminal_evidence"]["outcome"] = json!("unknown");

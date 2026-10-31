@@ -229,7 +229,7 @@ pub async fn read(state: &AppState) -> Result<Value> {
         "asOf":Utc::now().date_naive().to_string(),"generatedAt":dates.last(),"oldestComputedAt":dates.first(),
         "companies":target_codes.len(),"targets":target_codes,"rows":rows,"byVerdict":verdicts,"blockedDetail":blocked,
         "stale":!pending.is_empty(),"pending":pending,
-        "warnings":["滚动结果，不是同一时点的历史回测快照；每条结果附计算标识和规则版本。","服务端定时分批更新；10分钟内复用计算结果，财报遵循数据源缓存周期。计算时间不代表行情或财报日期。"]}),
+        "warnings":["滚动结果，不是同一时点的历史回测快照；每条结果附计算标识和规则版本。","仅在可见页面打开或手动点击时按需更新，每次至多2家；无后台估值定时任务、无页面轮询。10分钟内复用计算结果，财报遵循数据源缓存周期。计算时间不代表行情或财报日期。"]}),
     )
 }
 

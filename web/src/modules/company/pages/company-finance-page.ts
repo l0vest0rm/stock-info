@@ -1,5 +1,5 @@
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
-import { renderTaskdMarkdown, renderTaskdReportActions, renderTaskdReportIdentity, renderTaskdReportMessage, taskdReportStatus } from '../../../shared/taskd/taskd-report-ui'
+import { renderWebResearchMarkdown, renderWebResearchReportActions, renderWebResearchReportIdentity, renderWebResearchReportMessage, webResearchReportStatus } from '../../../shared/web-research/web-research-ui'
 
 type FinanceTableCell = {
   valueText: string
@@ -86,24 +86,24 @@ function renderFinancialAnalysis(state: FinancialAnalysisState | null, options: 
   const flags = snapshot?.deterministicFlags || []
   const reportVersion = state?.reportVersion
   const canManageLocally = state?.canManageLocally === true
-  const status = state?.availability === 'available' ? '已完成' : state?.availability === 'failed' ? '失败' : state?.availability === 'pending' ? taskdReportStatus(state) : '尚未生成'
+  const status = state?.availability === 'available' ? '已完成' : state?.availability === 'failed' ? '失败' : state?.availability === 'pending' ? webResearchReportStatus(state) : '尚未生成'
   const dataAsOf = typeof snapshot?.asOf === 'string' && snapshot.asOf.trim() ? snapshot.asOf.trim() : snapshot?.periodCoverage?.ttmEndDate || ''
   const statusSummary = `单证券 · ${code} · ${status}`
   return h('section', { class: 'card border-primary mb-3', id: 'financial-analysis' }, [
     h('div', { class: 'card-header d-flex align-items-center justify-content-between gap-2 flex-wrap' }, [
       h('div', [h('strong', '深入财务分析'), h('small', { class: 'text-muted ms-2' }, statusSummary)]),
-      renderTaskdReportActions({ enabled: canManageLocally, state, busy: options.generating, className: 'd-flex gap-2', buttonClass: 'btn btn-sm btn-primary', submitLabel: '生成财务分析', resubmitLabel: '生成/刷新', onSubmit: () => { void options.generate() }, onResume: () => { void options.resume() }, onSync: () => { void options.sync() } }),
+      renderWebResearchReportActions({ enabled: canManageLocally, state, busy: options.generating, className: 'd-flex gap-2', buttonClass: 'btn btn-sm btn-primary', submitLabel: '生成财务分析', resubmitLabel: '生成/刷新', onSubmit: () => { void options.generate() }, onResume: () => { void options.resume() }, onSync: () => { void options.sync() } }),
     ]),
     h('div', { class: 'card-body' }, [
-      renderTaskdReportIdentity(state, 'small text-muted mb-2 d-flex flex-wrap gap-2'),
+      renderWebResearchReportIdentity(state, 'small text-muted mb-2 d-flex flex-wrap gap-2'),
       dataAsOf ? h('p', { class: 'small text-muted mb-2' }, `数据截至：${dataAsOf}`) : null,
       quality ? h('p', { class: 'small text-muted mb-2' }, `数据：${quality.status || 'unknown'}；${quality.sourcePolicy || '来源待载入'}；法定核验：${quality.statutoryVerification?.status || 'unknown'}。${quality.statutoryVerification?.reason || ''}`) : h('p', { class: 'small text-muted' }, '尚无冻结的财务分析输入。'),
       snapshot?.periodCoverage ? h('p', { class: 'small text-muted' }, `覆盖：年度 ${snapshot.periodCoverage.annual?.join('、') || '—'}；季度 ${snapshot.periodCoverage.quarterly?.join('、') || '—'}；TTM 截至 ${snapshot.periodCoverage.ttmEndDate || '—'}。`) : null,
-      ...renderTaskdReportMessage(state, options.error, '任务已提交给 taskd；页面会读取本地状态，本地调度器周期同步 taskd。', 'alert py-2 small'),
+      ...renderWebResearchReportMessage(state, options.error, '任务已提交至本机 CEA；页面会读取本地状态，本机执行器持久化状态与结果。', 'alert py-2 small'),
       reportVersion?.status === 'legacy' ? h('p', { class: 'alert alert-info py-2 small' }, `这份已完成报告使用 ${reportVersion.inputSchemaVersion || '旧版'} / ${reportVersion.codeVersion || '旧版'} 输入；当前生成使用 ${reportVersion.currentInputSchemaVersion || '最新版'} / ${reportVersion.currentCodeVersion || '最新版'}。报告已保留供阅读，是否重新生成由你决定。`) : null,
       reportVersion?.status === 'unknown' ? h('p', { class: 'alert alert-info py-2 small' }, '这份已完成报告未记录输入版本；报告已保留供阅读，是否重新生成由你决定。') : null,
       flags.length ? h('div', { class: 'mb-3' }, [h('strong', { class: 'small' }, '工程触发的财务风险信号'), h('ul', { class: 'small mb-0 mt-1' }, flags.map((flag) => h('li', { key: flag.ruleId }, `[${flag.severity}] ${flag.title}（${flag.period}，${formatFinancialRiskFlagValue(flag)}）`)))]) : null,
-      state?.report?.markdown ? h('article', { class: 'company-finance-analysis-markdown' }, renderTaskdMarkdown(state.report.markdown)) : h('p', { class: 'text-muted mb-0' }, canManageLocally ? '报告生成后会在此展示；模型只解释工程冻结的三表指标、缺口和风险信号。' : '暂无已发布的深入财务分析。'),
+      state?.report?.markdown ? h('article', { class: 'company-finance-analysis-markdown' }, renderWebResearchMarkdown(state.report.markdown)) : h('p', { class: 'text-muted mb-0' }, canManageLocally ? '报告生成后会在此展示；模型只解释工程冻结的三表指标、缺口和风险信号。' : '暂无已发布的深入财务分析。'),
       state?.report?.citations?.length ? h('div', { class: 'mt-3 small' }, [h('strong', '引用：'), ...state.report.citations.map((citation, index) => citation.url ? h('a', { class: 'ms-2', key: `${citation.url}-${index}`, href: citation.url, target: '_blank', rel: 'noreferrer' }, citation.title || citation.url) : null)]) : null,
     ]),
   ])

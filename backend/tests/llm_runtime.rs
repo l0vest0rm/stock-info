@@ -1,6 +1,6 @@
-//! Opt-in real provider check; never opens the user's database or submits taskd work.
+//! Opt-in real provider check; never opens the user's database or submits web_workflow work.
 use serde_json::{Value, json};
-use stock_info_local::{AppState, db::Database, research::taskd};
+use stock_info_local::{AppState, db::Database};
 
 #[tokio::test]
 #[ignore = "requires explicit LLM_RUNTIME=local, ROUTING_API_KEY and live routing service"]
@@ -17,7 +17,7 @@ async fn real_configured_llm_stream_and_json() {
     .unwrap();
     let config = stock_info_local::llm::config(&state).unwrap();
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-    let result = taskd::direct_text_events(&state, &json!({
+    let result = stock_info_local::llm::direct::direct_text_events(&state, &json!({
         "expectedModel":config.model,
         "instructions":"Return only a JSON object with key ok and boolean value true. No markdown.",
         "input":[
@@ -132,7 +132,7 @@ async fn configured_mock_child() {
     )
     .unwrap();
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-    let result = taskd::direct_text_events(
+    let result = stock_info_local::llm::direct::direct_text_events(
         &state,
         &json!({
             "model":"untrusted-model", "baseUrl":"http://invalid", "apiKeyEnv":"UNTRUSTED",

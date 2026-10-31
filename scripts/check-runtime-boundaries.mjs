@@ -43,3 +43,9 @@ function walk(path) {
     return entry.isDirectory() ? walk(resolve(path, entry.name)) : entry.isFile() ? [resolve(path, entry.name)] : [];
   });
 }
+
+const browserRuntime = readFileSync(resolve(root, "backend/src/web_workflow.rs"), "utf8");
+if (!browserRuntime.includes("local_web_workflow_runs_v1") || existsSync(resolve(root,"backend/src/research/taskd.rs")) || /TASKD_BASE_URL|TASKD_NAMESPACE|TASKD_CALLER_TOKEN/.test(native)) throw new Error("Browser research must use the local CEA SDK, not taskd");
+for (const file of walk(resolve(root,"backend/src"))) {
+  if (file.endsWith(".rs") && /TASKD_BASE_URL|TASKD_CALLER_TOKEN|STOCK_INFO_TASKD_CALLER_TOKEN/.test(readFileSync(file,"utf8"))) throw new Error(`Retired taskd transport restored: ${file}`);
+}

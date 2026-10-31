@@ -196,10 +196,10 @@ async fn analysis_resume_route(State(state): State<AppState>) -> ApiResult {
 }
 async fn analysis_sync_route(State(state): State<AppState>) -> ApiResult {
     analysis::sync(&state).await.map(ok).map_err(|error| {
-        if crate::research::taskd::is_read_unavailable(&error) {
+        if crate::web_workflow::is_read_unavailable(&error) {
             ApiError(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "暂时无法连接 taskd；本地任务状态未改变，请稍后再同步。".into(),
+                "暂时无法连接 web_workflow；本地任务状态未改变，请稍后再同步。".into(),
             )
         } else {
             bad(error.to_string())

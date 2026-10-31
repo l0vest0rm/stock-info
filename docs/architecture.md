@@ -11,7 +11,7 @@
 浏览器 → web/dist → backend/src/lib.rs（Axum 装配）→ Rust 业务模块
                       ├─ SQLite：现有索引、缓存、不可变账本
                       ├─ 本地对象目录：正文、PDF、市场历史快照
-                      └─ 统一 HTTP / taskd 适配器 → 获授权上游
+                      └─ 统一 HTTP / 本机 CEA SDK → 获授权上游
 原生调度器 / CLI ────────────────────────────┘
 ```
 
@@ -38,7 +38,7 @@
 | 观察研究、不可变历史与 cohort | `observation.rs` |
 | 私有组合、任务、what-if | `portfolio.rs`、`portfolio/` |
 | 知识、资讯、导入、正文与维护 | `knowledge.rs`、`knowledge/`、`feed_processing/`、`maintenance.rs` |
-| 研究、taskd/LLM 与原生研究 CLI | `research.rs`、`research/`、`research_cli/` |
+| 研究、CEA/LLM 与原生研究 CLI | `research.rs`、`research/`、`research_cli/` |
 | 宏观、期权、13F | `macro_data/`、`options.rs`、`thirteenf.rs` |
 | 专题报告、PDF 工程处理 | `featured_reports.rs`、`featured_workflow.rs`、`featured_workflow/` |
 | 回调、订阅、原生同步与调度 | `runtime_jobs.rs`、`sync_cli/`、`scheduler.rs` |
@@ -80,8 +80,9 @@ Rust 消费者，但未擅自删除历史账户与会话。
 ## 调度与研究隔离
 
 `config/app/local-runtime.json` 是 UTC cron 唯一来源。Rust 调度器执行财报补齐、
-每分钟观察池及宏观任务，同时对账已提交任务。观察池 GET 只读；HTTP refresh 至多
-处理 2 个到期证券，cron 每次至多 12 个，共享 SQLite lease/fencing 限制全局同时
+宏观任务，同时对账已提交任务。观察池不运行后台 cron，也不做页面轮询；仅可见页面
+打开或手动点击请求一批，GET 只读，HTTP refresh 至多处理 2 个到期证券，10分钟内复用缓存。
+已接受批次可在离开页面后完成，但不会继续调度。共享 SQLite lease/fencing 限制全局同时
 计算 2 个。计算时间、依赖 revision、来源日期分别保留，不制造共同估值日。
 
 启动时先验证/必要时刷新雪球 Cookie；定期主动更新，失败按重试间隔处理。
@@ -89,7 +90,7 @@ Rust 消费者，但未擅自删除历史账户与会话。
 隔离测试应显式选择，不能把关闭调度后的 API smoke 当作调度验收。
 
 只有显式 `LLM_RUNTIME=local` 才允许模型工作。配置凭据不自动启用模型，GET 和
-历史结果读取不应提交模型任务。taskd 提交、恢复、结果对账、配额与模型草稿的状态
+历史结果读取不应提交模型任务。本机 CEA 提交、恢复、结果投影、配额与模型草稿的状态
 不能混同为用户研究结论；必须分别验证。没有自动远端发布或真实交易执行。
 
 PDF 工程处理可调用独立安装的 Python / PyMuPDF 和经审查的 PDF cleaner，
@@ -128,3 +129,19 @@ screen/PIT 分别保留完整 343 和 65 组输入/期望，Rust 保持完整字
 测试不得迁移/删除用户真实数据库；研究结果和审计生成物写入忽略目录。
 代码清理没有删除或下线既有云资源，也不授权清空用户数据。忽略的 `.dev.vars`、
 `.wrangler` 本地数据、SQLite、对象文件和既有研究报告必须保留，不以工具名称判定可删。
+
+### 本机网页研究执行边界
+
+`web_workflow` 接收四类业务的冻结输入，先写入现有 `kv_cache` 的
+`local_web_workflow_runs_v1`，只有业务投影绑定 runId 后才允许执行。
+`local_web_workflow_leases_v1` 以 endpoint/Profile 为键，事务领取、定时续租、
+递增 fencing token；checkpoint 回调与终态入库都检查租约，旧进程不能发布结果。
+租约仅覆盖同一 SQLite；不宣称覆盖其他应用或其他数据库。
+
+CEA SDK 在宿主进程完整执行冻结 YAML。Host 不解释或推进 checkpoint 游标。
+恢复优先读取校验和验证过的 SDK 结果收据；原 Page 丢失时仅由 SDK 的只读恢复
+规则决定是否可重开原会话。无 checkpoint 的中断执行进入人工处理，不自动新建
+生成。业务投影失败只重试原结果，旧报告保持可读；执行器不依赖浏览器轮询或 cron。
+
+本次不增加/恢复任何数据库表或历史调度器。直接 API 调用迁至 `llm/direct.rs`，
+与网页模型/Profile 配置分离；旧 taskd 结果仅作历史读取，不再保留 HTTP 客户端。

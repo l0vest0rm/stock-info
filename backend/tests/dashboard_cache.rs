@@ -391,7 +391,7 @@ async fn dashboard_http_routes_read_only_and_fresh_refresh_contracts() {
 }
 
 #[tokio::test]
-async fn batch_limit_caps_cron_at_twelve_with_two_concurrent_computations() {
+async fn batch_helper_caps_work_at_twelve_with_two_concurrent_computations() {
     let (_dir, state) = fixture();
     let companies=(0..15).map(|index| {
         let code=format!("{:06}.SH",600000+index);
@@ -480,4 +480,39 @@ async fn disconnecting_refresh_waiter_does_not_cancel_runtime_owned_computation(
     .await
     .expect("detached refresh persists and releases leases");
     assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn scheduled_dispatch_cannot_compute_dashboard() {
+    let (_dir, state) = fixture();
+    let before = state
+        .db
+        .query(
+            "SELECT namespace,key,value_json FROM kv_cache ORDER BY namespace,key",
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert!(
+        stock_info_local::scheduler::dispatch(&state, "* * * * *", 0)
+            .await
+            .is_err()
+    );
+    let after = state
+        .db
+        .query(
+            "SELECT namespace,key,value_json FROM kv_cache ORDER BY namespace,key",
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert_eq!(before, after);
+    let config: Value =
+        serde_json::from_str(include_str!("../../config/app/local-runtime.json")).unwrap();
+    assert!(
+        !config["triggers"]["crons"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("* * * * *"))
+    );
 }

@@ -1,0 +1,131 @@
+version: 1
+name: chatgpt-prompt-to-markdown
+profile: "${profile}"
+start_url: "${start_url}"
+required_server_capabilities: [automation, css_locator, file_upload, browser_use_v1]
+
+variables:
+  profile: { default: "default" }
+  model_label: { required: true }
+  model_index: { required: true }
+  reasoning_label: { required: true }
+  prompt: { required: true }
+  start_url: { default: "https://chatgpt.com/" }
+  attachments: { default: "[]" }
+  # Supply one local image path, or leave it empty to send text only.
+  image: { default: "" }
+  output: { default: "chatgpt-answer.md" }
+
+locators:
+  model_picker: { css: "button[aria-label='Select ChatGPT model']" }
+  model_menu: { css: "[role='menu'][data-state='open']" }
+  select_model: { css: "[data-model-picker-view='simple'] [data-model-picker-view-toggle='true']" }
+  model_choice: { css: "[data-model-picker-view='advanced'] [role='menuitemradio']:nth-of-type(${model_index})" }
+  selected_model: { css: "[data-model-picker-view='advanced'] [role='menuitemradio'][aria-checked='true']" }
+  power: { css: "[data-model-picker-view='simple'] [data-reasoning-slider='true']" }
+  composer:
+    css: "[data-composer-markdown][contenteditable='true']"
+  upload_input:
+    css: "#upload-photos:enabled"
+  submit:
+    css: "button[type='submit']:not([disabled]):not([aria-disabled='true']), button[aria-label*='Send']:not([disabled]):not([aria-disabled='true']), button[aria-label*='发送']:not([disabled]):not([aria-disabled='true'])"
+  submitted_messages:
+    css: "[data-user-message-bubble]"
+  answers:
+    css: "[data-talvt-turn-state]:has(h4[data-conversation-role='assistant'])"
+  answer_body:
+    css: "[data-markdown-text-style='assistant-message']"
+  stop:
+    css: "[data-testid='stop-button'], button[aria-label='Stop'], button[aria-label='Stop generating'], button[aria-label='停止回答'], button[aria-label='停止生成'], button[aria-label*='Stop generating'], button[aria-label*='停止生成'], button[title*='Stop generating'], button[title*='停止生成']"
+  answer_actions:
+    css: "button[aria-label='Copy'], [data-testid='copy-turn-action-button'], button[aria-label='复制回复'], button[aria-label='Copy response'], [data-testid='feedback-turn-action-button'], button[aria-label='评价回复'], button[aria-label='Rate response'], button[aria-label='Share'], button[aria-label='分享'], button[aria-label='More actions'], button[aria-label='更多操作'], button[aria-label='Regenerate'], button[aria-label='重新生成']"
+
+# Bounded native workflow budget, independent of any remote task lease.
+workflow_deadline_ms: 1680000
+# Large prompts are inserted in one browser command. Keep a bounded but
+# sufficient default step/request window; waits retain their own deadlines.
+step_deadline_ms: 120000
+outputs:
+  overwrite: false
+  values: [answer_text, answer_text_sources, selected_model_text, selected_reasoning_text]
+
+steps:
+  # Each run opens a fresh CEA Page. start_url may select an existing conversation.
+  - wait: { id: wait_for_composer, present: { locator: composer }, deadline_ms: 120000 }
+  - wait: { id: wait_model_picker, present: { locator: model_picker }, deadline_ms: 120000 }
+  - click: { id: open_model_picker, locator: model_picker }
+  - click: { id: open_model_list, locator: select_model, when: { present: { locator: power } } }
+  - wait: { id: verify_model_option, text_equals: { locator: model_choice, value: "${model_label}" }, deadline_ms: 15000 }
+  - click: { id: choose_model, locator: model_choice }
+  - press: { id: close_after_model_choice, locator: model_picker, key: Escape }
+  - click: { id: reopen_model_picker, locator: model_picker }
+  - click: { id: reopen_model_list, locator: select_model, when: { present: { locator: power } } }
+  - wait: { id: verify_selected_model, text_equals: { locator: selected_model, value: "${model_label}" }, deadline_ms: 15000 }
+  - extract: { id: record_model, locator: selected_model, text_as: selected_model_text }
+  - click: { id: return_to_power_view, locator: selected_model }
+  - press: { id: close_model_list, locator: model_picker, key: Escape }
+  - click: { id: open_power_picker, locator: model_picker }
+  - wait: { id: wait_power_view, present: { locator: power }, deadline_ms: 15000 }
+  - press: { id: power_min_1, locator: power, key: ArrowLeft }
+  - press: { id: power_min_2, locator: power, key: ArrowLeft }
+  - press: { id: power_min_3, locator: power, key: ArrowLeft }
+  - press: { id: power_min_4, locator: power, key: ArrowLeft }
+  - press: { id: power_min_5, locator: power, key: ArrowLeft }
+  # reasoning-increments
+  - wait: { id: verify_reasoning, text_contains: { locator: model_menu, value: "${reasoning_label}" }, deadline_ms: 15000 }
+  - extract: { id: record_reasoning, locator: model_menu, text_as: selected_reasoning_text }
+  - press: { id: close_power_picker, locator: model_picker, key: Escape }
+  - anchor: { id: anchor_submitted_messages, collection: submitted_messages, save_as: before_submission }
+  - anchor: { id: anchor_answers, collection: answers, save_as: before_submit }
+  - upload:
+      id: upload_optional_image
+      locator: upload_input
+      files: ["${image}"]
+      files_var: attachments
+      optional: true
+  - type: { id: type_prompt, locator: composer, value: "${prompt}", verify: true, verify_normalize_whitespace: true }
+  - wait: { id: prove_prompt_entered, text_non_empty: { locator: composer } }
+  - wait: { id: wait_for_send, present: { locator: submit } }
+  - checkpoint: { id: persist_submit_intent, side_effect: prompt_submit }
+  - press: { id: submit_once, locator: composer, key: Enter }
+  - wait_new:
+      id: prove_prompt_submitted
+      collection: submitted_messages
+      after: before_submission
+      save_as: submitted_prompt
+      deadline_ms: 120000
+  - wait:
+      id: bind_conversation_url
+      deadline_ms: 120000
+      url:
+        prefix: "https://chatgpt.com/c/"
+        excluded_prefixes: ["https://chatgpt.com/c/WEB:", "https://chatgpt.com/c/local-chatgpt"]
+  - wait_new:
+      id: bind_new_answer
+      collection: answers
+      after: before_submit
+      save_as: answer
+      deadline_ms: 600000
+  - wait:
+      id: prove_answer_completed
+      deadline_ms: 1500000
+      all:
+        - absent: { locator: stop, scope: page }
+        # Bind the whole new turn: its actions are siblings of its message.
+        - present: { locator: answer_actions, scope: answer }
+        - text_non_empty: { locator: answer_body, scope: answer }
+        - text_stable: { locator: answer_body, scope: answer, ms: 5000 }
+  - extract:
+      id: extract_new_answer
+      locator: answer_body
+      scope: answer
+      text_as: answer_text
+      format: linked_markdown
+      link_details:
+        allow_multiple_destinations: true
+        component_selector: "span[data-d-component='popover-trigger'][aria-haspopup='dialog']:is([role='link'],[role='button'])"
+        root_identity_attributes: [id, data-message-id, data-selected-text-overlay-target]
+        render_failure_selector: "[data-dil-render-failed]"
+        paragraph_selector: "p"
+  - html: { id: capture_new_answer_html, path: "chatgpt-answer.html", locator: answer_body, scope: answer }
+  - write_markdown: { id: publish_markdown, path: "${output}", value: "${answer_text}" }

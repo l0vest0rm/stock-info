@@ -4,7 +4,7 @@ pub mod domain;
 mod statistics;
 
 pub(super) use super::{write_json, write_text};
-use crate::{AppState, http::number, research::taskd};
+use crate::{AppState, http::number};
 use anyhow::{Context, Result, bail};
 use chrono::{Duration, Months, NaiveDate, Utc};
 use futures_util::{StreamExt, stream};
@@ -307,7 +307,7 @@ async fn generate(
         &json!({"EVIDENCE_PATH":path_string(evidence_path),"OUTPUT_PATH":path_string(output),"EVIDENCE_JSON":serde_json::to_string_pretty(evidence)?}),
     )?;
     let llm = &config["llm"];
-    let result=taskd::direct_text(state,&json!({"instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":prompt}]}],"maxTokens":llm["maxOutputTokens"],"temperature":llm["temperature"]})).await?;
+    let result=crate::llm::direct::direct_text(state,&json!({"instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":prompt}]}],"maxTokens":llm["maxOutputTokens"],"temperature":llm["temperature"]})).await?;
     domain::validate_generated_report(&domain::strip_markdown_fence(&result), &evidence["fund"])
 }
 

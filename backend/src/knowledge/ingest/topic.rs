@@ -274,7 +274,7 @@ fn parse_json(raw: &str) -> Option<Value> {
     value.is_object().then_some(value)
 }
 async fn request(state: &AppState, system: &str, user: &str) -> Result<String> {
-    crate::research::taskd::direct_text(state, &json!({
+    crate::llm::direct::direct_text(state, &json!({
         "instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":user}]}]
     })).await
 }

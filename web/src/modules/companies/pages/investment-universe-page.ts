@@ -537,7 +537,7 @@ const InvestmentUniversePage = defineComponent({
       syncDetailDialog()
       freshnessTimer = setInterval(() => { freshnessClock.value = Date.now() }, 30000)
       window.addEventListener('popstate', readNavigationState)
-      void loadScreen()
+      void loadScreen(true)
     })
     onBeforeUnmount(() => { clearInterval(freshnessTimer); controller.abort(); window.removeEventListener('popstate', readNavigationState) })
 
@@ -776,7 +776,7 @@ const InvestmentUniversePage = defineComponent({
     const renderValuationDetail = (company: Company) => {
       const row = screenFor(company)
       const a = row?.assessment
-      if (!a) return h('p', { class: 'ivu-screen-warning' }, row?.note || '等待后台计算；缺失数据不代表估值合理。')
+      if (!a) return h('p', { class: 'ivu-screen-warning' }, row?.note || '待前台按需更新；缺失数据不代表估值合理。')
       const fact = (title: string, value: string) => h('div', [h('dt', title), h('dd', value)])
       return h('section', { class: 'ivu-valuation-detail-block' }, [
         h('h3', '估值依据 · 可复核规则'),
@@ -816,9 +816,9 @@ const InvestmentUniversePage = defineComponent({
     }
     const renderScreenStatus = () => h('section', { class: 'ivu-screen-status', 'aria-live': 'polite' }, [
       h('div', { class: 'ivu-screen-head' }, [
-        h('strong', '估值看板 · 后台计算 / 自动缓存'),
-        h('button', { type: 'button', class: 'ivu-open', disabled: screenLoading.value, onClick: () => void loadScreen(true) }, '检查更新'),
-        h('span', { class: 'ivu-muted-small' }, screenLoading.value ? '读取缓存…' : refreshing.value ? `等待服务端更新 · 有效缓存 ${completed.value}/${screenMeta.value?.companies ?? 0}` : `有效缓存 ${completed.value}/${screenMeta.value?.companies ?? 0}`),
+        h('strong', '估值看板 · 前台按需 / 缓存复用'),
+        h('button', { type: 'button', class: 'ivu-open', disabled: screenLoading.value, onClick: () => void loadScreen(true) }, '更新下一批（最多2家）'),
+        h('span', { class: 'ivu-muted-small' }, screenLoading.value ? '读取缓存…' : refreshing.value ? `待按需更新 · 有效缓存 ${completed.value}/${screenMeta.value?.companies ?? 0}` : `有效缓存 ${completed.value}/${screenMeta.value?.companies ?? 0}`),
       ]),
       refreshing.value ? h('progress', { max: screenMeta.value?.companies || 1, value: completed.value, 'aria-label': '估值刷新进度' }) : null,
       screenError.value ? h('p', { class: 'ivu-screen-warning' }, '读取失败：' + screenError.value) : null,
@@ -979,7 +979,7 @@ const InvestmentUniversePage = defineComponent({
             h('button', { type: 'button', class: 'ivu-open', 'aria-label': '研究' + company.displayName, onClick: () => chooseCompany(company.id) }, '查看证据链 ↗'),
           ]),
         ])
-      })) : h('div', { class: 'ivu-focus-empty', role: 'status' }, focusMode.value === 'forward_gap' ? '暂无已复核且与当前行情日期、币种、市值匹配的未来情景线索；请在公司详情的研究闭环中补充并核验假设。' : screenLoading.value || refreshing.value ? '当前已计算结果暂无此类线索，等待本轮刷新。' : '暂无满足规则的线索，不为填满卡片而降低门槛。'),
+      })) : h('div', { class: 'ivu-focus-empty', role: 'status' }, focusMode.value === 'forward_gap' ? '暂无已复核且与当前行情日期、币种、市值匹配的未来情景线索；请在公司详情的研究闭环中补充并核验假设。' : screenLoading.value || refreshing.value ? '当前已计算结果暂无此类线索，可手动更新下一批。' : '暂无满足规则的线索，不为填满卡片而降低门槛。'),
       h('details', { class: 'ivu-focus-policy' }, [h('summary', '研究规则、阈值与覆盖边界'), h('p', `历史折价：3年与5年PE分位均≤${formatPct(opportunityPolicy.historyPercentileMax)}；盈利兑现：TTM利润同比≥${formatPct(opportunityPolicy.ttmGrowthMin)}，连续${opportunityPolicy.earningsQuarters}个正式单季营收同比≥${formatPct(opportunityPolicy.quarterRevenueGrowthMin)}、利润同比≥${formatPct(opportunityPolicy.quarterProfitGrowthMin)}，不以PEG直接判低估。回撤：雪球前复权${Object.entries(opportunityPolicy.returns).map(([days, threshold]) => days + '交易日跌幅≥' + formatPct(-threshold)).join('、')}，或距252交易日最高收盘价回撤≥${formatPct(-opportunityPolicy.drawdown252Max)}。金融/周期企业不套用通用增长规则。`), h('p', '量化验证：有效行情和报表、经营现金转化与两年利润/负债初筛、适用主方法下价格未超规则区间。正式相邻单季环比必须可比；下降指标需至少两年同季度转换均下降，且本期不弱于历史中位数超过5个百分点，才解除环比待核查。该比较不是季调或因果证明，其他经营门槛不放宽。上季基数非正、缺季或预告不计算环比。存在缺口时只保留线索，不自动通过。历史折价与回撤有共同价格因素，命中多个不加分。验证阶段优先，同阶段按观察池顺序，每行业最多2家；与下方筛选独立。'), h('p', `阈值为${opportunityPolicy.version}研究政策，尚未完成样本外收益检验。未来估值、行业相对收益、市场预期差及定性护城河尚需证据；所有结果仅用于研究，不自动交易。`)]),
     ])
 

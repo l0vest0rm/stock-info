@@ -5,9 +5,8 @@ pub mod financial;
 pub mod financial_input;
 pub mod investment;
 pub mod repository;
-pub mod taskd;
 
-use crate::{ApiError, ApiResult, AppState, codes, ok};
+use crate::{ApiError, ApiResult, AppState, codes, ok, web_workflow};
 use anyhow::Result;
 use axum::{
     Router,
@@ -77,10 +76,10 @@ fn request_error(error: anyhow::Error) -> ApiError {
     ApiError(StatusCode::BAD_REQUEST, error.to_string())
 }
 fn sync_error(error: anyhow::Error) -> ApiError {
-    if taskd::is_read_unavailable(&error) {
+    if web_workflow::is_read_unavailable(&error) {
         ApiError(
             StatusCode::SERVICE_UNAVAILABLE,
-            "暂时无法连接 taskd；本地任务状态未改变，请稍后再同步。".into(),
+            "暂时读取本机执行记录失败；本地任务状态未改变，请稍后再同步。".into(),
         )
     } else {
         request_error(error)

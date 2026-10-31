@@ -1,0 +1,38 @@
+version: 1
+name: chatgpt-read-existing-result
+profile: "${profile}"
+start_url: "${conversation_url}"
+required_server_capabilities: [automation, css_locator, browser_use_v1]
+variables:
+  profile: { default: "default" }
+  conversation_url: { required: true }
+  answer_selector: { default: "[data-markdown-text-style='assistant-message']" }
+locators:
+  answer: { css: "${answer_selector}" }
+  stop: { css: "button[aria-label='Stop'], [data-testid='stop-button'], button[aria-label='Stop generating']" }
+workflow_deadline_ms: 600000
+step_deadline_ms: 120000
+outputs:
+  overwrite: false
+  values: [answer_text, answer_text_sources]
+steps:
+  - wait:
+      id: completed_existing_answer
+      deadline_ms: 540000
+      all:
+        - absent: { locator: stop }
+        - text_non_empty: { locator: answer }
+        - text_stable: { locator: answer, ms: 5000 }
+  - extract:
+      id: read_existing_answer
+      locator: answer
+      text_as: answer_text
+      format: linked_markdown
+      link_details:
+        component_selector: "span[data-d-component='popover-trigger'][aria-haspopup='dialog']:is([role='link'],[role='button'])"
+        allow_multiple_destinations: true
+        root_identity_attributes: [id, data-message-id, data-selected-text-overlay-target]
+        render_failure_selector: "[data-dil-render-failed]"
+        paragraph_selector: "p"
+  - html: { id: capture_existing_answer, path: "chatgpt-answer.html", locator: answer }
+  - write_markdown: { id: save_existing_answer, path: "chatgpt-answer.md", value: "${answer_text}" }

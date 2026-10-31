@@ -11,7 +11,7 @@
 | --- | --- |
 | spot identity、绝对市值、交易所日期、无效 symbol/currency/cap/time | `dashboard_cache::quote_contract_preserves_exchange_date_absolute_units_and_rejects_wrong_identity`；`retired_baseline_contract::stock_quote_rejections_and_hong_kong_exchange_date_keep_basic_contract` |
 | HTML/null/缺字段/失效 Cookie/提供方错误，缺 Cookie 不可读缓存或发网络 | `retired_baseline_contract` 的 quote rejection 与独立子进程 missing-cookie 测试 |
-| 真实 SQLite GET 只读、单标的 single-flight、全局两槽、fresh reuse/batch no-op、revision 过滤、fencing/takeover、异常释放、过期回收、HTTP batch≤2、research version 失效 | `dashboard_cache::real_sqlite_cache_leases_fencing_reuse_and_research_revision`，并补有真实路由、cron≤12/并发≤2、请求断开不取消工作回归 |
+| 真实 SQLite GET 只读、单标的 single-flight、全局两槽、fresh reuse/batch no-op、revision 过滤、fencing/takeover、异常释放、过期回收、HTTP batch≤2、research version 失效 | `dashboard_cache::real_sqlite_cache_leases_fencing_reuse_and_research_revision`，并补有真实路由、内部批次≤12/并发≤2、禁止 cron 调度观察池、请求断开不取消工作回归 |
 | 行业路径、缺失/过期/重复/非法证据、场景算术与稀释、无效输入、review 门禁、捕获后入场、成熟/缺 benchmark/不可用数据 | `observation::{every_industry_missing_data_fails_closed_and_evidence_is_reviewed,scenarios_match_earnings_model_and_reject_invalid_inputs,forward_returns_start_after_capture_and_missing_data_remain_null}` |
 | research CAS/concurrent write、immutable history/cohorts、永久存储、冻结成熟 outcome | `observation::immutable_history_cas_and_daily_cohorts` 及 `reviewed_records_require_industry_and_scenario_evidence` |
 | research 私有 Host/Origin、本地路由、非法 code、content type、版本查询、CAS 409 | `observation::version_routes_body_validation_and_conflict_status` 和 `observation_integration::assembled_editor_is_local_same_origin_read_only_and_versioned` |

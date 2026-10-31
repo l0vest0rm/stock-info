@@ -49,6 +49,7 @@ export type CompanyReportStatePatch = {
   status?: string
   error?: boolean
   discoveryEnabled?: boolean
+  discoveryRunId?: string | null
   discoveryTaskName?: string | null
   discoveryStatus?: string
   discoveryMessage?: string

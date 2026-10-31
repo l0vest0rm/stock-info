@@ -3,7 +3,7 @@ import { prepareCompanyReportContext } from '../../../platform/legacy/legacy-run
 import { createCompanyReportController } from '../runtime/company-pages-runtime'
 import type { CompanyReportRow, CompanyReportStatePatch } from '../runtime/company-report-contract'
 import { knowledgeDocModalStyles } from '../../knowledge/runtime/knowledge-doc-modal'
-import { renderTaskdReportActions, renderTaskdReportIdentity, taskdReportStatus, type TaskdReportState } from '../../../shared/taskd/taskd-report-ui'
+import { renderWebResearchReportActions, renderWebResearchReportIdentity, webResearchReportStatus, type WebResearchReportState } from '../../../shared/web-research/web-research-ui'
 
 const companyReportStyles = `
 ${knowledgeDocModalStyles}
@@ -53,7 +53,7 @@ function formatCompanyReportElapsedSeconds(value: number): string {
   return hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(totalMinutes)}:${pad(seconds)}`
 }
 
-function companyReportDiscoveryTaskdState(name: string | null, status: string, createdAt: number | null = null, updatedAt: number | null = null, completedAt: number | null = null): TaskdReportState {
+function companyReportDiscoveryWebResearchState(name: string | null, status: string, createdAt: number | null = null, updatedAt: number | null = null, completedAt: number | null = null): WebResearchReportState {
   if (!name) return {}
   const taskStatus = status === 'completed'
     ? 'succeeded'
@@ -162,6 +162,7 @@ const CompanyReportPage = defineComponent({
     const statusText = ref('加载公司研报中...')
     const statusDanger = ref(false)
     const discoveryEnabled = ref(false)
+    const discoveryRunId = ref<string | null>(null)
     const discoveryTaskName = ref<string | null>(null)
     const discoveryStatus = ref('idle')
     const discoveryMessage = ref('')
@@ -175,7 +176,11 @@ const CompanyReportPage = defineComponent({
     const discoveryLastSuccessfulAt = ref<number | null>(null)
     const discoveryModel = ref<string | null>(null)
     let discoveryElapsedTimer: number | null = null
-    const discoveryTaskdState = () => ({ ...companyReportDiscoveryTaskdState(discoveryTaskName.value, discoveryStatus.value, discoveryCreatedAt.value, discoveryUpdatedAt.value, discoveryCompletedAt.value), canManageLocally: discoveryEnabled.value })
+    const discoveryWebResearchState = (): WebResearchReportState => {
+      const state = companyReportDiscoveryWebResearchState(discoveryTaskName.value, discoveryStatus.value, discoveryCreatedAt.value, discoveryUpdatedAt.value, discoveryCompletedAt.value)
+      if (state.task) state.task.runId = discoveryRunId.value
+      return { ...state, canManageLocally: discoveryEnabled.value }
+    }
 
     const clearDiscoveryElapsedTimer = () => {
       if (discoveryElapsedTimer !== null) {
@@ -238,6 +243,7 @@ const CompanyReportPage = defineComponent({
       if (typeof detail.discoveryEnabled === 'boolean') {
         discoveryEnabled.value = detail.discoveryEnabled
       }
+      if (detail.discoveryRunId !== undefined) discoveryRunId.value = detail.discoveryRunId || null
       if (detail.discoveryTaskName !== undefined) {
         discoveryTaskName.value = typeof detail.discoveryTaskName === 'string' ? detail.discoveryTaskName : null
       }
@@ -369,8 +375,8 @@ const CompanyReportPage = defineComponent({
         discoveryEnabled.value
           ? h('div', { class: 'd-flex flex-wrap align-items-center justify-content-end gap-2 flex-shrink-0' }, [
             h('div', { class: 'company-report-discovery-actions d-flex align-items-center gap-2' }, [
-              renderTaskdReportActions({
-                state: discoveryTaskdState(),
+              renderWebResearchReportActions({
+                state: discoveryWebResearchState(),
                 busy: discoveryBusy.value,
                 className: 'd-flex gap-2',
                 buttonClass: 'btn btn-sm btn-outline-primary company-report-discovery-trigger',
@@ -387,7 +393,7 @@ const CompanyReportPage = defineComponent({
               ? h('span', {
                 class: `small ${['failed', 'blocked'].includes(discoveryStatus.value) ? 'text-danger' : 'text-muted'}`,
               }, [
-                discoveryTaskName.value ? taskdReportStatus(discoveryTaskdState()) : '',
+                discoveryTaskName.value ? webResearchReportStatus(discoveryWebResearchState()) : '',
                 discoveryMessage.value,
                 formatCompanyReportDiscoveryExecution(discoveryModel.value),
                 discoveryElapsedStartAt.value !== null && !discoveryBusy.value && ['completed', 'failed', 'blocked'].includes(discoveryStatus.value)
@@ -400,7 +406,7 @@ const CompanyReportPage = defineComponent({
           ])
           : null,
       ]),
-      renderTaskdReportIdentity(discoveryTaskdState(), 'small text-muted mb-2 d-flex flex-wrap gap-2'),
+      renderWebResearchReportIdentity(discoveryWebResearchState(), 'small text-muted mb-2 d-flex flex-wrap gap-2'),
       h('div', { class: 'table-responsive' }, [
         h('table', { id: 'companyReport', class: 'table table-sm table-bordered table-hover text-nowrap' }, [
           h('thead', { class: 'table-info' }, [

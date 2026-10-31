@@ -18,7 +18,6 @@ use tokio::{
 };
 
 const FINANCE: &str = "*/15 * * * *";
-const DASHBOARD: &str = "* * * * *";
 const MACRO: &str = "17 * * * *";
 
 #[derive(Clone, Debug)]
@@ -90,7 +89,6 @@ pub fn event(role: &str, name: &str, details: Value) {
 
 pub async fn dispatch(state: &AppState, cron: &str, scheduled_ms: i64) -> Result<Value> {
     match cron {
-        DASHBOARD => crate::dashboard::refresh_batch(state, 12).await,
         FINANCE => crate::finance::sync_provisional(state, scheduled_ms).await,
         MACRO => crate::macro_data::sync(state, scheduled_ms).await,
         _ => bail!("unsupported scheduled cron: {cron}"),
@@ -99,13 +97,10 @@ pub async fn dispatch(state: &AppState, cron: &str, scheduled_ms: i64) -> Result
 
 pub async fn run_once(state: &AppState) -> Result<Value> {
     let now = Utc::now().timestamp_millis();
-    let (finance, dashboard, macro_data) = tokio::try_join!(
-        dispatch(state, FINANCE, now),
-        dispatch(state, DASHBOARD, now),
-        dispatch(state, MACRO, now)
-    )?;
+    let (finance, macro_data) =
+        tokio::try_join!(dispatch(state, FINANCE, now), dispatch(state, MACRO, now))?;
     let reconcile = reconcile(state).await;
-    Ok(json!({"finance":finance,"dashboard":dashboard,"macro":macro_data,"reconcile":reconcile}))
+    Ok(json!({"finance":finance,"macro":macro_data,"reconcile":reconcile}))
 }
 
 async fn reconcile(state: &AppState) -> Value {
@@ -173,7 +168,7 @@ pub async fn start(state: AppState) -> Result<Scheduler> {
     let mut schedules = Vec::new();
     for entry in expressions {
         let expression = entry.as_str().context("cron must be a string")?;
-        if ![FINANCE, DASHBOARD, MACRO].contains(&expression) {
+        if ![FINANCE, MACRO].contains(&expression) {
             bail!("unsupported scheduled cron: {expression}");
         }
         schedules.push((expression.to_string(), Cron::parse(expression)?));

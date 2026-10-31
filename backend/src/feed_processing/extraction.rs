@@ -846,7 +846,7 @@ pub async fn tag_pending(state: &AppState, options: &Value) -> Result<Value> {
             })
             .into_owned();
         let result=async {
-            let text=crate::research::taskd::direct_text(state,&json!({"model":contract["model"],"expectedModel":contract["model"],"instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":input}]}],"maxTokens":2500})).await?;
+            let text=crate::llm::direct::direct_text(state,&json!({"model":contract["model"],"expectedModel":contract["model"],"instructions":system,"input":[{"role":"user","content":[{"type":"input_text","text":input}]}],"maxTokens":2500})).await?;
             let parsed=parse_extraction(&text,&content,&ontology)?;
             let candidates=super::rules::company_candidates(&aliases,s(&row["title"]),&body,&config["companyCandidates"]);
             commit(state,&row,&body,contract,&fp,&owner,(&parsed,&candidates)).await

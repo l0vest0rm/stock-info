@@ -5,6 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+cea-sdk = { path = "../../cea/crates/cea-sdk", default-features = false, features = ["workflow"] }
 llm-client = { path = "../../input-helper/input-gateway/crates/llm-client" }
 acquisition = { path = "../../sub2me/crates/acquisition", features = ["app-capture"] }
 anyhow = "1"

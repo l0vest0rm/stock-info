@@ -589,7 +589,7 @@ async fn analyze(state: &AppState, title: &str, content: &str, events: Events) -
             emit(&events, json!({"type":"delta","text":delta}));
         }
     });
-    let result = crate::research::taskd::direct_text_events(state, &options, Some(sender)).await;
+    let result = crate::llm::direct::direct_text_events(state, &options, Some(sender)).await;
     let _ = forward.await;
     let response = result?;
     let mut analysis = domain::parse_analysis(&response)?;
@@ -609,7 +609,7 @@ fn stored_task(task: &Value) -> Value {
         "failed" => "failed",
         _ => "blocked",
     };
-    json!({"name":task["name"],"status":status,"errorMessage":task["errorMessage"],"createdAt":task["createdAt"],"updatedAt":task["updatedAt"],"completedAt":task["completedAt"]})
+    json!({"runId":task["runId"],"taskId":task["taskId"],"engine":task["engine"],"revision":task["revision"],"name":task["name"],"status":status,"errorMessage":task["errorMessage"],"createdAt":task["createdAt"],"updatedAt":task["updatedAt"],"completedAt":task["completedAt"]})
 }
 fn parse_stored_discovery(value: &Value) -> Option<Value> {
     if !value.is_object() {
@@ -637,7 +637,7 @@ fn parse_stored_discovery(value: &Value) -> Option<Value> {
         && number(&raw_task["createdAt"]).is_some()
         && number(&raw_task["updatedAt"]).is_some()
     {
-        json!({"name":raw_task["name"],"status":raw_task["status"],"errorMessage":if text(&raw_task["errorMessage"]).is_empty(){Value::Null}else{raw_task["errorMessage"].clone()},
+        json!({"runId":raw_task["runId"],"taskId":raw_task["taskId"],"engine":raw_task["engine"],"revision":raw_task["revision"],"name":raw_task["name"],"status":raw_task["status"],"errorMessage":if text(&raw_task["errorMessage"]).is_empty(){Value::Null}else{raw_task["errorMessage"].clone()},
             "createdAt":raw_task["createdAt"],"updatedAt":raw_task["updatedAt"],"completedAt":number(&raw_task["completedAt"])})
     } else {
         Value::Null
@@ -658,6 +658,7 @@ async fn read_discovery(state: &AppState, code: &str) -> Result<Option<Value>> {
         .as_ref()
         .and_then(parse_stored_discovery))
 }
+#[cfg(test)]
 async fn write_discovery(state: &AppState, code: &str, value: &Value) -> Result<()> {
     let updated = number(&value["report"]["projection"]["cachedAt"])
         .or_else(|| number(&value["task"]["updatedAt"]))
@@ -693,6 +694,8 @@ pub async fn discover(state: &AppState, raw_code: &str, requested: Option<Value>
     if !is_cn(&code) {
         bail!("company report discovery only supports mainland company codes");
     }
+    let lock = report_analysis_lock(&format!("discovery:{code}"));
+    let _guard = lock.lock().await;
     let reasoning = reasoning_effort(requested)?;
     let source = source_pool(state, &code).await?;
     let known=source.iter().map(|row|json!({"title":text(&row["title"]),"institution":first(&[&row["orgSName"],&row["orgName"],&row["org"],&row["institution"]]),"publishedAt":first(&[&row["publishDate"],&row["publishedAt"]]),"url":first(&[&row["url"],&row["detailUrl"]])})).filter(|row|!text(&row["title"]).is_empty() || !text(&row["url"]).is_empty()).collect::<Vec<_>>();
@@ -706,7 +709,7 @@ pub async fn discover(state: &AppState, raw_code: &str, requested: Option<Value>
         .replace("{{RECENT_SINCE}}", &since)
         .replace("{{KNOWN_REPORTS_JSON}}", &serde_json::to_string(&known)?);
     let name = format!("company:report-discovery:{code}");
-    let task=crate::research::taskd::submit_report(state,&json!({"name":name,"taskType":"webqa.chatgpt.v1","model":"gpt-5.6-luna","reasoningEffort":reasoning,"waitTimeoutMs":3_600_000,"prompt":prompt})).await?;
+    let task=crate::web_workflow::submit_report(state,&json!({"name":name,"taskType":"webqa.chatgpt.v1","model":crate::web_workflow::model(state)?,"reasoningEffort":reasoning,"waitTimeoutMs":3_600_000,"prompt":prompt})).await?;
     let current = read_discovery(state, &code).await?;
     let stored = persist_task(state, &code, current.as_ref(), Some(&task)).await?;
     Ok(json!({"accepted":true,"task":stored["task"]}))
@@ -725,18 +728,31 @@ async fn persist_task(
         current.and_then(|v| number(&v["lastSuccessfulCompletedAt"]))
     };
     let stored = json!({"report":report,"task":task.map(stored_task),"lastSuccessfulCompletedAt":last_success});
-    write_discovery(state, code, &stored).await?;
+    crate::research::repository::save(&state.db, DISCOVERY_NAMESPACE, code, &stored, current)
+        .await?;
     Ok(stored)
 }
-async fn project_discovery(state: &AppState, code: &str, task: &Value) -> Result<()> {
-    let result = crate::research::taskd::extract_result(&task["result"])?;
+async fn project_discovery(
+    state: &AppState,
+    code: &str,
+    task: &Value,
+    expected: &Value,
+) -> Result<()> {
+    let result = crate::web_workflow::extract_result(&task["result"])?;
     let evidence = &result["terminalEvidence"];
     if evidence["schemaVersion"] != "webqa.completion-evidence.v1"
         || evidence["outcome"] != "succeeded"
     {
-        bail!("company report discovery taskd result lacks terminal WebQA completion evidence");
+        bail!(
+            "company report discovery web_workflow result lacks terminal WebQA completion evidence"
+        );
     }
-    let response = text(&result["content"]["markdown"]);
+    let plain = text(&result["content"]["plainText"]);
+    let response = if plain.is_empty() {
+        text(&result["content"]["markdown"])
+    } else {
+        plain
+    };
     let citations = result["citations"]
         .as_array()
         .into_iter()
@@ -746,11 +762,22 @@ async fn project_discovery(state: &AppState, code: &str, task: &Value) -> Result
         .collect::<Vec<_>>();
     let (discovered, rejected) = domain::parse_discovery(response, code, &citations)?;
     let rows = load_sources(state, code, &discovered).await?;
-    sources::write_app(state, &report_key(code), &json!(rows), SOURCE_TTL).await?;
     let now = Utc::now().timestamp_millis();
     let report = json!({"response":{"text":response},"projection":{"securityCode":code,"reportsFound":discovered.len(),"reportsRejected":rejected,"sourceRows":rows.len(),"cachedAt":now}});
     let stored = json!({"report":report,"task":stored_task(task),"lastSuccessfulCompletedAt":number(&task["completedAt"]).unwrap_or(now as f64)});
-    write_discovery(state, code, &stored).await
+    let code = code.to_string();
+    let key = report_key(&code);
+    let expected = expected.clone();
+    state.db.run(move |conn| {
+        use rusqlite::params;
+        let tx=conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let count=tx.execute("UPDATE kv_cache SET value_json=?, expires_at=NULL, updated_at=? WHERE namespace=? AND key=? AND json_extract(value_json,'$.task.name') IS ? AND json_extract(value_json,'$.task.createdAt') IS ? AND json_extract(value_json,'$.task.updatedAt') IS ? AND json_extract(value_json,'$.task.runId') IS ?",
+          params![stored.to_string(),now,DISCOVERY_NAMESPACE,code,text(&expected["task"]["name"]),crate::db::sql_value(&expected["task"]["createdAt"]),crate::db::sql_value(&expected["task"]["updatedAt"]),crate::db::sql_value(&expected["task"]["runId"])])?;
+        if count==1 {
+            tx.execute("INSERT INTO kv_cache(namespace,key,value_json,expires_at,updated_at) VALUES('company_reports_source',?,?,?,?) ON CONFLICT(namespace,key) DO UPDATE SET value_json=excluded.value_json,expires_at=excluded.expires_at,updated_at=excluded.updated_at",params![key,serde_json::to_string(&rows)?,now+SOURCE_TTL,now])?;
+        }
+        tx.commit()?;Ok(())
+    }).await
 }
 async fn sync_raw(state: &AppState, code: &str) -> Result<Option<Value>> {
     if state.setting("LLM_RUNTIME") != "local" {
@@ -759,17 +786,24 @@ async fn sync_raw(state: &AppState, code: &str) -> Result<Option<Value>> {
     let lock = report_analysis_lock(&format!("discovery:{code}"));
     let _guard = lock.lock().await;
     let stored = read_discovery(state, code).await?;
-    let Some(current) = stored
-        .as_ref()
-        .filter(|value| ["queued", "running"].contains(&text(&value["task"]["status"])))
-    else {
+    let Some(current) = stored.as_ref().filter(|value| {
+        ["queued", "running", "failed", "blocked", "interrupted"]
+            .contains(&text(&value["task"]["status"]))
+    }) else {
         return Ok(stored);
     };
-    let expected = json!({"name":current["task"]["name"],"createdAt":current["task"]["createdAt"],"taskId":null});
-    let observed = crate::research::taskd::observe(state, &expected).await?;
+    let expected = json!({"name":current["task"]["name"],"createdAt":current["task"]["createdAt"],"taskId":current["task"]["taskId"],"runId":current["task"]["runId"]});
+    let observed = crate::web_workflow::observe(state, &expected).await?;
     match observed {
         Some(task) if task["status"] == "succeeded" => {
-            project_discovery(state, code, &task).await?;
+            if let Err(error) = project_discovery(state, code, &task, current).await {
+                let mut failed = task.clone();
+                failed["status"] = json!("failed");
+                failed["errorMessage"] =
+                    json!("网页已完成，但研报解析/入库失败；同步仅重试本地结果，不会再次生成。");
+                persist_task(state, code, Some(current), Some(&failed)).await?;
+                return Err(error);
+            }
             read_discovery(state, code).await
         }
         Some(task) => Ok(Some(
@@ -787,7 +821,7 @@ pub async fn reconcile(state: &AppState) -> Result<Value> {
     if state.setting("LLM_RUNTIME") != "local" {
         return Ok(json!({"inspected":0,"failed":0}));
     }
-    let rows=state.db.query("SELECT key FROM kv_cache WHERE namespace=? AND json_valid(value_json) AND json_extract(value_json,'$.task.status') IN ('queued','running') ORDER BY updated_at ASC",vec![DISCOVERY_NAMESPACE.into()]).await?;
+    let rows=state.db.query("SELECT b.key FROM kv_cache b WHERE b.namespace=? AND json_valid(b.value_json) AND (json_extract(b.value_json,'$.task.status') IN ('queued','running') OR EXISTS (SELECT 1 FROM kv_cache r WHERE r.namespace=? AND r.key=json_extract(b.value_json,'$.task.runId') AND json_extract(r.value_json,'$.revision')>coalesce(json_extract(b.value_json,'$.task.revision'),0))) ORDER BY b.updated_at ASC",vec![DISCOVERY_NAMESPACE.into(),crate::web_workflow::RUNS.into()]).await?;
     let mut failed = 0;
     for row in &rows {
         let code = codes::normalize(text(&row["key"]));
@@ -870,7 +904,7 @@ mod tests {
         assert_eq!(result[1]["forecastSource"], "llm_news_report");
     }
     #[tokio::test]
-    async fn discovery_state_is_durable_and_capability_does_not_query_taskd() {
+    async fn discovery_state_is_durable_and_capability_does_not_query_web_workflow() {
         let (_dir, state) = setup();
         assert_eq!(
             capability(&state, "600036").await.unwrap(),

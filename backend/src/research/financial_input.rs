@@ -1,4 +1,4 @@
-//! Frozen primary-statement inputs for the taskd financial report. The full
+//! Frozen primary-statement inputs for the web_workflow financial report. The full
 //! snapshot is durable audit evidence; only a bounded projection is sent out.
 #[path = "financial_input/facts.rs"]
 pub mod facts;
@@ -64,7 +64,7 @@ pub async fn prepare(state: &AppState, code: &str) -> Result<Value> {
         "unknown",
         policy,
         availability,
-        &json!({"status":"not_loaded", "verifiedMetrics":[], "reason":"本任务仅冻结主财报接口数据；法定披露核验明细不属于 taskd 财务分析的前置输入。"}),
+        &json!({"status":"not_loaded", "verifiedMetrics":[], "reason":"本任务仅冻结主财报接口数据；法定披露核验明细不属于 网页财务分析的前置输入。"}),
         &loaded,
         &quality,
     );

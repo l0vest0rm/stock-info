@@ -143,6 +143,7 @@ async fn run() -> Result<()> {
     let mut shutdown_signal = tokio::spawn(shutdown());
     let collector = stock_info_local::acquisition_runtime::start(&state)?;
     let jobs = scheduler::start(state.clone()).await?;
+    let web_research = stock_info_local::web_workflow::start(&state);
     let mut content_state = state.clone();
     content_state.authority = content_address.to_string();
     let (stop, stopped) = watch::channel(false);
@@ -167,6 +168,7 @@ async fn run() -> Result<()> {
         result = &mut content_task => (false, true, Some(result)),
         _ = &mut shutdown_signal => (false, false, None),
     };
+    web_research.request_stop();
     jobs.request_stop();
     if let Some(ref collector) = collector {
         collector.request_stop();
@@ -178,6 +180,7 @@ async fn run() -> Result<()> {
     } else {
         Some(content_task.await)
     };
+    web_research.stop().await;
     jobs.stop().await;
     if let Some(collector) = collector {
         collector.shutdown().await?;

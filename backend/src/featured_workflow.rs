@@ -1,7 +1,7 @@
 //! Native local report preparation. Python is retained only for the existing
 //! PDF cleaning/OCR extraction boundary; no JavaScript runtime is invoked.
 pub mod domain;
-use crate::{AppState, featured_reports, research::taskd};
+use crate::{AppState, featured_reports, llm::direct};
 use anyhow::{Context, Result, bail};
 use reqwest::header::HeaderMap;
 use serde_json::{Value, json};
@@ -272,7 +272,7 @@ async fn llm(
     let options = json!({"model":crate::llm::config(state)?.model,"instructions":prompt,"input":[{"role":"user","content":[{"type":"input_text","text":serde_json::to_string(&input)?}]}],"maxTokens":if matches!(kind,"whole"|"translate") {16000} else {10000},"timeoutMs":240000});
     let text = tokio::time::timeout(
         Duration::from_secs(240),
-        taskd::direct_text(state, &options),
+        direct::direct_text(state, &options),
     )
     .await
     .context(

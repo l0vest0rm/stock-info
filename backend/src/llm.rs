@@ -1,4 +1,5 @@
 //! Trusted application routing. Wire protocol and provider differences belong to llm-client.
+pub mod direct;
 use crate::AppState;
 use anyhow::{Context, Result, ensure};
 use llm_client::direct::Protocol;

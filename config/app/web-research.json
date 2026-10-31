@@ -1,0 +1,24 @@
+{
+  "workflow": "config/workflows/chatgpt-research.yaml",
+  "profile": "default",
+  "model": "GPT-5.6 Sol",
+  "modelIndex": 2,
+  "reasoning": {
+    "low": {
+      "increments": 0,
+      "label": "Instant, 1 of 5."
+    },
+    "medium": {
+      "increments": 1,
+      "label": "Medium, 2 of 5."
+    },
+    "high": {
+      "increments": 2,
+      "label": "High, 3 of 5."
+    },
+    "xhigh": {
+      "increments": 3,
+      "label": "Extra High, 4 of 5."
+    }
+  }
+}

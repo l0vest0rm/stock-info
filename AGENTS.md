@@ -23,13 +23,13 @@
 
 - Model calls are allowed only in the explicit local runtime with
   `LLM_RUNTIME=local`. Local-only does not mean offline: authorized providers
-  and taskd still require network connectivity and credentials.
+  and CEA browser research still require network connectivity and credentials.
 - Keep credentials in ignored local stores; never put them in config or logs.
 - Direct API routing is centralized in `config/app/llm.json` (model, baseUrl,
   apiKeyEnv, protocol); default DeepSeek uses `ROUTING_API_KEY` and Chat Completions.
   Protocol/stream differences belong in the shared native `llm-client` crate.
   Run `npm run build:prompts` after model changes to update extraction provenance.
-  Taskd ChatGPT web research is intentionally separate and unchanged.
+  Browser research uses the local CEA SDK workflow, independently of direct API routing.
 
 ## Local Workflow
 
@@ -95,9 +95,10 @@
 - `backend/src/dashboard.rs` and its submodules own all dashboard writes.
   Frozen original-backend fixtures preserve prior expectations; GET is read-only;
   POST refresh performs at most two due securities, with fresh results reused.
-  The one-minute cron processes at most twelve due securities per invocation;
-  shared SQLite leases cap dashboard computations at two across callers.
-  Closing a page does not stop cron. Browser polling never schedules securities.
+  Dashboard computation has no cron or browser polling. A visible page open or
+  explicit user click requests one batch of at most two due securities; hidden
+  pages never initiate it. Accepted batches may finish after closing the page.
+  Shared SQLite leases cap dashboard computations at two across callers.
 - Financial statements retain their existing source freshness policy; only
   quote refresh bypasses HTTP cache. Do not force all financial sources on page
   visits. No new tables or LLM work are required for the dashboard.
@@ -186,3 +187,27 @@
 - `backend/tests/acquisition_runtime.rs` verifies schema equality, host migration
   ownership, real loopback HTTP collection, scheduler execution, restart dedupe,
   paused registration and invalid-target rollback in isolated databases.
+
+## Local Browser Research
+
+- Financial/investment/macro analysis and company report discovery use in-process
+  `cea-sdk` workflows, not taskd HTTP or a CLI subprocess. `config/app/web-research.json`
+  owns browser model/Profile selection; `config/workflows/chatgpt-research.yaml`
+  owns all site selectors, completion waits and model/effort readback gates.
+- `backend/src/web_workflow.rs` and submodules own durable execution in existing
+  `kv_cache`, namespace `local_web_workflow_runs_v1`; profile leases use
+  `local_web_workflow_leases_v1`. Both have null expiry. No tables are added.
+  Preserve these records and private `LOCAL_DATA_DIR/web-research/` artifacts.
+- CEA owns workflow interpretation and recovery. Persist opaque SDK checkpoints
+  before acknowledging; do not inspect/advance their private cursor or replay
+  uncertain side effects. Same-database workers are fenced and serialize each
+  endpoint/Profile. Other applications/databases are not covered by this lease.
+- The explicit-work worker runs independently of cron (`LOCAL_SCHEDULER=0` does
+  not discard accepted browser research). GET reads never schedule work. No task
+  is eligible until the business projection references its UUID runId.
+- Old taskd reports retain provenance and remain readable. Old pending taskd
+  executions require manual reconciliation; never automatically resubmit them.
+  Cancellation stops local execution only, not provider-side generation.
+- Use isolated SQLite and data/object directories for live checks. A successful
+  SDK receipt is not enough: preserve source extraction and selected model/effort
+  evidence, then run the existing business validators and verify API/page reads.

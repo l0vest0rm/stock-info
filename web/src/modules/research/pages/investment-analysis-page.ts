@@ -1,5 +1,5 @@
 import { createApp, defineComponent, h, onMounted, onUnmounted, ref } from "vue";
-import { renderTaskdReportDiagnostics, renderTaskdMarkdown, renderTaskdReportActions, renderTaskdReportIdentity, renderTaskdReportMessage, taskdReportPending, taskdReportStatus } from "../../../shared/taskd/taskd-report-ui";
+import { renderWebResearchReportDiagnostics, renderWebResearchMarkdown, renderWebResearchReportActions, renderWebResearchReportIdentity, renderWebResearchReportMessage, webResearchReportPending, webResearchReportStatus } from "../../../shared/web-research/web-research-ui";
 
 const DEFAULT_CODE = "300308.SZ";
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -164,7 +164,7 @@ const App = defineComponent({
       void load();
       window.addEventListener(COMPANY_INFO_MOUNTED_EVENT, requestCompanyInfo);
       if (document.getElementById("codeName")) requestCompanyInfo();
-      pollTimer = window.setInterval(() => { if (taskdReportPending(model.value)) void load(); }, 5_000);
+      pollTimer = window.setInterval(() => { if (webResearchReportPending(model.value)) void load(); }, 5_000);
     });
     onUnmounted(() => {
       window.removeEventListener(COMPANY_INFO_MOUNTED_EVENT, requestCompanyInfo);
@@ -175,7 +175,7 @@ const App = defineComponent({
       const report = model.value?.report || null;
       const markdown = text(report?.markdown);
       const issues = markdown ? reportQualityIssues(markdown) : [];
-      const pending = taskdReportPending(model.value);
+      const pending = webResearchReportPending(model.value);
       const recovery = model.value?.recovery || null;
       const recovering = isRecovering(recovery);
       const reportVersion = model.value?.reportVersion || null;
@@ -184,19 +184,19 @@ const App = defineComponent({
       return h("main", { class: "ia" }, [
         h("style", `${styles}${recoveryStyles}`),
         h("div", { class: "container ia-shell" }, [
-          h("section", { class: "ia-hero" }, [h("div", { class: "ia-kicker" }, "INVESTMENT RESEARCH"), h("h1", "完整投资研究"), renderTaskdReportDiagnostics(model.value, h("p", "本地运行期可生成并校验研究报告；合格报告会自动同步到线上。"))]),
+          h("section", { class: "ia-hero" }, [h("div", { class: "ia-kicker" }, "INVESTMENT RESEARCH"), h("h1", "完整投资研究"), renderWebResearchReportDiagnostics(model.value, h("p", "本机 CEA 生成并校验研究报告；合格报告仅保存在本地，不自动发布。"))]),
           loading.value ? h("section", { class: "ia-report", style: "margin-top:16px" }, "正在读取任务状态…") : h("div", { class: "ia-document" }, [
             h("section", { class: "ia-report" }, [
               h("div", { class: "ia-report-head" }, [
-                h("div", [h("h2", ["完整投资研究", h("span", { class: `ia-status ${recovery?.phase === "manual_required" || task?.status === "failed" ? "failed" : ""}` }, taskdReportStatus(model.value))]), renderTaskdReportDiagnostics(model.value, h("p", "本地生成后会自动同步合格报告到线上。")), renderTaskdReportIdentity(model.value, "ia-meta")]),
-                canManageLocally ? h("div", { class: "ia-controls" }, [renderTaskdReportActions({ enabled: canManageLocally, state: model.value, busy: syncing.value, className: "ia-controls", buttonClass: "ia-refresh", submitLabel: "生成完整研究", resubmitLabel: "重新生成报告", onSubmit: () => { void refresh(); }, onSync: () => { void sync(); }, onResume: () => { void resume(); } })]) : null,
+                h("div", [h("h2", ["完整投资研究", h("span", { class: `ia-status ${recovery?.phase === "manual_required" || task?.status === "failed" ? "failed" : ""}` }, webResearchReportStatus(model.value))]), renderWebResearchReportDiagnostics(model.value, h("p", "本机 CEA 执行网页研究；报告仅保存在本地。")), renderWebResearchReportIdentity(model.value, "ia-meta")]),
+                canManageLocally ? h("div", { class: "ia-controls" }, [renderWebResearchReportActions({ enabled: canManageLocally, state: model.value, busy: syncing.value, className: "ia-controls", buttonClass: "ia-refresh", submitLabel: "生成完整研究", resubmitLabel: "重新生成报告", onSubmit: () => { void refresh(); }, onSync: () => { void sync(); }, onResume: () => { void resume(); } })]) : null,
               ]),
-              ...renderTaskdReportMessage(model.value, error.value, "任务已提交给 taskd；页面每 5 秒读取本地状态，本地调度器周期同步 taskd，报告完成并通过质量校验后显示。", "ia-message"),
+              ...renderWebResearchReportMessage(model.value, error.value, "任务已提交至本机 CEA；页面每 5 秒读取本地状态，本机执行器持久化状态与结果，报告完成并通过质量校验后显示。", "ia-message"),
               canManageLocally && reportVersion?.status === "legacy" ? h("div", { class: "ia-message", role: "status" }, `这份已完成报告使用 ${reportVersion.inputSchemaVersion || "旧版"} 输入；当前生成使用 ${reportVersion.currentInputSchemaVersion || "最新版"}。报告已保留供阅读，是否重新生成由你决定。`) : null,
               canManageLocally && reportVersion?.status === "unknown" ? h("div", { class: "ia-message", role: "status" }, "这份已完成报告未记录输入版本；报告已保留供阅读，是否重新生成由你决定。") : null,
               issues.length ? h("div", { class: "ia-message error", role: "alert" }, `已拒绝不符合报告契约的结果：${issues.join("；")}`) : null,
               canManageLocally && promptInput ? h("details", { class: "ia-prompt" }, [h("summary", "查看工程冻结输入"), h("pre", promptInput)]) : null,
-              markdown ? h("article", { class: "ia-markdown" }, renderTaskdMarkdown(markdown)) : !pending && !recovering && !error.value ? h("div", { class: "ia-message" }, canManageLocally ? `尚无 ${code} 的投资研究报告。点击“生成完整研究”开始本地生成。` : `尚无 ${code} 的已发布投资研究报告。`) : null,
+              markdown ? h("article", { class: "ia-markdown" }, renderWebResearchMarkdown(markdown)) : !pending && !recovering && !error.value ? h("div", { class: "ia-message" }, canManageLocally ? `尚无 ${code} 的投资研究报告。点击“生成完整研究”开始本地生成。` : `尚无 ${code} 的已发布投资研究报告。`) : null,
             ]),
           ]),
         ]),

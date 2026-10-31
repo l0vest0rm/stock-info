@@ -1,41 +1,42 @@
 import { h, type VNodeChild } from "vue";
 
-export type TaskdReportTask = { taskId?: number | string | null; name?: string; status?: string; errorMessage?: string | null; createdAt?: number | null; updatedAt?: number | null; completedAt?: number | null };
-export type TaskdReportRecovery = { phase?: "none" | "recovering" | "manual_required"; reason?: string | null };
-export type TaskdReportState = { canManageLocally?: boolean; task?: TaskdReportTask | null; recovery?: TaskdReportRecovery | null; report?: { markdown?: string } | null; resume?: { available?: boolean } | null };
+import type { WebResearchTask } from '../../../../shared/web-research';
+export type WebResearchReportTask = WebResearchTask;
+export type WebResearchReportRecovery = { phase?: "none" | "recovering" | "manual_required"; reason?: string | null };
+export type WebResearchReportState = { canManageLocally?: boolean; task?: WebResearchReportTask | null; recovery?: WebResearchReportRecovery | null; report?: { markdown?: string } | null; resume?: { available?: boolean } | null };
 
-export function taskdReportPending(state: TaskdReportState | null | undefined): boolean {
+export function webResearchReportPending(state: WebResearchReportState | null | undefined): boolean {
   const status = state?.task?.status;
   return status === "queued" || status === "leased" || status === "running" || status === "interrupt_requested" || state?.recovery?.phase === "recovering";
 }
 
-export function taskdReportStatus(state: TaskdReportState | null | undefined): string {
+export function webResearchReportStatus(state: WebResearchReportState | null | undefined): string {
   if (state?.recovery?.phase === "recovering") return "正在找回";
   if (state?.recovery?.phase === "manual_required") return "需人工处理";
-  return ({ queued: "已排队", leased: "执行器已领取", running: "正在生成", interrupt_requested: "正在中断", succeeded: "已完成", failed: "失败", interrupted: "已中断", superseded: "已替代" } as Record<string, string>)[state?.task?.status || ""] || (state?.report?.markdown ? "已完成" : "尚未提交");
+  return ({ queued: "已排队", leased: "本机已领取", running: "正在生成", interrupt_requested: "正在中断", succeeded: "已完成", failed: "失败", interrupted: "已中断", superseded: "已替代" } as Record<string, string>)[state?.task?.status || ""] || (state?.report?.markdown ? "已完成" : "尚未提交");
 }
 
-export function taskdReportFailed(state: TaskdReportState | null | undefined): boolean {
+export function webResearchReportFailed(state: WebResearchReportState | null | undefined): boolean {
   return state?.recovery?.phase === "manual_required" || state?.task?.status === "failed" || state?.task?.status === "interrupted" || state?.task?.status === "superseded";
 }
 
 /** Development-only content uses the capability supplied by the runtime API. */
-export function renderTaskdReportDiagnostics(state: TaskdReportState | null | undefined, content: VNodeChild): VNodeChild | null {
+export function renderWebResearchReportDiagnostics(state: WebResearchReportState | null | undefined, content: VNodeChild): VNodeChild | null {
   return state?.canManageLocally === true ? content : null;
 }
 
 /** Report timestamps are public; execution identifiers are local diagnostics. */
-export function renderTaskdReportIdentity(state: TaskdReportState | null | undefined, className = "taskd-report-meta"): VNodeChild | null {
+export function renderWebResearchReportIdentity(state: WebResearchReportState | null | undefined, className = "webResearch-report-meta"): VNodeChild | null {
   const task = state?.task;
   if (!task) return null;
   const fields: Array<{ label: string; value: string; code?: boolean }> = [];
-  const taskId = task.taskId === null || task.taskId === undefined ? "" : String(task.taskId).trim();
+  const taskId = String(task.runId || task.taskId || "").trim();
   const name = String(task.name || "").trim();
-  if (state?.canManageLocally === true && taskId) fields.push({ label: "taskd ID", value: taskId, code: true });
-  if (state?.canManageLocally === true && name) fields.push({ label: "taskd 业务名", value: name, code: true });
-  const createdAt = formatTaskdReportTimestamp(task.createdAt);
-  const updatedAt = formatTaskdReportTimestamp(task.updatedAt);
-  const completedAt = formatTaskdReportTimestamp(task.completedAt);
+  if (state?.canManageLocally === true && taskId) fields.push({ label: task.runId ? "本地执行 ID" : "旧执行 ID", value: taskId, code: true });
+  if (state?.canManageLocally === true && name) fields.push({ label: "研究业务名", value: name, code: true });
+  const createdAt = formatWebResearchReportTimestamp(task.createdAt);
+  const updatedAt = formatWebResearchReportTimestamp(task.updatedAt);
+  const completedAt = formatWebResearchReportTimestamp(task.completedAt);
   if (createdAt) fields.push({ label: "创建", value: createdAt });
   if (updatedAt) fields.push({ label: "更新", value: updatedAt });
   if (completedAt) fields.push({ label: "完成", value: completedAt });
@@ -43,8 +44,8 @@ export function renderTaskdReportIdentity(state: TaskdReportState | null | undef
   return h("div", { class: className }, fields.map((field) => h("span", { key: field.label }, ["", `${field.label}：`, field.code ? h("code", { class: "font-monospace text-break" }, field.value) : field.value])));
 }
 
-export function renderTaskdReportActions(options: {
-  state: TaskdReportState | null | undefined;
+export function renderWebResearchReportActions(options: {
+  state: WebResearchReportState | null | undefined;
   enabled?: boolean;
   busy?: boolean;
   className?: string;
@@ -56,15 +57,35 @@ export function renderTaskdReportActions(options: {
   onResume?(): void;
 }): VNodeChild | null {
   if (options.enabled === false) return null;
-  const disabled = Boolean(options.busy) || taskdReportPending(options.state);
-  return h("div", { class: options.className || "taskd-report-actions" }, [
-    options.state?.task && options.onSync ? h("button", { type: "button", class: options.buttonClass, disabled: options.busy, onClick: options.onSync }, options.busy ? "正在同步" : "同步 taskd 状态") : null,
+  const disabled = Boolean(options.busy) || webResearchReportPending(options.state);
+  const runId = options.state?.task?.runId;
+  const localAction = (action: 'resume' | 'cancel') => async (event: MouseEvent) => {
+    const button = event.currentTarget as HTMLButtonElement;
+    button.disabled = true;
+    try {
+      const path = action === 'resume'
+        ? `/api/research/web-workflows/${encodeURIComponent(runId || '')}/resume`
+        : `/api/research/web-workflows/${encodeURIComponent(runId || '')}/cancel`;
+      const response = await fetch(path, { method: 'POST' });
+      const body = await response.json();
+      if (!response.ok || body.code !== 200) throw new Error(body.msg || '本地操作失败');
+      if (action === 'resume' && body.data?.recovering !== true) throw new Error('无法安全恢复，请同步查看原执行状态');
+      options.onSync?.();
+    } catch (error) {
+      button.textContent = '操作未完成，请同步查看';
+      button.title = error instanceof Error ? error.message : '本地操作失败';
+    } finally { button.disabled = false; }
+  };
+  return h("div", { class: options.className || "webResearch-report-actions" }, [
+    options.state?.task && options.onSync ? h("button", { type: "button", class: options.buttonClass, disabled: options.busy, onClick: options.onSync }, options.busy ? "正在同步" : "同步本地状态") : null,
     options.state?.resume?.available && options.onResume ? h("button", { type: "button", class: options.buttonClass, disabled, onClick: options.onResume }, "找回已提交结果") : null,
-    h("button", { type: "button", class: options.buttonClass, disabled, onClick: options.onSubmit }, taskdReportPending(options.state) ? taskdReportStatus(options.state) : options.state?.report?.markdown ? (options.resubmitLabel || `重新${options.submitLabel}`) : options.submitLabel),
+    runId && ['failed', 'interrupted'].includes(options.state?.task?.status || '') && !(options.state?.resume?.available && options.onResume) ? h("button", { type: "button", class: options.buttonClass, disabled, onClick: localAction('resume') }, '恢复原执行') : null,
+    runId && webResearchReportPending(options.state) ? h("button", { type: "button", class: options.buttonClass, disabled: options.busy, onClick: localAction('cancel') }, '停止本地执行') : null,
+    h("button", { type: "button", class: options.buttonClass, disabled, onClick: options.onSubmit }, webResearchReportPending(options.state) ? webResearchReportStatus(options.state) : options.state?.report?.markdown ? (options.resubmitLabel || `重新${options.submitLabel}`) : options.submitLabel),
   ]);
 }
 
-export function renderTaskdReportMessage(state: TaskdReportState | null | undefined, error: string | null | undefined, pendingMessage: string, className = "taskd-report-message"): VNodeChild[] {
+export function renderWebResearchReportMessage(state: WebResearchReportState | null | undefined, error: string | null | undefined, pendingMessage: string, className = "webResearch-report-message"): VNodeChild[] {
   if (state?.canManageLocally !== true) {
     return error ? [h("div", { class: `${className} error`, role: "alert" }, "报告暂时无法加载，请稍后重试。")] : [];
   }
@@ -73,14 +94,14 @@ export function renderTaskdReportMessage(state: TaskdReportState | null | undefi
   return [
     error ? h("div", { class: `${className} error`, role: "alert" }, error) : null,
     recovery?.phase === "manual_required" ? h("div", { class: `${className} error`, role: "status" }, recovery.reason || "无法确认原会话，需人工处理。") : null,
-    recovery?.phase === "recovering" ? h("div", { class: className, role: "status" }, recovery.reason || "正在只读找回已提交结果，不会重发提示词。") : null,
-    task?.status === "failed" && recovery?.phase !== "manual_required" ? h("div", { class: `${className} error`, role: "status" }, state?.resume?.available ? "检测到已提交任务；可只读找回原结果，不会重发提示词。" : task.errorMessage || "taskd 任务执行失败。") : null,
-    taskdReportPending(state) && recovery?.phase !== "recovering" ? h("div", { class: className, role: "status" }, pendingMessage) : null,
+    recovery?.phase === "recovering" ? h("div", { class: className, role: "status" }, recovery.reason || "正在从原检查点恢复；已派发动作不会自动重放。") : null,
+    task?.status === "failed" && recovery?.phase !== "manual_required" ? h("div", { class: `${className} error`, role: "status" }, state?.resume?.available ? "可从原检查点恢复执行；已派发动作不会自动重放。" : task.errorMessage || "本机 CEA 执行未完成。") : null,
+    webResearchReportPending(state) && recovery?.phase !== "recovering" ? h("div", { class: className, role: "status" }, pendingMessage) : null,
   ].filter(Boolean) as VNodeChild[];
 }
 
-/** Minimal safe Markdown renderer shared by taskd report pages; never inject model HTML. */
-export function renderTaskdMarkdown(markdown: string): VNodeChild[] {
+/** Minimal safe Markdown renderer shared by webResearch report pages; never inject model HTML. */
+export function renderWebResearchMarkdown(markdown: string): VNodeChild[] {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const blocks: VNodeChild[] = [];
   for (let index = 0; index < lines.length;) {
@@ -127,7 +148,7 @@ function inlineMarkdown(source: string): Array<string | VNodeChild> {
 function tableCells(line: string): string[] { return line.replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim()); }
 function isThematicBreak(line: string): boolean { return /^(?:\*\s*){3,}$|^(?:-\s*){3,}$|^(?:_\s*){3,}$/.test(line); }
 function unescapeMarkdown(value: string): string { return value.replace(/\\([\\`*_{}\[\]<>()#+.!-])/g, "$1"); }
-function formatTaskdReportTimestamp(value: number | null | undefined): string {
+function formatWebResearchReportTimestamp(value: number | null | undefined): string {
   if (!Number.isFinite(value)) return "";
   return new Intl.DateTimeFormat("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(Number(value)));
 }

@@ -23,6 +23,8 @@ type AnnualFinancial = {
 type CompanyReportDiscoveryStatus = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'blocked'
 
 type CompanyReportDiscoveryTask = {
+  runId?: string | null
+  engine?: 'cea' | null
   name: string
   status: CompanyReportDiscoveryStatus
   requestedModel?: string | null
@@ -539,6 +541,7 @@ export function createCompanyReportController(context: CompanyReportContext, onS
   let valuationChart: any | null = null
   let valuationChartResizeBound = false
   let companyReportDiscoveryEnabled = false
+  let companyReportDiscoveryRunId: string | null = null
   let companyReportDiscoveryTaskName: string | null = null
   let companyReportDiscoveryStatus: CompanyReportDiscoveryStatus = 'idle'
   let companyReportDiscoveryPollTimer: number | null = null
@@ -624,6 +627,7 @@ export function createCompanyReportController(context: CompanyReportContext, onS
   function emitCompanyReportDiscoveryState(message = companyReportDiscoveryMessage(companyReportDiscoveryStatus)): void {
     emitCompanyReportState({
       discoveryEnabled: companyReportDiscoveryEnabled,
+      discoveryRunId: companyReportDiscoveryRunId,
       discoveryTaskName: companyReportDiscoveryTaskName,
       discoveryStatus: companyReportDiscoveryStatus,
       discoveryMessage: message,
@@ -639,6 +643,7 @@ export function createCompanyReportController(context: CompanyReportContext, onS
 
   function applyCompanyReportDiscoveryTask(task: CompanyReportDiscoveryTask | null): void {
     if (!task || !task.name) {
+      companyReportDiscoveryRunId = null
       companyReportDiscoveryTaskName = null
       companyReportDiscoveryStatus = 'idle'
       companyReportDiscoveryCreatedAt = null
@@ -650,6 +655,7 @@ export function createCompanyReportController(context: CompanyReportContext, onS
       emitCompanyReportDiscoveryState('')
       return
     }
+    companyReportDiscoveryRunId = task.runId || null
     companyReportDiscoveryTaskName = task.name
     companyReportDiscoveryStatus = normalizeCompanyReportDiscoveryStatus(task.status)
     companyReportDiscoveryCreatedAt = optionalCompanyReportTimestamp(task.createdAt)
@@ -693,7 +699,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
     }
     const data = await fetchRequest({
       url: `${server}/api/company/reports/discover/sync?code=${encodeURIComponent(code)}`,
-      params: { code },
       data: {},
       silent: true,
     }) as any
@@ -736,6 +741,7 @@ export function createCompanyReportController(context: CompanyReportContext, onS
     }) as any
     if (isCompanyReportDiscoveryError(data) || data?.enabled !== true) {
       companyReportDiscoveryEnabled = false
+      companyReportDiscoveryRunId = null
       companyReportDiscoveryTaskName = null
       companyReportDiscoveryStatus = 'idle'
       companyReportDiscoveryCreatedAt = null
@@ -802,7 +808,6 @@ export function createCompanyReportController(context: CompanyReportContext, onS
     const code = getCode()
     const data = await fetchRequest({
       url: `${server}/api/company/reports/discover/sync?code=${encodeURIComponent(code)}`,
-      params: { code },
       data: {},
       silent: true,
     }) as any

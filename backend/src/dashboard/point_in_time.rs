@@ -134,7 +134,13 @@ pub fn trailing_twelve_months<F: Fn(&Value) -> Option<f64>>(
     rows: &[Value],
     value_of: F,
 ) -> Option<f64> {
-    let mut rows = rows.iter().collect::<Vec<_>>();
+    trailing_twelve_months_refs(&rows.iter().collect::<Vec<_>>(), value_of)
+}
+fn trailing_twelve_months_refs<F: Fn(&Value) -> Option<f64>>(
+    rows: &[&Value],
+    value_of: F,
+) -> Option<f64> {
+    let mut rows = rows.to_vec();
     rows.sort_by(|a, b| {
         text(&b["reportDate"])
             .cmp(text(&a["reportDate"]))
@@ -186,7 +192,7 @@ pub(crate) fn knowable(row: &Value, as_of: &str) -> bool {
         .unwrap_or_else(|| report.to_string());
     deadline.as_str() <= as_of
 }
-fn basis(rows: &[Value]) -> (Vec<String>, Vec<String>) {
+fn basis(rows: &[&Value]) -> (Vec<String>, Vec<String>) {
     let Some(latest) = rows.last() else {
         return (vec![], vec![]);
     };
@@ -210,7 +216,7 @@ fn basis(rows: &[Value]) -> (Vec<String>, Vec<String>) {
         .filter_map(|report| {
             rows.iter()
                 .find(|row| text(&row["reportDate"]) == report)
-                .and_then(notice_date)
+                .and_then(|row| notice_date(row))
         })
         .collect();
     (reports, notices)
@@ -219,16 +225,42 @@ pub fn build(statements: &[Value], market_caps: &[Value], ceiling: f64) -> Vec<V
     let mut income = statements
         .iter()
         .filter(|row| text(&row["statementType"]) == "income")
-        .cloned()
         .collect::<Vec<_>>();
     income.sort_by(|a, b| text(&a["reportDate"]).cmp(text(&b["reportDate"])));
+    // Eligibility changes only at report/publication boundaries, not every bar.
+    // Keep borrowed rows and precompute dates; never deep-copy financial JSON.
+    let available_from = income
+        .iter()
+        .map(|row| {
+            let report = text(&row["reportDate"]);
+            let notice = notice_date(row).unwrap_or_else(|| {
+                date(report)
+                    .and_then(|d| d.checked_add_signed(Duration::days(120)))
+                    .map(|d| d.to_string())
+                    .unwrap_or_else(|| report.to_string())
+            });
+            report.max(&notice).to_string()
+        })
+        .collect::<Vec<_>>();
     let mut bars = market_caps.iter().collect::<Vec<_>>();
     bars.sort_by(|a, b| text(&a["date"]).cmp(text(&b["date"])));
-    bars.into_iter().map(|bar|{
-        let knowable=income.iter().filter(|row|knowable(row,text(&bar["date"]))).cloned().collect::<Vec<_>>();
-        let profit=trailing_twelve_months(&knowable,net_profit).filter(|n|n.is_finite()&&*n>0.0);
-        let pe=profit.and_then(|profit|number(&bar["marketCap"]).map(|cap|cap/profit)).filter(|n|*n>0.0&&*n<=ceiling);
-        let (reports,notices)=basis(&knowable);
+    let mut previous = Vec::new();
+    let mut profit = None;
+    let mut reports = Vec::new();
+    let mut notices = Vec::new();
+    bars.into_iter().map(|bar| {
+        let eligible = available_from.iter().enumerate()
+            .filter_map(|(index, from)| (from.as_str() <= text(&bar["date"])).then_some(index))
+            .collect::<Vec<_>>();
+        if eligible != previous {
+            let knowable = eligible.iter().map(|&index| income[index]).collect::<Vec<_>>();
+            profit = trailing_twelve_months_refs(&knowable, net_profit)
+                .filter(|n| n.is_finite() && *n > 0.0);
+            (reports, notices) = basis(&knowable);
+            previous = eligible;
+        }
+        let pe = profit.and_then(|profit| number(&bar["marketCap"]).map(|cap| cap / profit))
+            .filter(|n| *n > 0.0 && *n <= ceiling);
         json!({"date":bar["date"],"marketCap":bar["marketCap"],"ttmNetProfit":profit,"peTtm":pe,"basisReportDates":reports,"basisNoticeDates":notices})
     }).collect()
 }
@@ -238,6 +270,72 @@ mod tests {
     use super::*;
     fn row(report: &str, notice: &str, value: f64, period: &str) -> Value {
         json!({"reportDate":report,"statementType":"income","fiscalPeriod":period,"payload":{"PARENT_NETPROFIT":value,"NOTICE_DATE":notice,"FISCAL_PERIOD":period,"FINANCIAL_SOURCE_CONTRACT":"eastmoney_f10_annual_income.v1"}})
+    }
+    // Frozen pre-optimization algorithm, independent of the boundary cache.
+    fn legacy_build(statements: &[Value], bars: &[Value], ceiling: f64) -> Vec<Value> {
+        let mut income = statements
+            .iter()
+            .filter(|r| text(&r["statementType"]) == "income")
+            .cloned()
+            .collect::<Vec<_>>();
+        income.sort_by(|a, b| text(&a["reportDate"]).cmp(text(&b["reportDate"])));
+        let mut bars = bars.iter().collect::<Vec<_>>();
+        bars.sort_by(|a, b| text(&a["date"]).cmp(text(&b["date"])));
+        bars.into_iter().map(|bar| {
+            let known = income.iter().filter(|r| knowable(r, text(&bar["date"]))).cloned().collect::<Vec<_>>();
+            let profit = trailing_twelve_months(&known, net_profit).filter(|n| n.is_finite() && *n > 0.0);
+            let pe = profit.and_then(|p| number(&bar["marketCap"]).map(|c| c/p)).filter(|n| *n > 0.0 && *n <= ceiling);
+            let (reports, notices) = basis(&known.iter().collect::<Vec<_>>());
+            json!({"date":bar["date"],"marketCap":bar["marketCap"],"ttmNetProfit":profit,"peTtm":pe,"basisReportDates":reports,"basisNoticeDates":notices})
+        }).collect()
+    }
+    #[test]
+    fn boundary_cache_matches_daily_rebuild_with_restatements_and_missing_dates() {
+        let mut rows = Vec::new();
+        for year in 2015..2026 {
+            for (month, day, period) in
+                [(3, 31, "3M"), (6, 30, "6M"), (9, 30, "9M"), (12, 31, "FY")]
+            {
+                let report = format!("{year}-{month:02}-{day:02}");
+                let notice = date(&report)
+                    .unwrap()
+                    .checked_add_signed(Duration::days(60))
+                    .unwrap()
+                    .to_string();
+                let mut r = row(
+                    &report,
+                    &notice,
+                    (year - 2010) as f64 * month as f64,
+                    period,
+                );
+                r["payload"]["unusedProviderFields"] = json!("x".repeat(4096));
+                if year % 3 == 0 {
+                    r["payload"]["NOTICE_DATE"] = Value::Null;
+                }
+                rows.push(r);
+            }
+        }
+        rows.push(row("2020-12-31", "2022-01-01", 900.0, "FY"));
+        rows.push(row("2022-12-31", "2022-01-01", 1000.0, "FY"));
+        rows.push(row("2023-12-31", "2024-99-01", -10.0, "FY"));
+        rows.reverse();
+        let start = date("2015-01-01").unwrap();
+        let bars = (0..4000).rev().map(|i| json!({"date":(start+Duration::days(i)).to_string(),"marketCap":if i%11==0 {Value::Null} else {json!(10000)}})).collect::<Vec<_>>();
+        let started = std::time::Instant::now();
+        let expected = legacy_build(&rows, &bars, 500.0);
+        let baseline = started.elapsed();
+        let started = std::time::Instant::now();
+        let actual = build(&rows, &bars, 500.0);
+        eprintln!(
+            "point-in-time 4000 bars: baseline={baseline:?}, optimized={:?}",
+            started.elapsed()
+        );
+        assert_eq!(actual, expected);
+        assert!(build(&[], &[], f64::INFINITY).is_empty());
+        assert_eq!(
+            build(&[], &bars[..1], 500.0),
+            legacy_build(&[], &bars[..1], 500.0)
+        );
     }
     #[test]
     fn public_knowledge_date_and_fiscal_calendar_are_respected() {
