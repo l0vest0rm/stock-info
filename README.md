@@ -15,10 +15,28 @@ npm install --include=dev --no-audit --no-fund
 ```
 
 - 默认页面/API：`http://127.0.0.1:8000`；知识正文兼容端口：`http://127.0.0.1:8788`。
-- `start-local.sh` 与 `start-rust.sh` 使用同一原生后端，构建提示词、页面和 Rust 后直接
-  exec 二进制。构建前检查两个端口，先用 SIGTERM 停止本 checkout 的旧原生实例，最多等待
-  30 秒优雅退出；超时不强杀，其他服务占用则报错。CLI 命令不停止服务。
+- `start-local.sh` 与 `start-rust.sh` 构建提示词、页面和 Rust 后，将二进制、配置、
+  迁移、提示词和 PDF 提取脚本安装到内置磁盘的
+  `~/Library/Application Support/stock-info`（可用 `LOCAL_RUNTIME_DIR` 指定非 `/Volumes`
+  目录），再 exec 该目录的 `start.sh`。首次安装在旧服务完全退出后复制 `data/` 和
+  `.dev.vars`，保留仓库原件；后续构建不再覆盖运行数据和凭据。
+  构建成功后才检查两个端口，用 SIGTERM 停止本 checkout 或它已安装的旧原生实例，
+  等待安全退出后自动安装并启动，不再等满 30 秒就放弃。等待期间每 10 秒提示；不强杀，
+  其他服务占用则报错。中断启动后重试会继续等待已记录的旧进程，即使它已关闭端口；
+  PID 出生时间校验防止误认复用的 PID。CLI 命令不停止服务。
+  后台 workflow 采集完成当前 input 后将正文与续跑游标原子提交，停止后续 input；
+  重启后按相同 flow/输入列表从游标续跑。polling 在 scope 提交边界停止。其他已接受任务
+  仍等待完成；旧版本首次切换仍需等待原有整批采集，不会被新代码追溯中断。
   Ctrl-C 请求优雅退出并等待已接受任务。
+- 安装后不挂载源码磁盘也可直接启动，无需 Node、npm 或 Cargo：
+  `"$HOME/Library/Application Support/stock-info/start.sh"`。
+  `./start-local.sh --build-only` 安装但不启动（仍会优雅停止旧服务以安全复制/更新）。
+  独立启动器不接管已有监听器，端口占用时直接失败。PDF 工具、浏览器/CDP 与网络提供方
+  仍需单独安装/配置；显式环境变量若指向外置磁盘，仍由调用者负责调整。
+- 切换后仓库入口的 CLI 自动使用已安装目录，避免误写旧数据库；相对文件参数以安装目录
+  为基准，建议传绝对路径。仅开发/隔离测试可用 `LOCAL_RUN_FROM_CHECKOUT=1` 显式操作
+  checkout。运行目录的配置/提示词/页面属于构建资源，重新安装会更新；不要把私有持仓
+  写进配置。原数据库只是切换时的备份，不会双向同步，也不要再同时启动旧二进制。
 - 默认只监听 loopback，不提供远程登录服务。`/api/health` 返回运行时与 SQLite 健康状态，
   不代表提供方凭据、模型服务或所有业务都可用。
 - 静态资源来自 `web/dist`，Bootstrap、ECharts、Marked 等页面依赖随本地构建提供，
@@ -27,7 +45,7 @@ npm install --include=dev --no-audit --no-fund
 ### 数据与凭据
 
 SQLite 使用 `LOCAL_DB_PATH`，否则为 `LOCAL_DATA_DIR/stock-info.sqlite`，默认
-`data/local/stock-info.sqlite`。市场对象默认位于数据目录的 `market-data/`，正文对象
+运行目录下的 `data/local/stock-info.sqlite`。市场对象默认位于数据目录的 `market-data/`，正文对象
 默认位于 `knowledge-content/`；分别可用 `LOCAL_MARKET_DATA_DIR` 和
 `KNOWLEDGE_CONTENT_LOCAL_DIR` 覆盖。启动脚本会兼容检测已有的旧正文缓存位置，
 迁移验证时请显式指定独立目录，避免触及原有对象。

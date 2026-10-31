@@ -75,6 +75,7 @@
     "typecheck:server": "npm run typecheck:backend",
     "typecheck:web": "vue-tsc --noEmit -p web/tsconfig.json",
     "check:runtime-boundaries": "node scripts/check-runtime-boundaries.mjs",
+    "check:local-start": "node --test scripts/tests/prepare-local-ports.test.mjs scripts/tests/install-local-runtime.test.mjs",
     "test:basic": "node scripts/test-basic-local-api.mjs",
     "check:evidence-record": "node scripts/check-evidence-record-selftest.mjs && node scripts/check-universe-evidence-rules.mjs",
     "check:valuation-chain": "npm run build:rust && npm run check:valuation-inputs && npm run check:evidence-record && npm run check:valuation-coverage && npm run check:valuation-bands && npm run check:mid-cycle-earnings && npm run check:comparability-matrix && npm run check:ttm-annual-base && npm run check:ttm-fiscal-calendar && npm run check:quarterly-series && npm run check:financial-read-model && npm run check:income-window && npm run check:investment-universe && npm run check:valuation-band-review && npm run check:valuation-screen && npm run check:eastmoney-quote && npm run check:web-pe-ttm && npm run check:finance-display-series && npm run check:valuation-multiple-calibration && npm run check:growth-veto && npm run check:point-in-time-pe && npm run check:income-contracts && npm run check:common-equity",

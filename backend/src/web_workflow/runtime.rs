@@ -95,14 +95,58 @@ pub async fn tick(state: &AppState) -> Result<bool> {
                 }
             }
         }
-        Err(_) => {
-            // Do not echo provider pages/prompts/paths/credentials from errors.
-            fail(state,&claim,"CEA 执行未完成：请检查本机连接、登录、模型/思考强度与页面；恢复只使用原 checkpoint，不重发提示词。").await?;
+        Err(error) => {
+            let diagnostic = failure_diagnostic(&error);
+            store::update(
+                &state.db,
+                &claim,
+                json!({
+                    "status":"failed", "completedAt":now(), "recoveryRequired":true,
+                    "errorMessage":diagnostic["message"], "errorCode":diagnostic["code"],
+                    "failedStep":diagnostic["step"], "matchCount":diagnostic["matchCount"]
+                }),
+                true,
+            )
+            .await?;
         }
     }
     reconcile(state).await;
     Ok(true)
 }
+fn failure_diagnostic(error: &anyhow::Error) -> Value {
+    let server = error
+        .chain()
+        .find_map(|e| match e.downcast_ref::<cea_sdk::ClientError>() {
+            Some(cea_sdk::ClientError::Server { code, details, .. }) => {
+                Some((code.as_str(), details.as_ref()))
+            }
+            _ => None,
+        });
+    let (code, message) = match server.map(|s| s.0) {
+        Some("locator.ambiguous") => (
+            "locator.ambiguous",
+            "回答正文定位不唯一；需修正读取规则后从原 checkpoint 恢复，不重发提示词。",
+        ),
+        Some("locator.not_found") => (
+            "locator.not_found",
+            "未找到预期页面元素；请核对页面后从原 checkpoint 恢复，不重发提示词。",
+        ),
+        Some("page.closed" | "resource.gone" | "resource.not_found" | "session.closed") => (
+            "page.unavailable",
+            "原研究页面不可用；仅可从原 checkpoint 恢复，不重发提示词。",
+        ),
+        _ => (
+            "workflow.incomplete",
+            "CEA 执行未完成；请查看本地失败证据并从原 checkpoint 恢复，不重发提示词。",
+        ),
+    };
+    let step = error
+        .chain()
+        .find_map(|e| e.downcast_ref::<cea_sdk::WorkflowStepFailure>())
+        .map(|e| e.step.as_str());
+    json!({"code":code,"message":message,"step":step,"matchCount":server.and_then(|(_,d)|d).and_then(|d|d["match_count"].as_u64())})
+}
+
 async fn fail(state: &AppState, claim: &store::Claim, message: &str) -> Result<()> {
     store::update(&state.db,claim,json!({"status":"failed","completedAt":now(),"errorMessage":message,"recoveryRequired":true}),true).await
 }
@@ -134,13 +178,26 @@ async fn execute(state: &AppState, claim: &store::Claim) -> Result<WorkflowRepor
         output_dir: output,
         variables: serde_json::from_value(claim.run["variables"].clone())?,
     };
-    let checkpoint = if claim.run["checkpoint"].is_null() {
+    let mut checkpoint = if claim.run["checkpoint"].is_null() {
         None
     } else {
         Some(serde_json::from_value::<WorkflowCheckpoint>(
             claim.run["checkpoint"].clone(),
         )?)
     };
+    if let Some(saved) = checkpoint.as_ref()
+        && cea_sdk::can_reopen_workflow_read_only(&path, saved)?
+    {
+        let updates = serde_json::from_value(
+            state.config("config/app/web-research.json")?["readOnlyLocatorUpdates"].clone(),
+        )?;
+        checkpoint = Some(cea_sdk::amend_workflow_read_only_locators(
+            &path,
+            &options,
+            saved.clone(),
+            &updates,
+        )?);
+    }
     let observe = |checkpoint: WorkflowCheckpoint| {
         let db = state.db.clone();
         let claim = claim.clone();
@@ -219,6 +276,29 @@ async fn execute(state: &AppState, claim: &store::Claim) -> Result<WorkflowRepor
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn locator_failure_is_specific_and_redacts_server_content() {
+        let error = anyhow::Error::new(cea_sdk::ClientError::Server {
+            code: "locator.ambiguous".into(),
+            message: "private prompt and cookie".into(),
+            retry: serde_json::from_value(json!("never")).unwrap(),
+            details: Some(json!({"match_count":9,"html":"private page"})),
+        })
+        .context(cea_sdk::WorkflowStepFailure {
+            step: "prove_answer_completed".into(),
+        });
+        let diagnostic = failure_diagnostic(&error);
+        assert_eq!(diagnostic["code"], "locator.ambiguous");
+        assert_eq!(diagnostic["step"], "prove_answer_completed");
+        assert_eq!(diagnostic["matchCount"], 9);
+        assert!(!diagnostic.to_string().contains("private"));
+        assert!(
+            !failure_diagnostic(&anyhow::anyhow!("private transport message"))
+                .to_string()
+                .contains("private")
+        );
+    }
+
     #[tokio::test]
     async fn receipt_only_retry_never_connects_when_receipt_is_missing() {
         let dir = tempfile::tempdir().unwrap();

@@ -34,10 +34,19 @@
 ## Local Workflow
 
 - `./start-local.sh` delegates to `./start-rust.sh`: builds prompts/web assets
-  and the locked Rust application, then execs the native binary. The binary
-  acquires both listeners before migrating SQLite. Before building, server
-  startup sends SIGTERM only to this checkout's old native listeners and waits
-  up to 30 seconds for exit; unrelated listeners and CLI commands are untouched.
+  and the locked Rust application, installs an independent runtime at
+  `~/Library/Application Support/stock-info` (`LOCAL_RUNTIME_DIR` override),
+  then execs its `start.sh`. First install copies data/credentials only after
+  the old DB closes; original files remain. Rebuilds preserve installed data and
+  credentials, but replace managed config/prompts/assets. Installed `start.sh`
+  requires no checkout, Node or Cargo. `--build-only` installs without starting.
+  CLI uses the installed runtime once present; `LOCAL_RUN_FROM_CHECKOUT=1`
+  explicitly selects checkout CLI for development/isolated tests.
+  The binary acquires both listeners before migrating SQLite. After building, server
+  startup sends SIGTERM only to this checkout's or its installed native listeners and waits
+  for safe exit before automatically continuing installation/startup; drain tickets
+  preserve listenerless-process identity across retries (PID plus birth time).
+  Unrelated listeners and CLI commands are untouched.
   The binary itself still fails on occupied ports without opening its database.
 - Use unused API/content ports and isolated data/object directories for tests.
   Typechecks are separate gates, not implicit startup checks.
@@ -162,6 +171,10 @@
 
 - `backend/src/acquisition_runtime.rs` embeds the shared Rust crate at
   `../sub2me/crates/acquisition`; there is no acquisition subprocess or new DB.
+- The installer builds the shared `app-capture-sdk` helper into managed
+  `bin/app-capture-host` on the internal runtime volume. SDK startup and reuse
+  reject removable executable/state paths; the host uses an internal cwd.
+  Never kill a legacy shared host automatically to perform a handover.
 - `0149_acquisition.sql` is the acquisition-table addition explicitly approved
   in the 2026-10-31 embedding request. Future schema additions still require
   approval, the schema guard allowlist and regression coverage. The host's
@@ -170,10 +183,19 @@
   `--acquisition list|put|status|run|session-import|import-sub2me` manages host-local tasks;
   new tasks are paused. Normal server startup schedules active tasks in-process;
   `LOCAL_SCHEDULER=0` disables collection too. No credentials/tasks are seeded.
+- Acquisition periods default to 30m; the local status page configures integer
+  minutes (1–10080). Scheduling uses persisted last-attempt start plus current
+  period, including failed/interrupted attempts. Restarts run only never-run or
+  overdue tasks, with missed periods coalesced; interval edits apply without restart.
 - `0150_compact_acquisition.sql` is the compact-schema refactor approved in the
   same embedding discussion: only acquisition_tasks/runs/sessions remain. The
   host owns migration ordering; legacy embedded records are moved to knowledge_docs
   before redundant tables are dropped. Back up real data before explicit cutover.
+- Scheduled acquisition workflow commits each input with its monotonic resume cursor
+  atomically in existing task state; shutdown finishes the current input, then
+  stops. Flow/input changes invalidate the cursor. Polling stops between scopes.
+  Interrupted runs are recorded separately from provider failures; no task status
+  is changed and no write is force-cancelled.
 - `KnowledgeStorage` implements replacement `RecordStorage`, not a post-write
   projection: raw/canonical content/tags use existing knowledge_docs with inline
   bodies; scope checkpoint and business rows commit together. No shadow result

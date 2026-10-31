@@ -2,43 +2,53 @@
 # Native Rust application. Gracefully replace only this checkout's old server.
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-# Optional trusted, owner-managed local SDK executable/state configuration.
-# Keep machine paths out of committed flow definitions and preserve explicit env.
-ACQUISITION_RUNTIME_ENV="${LOCAL_ACQUISITION_RUNTIME_ENV:-data/local/acquisition-runtime.env}"
-if [ -f "$ACQUISITION_RUNTIME_ENV" ]; then . "$ACQUISITION_RUNTIME_ENV"; fi
-export LLM_RUNTIME=local
-unset PRODUCTION_REPORT_SYNC_URL REPORT_SYNC_TOKEN
-export PORT="${PORT:-8000}"
-export KNOWLEDGE_CONTENT_LOCAL_PORT="${KNOWLEDGE_CONTENT_LOCAL_PORT:-${LOCAL_CONTENT_PORT:-8788}}"
-# Only server startup replaces listeners; offline/maintenance CLI leaves them alone.
-if [ "$#" -eq 0 ]; then node scripts/prepare-local-ports.mjs; fi
-CONTENT_HOST=${HOST:-127.0.0.1}
-case "$CONTENT_HOST" in *:*) CONTENT_HOST="[$CONTENT_HOST]" ;; esac
-export KNOWLEDGE_CONTENT_PUBLIC_BASE_URL="${KNOWLEDGE_CONTENT_PUBLIC_BASE_URL:-http://${CONTENT_HOST}:${KNOWLEDGE_CONTENT_LOCAL_PORT}}"
-# Preserve the existing local content cache when present, without imposing a
-# machine-specific path on a fresh checkout.
-if [ -z "${KNOWLEDGE_CONTENT_LOCAL_DIR:-}" ] && [ -d /Users/terry/git/data/stock-info/knowledge/content-cache ]; then
-  export KNOWLEDGE_CONTENT_LOCAL_DIR=/Users/terry/git/data/stock-info/knowledge/content-cache
+RUNTIME_DIR="${LOCAL_RUNTIME_DIR:-$HOME/Library/Application Support/stock-info}"
+if [ -d "$RUNTIME_DIR.install-lock" ]; then
+  echo 'Runtime installation in progress; no commands started.' >&2
+  exit 1
 fi
-export KNOWLEDGE_REPORT_CONVERTER_URL="${KNOWLEDGE_REPORT_CONVERTER_URL:-${KNOWLEDGE_CONTENT_PUBLIC_BASE_URL%/}/__convert-report}"
-export KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY="${KNOWLEDGE_REPORT_ANALYSIS_CONCURRENCY:-2}"
-export KNOWLEDGE_REPORT_CONVERSION_CONCURRENCY="${KNOWLEDGE_REPORT_CONVERSION_CONCURRENCY:-2}"
-export KNOWLEDGE_REPORT_CONVERTER_HOSTS="${KNOWLEDGE_REPORT_CONVERTER_HOSTS:-pdf.dfcfw.com,static.cninfo.com.cn,www1.hkexnews.hk}"
-export HTTP_PROXY_URL="${HTTP_PROXY_URL:-http://127.0.0.1:7890}"
-export HTTP_PROXY_RELAY_URL="${HTTP_PROXY_RELAY_URL:-${HTTP_PROXY_URL%/}/fetch}"
-export HTTP_PROXY_DOMAINS="${HTTP_PROXY_DOMAINS:-yahoo.com}"
-export HTTP_DOMAIN_CONCURRENCY="${HTTP_DOMAIN_CONCURRENCY:-5}"
-export HTTP_REQUEST_TIMEOUT_MS="${HTTP_REQUEST_TIMEOUT_MS:-10000}"
-export LLM_DAILY_LIMIT="${LLM_DAILY_LIMIT:-1000000}"
-export XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS="${XUEQIU_COOKIE_REFRESH_INTERVAL_SECONDS:-10800}"
-export XUEQIU_COOKIE_REFRESH_RETRY_SECONDS="${XUEQIU_COOKIE_REFRESH_RETRY_SECONDS:-300}"
+# After cutover, maintenance must use the same DB, not the preserved old copy.
+if [ "$#" -gt 0 ] && [ "${1:-}" != "--build-only" ] && [ "${LOCAL_RUN_FROM_CHECKOUT:-0}" != 1 ] && [ -f "$RUNTIME_DIR/.stock-info-runtime" ]; then
+  if [ "$(cat "$RUNTIME_DIR/.stock-info-runtime")" != "$PWD" ]; then
+    echo 'Runtime belongs to another checkout; set LOCAL_RUNTIME_DIR explicitly.' >&2
+    exit 1
+  fi
+  exec "$RUNTIME_DIR/start.sh" "$@"
+fi
+. ./scripts/local-runtime-env.sh
+# Only server startup installs/copies durable state.
+INSTALL_RUNTIME=0
+BUILD_ONLY=0
+if [ "$#" -eq 0 ]; then INSTALL_RUNTIME=1; fi
+if [ "${1:-}" = "--build-only" ]; then
+  if [ "$#" -ne 1 ]; then echo '--build-only takes no other arguments' >&2; exit 1; fi
+  INSTALL_RUNTIME=1; BUILD_ONLY=1; shift
+fi
+if [ "$INSTALL_RUNTIME" -eq 0 ]; then
+  ACQUISITION_RUNTIME_ENV="${LOCAL_ACQUISITION_RUNTIME_ENV:-data/local/acquisition-runtime.env}"
+  if [ -f "$ACQUISITION_RUNTIME_ENV" ]; then . "$ACQUISITION_RUNTIME_ENV"; fi
+fi
 case "${1:-}" in --help|-h) ;; *)
   npm run build:prompts
-  if [ "$#" -eq 0 ] || [ "${1:-}" = "--review-featured-report" ]; then npm run build:web; fi
+  if [ "$INSTALL_RUNTIME" -eq 1 ] || [ "${1:-}" = "--review-featured-report" ]; then npm run build:web; fi
   ;;
 esac
 cargo build --locked --manifest-path backend/Cargo.toml
 # Node is build tooling only: Cargo metadata locates external target directories.
 # Exec the native binary directly so no Cargo process or build lock remains.
 TARGET_DIR=$(cargo metadata --locked --no-deps --format-version 1 --manifest-path backend/Cargo.toml | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).target_directory))')
+if [ "$INSTALL_RUNTIME" -eq 1 ]; then
+  # Package the helper as managed code, not durable data copied only on first install.
+  CAPTURE_MANIFEST=$(cargo metadata --locked --format-version 1 --manifest-path backend/Cargo.toml | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>{const p=JSON.parse(s).packages.find(p=>p.name==="app-capture-sdk");if(!p)process.exit(1);process.stdout.write(p.manifest_path)})')
+  cargo build --locked --manifest-path "$CAPTURE_MANIFEST" --bin app-capture-host
+  CAPTURE_TARGET=$(cargo metadata --locked --no-deps --format-version 1 --manifest-path "$CAPTURE_MANIFEST" | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).target_directory))')
+  CAPTURE_BINARY="$CAPTURE_TARGET/debug/app-capture-host"
+  # Build before shutdown; failed compilation must leave the old service intact.
+  # Both roots are owned by this checkout; validate both ports before any signal.
+  node scripts/install-local-runtime.mjs "$PWD" "$RUNTIME_DIR" "$TARGET_DIR/debug/stock-info-local" --check
+  LOCAL_RUNTIME_DIR="$RUNTIME_DIR" node scripts/prepare-local-ports.mjs
+  node scripts/install-local-runtime.mjs "$PWD" "$RUNTIME_DIR" "$TARGET_DIR/debug/stock-info-local" --install "$CAPTURE_BINARY"
+  if [ "$BUILD_ONLY" -eq 1 ]; then exit 0; fi
+  exec "$RUNTIME_DIR/start.sh" "$@"
+fi
 exec "$TARGET_DIR/debug/stock-info-local" "$@"

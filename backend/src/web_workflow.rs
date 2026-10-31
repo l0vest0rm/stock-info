@@ -64,6 +64,10 @@ pub fn task_view(task: &Value) -> Value {
         "completedAt",
         "recoveryRequired",
         "lastStep",
+        "startedAt",
+        "errorCode",
+        "failedStep",
+        "matchCount",
     ] {
         view[key] = task[key].clone();
     }

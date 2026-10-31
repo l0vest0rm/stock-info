@@ -147,3 +147,10 @@ python3 backend/src/featured_workflow/tools/verify-pdf-workflow.py \
 `FEATURED_PDF_CLEANER` 规则见 [README](../README.md)。此证明只覆盖清理/提取工程链路，
 不是模型研究、外部发布或全部 PDF 模板的验收。真实模型与提供方配额仍需要各自可用的
 网络/凭据和独立端到端证据；本地运行不意味着离线运行。
+
+## 浏览器研究正文读取与恢复
+
+- 站点选择器由 `config/workflows/chatgpt-research.yaml` 管理：先证明本次回答完成，再读取唯一最终正文；思考摘要和搜索进度不是研究正文。等待、Markdown 和 HTML 留证共用正文定位规则，不以首个/最后一个匹配项兜底。
+- `config/app/web-research.json` 的 `readOnlyLocatorUpdates` 是已审阅的旧结果 locator 升级规则。宿主只将配置与原 opaque checkpoint 交给 SDK；SDK 验证冻结工作流和输入身份、只读后缀及原 selector，保留原游标和会话 URL，并在首次读取前持久确认升级审计。禁止重写冻结 YAML、改游标或重发已提交提示词。
+- 本地 workflow 状态保留 `errorCode`、`failedStep`、`matchCount`，页面展示脱敏错误而非 provider 原始错误。`startedAt` 首次领取时固定；旧任务回退到 `createdAt`。`updatedAt` 只能用于缺失完成时间时的结束边界，不能当开始时间；时间证据缺失或倒置显示未知。
+- 自动回归：`node web/scripts/company-report-timing.test.mjs`、Rust workflow/company tests、CEA SDK workflow tests。`cea_checkpoint_recovery_live` 是显式 ignored 验收：从只读导出的 run/binding 快照恢复，SQLite 隔离，但必须保留原 SDK 输出目录身份，会写入该任务的真实结果 artifacts；不打开用户数据库，不发送提示词。

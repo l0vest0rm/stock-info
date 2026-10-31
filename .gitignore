@@ -15,3 +15,5 @@ news/
 .DS_Store
 data/
 web/static/knowledge-review/
+
+/.stock-info-draining.json*

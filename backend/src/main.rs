@@ -168,25 +168,33 @@ async fn run() -> Result<()> {
         result = &mut content_task => (false, true, Some(result)),
         _ = &mut shutdown_signal => (false, false, None),
     };
+    eprintln!(
+        "Shutdown requested: stop accepting work; acquisition will checkpoint the current input/scope."
+    );
     web_research.request_stop();
     jobs.request_stop();
     if let Some(ref collector) = collector {
         collector.request_stop();
     }
     let _ = stop.send(true);
+    eprintln!("Shutdown: waiting for accepted HTTP requests.");
     let api_result = if api_done { None } else { Some(api_task.await) };
     let content_result = if content_done {
         None
     } else {
         Some(content_task.await)
     };
+    eprintln!("Shutdown: waiting for browser worker and scheduled jobs.");
     web_research.stop().await;
     jobs.stop().await;
     if let Some(collector) = collector {
+        eprintln!("Shutdown: waiting for acquisition checkpoint commits.");
         collector.shutdown().await?;
     }
+    eprintln!("Shutdown: waiting for accepted background writes.");
     state.tasks.close();
     state.tasks.wait().await;
+    eprintln!("Shutdown: accepted work settled.");
     for result in [early_result, api_result, content_result]
         .into_iter()
         .flatten()

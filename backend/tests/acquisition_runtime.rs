@@ -332,3 +332,383 @@ async fn explicit_handoff_is_idempotent_preserves_source_and_paused_tasks() {
     assert_eq!(source.all_tasks().unwrap()[0]["status"], "paused");
     assert_eq!(source.targets("handoff").unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn shutdown_commits_current_input_and_restart_resumes_remaining_inputs() {
+    shutdown_resume_scenario(false).await;
+}
+
+#[tokio::test]
+async fn changed_flow_invalidates_partial_workflow_cursor() {
+    shutdown_resume_scenario(true).await;
+}
+
+async fn shutdown_resume_scenario(change_flow: bool) {
+    use axum::{Json, Router, extract::Query, routing::get};
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::Notify;
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let entered = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let router = Router::new()
+        .route(
+            "/groups",
+            get(|| async { Json(json!([{"group":"g","symbols":["a","b","c"]}])) }),
+        )
+        .route(
+            "/list",
+            get({
+                let seen = seen.clone();
+                move |Query(q): Query<std::collections::HashMap<String, String>>| {
+                    let seen = seen.clone();
+                    async move {
+                        seen.lock().unwrap().push(q["symbol"].clone());
+                        Json(json!([{"id":q["symbol"]}]))
+                    }
+                }
+            }),
+        )
+        .route(
+            "/detail",
+            get({
+                let entered = entered.clone();
+                let release = release.clone();
+                move |Query(q): Query<std::collections::HashMap<String, String>>| {
+                    let entered = entered.clone();
+                    let release = release.clone();
+                    async move {
+                        if q["id"] == "a" {
+                            entered.notify_one();
+                            release.notified().await;
+                        }
+                        Json(json!({"id":q["id"],"title":"fixture","content":"body"}))
+                    }
+                }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let (_dir, state) = setup();
+    std::fs::write(
+        state.root.join("config/acquisitions/fixture.yaml"),
+        format!(
+            r#"
+name: fixture
+schedule: {{interval: 1h}}
+request: {{url: "http://{address}/groups"}}
+runtime: {{type: http}}
+parser: {{format: json}}
+storage: {{source: fixture, key_path: id}}
+workflow:
+  inputs: {{filter_path: group, filter_values: [g], values_path: symbols, variable: symbol}}
+  list:
+    request: {{url: "http://{address}/list", query: {{symbol: "{{{{input.symbol}}}}"}}}}
+    parser: {{format: json}}
+  detail:
+    request: {{url: "http://{address}/detail", query: {{id: "{{{{item.id}}}}"}}}}
+    parser: {{format: json}}
+"#
+        ),
+    )
+    .unwrap();
+    let flow = acquisition::config::load_dir(&state.root.join("config/acquisitions"))
+        .unwrap()
+        .remove(0);
+    acquisition_runtime::store(&state)
+        .unwrap()
+        .sync_task(&flow)
+        .unwrap();
+    acquisition_runtime::store(&state)
+        .unwrap()
+        .target_add(&flow, "fixture", &json!({"group_id":"g"}))
+        .unwrap();
+    let jobs = acquisition_runtime::start(&state).unwrap().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), entered.notified())
+        .await
+        .unwrap();
+    jobs.request_stop();
+    release.notify_one();
+    tokio::time::timeout(std::time::Duration::from_secs(5), jobs.shutdown())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(*seen.lock().unwrap(), vec!["a"]);
+    let rows = state
+        .db
+        .query("SELECT doc_id FROM knowledge_docs", vec![])
+        .await
+        .unwrap();
+    assert_eq!(
+        rows.len(),
+        1,
+        "current input must commit before shutdown returns"
+    );
+    let store = acquisition_runtime::store(&state).unwrap();
+    assert_eq!(store.all_runs(None).unwrap()[0]["status"], "interrupted");
+    // Resume at the next due period, not on every service restart. Move only
+    // this isolated fixture's attempt start into the past to reach eligibility.
+    let due_start = (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+    state
+        .db
+        .connect()
+        .unwrap()
+        .execute("UPDATE acquisition_runs SET started_at=?1", [&due_start])
+        .unwrap();
+    if change_flow {
+        let path = state.root.join("config/acquisitions/fixture.yaml");
+        let mut body = std::fs::read_to_string(&path).unwrap();
+        body.push_str("\ncontent: {source_name: changed-source}\n");
+        std::fs::write(path, body).unwrap();
+        release.notify_one();
+        let jobs = acquisition_runtime::start(&state).unwrap().unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                if state
+                    .db
+                    .query("SELECT doc_id FROM knowledge_docs", vec![])
+                    .await
+                    .unwrap()
+                    .len()
+                    == 3
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+        jobs.shutdown().await.unwrap();
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec!["a", "a", "b", "c"],
+            "changed flow must not skip inputs using an old cursor"
+        );
+        assert_eq!(store.all_runs(None).unwrap()[0]["status"], "success");
+        server.abort();
+        return;
+    }
+    // An isolated host write rejection must not advance the input cursor.
+    state.db.connect().unwrap().execute_batch("CREATE TRIGGER reject_fixture_b AFTER INSERT ON knowledge_docs WHEN json_extract(NEW.metadata_json,'$.acquisition.raw.id')='b' BEGIN SELECT RAISE(ABORT,'fixture host write rejected'); END;").unwrap();
+    let failing_jobs = acquisition_runtime::start(&state).unwrap().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if store.all_runs(None).unwrap()[0]["status"] == "failed" {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    failing_jobs.shutdown().await.unwrap();
+    assert_eq!(*seen.lock().unwrap(), vec!["a", "b"]);
+    assert_eq!(
+        state
+            .db
+            .query("SELECT doc_id FROM knowledge_docs", vec![])
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    state
+        .db
+        .connect()
+        .unwrap()
+        .execute_batch("DROP TRIGGER reject_fixture_b")
+        .unwrap();
+    // A failed attempt is throttled too; advance to its next eligible period.
+    state
+        .db
+        .connect()
+        .unwrap()
+        .execute("UPDATE acquisition_runs SET started_at=?1", [&due_start])
+        .unwrap();
+    let jobs = acquisition_runtime::start(&state).unwrap().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if state
+                .db
+                .query("SELECT doc_id FROM knowledge_docs", vec![])
+                .await
+                .unwrap()
+                .len()
+                == 3
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    jobs.shutdown().await.unwrap();
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec!["a", "b", "b", "c"],
+        "restart skips committed a but must retry rejected b"
+    );
+    assert_eq!(store.all_runs(None).unwrap()[0]["status"], "success");
+    // A completed cursor starts a fresh cycle at its next due period,
+    // rather than suppressing updates forever or replaying on restart.
+    state
+        .db
+        .connect()
+        .unwrap()
+        .execute("UPDATE acquisition_runs SET started_at=?1", [&due_start])
+        .unwrap();
+    release.notify_one();
+    let jobs = acquisition_runtime::start(&state).unwrap().unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if seen.lock().unwrap().len() == 7
+                && store.all_runs(None).unwrap()[0]["status"] == "success"
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    jobs.shutdown().await.unwrap();
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec!["a", "b", "b", "c", "a", "b", "c"]
+    );
+    assert_eq!(
+        state
+            .db
+            .query("SELECT doc_id FROM knowledge_docs", vec![])
+            .await
+            .unwrap()
+            .len(),
+        3
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn restart_respects_persisted_period_and_interval_edits_without_replaying_missed_rounds() {
+    use axum::{Json, Router, routing::get};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::Duration;
+    let requests = Arc::new(AtomicUsize::new(0));
+    let count = requests.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().route(
+                "/news",
+                get(move || {
+                    let count = count.clone();
+                    async move {
+                        count.fetch_add(1, Ordering::SeqCst);
+                        Json(json!([{"id":1,"title":"fixture","content":"body"}]))
+                    }
+                }),
+            ),
+        )
+        .await
+        .unwrap();
+    });
+    let (_dir, state) = setup();
+    write_flow(&state, &format!("http://{address}/news"));
+    std::fs::write(
+        state.root.join("task.json"),
+        json!({"name":"periodic","flow":"fixture","settings":{},"targets":[{"feed":"all"}]})
+            .to_string(),
+    )
+    .unwrap();
+    acquisition_runtime::command(&state, &json!({"operation":"put","file":"task.json"}))
+        .await
+        .unwrap();
+    acquisition_runtime::command(
+        &state,
+        &json!({"operation":"status","task":"periodic","status":"active"}),
+    )
+    .await
+    .unwrap();
+    // Never-run tasks are immediately eligible, with the new default period.
+    let scheduler = acquisition_runtime::start(&state).unwrap().unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while requests.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    scheduler.shutdown().await.unwrap();
+    assert_eq!(requests.load(Ordering::SeqCst), 1);
+    // All attempt outcomes throttle retries, not just successful attempts.
+    for status in ["success", "failed", "interrupted", "running"] {
+        state
+            .db
+            .connect()
+            .unwrap()
+            .execute("UPDATE acquisition_runs SET status=?1", [status])
+            .unwrap();
+        let scheduler = acquisition_runtime::start(&state).unwrap().unwrap();
+        tokio::time::sleep(Duration::from_millis(1150)).await;
+        scheduler.shutdown().await.unwrap();
+        assert_eq!(
+            requests.load(Ordering::SeqCst),
+            1,
+            "restart repeated {status}"
+        );
+    }
+    // Period edits are read without restart: 2-hour-old history was overdue,
+    // increasing to 1 day delays it; reducing to 1 minute releases one round.
+    let old = (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+    state
+        .db
+        .connect()
+        .unwrap()
+        .execute("UPDATE acquisition_runs SET started_at=?1", [&old])
+        .unwrap();
+    state
+        .db
+        .connect()
+        .unwrap()
+        .execute(
+            "UPDATE acquisition_tasks SET config_json=json_set(config_json,'$.interval','1d')",
+            [],
+        )
+        .unwrap();
+    let scheduler = acquisition_runtime::start(&state).unwrap().unwrap();
+    tokio::time::sleep(Duration::from_millis(1150)).await;
+    assert_eq!(requests.load(Ordering::SeqCst), 1);
+    state
+        .db
+        .connect()
+        .unwrap()
+        .execute(
+            "UPDATE acquisition_tasks SET config_json=json_set(config_json,'$.interval','1m')",
+            [],
+        )
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while requests.load(Ordering::SeqCst) < 2 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    scheduler.shutdown().await.unwrap();
+    assert_eq!(
+        requests.load(Ordering::SeqCst),
+        2,
+        "missed periods must coalesce"
+    );
+    server.abort();
+}

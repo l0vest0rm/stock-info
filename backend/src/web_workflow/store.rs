@@ -92,6 +92,9 @@ pub async fn queue_recovery(db: &Database, expected: &Value) -> Result<Value> {
         v["recoveryRequired"] = json!(true);
         v["completedAt"] = Value::Null;
         v["errorMessage"] = Value::Null;
+        v["errorCode"] = Value::Null;
+        v["failedStep"] = Value::Null;
+        v["matchCount"] = Value::Null;
         bump(&mut v);
         put(&tx, RUNS, text(&v["runId"]), &v)?;
         tx.commit()?;
@@ -137,6 +140,7 @@ pub async fn claim(db: &Database) -> Result<Option<Claim>> {
             let token=lease["fencingToken"].as_i64().unwrap_or(0)+1;
             let lease=json!({"owner":owner,"fencingToken":token,"leaseUntil":now()+LEASE_MS,"runId":v["runId"],"retention":"durable"});
             put(&tx,LEASES,&key,&lease)?;
+            if v["startedAt"].is_null() { v["startedAt"] = json!(now()); }
             v["status"]=json!("running"); v["owner"]=json!(owner); v["fencingToken"]=json!(token); v["leaseUntil"]=lease["leaseUntil"].clone();
             bump(&mut v); put(&tx,RUNS,text(&v["runId"]),&v)?;
             tx.commit()?; return Ok(Some(Claim{run:v,owner,slot:key,token}));

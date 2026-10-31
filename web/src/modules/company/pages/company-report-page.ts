@@ -1,3 +1,4 @@
+import { companyReportTimingStart, companyReportElapsedSeconds } from '../runtime/company-report-timing'
 import { createApp, defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { prepareCompanyReportContext } from '../../../platform/legacy/legacy-runtime'
 import { createCompanyReportController } from '../runtime/company-pages-runtime'
@@ -43,7 +44,8 @@ function companyReportRawResponseTitle(value: unknown): string | undefined {
   return `模型原始返回：\n${rendered || '（空）'}`
 }
 
-function formatCompanyReportElapsedSeconds(value: number): string {
+function formatCompanyReportElapsedSeconds(value: number | null): string {
+  if (value === null) return '未知'
   const totalSeconds = Math.max(0, Math.floor(Number.isFinite(value) ? value : 0))
   const seconds = totalSeconds % 60
   const totalMinutes = Math.floor(totalSeconds / 60)
@@ -170,7 +172,7 @@ const CompanyReportPage = defineComponent({
     const discoveryCreatedAt = ref<number | null>(null)
     const discoveryUpdatedAt = ref<number | null>(null)
     const discoveryCompletedAt = ref<number | null>(null)
-    const discoveryElapsedSeconds = ref(0)
+    const discoveryElapsedSeconds = ref<number | null>(null)
     const discoveryElapsedStartAt = ref<number | null>(null)
     const discoveryElapsedEndAt = ref<number | null>(null)
     const discoveryLastSuccessfulAt = ref<number | null>(null)
@@ -190,13 +192,10 @@ const CompanyReportPage = defineComponent({
     }
 
     const updateDiscoveryElapsed = () => {
-      const startAt = discoveryElapsedStartAt.value
-      if (startAt === null || !Number.isFinite(startAt)) {
-        discoveryElapsedSeconds.value = 0
-        return
-      }
-      const endAt = discoveryBusy.value ? Date.now() : discoveryElapsedEndAt.value || Date.now()
-      discoveryElapsedSeconds.value = Math.max(0, Math.floor((endAt - startAt) / 1000))
+      discoveryElapsedSeconds.value = companyReportElapsedSeconds(
+        discoveryElapsedStartAt.value,
+        discoveryBusy.value ? Date.now() : discoveryElapsedEndAt.value,
+      )
     }
 
     const syncDiscoveryElapsedTimer = () => {
@@ -293,10 +292,9 @@ const CompanyReportPage = defineComponent({
       const startedAt = optionalTimestamp(detail.discoveryStartedAt)
       const completedAt = optionalTimestamp(detail.discoveryCompletedAt)
       const updatedAt = optionalTimestamp(detail.discoveryUpdatedAt)
-      const terminal = ['completed', 'failed', 'blocked'].includes(discoveryStatus.value)
-      const timingStart = terminal
-        ? startedAt || discoveryElapsedStartAt.value || createdAt
-        : startedAt || updatedAt || createdAt
+      const sameTask = wasTaskName === discoveryTaskName.value
+      const timingStart = companyReportTimingStart(createdAt, startedAt, sameTask ? discoveryElapsedStartAt.value : null)
+      if (!sameTask) discoveryElapsedStartAt.value = null
       if (timingStart !== null) {
         discoveryElapsedStartAt.value = timingStart
       } else if (nextBusy && (!wasBusy || wasTaskName !== discoveryTaskName.value || discoveryElapsedStartAt.value === null)) {
@@ -306,7 +304,7 @@ const CompanyReportPage = defineComponent({
         discoveryElapsedStartAt.value = Date.now()
       }
       if (!nextBusy) {
-        discoveryElapsedEndAt.value = completedAt || updatedAt || Date.now()
+        discoveryElapsedEndAt.value = completedAt ?? updatedAt
       } else {
         discoveryElapsedEndAt.value = null
       }
@@ -396,7 +394,7 @@ const CompanyReportPage = defineComponent({
                 discoveryTaskName.value ? webResearchReportStatus(discoveryWebResearchState()) : '',
                 discoveryMessage.value,
                 formatCompanyReportDiscoveryExecution(discoveryModel.value),
-                discoveryElapsedStartAt.value !== null && !discoveryBusy.value && ['completed', 'failed', 'blocked'].includes(discoveryStatus.value)
+                !discoveryBusy.value && ['completed', 'failed', 'blocked'].includes(discoveryStatus.value)
                   ? `用时 ${formatCompanyReportElapsedSeconds(discoveryElapsedSeconds.value)}`
                   : discoveryBusy.value
                     ? `已用时 ${formatCompanyReportElapsedSeconds(discoveryElapsedSeconds.value)}`

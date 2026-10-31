@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+const source = readFileSync(new URL('../src/modules/company/runtime/company-report-timing.ts', import.meta.url), 'utf8');
+const module = { exports: {} };
+vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module, exports: module.exports });
+const { companyReportTimingStart: start, companyReportElapsedSeconds: elapsed } = module.exports;
+const created = 1793451830568, completed = 1793452106879;
+assert.equal(elapsed(start(created, null, completed), completed), 276, 'poll update/click fallback cannot erase durable duration');
+assert.equal(start(created, created + 1000, created + 2000), created + 1000);
+assert.equal(start(null, null, created), created);
+assert.equal(elapsed(null, completed), null);
+assert.equal(elapsed(created, null), null);
+assert.equal(elapsed(completed, created), null);
+assert.equal(elapsed(NaN, completed), null);
+assert.equal(elapsed(created, created), 0, 'an observed genuine zero duration remains valid');
+console.log('company report timing: passed');

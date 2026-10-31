@@ -609,7 +609,7 @@ fn stored_task(task: &Value) -> Value {
         "failed" => "failed",
         _ => "blocked",
     };
-    json!({"runId":task["runId"],"taskId":task["taskId"],"engine":task["engine"],"revision":task["revision"],"name":task["name"],"status":status,"errorMessage":task["errorMessage"],"createdAt":task["createdAt"],"updatedAt":task["updatedAt"],"completedAt":task["completedAt"]})
+    json!({"runId":task["runId"],"taskId":task["taskId"],"engine":task["engine"],"revision":task["revision"],"name":task["name"],"status":status,"errorMessage":task["errorMessage"],"createdAt":task["createdAt"],"startedAt":task["startedAt"],"updatedAt":task["updatedAt"],"completedAt":task["completedAt"],"errorCode":task["errorCode"],"failedStep":task["failedStep"],"matchCount":task["matchCount"]})
 }
 fn parse_stored_discovery(value: &Value) -> Option<Value> {
     if !value.is_object() {
@@ -638,7 +638,7 @@ fn parse_stored_discovery(value: &Value) -> Option<Value> {
         && number(&raw_task["updatedAt"]).is_some()
     {
         json!({"runId":raw_task["runId"],"taskId":raw_task["taskId"],"engine":raw_task["engine"],"revision":raw_task["revision"],"name":raw_task["name"],"status":raw_task["status"],"errorMessage":if text(&raw_task["errorMessage"]).is_empty(){Value::Null}else{raw_task["errorMessage"].clone()},
-            "createdAt":raw_task["createdAt"],"updatedAt":raw_task["updatedAt"],"completedAt":number(&raw_task["completedAt"])})
+            "createdAt":raw_task["createdAt"],"startedAt":number(&raw_task["startedAt"]),"updatedAt":raw_task["updatedAt"],"completedAt":number(&raw_task["completedAt"]),"errorCode":raw_task["errorCode"],"failedStep":raw_task["failedStep"],"matchCount":raw_task["matchCount"]})
     } else {
         Value::Null
     };
@@ -844,6 +844,18 @@ mod tests {
         let state = AppState::new(db, dir.path().to_path_buf(), "127.0.0.1:8000".into()).unwrap();
         (dir, state)
     }
+    #[test]
+    fn discovery_task_preserves_start_and_sanitized_failure_diagnostics() {
+        let task = json!({"name":"company:report-discovery:600487.SH","status":"failed",
+            "createdAt":1000,"startedAt":1500,"updatedAt":3000,"completedAt":3000,
+            "errorCode":"locator.ambiguous","failedStep":"prove_answer_completed","matchCount":9});
+        let projected = stored_task(&task);
+        let parsed = parse_stored_discovery(&json!({"task":projected})).unwrap();
+        assert_eq!(parsed["task"]["startedAt"], 1500);
+        assert_eq!(parsed["task"]["errorCode"], "locator.ambiguous");
+        assert_eq!(parsed["task"]["matchCount"], 9);
+    }
+
     #[tokio::test]
     async fn cached_source_pool_is_read_only_and_preserves_provenance() {
         let (_dir, state) = setup();

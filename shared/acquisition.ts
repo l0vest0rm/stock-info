@@ -1,4 +1,4 @@
-/** Read-only native local acquisition status. No sessions or raw provider errors. */
+/** Native local acquisition status. No sessions or raw provider errors. */
 export interface AcquisitionTask {
   id: number
   name: string
@@ -7,6 +7,7 @@ export interface AcquisitionTask {
   interval: string | null
   target_count: number
   record_count: number
+  next_run_at: string | null
   last_run_at: string | null
   last_success_at: string | null
   latest_run: {
@@ -22,3 +23,6 @@ export interface AcquisitionStatus {
   scheduler_enabled: boolean
   tasks: AcquisitionTask[]
 }
+
+/** PUT /api/local/acquisitions/:id/interval; integer minutes, 1..10080. */
+export interface AcquisitionIntervalUpdate { interval_minutes: number }

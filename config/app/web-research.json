@@ -20,5 +20,11 @@
       "increments": 3,
       "label": "Extra High, 4 of 5."
     }
+  },
+  "readOnlyLocatorUpdates": {
+    "answer_body": {
+      "from_css": "[data-markdown-text-style='assistant-message']",
+      "to_css": "[data-markdown-text-style='assistant-message']:not([data-markdown-text-tone='tertiary'])"
+    }
   }
 }

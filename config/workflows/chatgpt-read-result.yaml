@@ -6,7 +6,7 @@ required_server_capabilities: [automation, css_locator, browser_use_v1]
 variables:
   profile: { default: "default" }
   conversation_url: { required: true }
-  answer_selector: { default: "[data-markdown-text-style='assistant-message']" }
+  answer_selector: { default: "[data-markdown-text-style='assistant-message']:not([data-markdown-text-tone='tertiary'])" }
 locators:
   answer: { css: "${answer_selector}" }
   stop: { css: "button[aria-label='Stop'], [data-testid='stop-button'], button[aria-label='Stop generating']" }

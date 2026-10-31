@@ -34,7 +34,7 @@ locators:
   answers:
     css: "[data-talvt-turn-state]:has(h4[data-conversation-role='assistant'])"
   answer_body:
-    css: "[data-markdown-text-style='assistant-message']"
+    css: "[data-markdown-text-style='assistant-message']:not([data-markdown-text-tone='tertiary'])"
   stop:
     css: "[data-testid='stop-button'], button[aria-label='Stop'], button[aria-label='Stop generating'], button[aria-label='停止回答'], button[aria-label='停止生成'], button[aria-label*='Stop generating'], button[aria-label*='停止生成'], button[title*='Stop generating'], button[title*='停止生成']"
   answer_actions:
