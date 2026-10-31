@@ -125,6 +125,8 @@ PE(TTM)、市值及研报前瞻引用检查。它需要有效雪球 Cookie、财
 - [观察池主数据](config/investment-universe.json)、[每日复盘规则](docs/investment-daily-review-playbook.md)、[维护指南](docs/investment-universe-usage.md)
 - [私有组合工作流](docs/active-portfolio-workflow.md)
 - [AI 产业细分赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)
+- [按公司组织的长期研究档案](docs/company-research/README.md)（首例：[亨通光电 600487.SH](docs/company-research/600487.SH/README.md)）
+- [光纤光缆行业供需与价格研究](docs/industry-research/optical-fiber/README.md)（数据、预测与未核验线索分开管理）
 
 历史提交中的云部署流程不再受支持。旧部署工具产生的本地数据、忽略的凭据和既有研究报告
 不属于待删源码，不能因代码清理而删除。
