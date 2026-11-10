@@ -3,7 +3,7 @@
  * Record which watchlist companies currently have a computable valuation
  * multiple, and why the others do not.
  *
- * Read-only.  Requires a running API (`./start-local.sh`).
+ * Read-only.  Requires a running API (`./start.sh`).
  *
  * Usage:
  *   node scripts/audit-valuation-multiples.mjs --base-url http://127.0.0.1:8000

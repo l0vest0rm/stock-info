@@ -9,16 +9,17 @@ if (!Array.isArray(config.triggers?.crons) || !config.triggers.crons.length) thr
 const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 if (Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).some(name => /^(?:@cloudflare\/|wrangler$|hono$|croner$)/.test(name)) || Object.values(pkg.scripts).some(command => /(?:^|\s)(?:npx\s+)?wrangler(?:\s|$)|deploy-cloudflare|rollback-cloudflare|--remote|upload-content-remote|write-wrangler-vars/.test(command))) throw new Error("Package commands must not deploy or write remote Cloudflare resources");
 if (Object.keys(config).some(key => /cookie|token|secret/i.test(key))) throw new Error("Credentials must not be versioned runtime config");
-const launcher = readFileSync(resolve(root, "start-local.sh"), "utf8");
-const native = readFileSync(resolve(root, "start-rust.sh"), "utf8");
-if (!/exec .*start-rust\.sh/.test(launcher) || /local-server|local-supervisor|tsx/.test(launcher)) throw new Error("Default runtime must exec the Rust launcher, not the retired Node backend");
-if (!/exec .*stock-info-local/.test(native) || /local-server|local-supervisor|tsx/.test(native)) throw new Error("Rust launcher must exec the native backend");
+const native = readFileSync(resolve(root, "start.sh"), "utf8");
+if (!/exec .*stock-info-local/.test(native) || /local-server|local-supervisor|tsx/.test(native)) throw new Error("Launcher must exec the native backend");
+for (const file of ["start-local.sh", "start-rust.sh"]) {
+  if (existsSync(resolve(root, file))) throw new Error(`Duplicate runtime launcher must not be restored: ${file}`);
+}
 for (const file of ["process-knowledge.sh", "process-knowledge-local-full.sh", "process-information-feed-local.sh", "cleanup-knowledge-local.sh", "prepare-featured-report.sh", "publish-featured-report.sh"]) {
   const source = readFileSync(resolve(root, file), "utf8");
-  if (!source.includes("./start-rust.sh") || /exec\s+node\s/.test(source)) throw new Error(`Supported workflow must use the native backend: ${file}`);
+  if (!source.includes("./start.sh") || /exec\s+node\s/.test(source)) throw new Error(`Supported workflow must use the native backend: ${file}`);
 }
 for (const name of ["serve:local", "serve:local:http", "dev:cron", "dev:cron:once", "db:migrate:local"]) {
-  if (!pkg.scripts[name]?.startsWith("./start-rust.sh")) throw new Error(`Runtime command is not native: ${name}`);
+  if (!pkg.scripts[name]?.startsWith("./start.sh")) throw new Error(`Runtime command is not native: ${name}`);
 }
 const scheduler = readFileSync(resolve(root, "backend/src/scheduler.rs"), "utf8");
 if (!scheduler.includes("config/app/local-runtime.json") || /wrangler\.jsonc|publishCompletedReportsToProduction/.test(scheduler)) throw new Error("Native scheduler must use local configuration without cloud publication");

@@ -52,6 +52,8 @@ pub fn evaluate(input: &Value) -> Result<Value> {
                 list(&input["args"]),
             )?,
             "band-coverage" => coverage(text(&input["band"]), &input["range"], &input["sorted"]),
+            "option-greeks" => option_greeks(&input["contract"])?,
+            "option-implied-vol" => option_implied_vol(&input["contract"])?,
             unknown => bail!("unknown analysis op: {unknown}"),
         },
     )
@@ -111,6 +113,152 @@ fn snapshot(model: &Value, id: &Value) -> Value {
 }
 fn find<'a>(rows: &'a Value, field: &str, key: &Value) -> Option<&'a Value> {
     list(rows).iter().rev().find(|row| row[field] == *key)
+}
+/// Shared contract for the option ops: a single priced contract in, greeks out.
+///
+/// Input:
+/// `{"kind":"put","spot":1.326,"strike":1.20,"expiry":"2026-12-23","asOf":"2026-11-09",
+///   "rate":0.015,"dividendYield":0,"price":0.0499}`
+///
+/// `expiry`/`asOf` are `YYYY-MM-DD`; `timeToExpiry` (years) may be supplied
+/// instead when no as-of date is meaningful. `price` is the quote used for the
+/// implied volatility op; pricing ops ignore it.
+fn contract(input: &Value) -> Result<Contract, anyhow::Error> {
+    let kind = text(&input["kind"]);
+    let kind = crate::option_math::OptionKind::parse(kind)
+        .ok_or_else(|| anyhow::anyhow!("contract.kind must be call or put, got {kind:?}"))?;
+    let number = |name: &str, fallback: f64| -> Result<f64, anyhow::Error> {
+        match input.get(name) {
+            None | Some(Value::Null) => Ok(fallback),
+            Some(_) => {
+                let value = num(&input[name]);
+                if value.is_finite() {
+                    Ok(value)
+                } else {
+                    Err(anyhow::anyhow!("contract.{name} must be a finite number"))
+                }
+            }
+        }
+    };
+    let spot = number("spot", 0.0)?;
+    let strike = number("strike", 0.0)?;
+    if spot <= 0.0 || strike <= 0.0 {
+        return Err(anyhow::anyhow!(
+            "contract.spot and contract.strike must be positive"
+        ));
+    }
+    let rate = number("rate", 0.0)?;
+    let dividend_yield = number("dividendYield", 0.0)?;
+    let time_to_expiry = match input.get("timeToExpiry") {
+        Some(value) if !value.is_null() => number("timeToExpiry", 0.0)?,
+        _ => {
+            let expiry = chrono::NaiveDate::parse_from_str(text(&input["expiry"]), "%Y-%m-%d")
+                .map_err(|_| {
+                    anyhow::anyhow!(
+                        "contract.expiry must be YYYY-MM-DD when timeToExpiry is absent"
+                    )
+                })?;
+            let as_of = chrono::NaiveDate::parse_from_str(text(&input["asOf"]), "%Y-%m-%d")
+                .map_err(|_| {
+                    anyhow::anyhow!("contract.asOf must be YYYY-MM-DD when timeToExpiry is absent")
+                })?;
+            (expiry - as_of).num_days().max(0) as f64 / 365.0
+        }
+    };
+    Ok(Contract {
+        kind,
+        spot,
+        strike,
+        time_to_expiry,
+        rate,
+        dividend_yield,
+        price: number("price", f64::NAN).unwrap_or(f64::NAN),
+        volatility: number("volatility", f64::NAN).unwrap_or(f64::NAN),
+    })
+}
+
+struct Contract {
+    kind: crate::option_math::OptionKind,
+    spot: f64,
+    strike: f64,
+    time_to_expiry: f64,
+    rate: f64,
+    dividend_yield: f64,
+    price: f64,
+    volatility: f64,
+}
+
+impl Contract {
+    fn greeks(&self, volatility: f64) -> crate::option_math::Greeks {
+        crate::option_math::black_scholes(
+            self.kind,
+            self.spot,
+            self.strike,
+            self.time_to_expiry,
+            self.rate,
+            self.dividend_yield,
+            volatility,
+        )
+    }
+}
+
+fn option_greeks(input: &Value) -> Result<Value, anyhow::Error> {
+    let contract = contract(input)?;
+    let implied = if contract.volatility.is_finite() && contract.volatility > 0.0 {
+        Some(contract.volatility)
+    } else if contract.price.is_finite() && contract.price > 0.0 {
+        crate::option_math::implied_volatility(
+            contract.kind,
+            contract.spot,
+            contract.strike,
+            contract.time_to_expiry,
+            contract.rate,
+            contract.dividend_yield,
+            contract.price,
+        )
+    } else {
+        None
+    };
+    let Some(volatility) = implied else {
+        return Ok(json!({"kind":contract.kind.as_code(),"volatility":null,"greeks":null}));
+    };
+    let g = contract.greeks(volatility);
+    Ok(json!({
+        "kind":contract.kind.as_code(),
+        "volatility":volatility,
+        "timeToExpiry":contract.time_to_expiry,
+        "moneyness":contract.spot / contract.strike,
+        "greeks":{
+            "price":g.price,
+            "delta":g.delta,
+            "gamma":g.gamma,
+            "vega":g.vega,
+            "theta":g.theta,
+            "thetaPerDay":g.theta / 365.0,
+            "vegaPerPoint":g.vega / 100.0,
+            "rho":g.rho
+        }
+    }))
+}
+
+fn option_implied_vol(input: &Value) -> Result<Value, anyhow::Error> {
+    let contract = contract(input)?;
+    if !(contract.price.is_finite() && contract.price > 0.0) {
+        return Err(anyhow::anyhow!("contract.price must be a positive quote"));
+    }
+    Ok(json!({
+        "kind":contract.kind.as_code(),
+        "volatility":crate::option_math::implied_volatility(
+            contract.kind,
+            contract.spot,
+            contract.strike,
+            contract.time_to_expiry,
+            contract.rate,
+            contract.dividend_yield,
+            contract.price,
+        ),
+        "timeToExpiry":contract.time_to_expiry
+    }))
 }
 fn js(v: &Value) -> String {
     if let Some(s) = v.as_str() {

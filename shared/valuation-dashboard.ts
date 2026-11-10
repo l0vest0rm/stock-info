@@ -35,6 +35,19 @@ export type ValuationScreenRow = {
 };
 
 export type DashboardRow = ValuationScreenRow & {
+  /** Latest formal reported earnings; annualized PE is not an analyst forecast. */
+  earningsPe?: {
+    peTtm: number | null;
+    peDynamic: number | null;
+    ttmNetProfit: number | null;
+    annualizedNetProfit: number | null;
+    annualizationMonths: number | null;
+    reportDate: string | null;
+    priceAsOf: string | null;
+    marketCap: number | null;
+    currency: string | null;
+    unavailableReason: string | null;
+  };
   computation: { id: string; revision: string; computedAt: string };
 };
 

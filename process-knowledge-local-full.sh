@@ -8,4 +8,4 @@ if [ "$#" -ne 0 ]; then
   exit 2
 fi
 
-exec ./start-rust.sh --process-knowledge-existing --local-full
+exec ./start.sh --process-knowledge-existing --local-full

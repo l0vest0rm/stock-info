@@ -1,5 +1,6 @@
 pub mod comparability;
 pub mod domain;
+mod earnings_pe;
 pub mod point_in_time;
 
 use crate::{ApiError, ApiResult, AppState, codes, db::Database, ok};
@@ -645,6 +646,11 @@ async fn screen_one(state: &AppState, target: &Value) -> Result<Value> {
     }
     row["blockReasons"] = block_reasons;
     row["growth"] = result["growth"].clone();
+    row["earningsPe"] = earnings_pe::calculate(
+        array(&income["rows"]),
+        &quote,
+        !financial_failed && !quote_failed && !stale_quote && comparable_currency,
+    );
     row["assessment"] = assessment;
     row["opportunity"] = opportunity;
     row["researchVersion"] = json!(research["version"].as_i64().unwrap_or(0));

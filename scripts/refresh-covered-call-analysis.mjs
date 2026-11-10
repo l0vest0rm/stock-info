@@ -79,7 +79,7 @@ async function assertLocalApi(apiBase) {
   } catch (error) {
     throw new Error(
       `本地 API 不可用 (${url})：${error instanceof Error ? error.message : String(error)}\n`
-        + "请先运行 ./start-local.sh，确认 GET /api/health 返回 200 后再执行本脚本。"
+        + "请先运行 ./start.sh，确认 GET /api/health 返回 200 后再执行本脚本。"
     );
   }
 }

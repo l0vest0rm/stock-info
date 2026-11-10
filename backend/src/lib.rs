@@ -22,7 +22,9 @@ pub mod macro_data;
 pub mod maintenance;
 pub mod market;
 pub mod observation;
+pub mod option_math;
 pub mod options;
+pub mod options_cn;
 pub mod portfolio;
 pub mod research;
 pub mod research_cli;
@@ -31,6 +33,7 @@ pub mod runtime_jobs;
 pub mod scheduler;
 pub mod storage;
 pub mod sync_cli;
+pub mod szse_options;
 pub mod thirteenf;
 pub mod web_workflow;
 pub mod xueqiu;
@@ -161,6 +164,7 @@ pub fn router(state: AppState, assets: &Path) -> Router {
         .merge(macro_data::routes())
         .merge(finance::routes())
         .merge(options::routes())
+        .merge(options_cn::routes())
         .merge(thirteenf::routes())
         .route(
             "/auth/{*path}",

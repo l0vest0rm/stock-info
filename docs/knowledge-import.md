@@ -31,7 +31,7 @@ stock-info 不采集资讯。订阅方或导入方负责取得来源授权、筛
 
 ## 上线与验收
 
-1. 本地运行 `./start-local.sh` 完成同一套迁移和构建；在忽略提交的 `.dev.vars` 中设置 `KNOWLEDGE_IMPORT_TOKEN`。未设置 token 时接口必须返回 401。
+1. 本地运行 `./start.sh` 完成同一套迁移和构建；在忽略提交的 `.dev.vars` 中设置 `KNOWLEDGE_IMPORT_TOKEN`。未设置 token 时接口必须返回 401。
 2. 生产先应用远端 D1 migration `0148_inline_knowledge_content.sql`，再部署 Worker，并以 Worker secret（不是 `wrangler.jsonc` vars）设置 `KNOWLEDGE_IMPORT_TOKEN`。不允许修改 `LLM_RUNTIME=production`。
 3. 分别导入一篇短文和一篇大于 4096 字节的长文，确认响应中的 `storage` 为 `d1`/`r2`，相同请求重试返回同一 `docId`；通过目标环境的 `/api/knowledge/doc`、`/api/knowledge/feed` 及远端 R2 对象核实可见性。健康检查和本地页面不能替代生产验证。
 

@@ -8,7 +8,7 @@
  * comparability gate, not a new data source.
  *
  * Usage: node scripts/audit-capital-intensity.mjs [--limit N] [--concurrency N]
- * Requires a running local API (./start-local.sh).
+ * Requires a running local API (./start.sh).
  */
 import { readFileSync } from "node:fs";
 

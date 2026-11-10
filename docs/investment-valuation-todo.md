@@ -652,5 +652,5 @@ npm run check:point-in-time-pe     # PIT 口径：公告日可见性、财年基
 npm run backtest:valuation-band    # P3-4 回测（需本地 API；--high / --low / --label 对照口径）
 npm run verify:point-in-time-pe    # PIT 与雪球逐日对比
 npm run typecheck:server
-./start-local.sh                    # 起本地后跑 npm run test:basic
+./start.sh                    # 起本地后跑 npm run test:basic
 ```

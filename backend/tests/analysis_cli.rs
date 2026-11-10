@@ -1,4 +1,5 @@
 use serde_json::Value;
+use serde_json::json;
 use stock_info_local::analysis_cli;
 fn compare(actual: &Value, expected: &Value, context: &str) {
     match (actual, expected) {
@@ -90,4 +91,68 @@ fn stdin_cli_is_stateless_even_without_project_config_or_valid_server_settings()
         }
         assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
     }
+}
+
+#[test]
+fn option_ops_are_stateless_and_reject_incomplete_contracts() {
+    let priced = json!({
+        "op": "option-greeks",
+        "contract": {
+            "kind": "put", "spot": 1.326, "strike": 1.20,
+            "expiry": "2026-12-23", "asOf": "2026-11-09",
+            "rate": 0.015, "price": 0.0499
+        }
+    });
+    let result = analysis_cli::evaluate(&priced).unwrap();
+    // Reference values reproduced by an independent scipy solve on the same quote.
+    assert!((result["volatility"].as_f64().unwrap() - 0.581_335).abs() < 5e-4);
+    assert!((result["greeks"]["delta"].as_f64().unwrap() - -0.272_737).abs() < 2e-3);
+    assert!(result["greeks"]["thetaPerDay"].as_f64().unwrap() < 0.0);
+    assert!(result["greeks"]["vegaPerPoint"].as_f64().unwrap() > 0.0);
+
+    // An explicit volatility is honoured and skips the inverse problem.
+    let direct = analysis_cli::evaluate(&json!({
+        "op": "option-greeks",
+        "contract": {
+            "kind": "put", "spot": 1.326, "strike": 1.20,
+            "timeToExpiry": 0.12055, "rate": 0.015, "volatility": 0.5813
+        }
+    }))
+    .unwrap();
+    assert!((direct["greeks"]["price"].as_f64().unwrap() - 0.0499).abs() < 2e-4);
+
+    // Missing pricing basis is an error, never a silent zero.
+    for contract in [
+        json!({"kind":"straddle","spot":1.326,"strike":1.2,"timeToExpiry":0.1}),
+        json!({"kind":"put","spot":1.326,"strike":1.2}),
+        json!({"kind":"put","spot":0.0,"strike":1.2,"timeToExpiry":0.1}),
+    ] {
+        assert!(
+            analysis_cli::evaluate(&json!({"op":"option-greeks","contract":contract})).is_err()
+        );
+    }
+    // A contract without a usable price yields nulls rather than fake greeks.
+    let no_quote = analysis_cli::evaluate(&json!({
+        "op":"option-greeks",
+        "contract":{"kind":"put","spot":1.326,"strike":1.2,"timeToExpiry":0.1}
+    }))
+    .unwrap();
+    assert!(no_quote["volatility"].is_null());
+    assert!(no_quote["greeks"].is_null());
+    let zero_quote = analysis_cli::evaluate(&json!({
+        "op":"option-greeks",
+        "contract":{"kind":"put","spot":1.326,"strike":1.2,"timeToExpiry":0.1,"price":0.0}
+    }))
+    .unwrap();
+    assert!(zero_quote["volatility"].is_null());
+    assert!(zero_quote["greeks"].is_null());
+    // The implied-vol op is stricter: it exists to price a quote, so a missing
+    // or zero price is a caller error rather than an empty answer.
+    assert!(
+        analysis_cli::evaluate(&json!({
+            "op":"option-implied-vol",
+            "contract":{"kind":"put","spot":1.326,"strike":1.2,"timeToExpiry":0.1}
+        }))
+        .is_err()
+    );
 }

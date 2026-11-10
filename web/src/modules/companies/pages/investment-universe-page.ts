@@ -773,6 +773,17 @@ const InvestmentUniversePage = defineComponent({
         ...(o?.signals.filter((s) => s.state === 'triggered').map((s) => h('span', { class: 'ivu-valuation-detail' }, opportunityLabels[s.kind])) ?? []),
       ])
     }
+    const renderEarningsPe = (company: Company) => {
+      const pe = screenFor(company)?.earningsPe
+      const multiple = (value: number | null | undefined) => value == null ? '—' : value.toFixed(2) + ' 倍'
+      return h('div', { class: 'ivu-valuation', title: 'PE TTM = 市值 / 最近十二个月归母净利润；动态PE = 市值 / 最新正式累计归母净利润年化值。非券商预测，未消除季节性。' }, [
+        h('div', 'PE TTM：' + multiple(pe?.peTtm)),
+        h('div', '动态 PE：' + multiple(pe?.peDynamic)),
+        h('small', { class: 'ivu-valuation-detail' }, pe ? `财报 ${pe.reportDate || '—'} · 行情 ${pe.priceAsOf || '—'}` : '待计算'),
+        pe?.annualizationMonths ? h('small', { class: 'ivu-valuation-detail' }, `累计${pe.annualizationMonths}个月利润 × 12 / ${pe.annualizationMonths}；非盈利预测`) : null,
+        pe?.unavailableReason ? h('small', { class: 'ivu-valuation-detail' }, pe.unavailableReason) : null,
+      ])
+    }
     const renderValuationDetail = (company: Company) => {
       const row = screenFor(company)
       const a = row?.assessment
@@ -781,6 +792,7 @@ const InvestmentUniversePage = defineComponent({
       return h('section', { class: 'ivu-valuation-detail-block' }, [
         h('h3', '估值依据 · 可复核规则'),
         renderValuationCell(company),
+        renderEarningsPe(company),
         h('dl', { class: 'ivu-valuation-facts' }, [
           fact('主方法', a.method || '暂无适用主方法'), fact('当前指标', metricText(a)), fact('规则合理区间', rangeText(a)),
           fact('保守安全边际', formatPct(a.conservativeMargin)), fact('可信度', a.confidence === 'medium' ? '中（非未来价值预测）' : '低'),
@@ -847,6 +859,7 @@ const InvestmentUniversePage = defineComponent({
           h('th', '首选研究市场'),
           h('th', '研究层级'),
           h('th', '估值判定'),
+          h('th', 'PE TTM / 动态 PE'),
           h('th', '机会线索 / 验证'),
           h('th', '历史位置'),
           h('th', '经营趋势'),
@@ -872,6 +885,7 @@ const InvestmentUniversePage = defineComponent({
             )]),
             h('td', h('span', { class: 'ivu-priority' }, company.priority)),
             h('td', renderValuationCell(company)),
+            h('td', renderEarningsPe(company)),
             h('td', renderOpportunityCell(company)),
             h('td', (screenFor(company)?.assessment?.history.windows ?? []).map((w) => h('div', { class: 'ivu-valuation-detail' }, `${w.years}年PE：${w.percentile == null ? '样本不足 / 不适用' : formatPct(w.percentile)}`))),
             h('td', [

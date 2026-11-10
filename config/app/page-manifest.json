@@ -189,6 +189,13 @@
     "globalName": "LicaiOptionStrategyPage"
   },
   {
+    "path": "/option-chain.html",
+    "entry": "src/modules/options/pages/option-chain-page.ts",
+    "runtime": "local",
+    "legacy": true,
+    "globalName": "LicaiOptionChainPage"
+  },
+  {
     "path": "/news.html",
     "entry": "src/modules/knowledge/pages/information-feed-page.ts",
     "runtime": "local",

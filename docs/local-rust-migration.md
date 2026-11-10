@@ -2,8 +2,7 @@
 
 ## 实现边界
 
-后端现由 `backend/` 的 Rust 模块提供，默认入口为 `./start-local.sh`，与
-`./start-rust.sh` 使用同一原生应用。没有代理 Node、嵌入 JavaScript 或通过
+后端现由 `backend/` 的 Rust 模块提供，统一入口为 `./start.sh`。没有代理 Node、嵌入 JavaScript 或通过
 子进程调用 TypeScript 业务实现。旧后端 `src/` 整树与后端 JS/TS 实现已移除；
 Node 仅用于前端/提示词构建、测试编排和支持的离线分析，不是运行时兜底。
 前端共享类型/合同位于 `shared/`，前端专用校验位于 web 域。
@@ -92,7 +91,7 @@ Rust 隔离回归覆盖上述各模块的合同、错误与事务路径。原 Ty
 - 原生专题报告 helper 通过默认发现的真实清理器执行：自生成 3 页 PDF 清理为 2 页，
   保留页像素不变，输入/输出/处理器 SHA 可核验，未调用模型。
 - 前端构建/类型与本地资源检查通过，构建检查覆盖 252 个本地资源引用，无远程 UI 依赖。
-- 使用默认 `./start-local.sh` 在隔离副本和闲置端口启动，健康响应为 `runtime=rust`，
+- 使用默认 `./start.sh` 在隔离副本和闲置端口启动，健康响应为 `runtime=rust`，
   常驻进程是原生二进制；该入口上的完整 `test:basic` 再次通过。
 - CEA 验证真实财报页面：修复展示层混用累计/单季导致的重复季度，最新日期列唯一，
   保留原始累计数据与 TTM；宏观页可读取并显示既有研究报告，未触发重新生成。
@@ -106,7 +105,7 @@ Rust 隔离回归覆盖上述各模块的合同、错误与事务路径。原 Ty
 
 ```sh
 npm install --include=dev --no-audit --no-fund
-./start-local.sh
+./start.sh
 # 另一终端，对运行中服务执行完整基线：
 npm run test:basic
 npm run check:rust
@@ -125,7 +124,7 @@ PORT=18000 KNOWLEDGE_CONTENT_LOCAL_PORT=18788 \
 LOCAL_DATA_DIR=/absolute/path/to/isolated-proof \
 LOCAL_MARKET_DATA_DIR=/absolute/path/to/isolated-proof/market-data \
 KNOWLEDGE_CONTENT_LOCAL_DIR=/absolute/path/to/isolated-proof/knowledge-content \
-LOCAL_SCHEDULER=0 XUEQIU_COOKIE_REFRESH=0 ./start-local.sh
+LOCAL_SCHEDULER=0 XUEQIU_COOKIE_REFRESH=0 ./start.sh
 BASIC_TEST_BASE_URL=http://127.0.0.1:18000 npm run test:basic
 ```
 

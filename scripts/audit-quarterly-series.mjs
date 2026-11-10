@@ -12,7 +12,7 @@
  *   node scripts/audit-quarterly-series.mjs --base-url http://127.0.0.1:8000
  *   node scripts/audit-quarterly-series.mjs --base-url ... --codes 300308.SZ,600519.SH
  *
- * Requires a running API (see ./start-local.sh). Read-only.
+ * Requires a running API (see ./start.sh). Read-only.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";

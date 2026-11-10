@@ -35,6 +35,11 @@ export const quantileOfSorted = (sorted, q) => rustAnalysis({ op: 'quantile', so
 export const usableMultipleValues = (values, seriesKey) => rustAnalysis({ op: 'filter-values', values, seriesKey });
 export const summarizeMultipleDistribution = (values, seriesKey) => rustAnalysis({ op: 'distribution', values, seriesKey });
 export const bandExcludesMostHistory = coverage => rustAnalysis({ op: 'excludes-history', coverage });
+// Option analysis: all pricing stays in Rust; this is only the wire shape.
+// `contract` = { kind, spot, strike, expiry|timeToExpiry, asOf, rate,
+// dividendYield, price?, volatility? }.
+export const optionGreeks = contract => rustAnalysis({ op: 'option-greeks', contract });
+export const optionImpliedVolatility = contract => rustAnalysis({ op: 'option-implied-vol', contract });
 export function callRustSelftest(name, ...args) {
   const normalized = args.map(arg => typeof arg === 'function'
     ? { __callbackValues: (args[0] ?? []).map(row => arg(row) ?? null) } : arg);

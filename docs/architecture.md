@@ -15,7 +15,7 @@
 原生调度器 / CLI ────────────────────────────┘
 ```
 
-- `./start-local.sh` 委托 `./start-rust.sh` 构建提示词、前端和 Rust，再 exec
+- `./start.sh` 构建提示词、前端和 Rust，再 exec
   原生二进制。Node 只用于前端/提示词构建、测试编排和支持的离线分析工具。
   Rust 回归不再运行原后端 TypeScript oracle，而读取冻结的完整 JSON 历史期望。
 - `backend/src/main.rs` 管理命令行、两个 loopback 监听器及优雅关闭；8000 为默认

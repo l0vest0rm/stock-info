@@ -1,7 +1,7 @@
 use crate::db::Database;
 use anyhow::{Context, Result, bail};
 use reqwest::{Client, Method, header::HeaderMap};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -45,7 +45,7 @@ pub struct HttpClient {
     limits: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
     timeout: Duration,
     concurrency: usize,
-    relay: String,
+    proxy_client: Option<Client>,
     proxy_domains: Vec<String>,
 }
 
@@ -57,17 +57,51 @@ impl HttpClient {
             .parse::<usize>()
             .unwrap_or(5)
             .max(1);
-        Ok(Self {
-            client: Client::builder()
+        Self::with_proxy(
+            timeout,
+            concurrency,
+            &setting("HTTP_PROXY_URL"),
+            &setting("HTTP_PROXY_DOMAINS"),
+        )
+    }
+
+    fn with_proxy(
+        timeout: Duration,
+        concurrency: usize,
+        proxy_url: &str,
+        domains: &str,
+    ) -> Result<Self> {
+        let client = || {
+            Client::builder()
                 .no_proxy()
                 .timeout(timeout)
                 .user_agent("Mozilla/5.0 stock-info-local/0.1")
-                .build()?,
+        };
+        let proxy_client = if proxy_url.trim().is_empty() {
+            None
+        } else {
+            let url = reqwest::Url::parse(proxy_url)
+                .map_err(|_| anyhow::anyhow!("invalid HTTP_PROXY_URL"))?;
+            if !matches!(url.scheme(), "http" | "https" | "socks5" | "socks5h")
+                || url.host_str().is_none()
+                || !matches!(url.path(), "" | "/")
+                || url.query().is_some()
+                || url.fragment().is_some()
+            {
+                bail!("invalid HTTP_PROXY_URL: expected an HTTP(S) or SOCKS5 proxy origin");
+            }
+            // Explicit proxy configuration, never environment/system proxy or direct fallback.
+            let proxy =
+                reqwest::Proxy::all(url).map_err(|_| anyhow::anyhow!("invalid HTTP_PROXY_URL"))?;
+            Some(client().proxy(proxy).build()?)
+        };
+        Ok(Self {
+            client: client().build()?,
+            proxy_client,
             limits: Default::default(),
             timeout,
             concurrency,
-            relay: setting("HTTP_PROXY_RELAY_URL"),
-            proxy_domains: setting("HTTP_PROXY_DOMAINS")
+            proxy_domains: domains
                 .split([',', ' '])
                 .map(|s| s.trim().trim_start_matches('.').to_lowercase())
                 .filter(|s| !s.is_empty())
@@ -175,7 +209,7 @@ impl HttpClient {
         .await
     }
 
-    /// Enforces the cap while decoding/streaming, including relayed requests.
+    /// Enforces the cap while decoding/streaming, including proxied requests.
     pub async fn bytes_limited(
         &self,
         url: &str,
@@ -231,33 +265,24 @@ impl HttpClient {
                 .proxy_domains
                 .iter()
                 .any(|domain| host == domain || host.ends_with(&format!(".{domain}")));
-        if proxy && self.relay.is_empty() {
-            bail!(
-                "HTTP_PROXY_RELAY_URL is required for configured proxy domains and local Yahoo requests"
-            );
-        }
+        let client = if proxy {
+            self.proxy_client.as_ref().context(
+                "HTTP_PROXY_URL is required for configured proxy domains and local Yahoo requests",
+            )?
+        } else {
+            &self.client
+        };
         // Do not retry POST/ambiguous remote execution. GET network failures may
         // be retried once; provider rejection remains explicit to consumers.
         let attempts = if retry && method == Method::GET { 2 } else { 1 };
         for attempt in 0..attempts {
-            let request = if proxy {
-                let headers: HashMap<_, _> = headers
-                    .iter()
-                    .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.as_str(), v)))
-                    .collect();
-                self.client.post(&self.relay).json(
-                    &json!({"url":url,"method":method.as_str(),"headers":headers,"body":body}),
-                )
+            let request = client
+                .request(method.clone(), parsed.clone())
+                .headers(headers.clone());
+            let request = if let Some(body) = &body {
+                request.body(body.clone())
             } else {
-                let request = self
-                    .client
-                    .request(method.clone(), parsed.clone())
-                    .headers(headers.clone());
-                if let Some(body) = &body {
-                    request.body(body.clone())
-                } else {
-                    request
-                }
+                request
             };
             match request.timeout(timeout).send().await {
                 Ok(mut response) => {
@@ -351,6 +376,45 @@ impl HttpClient {
         db.execute("INSERT INTO http_cache(cache_key,url,method,status,headers_json,body_text,expires_at,updated_at) VALUES(?,?,'GET',200,'{}',?,?,?) ON CONFLICT(cache_key) DO UPDATE SET body_text=excluded.body_text,status=200,expires_at=excluded.expires_at,updated_at=excluded.updated_at",vec![key.into(),url.into(),text.clone().into(),(now+ttl_ms.max(1)).into(),now.into()]).await?;
         Ok(text)
     }
+
+    /// Cached non-UTF-8 body. Providers such as Sina serve GBK; decoding them as
+    /// UTF-8 would corrupt the payload, so the bytes are cached as base64 and
+    /// returned for the caller's own decoder.
+    pub async fn cached_bytes(
+        &self,
+        db: &Database,
+        url: &str,
+        headers: HeaderMap,
+        ttl_ms: i64,
+        bypass: bool,
+        cache_key_salt: &str,
+    ) -> Result<Vec<u8>> {
+        use base64::Engine as _;
+        let engine = base64::engine::general_purpose::STANDARD;
+        let key = format!(
+            "{}{}",
+            cache_key("GET", url, &headers, None)?,
+            cache_key_salt
+        );
+        let now = chrono::Utc::now().timestamp_millis();
+        if !bypass {
+            let rows = db
+                .query(
+                    "SELECT body_text FROM http_cache WHERE cache_key=? AND expires_at>?",
+                    vec![key.clone().into(), now.into()],
+                )
+                .await?;
+            if let Some(text) = rows.first().and_then(|v| v["body_text"].as_str()) {
+                return engine
+                    .decode(text)
+                    .context("cached non-UTF-8 body is not base64");
+            }
+        }
+        let (bytes, _) = self.bytes(url, headers).await?;
+        let encoded = engine.encode(&bytes);
+        db.execute("INSERT INTO http_cache(cache_key,url,method,status,headers_json,body_text,expires_at,updated_at) VALUES(?,?,'GET',200,'{}',?,?,?) ON CONFLICT(cache_key) DO UPDATE SET body_text=excluded.body_text,status=200,expires_at=excluded.expires_at,updated_at=excluded.updated_at",vec![key.into(),url.into(),encoded.into(),(now+ttl_ms.max(1)).into(),now.into()]).await?;
+        Ok(bytes)
+    }
 }
 
 pub fn cache_key(
@@ -420,4 +484,228 @@ pub fn number(value: &Value) -> Option<f64> {
         .as_f64()
         .or_else(|| value.as_str()?.replace(',', "").parse().ok())
         .filter(|n| n.is_finite())
+}
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::*;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+    };
+
+    fn client(proxy: &str, domains: &str) -> HttpClient {
+        HttpClient::with_proxy(Duration::from_secs(2), 2, proxy, domains).unwrap()
+    }
+
+    async fn head(stream: &mut TcpStream) -> String {
+        let mut bytes = Vec::new();
+        while !bytes.ends_with(b"\r\n\r\n") {
+            bytes.push(stream.read_u8().await.unwrap());
+        }
+        String::from_utf8(bytes).unwrap()
+    }
+
+    #[test]
+    fn accepts_standard_proxies_and_rejects_non_origins() {
+        for scheme in ["http", "https", "socks5", "socks5h"] {
+            assert!(
+                client(&format!("{scheme}://127.0.0.1:7890"), "yahoo.com")
+                    .proxy_client
+                    .is_some()
+            );
+        }
+        for url in [
+            "http://127.0.0.1:7890/fetch",
+            "ftp://localhost",
+            "http://localhost/?token=private",
+        ] {
+            let error = HttpClient::with_proxy(Duration::from_secs(1), 1, url, "")
+                .err()
+                .unwrap()
+                .to_string();
+            assert!(error.contains("invalid HTTP_PROXY_URL"));
+            assert!(!error.contains("private"));
+        }
+    }
+
+    #[tokio::test]
+    async fn http_proxy_preserves_method_path_headers_body_and_response() {
+        let proxy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = client(
+            &format!("http://{}", proxy.local_addr().unwrap()),
+            "example.test",
+        );
+        let peer = tokio::spawn(async move {
+            let (mut socket, _) = proxy.accept().await.unwrap();
+            let request = head(&mut socket).await;
+            assert!(request.starts_with("POST http://sub.example.test/resource?q=1 HTTP/1.1\r\n"));
+            assert!(request.contains("authorization: Bearer test-only\r\n"));
+            assert!(request.contains("cookie: session=test-only\r\n"));
+            let mut body = [0; 7];
+            socket.read_exact(&mut body).await.unwrap();
+            assert_eq!(&body, b"payload");
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nX-Provider: fixture\r\n\r\nok")
+                .await
+                .unwrap();
+        });
+        let headers = HeaderMap::from_iter([
+            (
+                reqwest::header::AUTHORIZATION,
+                "Bearer test-only".parse().unwrap(),
+            ),
+            (
+                reqwest::header::COOKIE,
+                "session=test-only".parse().unwrap(),
+            ),
+        ]);
+        let (body, headers) = client
+            .request_bytes(
+                "http://sub.example.test/resource?q=1",
+                Method::POST,
+                headers,
+                Some("payload".into()),
+                Duration::from_secs(2),
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(body, b"ok");
+        assert_eq!(headers["x-provider"], "fixture");
+        peer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn https_uses_connect_not_json_relay() {
+        let proxy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = client(&format!("http://{}", proxy.local_addr().unwrap()), "");
+        let peer = tokio::spawn(async move {
+            let (mut socket, _) = proxy.accept().await.unwrap();
+            assert!(
+                head(&mut socket)
+                    .await
+                    .starts_with("CONNECT query1.finance.yahoo.com:443 HTTP/1.1\r\n")
+            );
+            socket
+                .write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        assert!(
+            client
+                .text_once(
+                    "https://query1.finance.yahoo.com/test",
+                    Method::GET,
+                    HeaderMap::new(),
+                    None,
+                    2000
+                )
+                .await
+                .is_err()
+        );
+        peer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn socks5h_resolves_target_remotely_and_transports_http() {
+        let proxy = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = client(
+            &format!("socks5h://{}", proxy.local_addr().unwrap()),
+            "example.test",
+        );
+        let peer = tokio::spawn(async move {
+            let (mut socket, _) = proxy.accept().await.unwrap();
+            let version = socket.read_u8().await.unwrap();
+            assert_eq!(version, 5);
+            let n = socket.read_u8().await.unwrap();
+            let mut methods = vec![0; n as usize];
+            socket.read_exact(&mut methods).await.unwrap();
+            assert!(methods.contains(&0));
+            socket.write_all(&[5, 0]).await.unwrap();
+            let mut request = [0; 4];
+            socket.read_exact(&mut request).await.unwrap();
+            assert_eq!(request, [5, 1, 0, 3]);
+            let n = socket.read_u8().await.unwrap();
+            let mut host = vec![0; n as usize];
+            socket.read_exact(&mut host).await.unwrap();
+            assert_eq!(host, b"remote.example.test");
+            assert_eq!(socket.read_u16().await.unwrap(), 80);
+            socket
+                .write_all(&[5, 0, 0, 1, 127, 0, 0, 1, 0, 80])
+                .await
+                .unwrap();
+            assert!(
+                head(&mut socket)
+                    .await
+                    .starts_with("GET /data HTTP/1.1\r\n")
+            );
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                .await
+                .unwrap();
+        });
+        assert_eq!(
+            client
+                .text(
+                    "http://remote.example.test/data",
+                    Method::GET,
+                    HeaderMap::new(),
+                    None
+                )
+                .await
+                .unwrap(),
+            "ok"
+        );
+        peer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn missing_or_failed_proxy_never_falls_back_and_other_domains_stay_direct() {
+        let target = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/data", target.local_addr().unwrap());
+        let missing = client("", "127.0.0.1");
+        assert!(
+            missing
+                .text(&url, Method::GET, HeaderMap::new(), None)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("HTTP_PROXY_URL is required")
+        );
+        let refused = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy = format!("http://{}", refused.local_addr().unwrap());
+        drop(refused);
+        assert!(
+            client(&proxy, "127.0.0.1")
+                .text_once(&url, Method::GET, HeaderMap::new(), None, 1000)
+                .await
+                .is_err()
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), target.accept())
+                .await
+                .is_err()
+        );
+        let peer = tokio::spawn(async move {
+            let (mut socket, _) = target.accept().await.unwrap();
+            assert!(
+                head(&mut socket)
+                    .await
+                    .starts_with("GET /data HTTP/1.1\r\n")
+            );
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                .await
+                .unwrap();
+        });
+        assert_eq!(
+            client(&proxy, "yahoo.com")
+                .text(&url, Method::GET, HeaderMap::new(), None)
+                .await
+                .unwrap(),
+            "ok"
+        );
+        peer.await.unwrap();
+    }
 }

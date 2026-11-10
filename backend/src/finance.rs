@@ -201,7 +201,7 @@ pub fn failed_read_model(code: &str, statement_type: &str, message: &str) -> Val
         .any(|s| lower.contains(s))
     {
         "unsupported_security"
-    } else if lower.contains("http_proxy_relay_url is required") {
+    } else if lower.contains("http_proxy_url is required") {
         "missing_proxy_configuration"
     } else if ["status=429", "rate limit", "too many requests"]
         .iter()
@@ -217,7 +217,6 @@ pub fn failed_read_model(code: &str, statement_type: &str, message: &str) -> Val
         "invalid_provider_response"
     } else if [
         "request failed: status=",
-        "proxy relay request failed",
         "yahoo finance error",
         "provider rejected request",
     ]
@@ -682,8 +681,7 @@ mod tests {
             Some(100.0)
         );
         assert_eq!(
-            failed_read_model("NVDA.US", "income", "HTTP_PROXY_RELAY_URL is required")["sourceHealth"]
-                ["reason"],
+            failed_read_model("NVDA.US", "income", "HTTP_PROXY_URL is required")["sourceHealth"]["reason"],
             "missing_proxy_configuration"
         );
     }

@@ -1,4 +1,4 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
-exec ./start-rust.sh --process-feed "$@"
+exec ./start.sh --process-feed "$@"

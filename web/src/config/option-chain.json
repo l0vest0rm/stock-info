@@ -1,0 +1,7 @@
+{
+  "title": "期权链分析 | 投研社",
+  "description": "上交所 ETF 期权按行权价计算隐含波动率、Delta、Theta、Vega、保本价与收益率，用于选择卖出哪个行权价。",
+  "canonicalPath": "/option-chain.html",
+  "noindex": true,
+  "legacyRuntime": false
+}

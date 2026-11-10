@@ -58,6 +58,46 @@ export function bsGreeks(S, K, T, r, sigma, type = "call") {
   };
 }
 
+/**
+ * Black-Scholes on the FORWARD, so dividends/carry do not have to be invented.
+ *
+ * A-share ETF options price a forward that sits below `spot * exp(rT)` because the
+ * ETF pays dividends. Solving vol on spot with q = 0 silently turns that carry into
+ * a fake put-skew (the 50ETF board shows "put IV 20%" vs "call IV 13%" at the same
+ * strike for exactly this reason). Passing the forward makes both sides agree.
+ *
+ * @param {number} F implied forward at expiry
+ * @param {number} K strike
+ * @param {number} T years to expiry
+ * @param {number} sigma decimal vol
+ * @param {string} type "call" | "put"
+ * @param {number} df discount factor to expiry (default 1)
+ */
+export function bsForwardPrice(F, K, T, sigma, type = "call", df = 1) {
+  if (T <= 0) return df * Math.max(0, type === "call" ? F - K : K - F);
+  const st = sigma * Math.sqrt(T);
+  const d1 = (Math.log(F / K) + 0.5 * st * st) / st;
+  const d2 = d1 - st;
+  if (type === "call") return df * (F * normCdf(d1) - K * normCdf(d2));
+  return df * (K * normCdf(-d2) - F * normCdf(-d1));
+}
+
+/** Implied vol from a forward price; null outside no-arbitrage bounds. */
+export function impliedVolForward(price, F, K, T, type = "call", df = 1) {
+  if (!(T > 0) || !(price > 0)) return null;
+  const intrinsic = df * Math.max(0, type === "call" ? F - K : K - F);
+  if (price <= intrinsic + 1e-9) return null;
+  let lo = 0.005;
+  let hi = 4;
+  if (bsForwardPrice(F, K, T, hi, type, df) < price) return null;
+  for (let i = 0; i < 120; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (bsForwardPrice(F, K, T, mid, type, df) < price) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
 /** Bisection implied vol; returns null when the price is outside no-arbitrage bounds. */
 export function impliedVol(price, S, K, T, r, type = "call") {
   if (!(T > 0) || !(price > 0)) return null;

@@ -4,15 +4,15 @@ Place reviewed schema_version: 2 flow YAML here, or set LOCAL_ACQUISITION_CONFIG
 No sources, credentials or active targets are seeded. Sub2Me's reviewed flow YAML
 can be reused; session material must be provisioned for this host separately.
 
-Register a paused task using `./start-rust.sh --acquisition put --file task.json`:
+Register a paused task using `./start.sh --acquisition put --file task.json`:
 
 ```json
 {"name":"my-news","flow":"my-flow","settings":{"interval":"30m"},"targets":[{"url":"https://example.com/news"}]}
 ```
 
-Enable explicitly: `./start-rust.sh --acquisition status --task my-news --status active`.
-List: `./start-rust.sh --acquisition list`.
-One round: `./start-rust.sh --acquisition run --task my-news` (honors paused status).
+Enable explicitly: `./start.sh --acquisition status --task my-news --status active`.
+List: `./start.sh --acquisition list`.
+One round: `./start.sh --acquisition run --task my-news` (honors paused status).
 Normal server startup schedules active tasks in-process. LOCAL_SCHEDULER=0 stops
 all collection scheduling too. The default period is 30 minutes when omitted.
 The status page lets you save each task's period in integer minutes (1–10080),
@@ -28,7 +28,7 @@ Three control tables store tasks, runs and sessions in LOCAL_DB_PATH. Results
 inline bodies and acquisition provenance. No acquisition_records table is used.
 This does not bypass investment/relevance gates or trigger model work/publication.
 
-Import a private HTTP cookie jar with `./start-rust.sh --acquisition session-import --task my-news --file /absolute/private-cookies.json`. The file must be owner-only and the source must validate it; login is not automated.
+Import a private HTTP cookie jar with `./start.sh --acquisition session-import --task my-news --file /absolute/private-cookies.json`. The file must be owner-only and the source must validate it; login is not automated.
 
 ## Status page
 
@@ -57,7 +57,7 @@ registered tasks remain paused until explicitly enabled for a real run.
 
 ## Explicit local handoff
 
-`./start-rust.sh --acquisition import-sub2me --file /absolute/source.db` copies
+`./start.sh --acquisition import-sub2me --file /absolute/source.db` copies
 source acquisition task definitions, targets, bound credentials/caches and
 checkpoints, preserving active/paused status. Source is read-only. Stop the source
 collector and destination scheduler first, and back up the destination DB. This
@@ -72,7 +72,7 @@ back; the host remains responsible for sorted migration/user_version ordering.
 
 ## App-capture prerequisite
 
-`start-rust.sh` sources the optional **trusted local shell configuration**
+`start.sh` sources the optional **trusted local shell configuration**
 `data/local/acquisition-runtime.env` (or LOCAL_ACQUISITION_RUNTIME_ENV). Keep it
 owner-only; do not source downloaded files. Configure APP_CAPTURE_HOST with the
 installed SDK host executable and APP_CAPTURE_STATE_DIR with the existing SDK

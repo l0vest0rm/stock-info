@@ -11,11 +11,11 @@ SQLite），前端为 Vue / Vite。**不再部署 Cloudflare**；没有 Node 后
 
 ```sh
 npm install --include=dev --no-audit --no-fund
-./start-local.sh
+./start.sh
 ```
 
 - 默认页面/API：`http://127.0.0.1:8000`；知识正文兼容端口：`http://127.0.0.1:8788`。
-- `start-local.sh` 与 `start-rust.sh` 构建提示词、页面和 Rust 后，将二进制、配置、
+- `start.sh` 构建提示词、页面和 Rust 后，将二进制、配置、
   迁移、提示词和 PDF 提取脚本安装到内置磁盘的
   `~/Library/Application Support/stock-info`（可用 `LOCAL_RUNTIME_DIR` 指定非 `/Volumes`
   目录），再 exec 该目录的 `start.sh`。首次安装在旧服务完全退出后复制 `data/` 和
@@ -30,7 +30,7 @@ npm install --include=dev --no-audit --no-fund
   Ctrl-C 请求优雅退出并等待已接受任务。
 - 安装后不挂载源码磁盘也可直接启动，无需 Node、npm 或 Cargo：
   `"$HOME/Library/Application Support/stock-info/start.sh"`。
-  `./start-local.sh --build-only` 安装但不启动（仍会优雅停止旧服务以安全复制/更新）。
+  `./start.sh --build-only` 安装但不启动（仍会优雅停止旧服务以安全复制/更新）。
   独立启动器不接管已有监听器，端口占用时直接失败。PDF 工具、浏览器/CDP 与网络提供方
   仍需单独安装/配置；显式环境变量若指向外置磁盘，仍由调用者负责调整。
 - 切换后仓库入口的 CLI 自动使用已安装目录，避免误写旧数据库；相对文件参数以安装目录
@@ -41,6 +41,14 @@ npm install --include=dev --no-audit --no-fund
   不代表提供方凭据、模型服务或所有业务都可用。
 - 静态资源来自 `web/dist`，Bootstrap、ECharts、Marked 等页面依赖随本地构建提供，
   不依赖运行时 CDN。源码变更后需要重建。
+
+### 网络代理
+
+Yahoo 与 `HTTP_PROXY_DOMAINS` 指定域名通过统一 Rust HTTP 客户端走标准代理，
+其余域名保持直连。`HTTP_PROXY_URL` 默认 `http://127.0.0.1:7890`，HTTPS 使用
+CONNECT 隧道；也可设为 `socks5h://127.0.0.1:7890`，由代理解析目标域名
+（`socks5://` 使用本地 DNS）。客户端启用 HTTP/2，最终协议由目标 TLS/ALPN 协商。
+代理缺失或连接失败会明确报错，不回退直连。旧 JSON 代请求接口及专用环境变量已移除。
 
 ### 数据与凭据
 
@@ -136,7 +144,7 @@ PDF 渲染、提取和专题报告清理需要 Python 3、PyMuPDF，以及单独
 
 | 操作 | 入口 |
 | --- | --- |
-| 本地服务 / 原生 CLI 帮助 | `./start-local.sh` / `./start-rust.sh --help` |
+| 本地服务 / 原生 CLI 帮助 | `./start.sh` / `./start.sh --help` |
 | 仅迁移本地数据库 | `npm run db:migrate:local` |
 | 手动执行一轮后台任务 | `npm run dev:cron:once` |
 | 知识增量 / 历史全量 / 资讯处理 | `npm run process:knowledge` / `./process-knowledge-local-full.sh` / `npm run process:feed` |
@@ -187,6 +195,7 @@ PE(TTM)、市值及研报前瞻引用检查。它需要有效雪球 Cookie、财
 
 - [观察池主数据](config/investment-universe.json)、[每日复盘规则](docs/investment-daily-review-playbook.md)、[维护指南](docs/investment-universe-usage.md)
 - [私有组合工作流](docs/active-portfolio-workflow.md)
+- [全 A 行业龙头超跌筛选](docs/industry-leader-oversold-screen.md)：`npm run screen:industry-leaders:report`
 - [AI 产业细分赛道图谱](docs/AI产业细分赛道中美上市公司图谱_美国代码更新版_2026-08-09.md)
 - [按公司组织的长期研究档案](docs/company-research/README.md)（首例：[亨通光电 600487.SH](docs/company-research/600487.SH/README.md)）
 - [光纤光缆行业供需与价格研究](docs/industry-research/optical-fiber/README.md)（数据、预测与未核验线索分开管理）

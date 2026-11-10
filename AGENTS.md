@@ -5,7 +5,7 @@
 - This checkout is local-only. Cloudflare deployment is retired; do not restore
   Worker deployment, remote migrations or automatic report publication.
 - The backend is the native Rust application in `backend/`, launched through
-  `./start-local.sh` (alias `./start-rust.sh`). API/page URL defaults to
+  `./start.sh`. API/page URL defaults to
   `http://127.0.0.1:8000`; the local content listener defaults to port 8788.
 - Node is frontend/build tooling, test orchestration and supported offline
   analysis, not a backend runtime or fallback. The retired backend `src/`
@@ -33,7 +33,7 @@
 
 ## Local Workflow
 
-- `./start-local.sh` delegates to `./start-rust.sh`: builds prompts/web assets
+- `./start.sh` builds prompts/web assets
   and the locked Rust application, installs an independent runtime at
   `~/Library/Application Support/stock-info` (`LOCAL_RUNTIME_DIR` override),
   then execs its `start.sh`. First install copies data/credentials only after

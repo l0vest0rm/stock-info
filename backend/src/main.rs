@@ -742,16 +742,16 @@ mod tests {
     #[test]
     fn knowledge_local_full_preserves_existing_only_archive_workflow() {
         let shell = include_str!("../../process-knowledge-local-full.sh");
-        assert!(shell.contains("exec ./start-rust.sh --process-knowledge-existing --local-full"));
+        assert!(shell.contains("exec ./start.sh --process-knowledge-existing --local-full"));
         assert!(!shell.contains("exec node"));
         let package: Value = serde_json::from_str(include_str!("../../package.json")).unwrap();
         assert_eq!(
             package["scripts"]["process:knowledge:local:full"],
-            "./start-rust.sh --process-knowledge-existing --local-full"
+            "./start.sh --process-knowledge-existing --local-full"
         );
         assert!(
             include_str!("../../cleanup-knowledge-local.sh")
-                .contains("exec ./start-rust.sh --maintenance cleanup-docs --local --apply")
+                .contains("exec ./start.sh --maintenance cleanup-docs --local --apply")
         );
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(root.path().join("config/knowledge")).unwrap();
