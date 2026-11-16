@@ -373,16 +373,16 @@ async fn retired_surfaces_are_not_restored_by_rust() {
 }
 
 #[tokio::test]
-async fn legacy_content_port_is_read_only_cross_port_and_hides_private_api() {
+async fn same_port_content_preserves_reads_ranges_and_origin_boundary() {
     let (dir, db) = setup();
-    let state = AppState::new(db, dir.path().into(), "127.0.0.1:8788".into()).unwrap();
+    let state = AppState::new(db, dir.path().into(), "127.0.0.1:8000".into()).unwrap();
     state
         .knowledge_store()
         .unwrap()
         .put("sample.pdf", b"%PDF-fixture".to_vec())
         .await
         .unwrap();
-    let app = stock_info_local::content_router(state, "127.0.0.1:8000".into());
+    let app = router(state, dir.path());
     for (method, path, origin, status) in [
         (
             "GET",
@@ -393,21 +393,16 @@ async fn legacy_content_port_is_read_only_cross_port_and_hides_private_api() {
         (
             "HEAD",
             "/knowledge-content/sample.pdf",
-            "http://localhost:8000",
+            "http://127.0.0.1:8000",
             StatusCode::OK,
         ),
         (
-            "OPTIONS",
-            "/knowledge-content/sample.pdf",
-            "http://127.0.0.1:8000",
-            StatusCode::NO_CONTENT,
-        ),
-        (
             "GET",
-            "/api/research/portfolio/workspace",
-            "http://127.0.0.1:8000",
-            StatusCode::NOT_FOUND,
+            "/knowledge-content/sample.pdf",
+            "http://127.0.0.1:8788",
+            StatusCode::FORBIDDEN,
         ),
+        ("GET", "/__health", "http://127.0.0.1:8000", StatusCode::OK),
         (
             "GET",
             "/knowledge-content/sample.pdf",
@@ -418,7 +413,7 @@ async fn legacy_content_port_is_read_only_cross_port_and_hides_private_api() {
             "POST",
             "/knowledge-content/sample.pdf",
             "http://127.0.0.1:8000",
-            StatusCode::FORBIDDEN,
+            StatusCode::METHOD_NOT_ALLOWED,
         ),
     ] {
         let response = app
@@ -427,7 +422,7 @@ async fn legacy_content_port_is_read_only_cross_port_and_hides_private_api() {
                 Request::builder()
                     .method(method)
                     .uri(path)
-                    .header("host", "127.0.0.1:8788")
+                    .header("host", "127.0.0.1:8000")
                     .header("origin", origin)
                     .body(Body::empty())
                     .unwrap(),
@@ -436,8 +431,12 @@ async fn legacy_content_port_is_read_only_cross_port_and_hides_private_api() {
             .unwrap();
         assert_eq!(response.status(), status, "{method} {path} {origin}");
         if status.is_success() {
-            assert_eq!(response.headers()["access-control-allow-origin"], origin);
-            assert_ne!(response.headers()["access-control-allow-origin"], "*");
+            assert!(
+                response
+                    .headers()
+                    .get("access-control-allow-origin")
+                    .is_none()
+            );
             if method == "HEAD" {
                 assert!(
                     to_bytes(response.into_body(), 100)
@@ -452,7 +451,7 @@ async fn legacy_content_port_is_read_only_cross_port_and_hides_private_api() {
         .oneshot(
             Request::builder()
                 .uri("/knowledge-content/sample.pdf")
-                .header("host", "127.0.0.1:8788")
+                .header("host", "127.0.0.1:8000")
                 .header("origin", "http://127.0.0.1:8000")
                 .header("range", "bytes=5-11")
                 .body(Body::empty())

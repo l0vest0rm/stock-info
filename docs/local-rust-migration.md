@@ -116,11 +116,11 @@ npm run typecheck
 npm run check:web-assets
 ```
 
-默认 API/页面为 `http://127.0.0.1:8000`，正文为 8788。隔离验证需同时指定闲置端口、
+默认 API/页面/正文均为 `http://127.0.0.1:8000`，不再监听独立正文端口。隔离验证需指定闲置端口、
 数据库与两个对象目录；示例中的新目录仅用于测试，不要直接指向现有用户库：
 
 ```sh
-PORT=18000 KNOWLEDGE_CONTENT_LOCAL_PORT=18788 \
+PORT=18000 \
 LOCAL_DATA_DIR=/absolute/path/to/isolated-proof \
 LOCAL_MARKET_DATA_DIR=/absolute/path/to/isolated-proof/market-data \
 KNOWLEDGE_CONTENT_LOCAL_DIR=/absolute/path/to/isolated-proof/knowledge-content \

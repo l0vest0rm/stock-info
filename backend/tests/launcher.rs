@@ -43,31 +43,24 @@ impl Drop for Owned {
 }
 
 #[test]
-fn occupied_api_or_content_port_cannot_touch_database() {
-    for content_busy in [false, true] {
-        let dir = tempfile::tempdir().unwrap();
-        let held = TcpListener::bind("127.0.0.1:0").unwrap();
-        let busy = held.local_addr().unwrap().port();
-        let free = available();
-        let status = command(
-            dir.path(),
-            if content_busy { free } else { busy },
-            if content_busy { busy } else { free },
-        )
-        .status()
-        .unwrap();
-        assert!(!status.success());
-        assert!(
-            !dir.path().join("test.sqlite").exists(),
-            "binding failure must precede SQLite open"
-        );
-    }
+fn occupied_api_port_cannot_touch_database() {
+    let dir = tempfile::tempdir().unwrap();
+    let held = TcpListener::bind("127.0.0.1:0").unwrap();
+    let busy = held.local_addr().unwrap().port();
+    let status = command(dir.path(), busy, available()).status().unwrap();
+    assert!(!status.success());
+    assert!(
+        !dir.path().join("test.sqlite").exists(),
+        "binding failure must precede SQLite open"
+    );
 }
 #[test]
 fn native_server_health_and_sigterm_drain_without_node_runtime() {
     let dir = tempfile::tempdir().unwrap();
     let api = available();
-    let content = available();
+    // A foreign content-port listener must neither block startup nor be stopped.
+    let held = TcpListener::bind("127.0.0.1:0").unwrap();
+    let content = held.local_addr().unwrap().port();
     let mut child = Owned(command(dir.path(), api, content).spawn().unwrap());
     let until = Instant::now() + Duration::from_secs(30);
     loop {
@@ -96,6 +89,23 @@ fn native_server_health_and_sigterm_drain_without_node_runtime() {
         assert!(Instant::now() < until, "health readiness timeout");
         std::thread::sleep(Duration::from_millis(50));
     }
+    // Content/converter routes are served on the API port, not a second socket.
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", api)).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    write!(
+        stream,
+        "GET /__health HTTP/1.0\r\nHost: 127.0.0.1:{api}\r\n\r\n"
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.0 200") || response.starts_with("HTTP/1.1 200"),
+        "{response}"
+    );
+    assert_eq!(held.local_addr().unwrap().port(), content);
     assert!(
         Command::new("kill")
             .args(["-TERM", &child.0.id().to_string()])

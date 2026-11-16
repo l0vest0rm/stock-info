@@ -94,3 +94,41 @@ test('refuses to signal a PID whose birth identity changed after preflight', asy
   await assert.rejects(prepareLocalPorts(config, io), /changed before shutdown/);
   assert.deepEqual(io.signals, []);
 });
+
+test('single listener still drains the owned old API instance', async () => {
+  const io = fixture();
+  await prepareLocalPorts({ ...config, ports: ['18000'] }, io);
+  assert.deepEqual(io.signals, [42]);
+});
+
+test('launcher preflight ignores the retired content port even when occupied', async () => {
+  const { createServer } = await import('node:net');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const held = createServer();
+  const spare = createServer();
+  await new Promise(resolve => held.listen(0, '127.0.0.1', resolve));
+  await new Promise(resolve => spare.listen(0, '127.0.0.1', resolve));
+  const port = spare.address().port;
+  await new Promise(resolve => spare.close(resolve));
+  try {
+    await promisify(execFile)(process.execPath, ['scripts/prepare-local-ports.mjs'], {
+      cwd: new URL('../../', import.meta.url),
+      env: { ...process.env, HOST: '127.0.0.1', PORT: String(port),
+        KNOWLEDGE_CONTENT_LOCAL_PORT: String(held.address().port),
+        LOCAL_CONTENT_PORT: String(held.address().port), LOCAL_RUNTIME_DIR: '' },
+    });
+    assert.ok(held.listening);
+  } finally { await new Promise(resolve => held.close(resolve)); }
+});
+
+test('content and converter defaults use the API port, ignoring legacy port variables', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const output = execFileSync('/bin/sh', ['-c', '. ./scripts/local-runtime-env.sh; printf "%s\\n" "$KNOWLEDGE_CONTENT_PUBLIC_BASE_URL" "$KNOWLEDGE_REPORT_CONVERTER_URL"'], {
+    cwd: new URL('../../', import.meta.url), encoding: 'utf8',
+    env: { ...process.env, HOST: '127.0.0.1', PORT: '18000',
+      KNOWLEDGE_CONTENT_LOCAL_PORT: '8788', LOCAL_CONTENT_PORT: '8788',
+      KNOWLEDGE_CONTENT_PUBLIC_BASE_URL: '', KNOWLEDGE_REPORT_CONVERTER_URL: '' },
+  });
+  assert.equal(output, 'http://127.0.0.1:18000\nhttp://127.0.0.1:18000/__convert-report\n');
+});

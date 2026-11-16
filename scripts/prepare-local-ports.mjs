@@ -26,8 +26,8 @@ export async function prepareLocalPorts({ root, runtimeRoot, host, ports }, io =
   const readPending = io.readPending ?? (() => []);
   const writePending = io.writePending ?? (() => {});
   if (!isIP(host) || !(host.startsWith("127.") || host === "::1")) throw new Error("HOST must be a loopback IP address");
-  if (ports.some(port => !/^[0-9]+$/.test(String(port)) || Number(port) < 1 || Number(port) > 65535) || Number(ports[0]) === Number(ports[1])) {
-    throw new Error("API/content ports must be distinct integers between 1 and 65535");
+  if (!ports.length || ports.some(port => !/^[0-9]+$/.test(String(port)) || Number(port) < 1 || Number(port) > 65535) || new Set(ports.map(Number)).size !== ports.length) {
+    throw new Error("Listening ports must be distinct integers between 1 and 65535");
   }
   const listeners = () => [...new Set(ports.flatMap(port =>
     inspect(["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fp"])
@@ -41,7 +41,7 @@ export async function prepareLocalPorts({ root, runtimeRoot, host, ports }, io =
   };
   const pids = listeners();
   const pending = readPending().filter(entry => entry && Number.isInteger(entry.pid) && entry.pid > 0 && typeof entry.birth === "string" && entry.birth && identity(entry.pid) === entry.birth);
-  // Validate BOTH ports before stopping anything. Another checkout is unrelated.
+  // Validate configured listeners before stopping anything. Another checkout is unrelated.
   for (const pid of pids) {
     if (!owned(pid)) throw new Error(`Port ${ports.join("/")} occupied by unrelated or unidentifiable PID ${pid}; no services stopped.`);
   }
@@ -92,6 +92,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         renameSync(temp, pendingPath);
       },
     };
-    await prepareLocalPorts({ root, runtimeRoot, host: process.env.HOST || "127.0.0.1", ports: [process.env.PORT || "8000", process.env.KNOWLEDGE_CONTENT_LOCAL_PORT || process.env.LOCAL_CONTENT_PORT || "8788"] }, pendingIO);
+    await prepareLocalPorts({ root, runtimeRoot, host: process.env.HOST || "127.0.0.1", ports: [process.env.PORT || "8000"] }, pendingIO);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

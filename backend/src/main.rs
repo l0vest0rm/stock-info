@@ -6,10 +6,10 @@ use std::{
     net::{IpAddr, SocketAddr},
     path::PathBuf,
 };
-use stock_info_local::{AppState, content_router, db::Database, router, scheduler};
+use stock_info_local::{AppState, db::Database, router, scheduler};
 use tokio::sync::watch;
 
-const HELP: &str = "stock-info-local [COMMAND] [OPTIONS]\nRun from the repository root. No command starts both loopback HTTP listeners.\nCommands: --acquisition list|put|status|run|session-import --file PATH --task NAME --status active|paused|disabled, --migrate-only, --cron-once, --refresh-xueqiu-cookie,\n  --validate-xueqiu-cookie, --process-knowledge, --process-knowledge-existing,\n  --process-feed, --reconcile-feed, --backfill-feed-relevance,\n  --backfill-information-records, --prepare-featured-report,\n  --publish-featured-report, --review-featured-report, --maintenance OP, --research OP, --sync OP, --analysis-json\n--analysis-json reads pure offline JSON from stdin without opening SQLite.\nWorkflow flags use kebab-case; destructive maintenance requires --apply.\nHOST must be a loopback IP; PORT defaults to 8000; KNOWLEDGE_CONTENT_LOCAL_PORT to 8788.\nLOCAL_DB_PATH or LOCAL_DATA_DIR select SQLite. Existing migrations are preserved.\nModel work requires explicit LLM_RUNTIME=local. Credentials are read from ignored .dev.vars.";
+const HELP: &str = "stock-info-local [COMMAND] [OPTIONS]\nRun from the repository root. Without a command, starts one loopback HTTP listener for API, pages and content.\nCommands: --acquisition list|put|status|run|session-import --file PATH --task NAME --status active|paused|disabled, --migrate-only, --cron-once, --refresh-xueqiu-cookie,\n  --validate-xueqiu-cookie, --process-knowledge, --process-knowledge-existing,\n  --process-feed, --reconcile-feed, --backfill-feed-relevance,\n  --backfill-information-records, --prepare-featured-report,\n  --publish-featured-report, --review-featured-report, --maintenance OP, --research OP, --sync OP, --analysis-json\n--analysis-json reads pure offline JSON from stdin without opening SQLite.\nWorkflow flags use kebab-case; destructive maintenance requires --apply.\nHOST must be a loopback IP; PORT defaults to 8000 (API, pages and content).\nLOCAL_DB_PATH or LOCAL_DATA_DIR select SQLite. Existing migrations are preserved.\nModel work requires explicit LLM_RUNTIME=local. Credentials are read from ignored .dev.vars.";
 
 fn port(name: &str, fallback: &str) -> Result<u16> {
     let value = env::var(name).unwrap_or_else(|_| fallback.into());
@@ -80,20 +80,16 @@ async fn run() -> Result<()> {
         bail!("only loopback HOST addresses are supported");
     }
     let address = SocketAddr::new(host, port("PORT", "8000")?);
-    let content_port = env::var("LOCAL_CONTENT_PORT").unwrap_or_else(|_| "8788".into());
-    let content_address =
-        SocketAddr::new(host, port("KNOWLEDGE_CONTENT_LOCAL_PORT", &content_port)?);
-    // Acquire BOTH listeners before opening/migrating SQLite. Never replace
-    // an existing service, kill its jobs, or mutate data on a bind failure.
-    let listeners = if command.is_empty() {
-        let api = tokio::net::TcpListener::bind(address)
-            .await
-            .with_context(|| {
-                format!("cannot bind local API {address}; existing services were not stopped")
-            })?;
-        let content = tokio::net::TcpListener::bind(content_address).await
-            .with_context(|| format!("cannot bind local content {content_address}; existing services were not stopped"))?;
-        Some((api, content))
+    // Bind before opening/migrating SQLite. Content shares the API listener.
+    // Never stop unrelated services or mutate data on a bind failure.
+    let listener = if command.is_empty() {
+        Some(
+            tokio::net::TcpListener::bind(address)
+                .await
+                .with_context(|| {
+                    format!("cannot bind local API {address}; existing services were not stopped")
+                })?,
+        )
     } else {
         None
     };
@@ -114,7 +110,7 @@ async fn run() -> Result<()> {
     if state.version.is_empty() {
         state.version = "local-rust".into();
     }
-    let Some((api_listener, content_listener)) = listeners else {
+    let Some(api_listener) = listener else {
         let result = run_command(&state, command, &options).await;
         state.tasks.close();
         state.tasks.wait().await;
@@ -144,29 +140,17 @@ async fn run() -> Result<()> {
     let collector = stock_info_local::acquisition_runtime::start(&state)?;
     let jobs = scheduler::start(state.clone()).await?;
     let web_research = stock_info_local::web_workflow::start(&state);
-    let mut content_state = state.clone();
-    content_state.authority = content_address.to_string();
     let (stop, stopped) = watch::channel(false);
     let mut api_task = tokio::spawn(
         axum::serve(api_listener, router(state.clone(), &assets))
-            .with_graceful_shutdown(wait_stop(stopped.clone()))
+            .with_graceful_shutdown(wait_stop(stopped))
             .into_future(),
     );
-    let mut content_task = tokio::spawn(
-        axum::serve(
-            content_listener,
-            content_router(content_state, address.to_string()),
-        )
-        .with_graceful_shutdown(wait_stop(stopped))
-        .into_future(),
-    );
-    eprintln!("Rust local API: http://{address}; content: http://{content_address}");
-    // Watch unexpected server exit as well as signals. Do not abandon accepted
-    // calculations or scheduler jobs merely because a browser disconnects.
-    let (api_done, content_done, early_result) = tokio::select! {
-        result = &mut api_task => (true, false, Some(result)),
-        result = &mut content_task => (false, true, Some(result)),
-        _ = &mut shutdown_signal => (false, false, None),
+    eprintln!("Rust local API/pages/content: http://{address}");
+    // Drain accepted work even if the server exits unexpectedly.
+    let (api_done, early_result) = tokio::select! {
+        result = &mut api_task => (true, Some(result)),
+        _ = &mut shutdown_signal => (false, None),
     };
     eprintln!(
         "Shutdown requested: stop accepting work; acquisition will checkpoint the current input/scope."
@@ -179,11 +163,6 @@ async fn run() -> Result<()> {
     let _ = stop.send(true);
     eprintln!("Shutdown: waiting for accepted HTTP requests.");
     let api_result = if api_done { None } else { Some(api_task.await) };
-    let content_result = if content_done {
-        None
-    } else {
-        Some(content_task.await)
-    };
     eprintln!("Shutdown: waiting for browser worker and scheduled jobs.");
     web_research.stop().await;
     jobs.stop().await;
@@ -195,10 +174,7 @@ async fn run() -> Result<()> {
     state.tasks.close();
     state.tasks.wait().await;
     eprintln!("Shutdown: accepted work settled.");
-    for result in [early_result, api_result, content_result]
-        .into_iter()
-        .flatten()
-    {
+    for result in [early_result, api_result].into_iter().flatten() {
         result??;
     }
     Ok(())

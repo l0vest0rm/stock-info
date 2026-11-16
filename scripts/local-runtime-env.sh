@@ -2,10 +2,9 @@
 export LLM_RUNTIME=local
 unset PRODUCTION_REPORT_SYNC_URL REPORT_SYNC_TOKEN
 export PORT="${PORT:-8000}"
-export KNOWLEDGE_CONTENT_LOCAL_PORT="${KNOWLEDGE_CONTENT_LOCAL_PORT:-${LOCAL_CONTENT_PORT:-8788}}"
 CONTENT_HOST=${HOST:-127.0.0.1}
 case "$CONTENT_HOST" in *:*) CONTENT_HOST="[$CONTENT_HOST]" ;; esac
-export KNOWLEDGE_CONTENT_PUBLIC_BASE_URL="${KNOWLEDGE_CONTENT_PUBLIC_BASE_URL:-http://${CONTENT_HOST}:${KNOWLEDGE_CONTENT_LOCAL_PORT}}"
+export KNOWLEDGE_CONTENT_PUBLIC_BASE_URL="${KNOWLEDGE_CONTENT_PUBLIC_BASE_URL:-http://${CONTENT_HOST}:${PORT}}"
 # Preserve the existing local content cache when present, without imposing a
 # machine-specific path on a fresh checkout.
 if [ -z "${KNOWLEDGE_CONTENT_LOCAL_DIR:-}" ] && [ -d /Users/terry/git/data/stock-info/knowledge/content-cache ]; then

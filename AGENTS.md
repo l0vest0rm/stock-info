@@ -6,7 +6,7 @@
   Worker deployment, remote migrations or automatic report publication.
 - The backend is the native Rust application in `backend/`, launched through
   `./start.sh`. API/page URL defaults to
-  `http://127.0.0.1:8000`; the local content listener defaults to port 8788.
+  `http://127.0.0.1:8000`; pages, APIs and content share this single listener.
 - Node is frontend/build tooling, test orchestration and supported offline
   analysis, not a backend runtime or fallback. The retired backend `src/`
   tree and backend JavaScript/TypeScript implementations are removed. Do not
@@ -42,7 +42,7 @@
   requires no checkout, Node or Cargo. `--build-only` installs without starting.
   CLI uses the installed runtime once present; `LOCAL_RUN_FROM_CHECKOUT=1`
   explicitly selects checkout CLI for development/isolated tests.
-  The binary acquires both listeners before migrating SQLite. After building, server
+  The binary acquires its listener before migrating SQLite. After building, server
   startup sends SIGTERM only to this checkout's or its installed native listeners and waits
   for safe exit before automatically continuing installation/startup; drain tickets
   preserve listenerless-process identity across retries (PID plus birth time).

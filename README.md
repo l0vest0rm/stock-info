@@ -14,7 +14,7 @@ npm install --include=dev --no-audit --no-fund
 ./start.sh
 ```
 
-- 默认页面/API：`http://127.0.0.1:8000`；知识正文兼容端口：`http://127.0.0.1:8788`。
+- 默认页面/API：`http://127.0.0.1:8000`；知识正文与研报文件共用该端口，不再启动 8788 兼容监听；历史 8788 直链需改为页面/API 端口，原文件与数据库不变。
 - `start.sh` 构建提示词、页面和 Rust 后，将二进制、配置、
   迁移、提示词和 PDF 提取脚本安装到内置磁盘的
   `~/Library/Application Support/stock-info`（可用 `LOCAL_RUNTIME_DIR` 指定非 `/Volumes`

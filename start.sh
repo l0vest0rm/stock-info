@@ -44,7 +44,7 @@ if [ "$INSTALL_RUNTIME" -eq 1 ]; then
   CAPTURE_TARGET=$(cargo metadata --locked --no-deps --format-version 1 --manifest-path "$CAPTURE_MANIFEST" | node -e 'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>process.stdout.write(JSON.parse(s).target_directory))')
   CAPTURE_BINARY="$CAPTURE_TARGET/debug/app-capture-host"
   # Build before shutdown; failed compilation must leave the old service intact.
-  # Both roots are owned by this checkout; validate both ports before any signal.
+  # Both roots are owned by this checkout; validate the API port before any signal.
   node scripts/install-local-runtime.mjs "$PWD" "$RUNTIME_DIR" "$TARGET_DIR/debug/stock-info-local" --check
   LOCAL_RUNTIME_DIR="$RUNTIME_DIR" node scripts/prepare-local-ports.mjs
   node scripts/install-local-runtime.mjs "$PWD" "$RUNTIME_DIR" "$TARGET_DIR/debug/stock-info-local" --install "$CAPTURE_BINARY"
