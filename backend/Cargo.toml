@@ -1,3 +1,7 @@
+[workspace]
+members = ["crates/securities-data"]
+resolver = "3"
+
 [package]
 name = "stock-info-local"
 version = "0.1.0"
@@ -5,6 +9,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+securities-data = { path = "crates/securities-data" }
 cea-sdk = { path = "../../cea/crates/cea-sdk", default-features = false, features = ["workflow"] }
 llm-client = { path = "../../input-helper/input-gateway/crates/llm-client" }
 acquisition = { path = "../../sub2me/crates/acquisition", features = ["app-capture"] }

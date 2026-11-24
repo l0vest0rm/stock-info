@@ -233,3 +233,40 @@
 - Use isolated SQLite and data/object directories for live checks. A successful
   SDK receipt is not enough: preserve source extraction and selected model/effort
   evidence, then run the existing business validators and verify API/page reads.
+
+## Reusable Securities Data
+
+- `backend/crates/securities-data` owns reusable financial-statement providers,
+  source-preserving series arithmetic, dividend history/plan/yield processing,
+  and research-report acquisition/parsing/LLM
+  extraction orchestration. Keep these implementations out of host modules;
+  existing module paths re-export the crate for compatibility.
+- `backend/src/securities_runtime.rs` adapts host HTTP/cache/object storage to
+  `securities_data::Runtime`. Consumers such as trade inject their own services;
+  never depend on stock-info's running server, real DB or private ledgers.
+- Report news-classification keywords are bundled in the crate's `config/`.
+  Reviewed LLM prompts and browser discovery/scheduling remain host-owned.
+- Include crate source/config/manifests in valuation dependency revisions.
+  `npm run check:rust` validates all workspace members, not only the host.
+  See `backend/crates/securities-data/README.md` for consumption boundaries.
+
+- `finance::dividends` acquires both dividends and share-capital history from
+  Eastmoney via Runtime. The crate must not depend on a K-line provider, cookie,
+  or market-data trait. Yield functions consume explicit caller-provided prices;
+  any existing application price-series acquisition stays in the host.
+  Preserve legacy dividend 100-row/equity 5,000-row limits and 24-hour caching;
+  do not imply all-page history or new HK/US dividend coverage.
+
+- `finance::valuations` in securities-data owns bounded daily Eastmoney PE_TTM /
+  PB_MRQ valuation observations and explicit unadjusted closing inputs for shared
+  dividend arithmetic. This is not an OHLC/K-line provider or a stock-price
+  fallback for stock-info; existing Xueqiu-only stock chart routing is unchanged.
+  Source ratios are not certified point-in-time data. Dividend consumers must
+  label the existing announcement-plan/four-reporting-quarter semantics and not
+  turn missing-history summary zero into historical observations.
+
+- `securities_data::notices` owns company notices, SZ investor-relations disclosures
+  and periodic-filing acquisition. Its optional `NoticeRuntime` adds cached POST
+  transport without changing existing finance/report consumers. Broker reports
+  are separate: `reports::list` owns A-share provider aggregation and the date
+  window; the host supplies any knowledge/discovery rows and owns HTTP projection.

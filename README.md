@@ -168,6 +168,16 @@ Cron 配置唯一来源是 `config/app/local-runtime.json`，时区 UTC；Rust �
 知识处理的自动化开关来自 `config/knowledge/knowledge-processing.json`，默认关闭；
 手动处理和模型调用仍需明确授权及运行环境。
 
+## 跨项目复用财报、公告与研报
+
+`backend/crates/securities-data` 是独立 Rust 库，按 `finance` / `notices` / `reports` 分模块，
+提供财报获取、标准化和季度/年度/TTM 处理，分红历史获取、送转派息解析与股息率计算，
+并提供股票公告、定期报告、深市公司调研记录，以及 A 股券商研报聚合列表、正文/PDF 解析、预测汇总和
+可注入 LLM 的提取流程。stock-info 已通过宿主适配器调用该库；trade 等项目可以直接
+使用 Cargo path 依赖并注入自身 HTTP、缓存、对象存储和模型客户端，无需运行本站。
+不共享数据库、凭据、私有组合或调度器；浏览器研报发现和发布工作流仍由宿主负责。
+接入路径、接口示例及边界见 [securities-data 使用说明](backend/crates/securities-data/README.md)。
+
 ## 验证
 
 ```sh

@@ -460,31 +460,7 @@ pub fn setting(key: &str) -> String {
     std::env::var(key).unwrap_or_default()
 }
 
-pub fn parse_json_or_jsonp(text: &str) -> Result<Value> {
-    let text = text.trim();
-    if text.starts_with('{') || text.starts_with('[') {
-        return Ok(serde_json::from_str(text)?);
-    }
-    if let (Some(start), Some(end)) = (text.find('('), text.rfind(')'))
-        && end > start
-    {
-        return Ok(serde_json::from_str(&text[start + 1..end])?);
-    }
-    bail!("invalid provider JSON/JSONP payload")
-}
-
-pub fn number(value: &Value) -> Option<f64> {
-    if let Some(raw) = value.get("raw") {
-        return number(raw);
-    }
-    if value.is_null() || value.as_str() == Some("") {
-        return None;
-    }
-    value
-        .as_f64()
-        .or_else(|| value.as_str()?.replace(',', "").parse().ok())
-        .filter(|n| n.is_finite())
-}
+pub use securities_data::http::{number, parse_json_or_jsonp};
 
 #[cfg(test)]
 mod proxy_tests {

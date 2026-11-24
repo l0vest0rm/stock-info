@@ -31,6 +31,7 @@ pub mod research_cli;
 pub mod retired_selftest_bridge;
 pub mod runtime_jobs;
 pub mod scheduler;
+mod securities_runtime;
 pub mod storage;
 pub mod sync_cli;
 pub mod szse_options;

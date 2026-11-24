@@ -33,13 +33,13 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{Datelike, Utc};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 type Params = HashMap<String, String>;
 const DATA_ENDPOINT: &str = "https://datacenter-web.eastmoney.com/securities/api/data/v1/get";
-const DIVIDEND_ENDPOINT: &str = "https://datacenter.eastmoney.com/securities/api/data/v1/get";
+use securities_data::finance::dividends::share_additional;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -423,11 +423,7 @@ async fn data_rows(
 
 pub async fn share_changes(state: &AppState, raw_code: &str) -> Result<Vec<Value>> {
     let code = codes::normalize(raw_code);
-    let rows = if is_cn(&code) {
-        data_rows(state, DATA_ENDPOINT, "RPT_F10_EH_EQUITY", "SECUCODE,SECURITY_CODE,END_DATE,TOTAL_SHARES,LIMITED_SHARES,LIMITED_OTHARS,LIMITED_DOMESTIC_NATURAL,LIMITED_STATE_LEGAL,UNLIMITED_SHARES,LISTED_A_SHARES,FREE_SHARES,LIMITED_A_SHARES,LIMITED_DOMESTIC_NOSTATE,CHANGE_REASON", &format!("(SECUCODE=\"{code}\")"), ["5000", "-1", "END_DATE"]).await?
-    } else {
-        vec![]
-    };
+    let rows = securities_data::finance::dividends::share_changes(state, &code).await?;
     if rows.is_empty() {
         let overview = crate::company::eastmoney_overview(state, &code).await?;
         let shares = number(&overview["marketCapYi"])
@@ -440,39 +436,35 @@ pub async fn share_changes(state: &AppState, raw_code: &str) -> Result<Vec<Value
             })
             .unwrap_or_default());
     }
-    Ok(rows.iter().enumerate().map(|(index,row)|{
-        let total=number(&row["TOTAL_SHARES"]).unwrap_or(0.0);
-        let previous=rows.get(index+1).and_then(|r|number(&r["TOTAL_SHARES"])).unwrap_or(0.0);
-        json!({"totalShares":total,"changeDate":trim_date(&row["END_DATE"]),"changeReason":row.get("CHANGE_REASON").unwrap_or(&json!("")),"changeRatio":if previous!=0.0{valuation::fixed(100.0*total/previous-100.0,4)}else{"0.0000".into()},
-            "freeShares":row["FREE_SHARES"],"limitedAShares":row["LIMITED_A_SHARES"],"limitedDomesticNatural":row["LIMITED_DOMESTIC_NATURAL"],"limitedDomesticNostate":row["LIMITED_DOMESTIC_NOSTATE"],"limitedOthers":row["LIMITED_OTHARS"],"limitedShares":row["LIMITED_SHARES"],"limitedStateLegal":row["LIMITED_STATE_LEGAL"],"listedAShares":row["LISTED_A_SHARES"],"unlimitedShares":row["UNLIMITED_SHARES"],"changeShares":if index+1<rows.len(){total-previous}else{0.0}})
-    }).collect())
+    Ok(rows)
 }
+
+pub use securities_data::finance::dividends::dividend_yield_from_rows;
 
 pub async fn share_bonuses(state: &AppState, raw_code: &str) -> Result<Vec<Value>> {
     let code = codes::normalize(raw_code);
-    let filter = format!("(SECUCODE=\"{code}\")");
-    let (rows, changes) = tokio::try_join!(
-        data_rows(
-            state,
-            DIVIDEND_ENDPOINT,
-            "RPT_F10_DIVIDEND_MAIN",
-            "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,IMPL_PLAN_PROFILE,ASSIGN_PROGRESS,EQUITY_RECORD_DATE,EX_DIVIDEND_DATE,PAY_CASH_DATE",
-            &filter,
-            ["100", "-1", "NOTICE_DATE"]
-        ),
+    let (raw, changes) = tokio::try_join!(
+        securities_data::finance::dividends::fetch_share_bonus_rows(state, &code),
         share_changes(state, &code)
     )?;
-    Ok(rows.iter().filter_map(|row|{
-        let plan=row["IMPL_PLAN_PROFILE"].as_str().unwrap_or("");if plan.is_empty()||plan=="不分配不转增"{return None;}
-        let bonus=plan_number(&plan.replacen('元',"",1),"派")/10.0;
-        let event=first_date(row,&["EQUITY_RECORD_DATE","EX_DIVIDEND_DATE","NOTICE_DATE"]);
-        let shares=changes.iter().find(|item|item["changeDate"].as_str().unwrap_or("")<=event.as_str()).and_then(|item|number(&item["totalShares"])).unwrap_or(0.0);
-        Some(json!({"noticeDate":trim_date(&row["NOTICE_DATE"]),"progress":row.get("ASSIGN_PROGRESS").unwrap_or(&json!("")),"plan":plan,"give":plan_number(plan,"送")/10.0,"trans":plan_number(plan,"转")/10.0,"bonus":bonus,"bonusTotal":bonus*shares,"divDate":trim_date(&row["EX_DIVIDEND_DATE"]),"recordDate":trim_date(&row["EQUITY_RECORD_DATE"])}))
-    }).collect())
+    Ok(securities_data::finance::dividends::share_bonuses_from_rows(&raw, &changes))
 }
-async fn share_additional(state: &AppState, code: &str) -> Result<Vec<Value>> {
-    data_rows(state, DIVIDEND_ENDPOINT, "RPT_F10_DIVIDEND_SEO", "SECUCODE,SECURITY_CODE,SECURITY_NAME_ABBR,NOTICE_DATE,ISSUE_NUM,NET_RAISE_FUNDS,ISSUE_PRICE,ISSUE_WAY_EXPLAIN,REG_DATE,LISTING_DATE,RECEIVE_DATE", &format!("(SECUCODE=\"{}\")",codes::normalize(code)), ["100", "-1", "NOTICE_DATE"]).await
+
+// Historical price-series acquisition remains an application concern, not a
+// dependency of the reusable dividend/history library.
+pub async fn dividend_yield(state: &AppState, raw_code: &str) -> Result<Value> {
+    let code = codes::normalize(raw_code);
+    if !is_cn(&code) {
+        return securities_data::finance::dividends::dividend_yield(state, &code, &[]).await;
+    }
+    let today = Utc::now().date_naive().to_string();
+    let (raw, bars) = tokio::try_join!(
+        securities_data::finance::dividends::fetch_history(state, &code),
+        crate::market::load_kline(state, &code, "normal", "1990-01-01", &today)
+    )?;
+    Ok(dividend_yield_from_rows(&raw, &bars))
 }
+
 async fn free_holders(state: &AppState, code: &str) -> Result<Vec<Value>> {
     data_rows(state, DATA_ENDPOINT, "RPT_F10_EH_FREEHOLDERS", "SECUCODE,SECURITY_CODE,END_DATE,HOLDER_RANK,HOLDER_NAME,HOLDER_TYPE,SHARES_TYPE,HOLD_NUM,FREE_HOLDNUM_RATIO,HOLD_NUM_CHANGE,CHANGE_RATIO", &format!("(SECUCODE=\"{}\")(END_DATE in ('{}'))",codes::normalize(code),report_dates(2).join("','")), ["", "-1,1", "END_DATE,HOLDER_RANK"]).await
 }
@@ -480,139 +472,6 @@ async fn org_holders(state: &AppState, code: &str, report_date: &str) -> Result<
     data_rows(state, DATA_ENDPOINT, "RPT_MAIN_ORGHOLDDETAIL", "ORG_TYPE,SECUCODE,REPORT_DATE,HOLDER_CODE,HOLDER_NAME,TOTAL_SHARES,HOLD_VALUE,TOTALSHARES_RATIO,FREESHARES_RATIO,FREE_MARKET_CAP,FREE_SHARES,SECURITY_CODE,FUND_CODE,FUND_DERIVECODE,NETVALUE_RATIO", &format!("(SECUCODE=\"{}\")(ORG_TYPE=\"01\")(REPORT_DATE='{report_date}')",codes::normalize(code)), ["500", "-1", "TOTAL_SHARES"]).await
 }
 
-#[derive(Clone)]
-struct DividendDecision {
-    quarter: i64,
-    announced: String,
-    event: String,
-    report: String,
-    plan: String,
-    cash: f64,
-}
-fn dividend_decision(row: &Value) -> Option<DividendDecision> {
-    let report = first_date(row, &["REPORT_TIME", "REPORT_DATE"]);
-    let quarter = report_quarter(&report)?;
-    let announced = trim_date(&row["NOTICE_DATE"]);
-    if announced.is_empty() {
-        return None;
-    }
-    let plan = row["IMPL_PLAN_PROFILE"].as_str().unwrap_or("").to_string();
-    let event = first_date(
-        row,
-        &[
-            "EX_DIVIDEND_DATE",
-            "EQUITY_RECORD_DATE",
-            "PAY_CASH_DATE",
-            "NOTICE_DATE",
-        ],
-    );
-    Some(DividendDecision {
-        quarter,
-        announced,
-        event,
-        report,
-        plan: plan.clone(),
-        cash: plan_number(&plan.replacen('元', "", 1), "派") / 10.0,
-    })
-}
-fn trailing_cash(active: &BTreeMap<i64, DividendDecision>) -> f64 {
-    let Some(latest) = active.keys().next_back().copied() else {
-        return 0.0;
-    };
-    active
-        .iter()
-        .filter(|(quarter, _)| **quarter > latest - 4 && **quarter <= latest)
-        .map(|(_, decision)| decision.cash)
-        .sum()
-}
-pub async fn dividend_yield(state: &AppState, raw_code: &str) -> Result<Value> {
-    let code = codes::normalize(raw_code);
-    if !is_cn(&code) {
-        return Ok(empty_dividend_yield());
-    }
-    let today = Utc::now().date_naive().to_string();
-    let filter = format!("(SECUCODE=\"{code}\")");
-    let (raw, bars) = tokio::try_join!(
-        data_rows(
-            state,
-            DIVIDEND_ENDPOINT,
-            "RPT_F10_DIVIDEND_MAIN",
-            "SECUCODE,SECURITY_CODE,NOTICE_DATE,REPORT_DATE,REPORT_TIME,IMPL_PLAN_PROFILE,ASSIGN_PROGRESS,EQUITY_RECORD_DATE,EX_DIVIDEND_DATE,PAY_CASH_DATE",
-            &filter,
-            ["100", "1", "NOTICE_DATE"]
-        ),
-        crate::market::load_kline(state, &code, "normal", "1990-01-01", &today)
-    )?;
-    Ok(dividend_yield_from_rows(&raw, &bars))
-}
-pub fn dividend_yield_from_rows(raw: &[Value], bars: &[Value]) -> Value {
-    let mut decisions = raw.iter().filter_map(dividend_decision).collect::<Vec<_>>();
-    decisions.sort_by(|a, b| a.announced.cmp(&b.announced));
-    // Zero-cash decisions are excluded, matching cashDividends: an annual
-    // board proposal can revise an earlier nonzero cash distribution only if
-    // it itself contains an explicit cash amount.
-    decisions.retain(|item| item.cash > 0.0);
-    let bars = bars
-        .iter()
-        .filter(|bar| {
-            bar.get("close").is_some() && bar["date"].as_str().is_some_and(|s| !s.is_empty())
-        })
-        .collect::<Vec<_>>();
-    if decisions.is_empty() || bars.is_empty() {
-        return empty_dividend_yield();
-    }
-    let mut active = BTreeMap::new();
-    let mut index = 0;
-    let mut points = vec![];
-    for bar in &bars {
-        let date = bar["date"].as_str().unwrap_or("");
-        while index < decisions.len() && decisions[index].announced.as_str() <= date {
-            let d = decisions[index].clone();
-            active.insert(d.quarter, d);
-            index += 1;
-        }
-        if let Some(close) = number(&bar["close"]).filter(|n| *n > 0.0)
-            && !active.is_empty()
-        {
-            points.push(json!([
-                date_timestamp(date),
-                100.0 * trailing_cash(&active) / close
-            ]));
-        }
-    }
-    while index < decisions.len() {
-        let d = decisions[index].clone();
-        active.insert(d.quarter, d);
-        index += 1;
-    }
-    let annual = trailing_cash(&active);
-    let close = bars
-        .iter()
-        .rev()
-        .find_map(|bar| number(&bar["close"]).filter(|n| *n > 0.0))
-        .unwrap_or(0.0);
-    json!({"currentYield":if close>0.0{100.0*annual/close}else{0.0},"annualizedCash":annual,"annualizedCashPerShare":annual,"latestEventDate":decisions.last().map(|d|d.event.as_str()).unwrap_or(""),"series":points,"events":decisions.iter().map(|d|json!({"ts":date_timestamp(&d.event),"plan":d.plan,"reportDate":d.report,"cashPerShare":d.cash})).collect::<Vec<_>>()})
-}
-fn empty_dividend_yield() -> Value {
-    json!({"currentYield":0,"annualizedCash":0,"annualizedCashPerShare":0,"latestEventDate":"","series":[],"events":[]})
-}
-fn report_quarter(value: &str) -> Option<i64> {
-    let re = regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})").unwrap();
-    if let Some(caps) = re.captures(value) {
-        return Some(caps[1].parse::<i64>().ok()? * 4 + (caps[2].parse::<i64>().ok()? - 1) / 3);
-    }
-    let year = regex::Regex::new(r"(\d{4})")
-        .unwrap()
-        .captures(value)?
-        .get(1)?
-        .as_str()
-        .parse::<i64>()
-        .ok()?;
-    ["一季", "半年", "三季", "年报"]
-        .iter()
-        .position(|s| value.contains(s))
-        .map(|quarter| year * 4 + quarter as i64)
-}
 pub(crate) fn report_dates(years: i32) -> Vec<String> {
     let now = Utc::now().with_timezone(&chrono_tz::Asia::Shanghai);
     let mut dates = vec![];
@@ -629,32 +488,8 @@ pub(crate) fn report_dates(years: i32) -> Vec<String> {
     }
     dates
 }
-fn plan_number(plan: &str, marker: &str) -> f64 {
-    let Some(index) = plan.find(marker) else {
-        return 0.0;
-    };
-    regex::Regex::new(r"^\s*(\d+(?:\.\d+)?)")
-        .unwrap()
-        .captures(&plan[index + marker.len()..])
-        .and_then(|caps| caps[1].parse().ok())
-        .unwrap_or(0.0)
-}
 fn trim_date(value: &Value) -> String {
     value.as_str().unwrap_or("").chars().take(10).collect()
-}
-fn first_date(row: &Value, fields: &[&str]) -> String {
-    fields
-        .iter()
-        .map(|key| trim_date(&row[*key]))
-        .find(|s| !s.is_empty())
-        .unwrap_or_default()
-}
-fn date_timestamp(value: &str) -> i64 {
-    NaiveDate::parse_from_str(value, "%Y-%m-%d")
-        .ok()
-        .and_then(|date| date.and_hms_opt(0, 0, 0))
-        .map(|date| date.and_utc().timestamp_millis())
-        .unwrap_or(0)
 }
 fn is_cn(code: &str) -> bool {
     [".SH", ".SZ", ".BJ"]

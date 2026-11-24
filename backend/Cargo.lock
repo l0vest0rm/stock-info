@@ -3432,6 +3432,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "securities-data"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "chrono-tz",
+ "encoding_rs",
+ "lopdf",
+ "regex",
+ "reqwest",
+ "ryu-js",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "security-framework"
 version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3719,6 +3736,7 @@ dependencies = [
  "reqwest",
  "rusqlite",
  "ryu-js",
+ "securities-data",
  "serde",
  "serde_json",
  "sha2",

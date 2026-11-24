@@ -3,7 +3,7 @@ pub mod sources;
 
 use crate::{AppState, codes, http::number};
 use anyhow::{Result, bail};
-use chrono::{NaiveDate, Utc};
+use chrono::Utc;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -225,60 +225,13 @@ async fn source_pool(state: &AppState, code: &str) -> Result<Vec<Value>> {
     Ok(rows)
 }
 async fn load_sources(state: &AppState, code: &str, discovered: &[Value]) -> Result<Vec<Value>> {
-    let (eastmoney, sina, knowledge) = tokio::join!(
-        sources::eastmoney_reports(state, code, 1, 100),
-        sources::sina_reports(state, code, 1),
-        news_candidates(state, code)
-    );
-    merge_source_outcomes(
-        eastmoney,
-        sina,
-        knowledge,
+    securities_data::reports::list::recent_with_supplements(
+        state,
+        code,
+        news_candidates(state, code),
         discovered,
-        Utc::now().timestamp_millis(),
     )
-}
-fn merge_source_outcomes(
-    eastmoney: Result<Vec<Value>>,
-    sina: Result<Vec<Value>>,
-    knowledge: Result<Vec<Value>>,
-    discovered: &[Value],
-    now_ms: i64,
-) -> Result<Vec<Value>> {
-    let eastmoney = eastmoney?;
-    let optional = |result: Result<Vec<Value>>, source: &str| match result {
-        Ok(rows) => rows,
-        Err(error) => {
-            eprintln!("company report optional {source} source unavailable: {error:#}");
-            Vec::new()
-        }
-    };
-    let rows = domain::merge_reports(
-        &domain::merge_reports(
-            &domain::merge_reports(&eastmoney, &optional(sina, "Sina")),
-            &optional(knowledge, "knowledge"),
-        ),
-        discovered,
-    );
-    let cutoff = now_ms - 90 * 86_400_000;
-    Ok(rows
-        .into_iter()
-        .filter(|item| {
-            NaiveDate::parse_from_str(
-                text(&item["publishDate"]).get(..10).unwrap_or(""),
-                "%Y-%m-%d",
-            )
-            .ok()
-            .map(|date| {
-                date.and_hms_opt(0, 0, 0)
-                    .unwrap()
-                    .and_utc()
-                    .timestamp_millis()
-                    >= cutoff
-            })
-            .unwrap_or(true)
-        })
-        .collect())
+    .await
 }
 async fn news_candidates(state: &AppState, code: &str) -> Result<Vec<Value>> {
     let rows=state.db.query("SELECT d.doc_id,d.source_name,d.title,d.url,d.published_at,d.fetched_at,d.event_time,d.summary,d.content_preview,r.content_key,r.content_url FROM knowledge_docs d LEFT JOIN knowledge_doc_content_refs r ON r.doc_id=d.doc_id WHERE d.target_code_normalized=? AND d.report_type='news' AND d.source_type IN ('local_news','web_news') AND (d.title LIKE '%研报%' OR d.title LIKE '%首次覆盖%' OR d.title LIKE '%买入评级%' OR d.title LIKE '%维持%评级%' OR d.title LIKE '%上调%评级%' OR d.title LIKE '%下调%评级%' OR d.title LIKE '%目标价%' OR d.title LIKE '%目标价格%' OR d.content_preview LIKE '%首次覆盖%' OR d.content_preview LIKE '%目标价%') ORDER BY d.sort_time DESC,d.doc_id DESC LIMIT 40",vec![code.into()]).await?;
@@ -567,34 +520,35 @@ async fn analyze(state: &AppState, title: &str, content: &str, events: Events) -
     if state.setting("LLM_RUNTIME") != "local" {
         bail!("company report LLM extraction is only available in local runtime");
     }
-    let content = domain::format_for_llm(content)
-        .trim()
-        .chars()
-        .take(12000)
-        .collect::<String>();
-    if content.is_empty() {
-        return Ok(
-            json!({"forecasts":[],"targetPrice":null,"rawResponseText":"{\"forecasts\":[],\"targetPrice\":null}"}),
-        );
-    }
-    let instructions = include_str!("../../../prompts/company/report-analyze-system.md").trim();
-    let user = include_str!("../../../prompts/company/report-analyze-user.md")
-        .trim()
-        .replacen("{{TITLE}}", title, 1)
-        .replacen("{{CONTENT}}", &content, 1);
-    let options = json!({"model":crate::llm::config(state)?.model,"instructions":instructions,"input":[{"role":"user","content":[{"type":"input_text","text":user}]}],"maxTokens":4096});
+    let model = if domain::format_for_llm(content).trim().is_empty() {
+        String::new()
+    } else {
+        crate::llm::config(state)?.model
+    };
+    let runtime = state.setting("LLM_RUNTIME");
+    let options = securities_data::reports::analysis::AnalysisOptions {
+        runtime: &runtime,
+        model: &model,
+        system_prompt: include_str!("../../../prompts/company/report-analyze-system.md"),
+        user_template: include_str!("../../../prompts/company/report-analyze-user.md"),
+    };
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<String>();
     let forward = tokio::spawn(async move {
         while let Some(delta) = receiver.recv().await {
             emit(&events, json!({"type":"delta","text":delta}));
         }
     });
-    let result = crate::llm::direct::direct_text_events(state, &options, Some(sender)).await;
+    let result = securities_data::reports::analysis::analyze(
+        title,
+        content,
+        options,
+        |request| async move {
+            crate::llm::direct::direct_text_events(state, &request, Some(sender)).await
+        },
+    )
+    .await;
     let _ = forward.await;
-    let response = result?;
-    let mut analysis = domain::parse_analysis(&response)?;
-    analysis["rawResponseText"] = json!(response);
-    Ok(analysis)
+    result
 }
 
 pub fn aggregate(code: &str, items: &[Value]) -> Value {
@@ -979,44 +933,5 @@ mod tests {
             annual_profit_rows(rows.as_array().unwrap()).get(&2025),
             Some(&10.0)
         );
-    }
-    #[test]
-    fn source_failures_preserve_mandatory_provider_boundary() {
-        let failed = merge_source_outcomes(
-            Err(anyhow::anyhow!("Eastmoney upstream HTTP 503")),
-            Ok(vec![
-                json!({"title":"Supplement","url":"https://example.com/supplement"}),
-            ]),
-            Ok(vec![]),
-            &[],
-            1_800_000_000_000,
-        )
-        .unwrap_err();
-        assert!(failed.to_string().contains("Eastmoney upstream HTTP 503"));
-        let primary =
-            json!({"title":"Current","infoCode":"AP202610290000001","publishDate":"2026-10-29"});
-        let rows = merge_source_outcomes(
-            Ok(vec![
-                primary.clone(),
-                json!({"title":"Old","infoCode":"AP202001010000001","publishDate":"2020-01-01"}),
-            ]),
-            Err(anyhow::anyhow!("Sina unavailable")),
-            Err(anyhow::anyhow!("Knowledge unavailable")),
-            &[json!({"title":"Unknown date","url":"https://example.com/unknown"})],
-            NaiveDate::from_ymd_opt(2026, 10, 29)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_utc()
-                .timestamp_millis(),
-        )
-        .unwrap();
-        assert_eq!(rows.len(), 2);
-        assert!(
-            rows.iter()
-                .any(|row| row["infoCode"] == primary["infoCode"])
-        );
-        assert!(!rows.iter().any(|row| row["title"] == "Old"));
-        assert!(rows.iter().any(|row| row["title"] == "Unknown date"));
     }
 }

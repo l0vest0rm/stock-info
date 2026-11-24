@@ -123,7 +123,7 @@
     "dev:rust": "./start.sh",
     "db:migrate:rust": "cargo run --locked --manifest-path backend/Cargo.toml -- --migrate-only",
     "check:llm": "node --test scripts/build-prompts.test.mjs && cargo test --locked --manifest-path ../input-helper/input-gateway/crates/llm-client/Cargo.toml direct::tests && cargo test --locked --manifest-path backend/Cargo.toml --test llm_runtime",
-    "check:rust": "cargo fmt --manifest-path backend/Cargo.toml -- --check && cargo clippy --locked --manifest-path backend/Cargo.toml --all-targets -- -D warnings && cargo test --locked --manifest-path backend/Cargo.toml",
+    "check:rust": "cargo fmt --manifest-path backend/Cargo.toml --all -- --check && cargo clippy --locked --manifest-path backend/Cargo.toml --workspace --all-targets -- -D warnings && cargo test --locked --manifest-path backend/Cargo.toml --workspace",
     "check:rust-routes": "node scripts/check-rust-route-parity.mjs --self-test && node scripts/check-rust-route-parity.mjs",
     "check:web-assets": "node --test web/scripts/local-page-assets.test.mjs",
     "typecheck:backend": "cargo check --locked --manifest-path backend/Cargo.toml",
