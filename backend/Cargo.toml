@@ -9,7 +9,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-securities-data = { path = "crates/securities-data" }
+securities-data = { path = "crates/securities-data", features = ["sqlite-cache"] }
 cea-sdk = { path = "../../cea/crates/cea-sdk", default-features = false, features = ["workflow"] }
 llm-client = { path = "../../input-helper/input-gateway/crates/llm-client" }
 acquisition = { path = "../../sub2me/crates/acquisition", features = ["app-capture"] }

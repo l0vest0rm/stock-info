@@ -8,8 +8,7 @@ as trade. This is a library, not a stock-info HTTP client or backend runtime.
 Statements and research reports currently share security identifiers, JSON
 contracts, cache/HTTP policies and financial forecast semantics. One crate with
 separate `finance`, `notices` and `reports` modules avoids a third infrastructure crate or
-mutual dependencies. No stock-info, SQLite, Axum, CEA, or LLM-client dependency is
-pulled into consumers. PDF parsing remains a library dependency.
+mutual dependencies. No stock-info, Axum, CEA, or LLM-client dependency is pulled into consumers. SQLite is opt-in (feature `sqlite-cache`). PDF parsing remains a library dependency.
 
 ## Consume from trade
 
@@ -17,7 +16,7 @@ For a package under `trade/crates/<package>/Cargo.toml`:
 
 ```toml
 [dependencies]
-securities-data = { path = "../../../stock-info/backend/crates/securities-data" }
+securities-data = { path = "../../../stock-info/backend/crates/securities-data", features = ["sqlite-cache"] }
 ```
 
 Adjust relative paths for your package directory. The crate is self-contained;
@@ -160,3 +159,16 @@ paid-dividend TTM, and must not turn an empty summary zero into historical point
   90-day cutoff; undated rows are retained. This call does not run a model,
   open a browser or query stock-info. For provider-specific pagination use
   `reports::sources::{eastmoney_reports,sina_reports}`.
+
+## Shared local public cache (optional)
+
+Trade and the native stock-info host enable `sqlite-cache`. `data_cache::Cache::shared()`
+opens the same dedicated SQLite file lazily: `~/.cache/securities-data/public.sqlite3`
+or the same absolute `SECURITIES_PUBLIC_CACHE_DB` on both processes. It is not
+the application database. Rebuildable validated public values live in the one `kv`
+table. Host transports still control I/O and authentication; unregistered and
+private source data must not be admitted. The two applications need not run as
+services for each other. Use `Cache::at` with a temporary absolute path in tests.
+The logical size cap is shared by both processes. Simultaneous cold misses in
+different processes can still independently refresh; hits across processes do not
+extend source deadlines. No migration or deletion of legacy caches or snapshots.

@@ -55,6 +55,7 @@ use tower_http::services::{ServeDir, ServeFile};
 #[derive(Clone)]
 pub struct AppState {
     pub db: db::Database,
+    pub public_cache: securities_data::data_cache::Cache,
     pub version: String,
     pub authority: String,
     pub root: std::path::PathBuf,
@@ -68,8 +69,42 @@ impl AppState {
         root: std::path::PathBuf,
         authority: String,
     ) -> anyhow::Result<Self> {
+        #[cfg(test)]
+        if !(std::env::var("SECURITIES_TEST_HOST_PROBE").as_deref() == Ok("1")
+            && std::env::var_os("SECURITIES_CACHE_ACCEPTANCE_DIR").as_deref()
+                == Some(root.as_os_str())
+            && std::env::var_os("SECURITIES_PUBLIC_CACHE_DB").map(std::path::PathBuf::from)
+                == Some(root.join("public.sqlite3")))
+        {
+            return Self::new_isolated(db, root, authority);
+        }
+        Self::with_cache(
+            db,
+            root,
+            authority,
+            securities_data::data_cache::Cache::shared(),
+        )
+    }
+    /// Explicitly isolated instances must never use a developer's real shared cache.
+    pub fn new_isolated(
+        db: db::Database,
+        root: std::path::PathBuf,
+        authority: String,
+    ) -> anyhow::Result<Self> {
+        let cache = securities_data::data_cache::Cache::at(
+            db.path().with_extension("fixture-public.sqlite3"),
+        );
+        Self::with_cache(db, root, authority, cache)
+    }
+    fn with_cache(
+        db: db::Database,
+        root: std::path::PathBuf,
+        authority: String,
+        public_cache: securities_data::data_cache::Cache,
+    ) -> anyhow::Result<Self> {
         Ok(Self {
             db,
+            public_cache,
             root,
             authority,
             version: http::setting("APP_VERSION"),

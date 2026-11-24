@@ -4,6 +4,24 @@ use chrono::{Datelike, NaiveDate};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
 
+/// Dependency token for hosts materializing results of this module's arithmetic.
+#[cfg(feature = "sqlite-cache")]
+pub fn algorithm_revision() -> &'static str {
+    use sha2::{Digest, Sha256};
+    static REVISION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+        let mut h = Sha256::new();
+        for src in [
+            include_bytes!("series.rs").as_slice(),
+            include_bytes!("../http.rs").as_slice(),
+        ] {
+            h.update((src.len() as u64).to_be_bytes());
+            h.update(src);
+        }
+        format!("{:x}", h.finalize())
+    });
+    &REVISION
+}
+
 fn text(value: &Value) -> &str {
     value.as_str().unwrap_or("")
 }

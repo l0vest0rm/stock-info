@@ -1,5 +1,8 @@
 //! Daily Eastmoney valuation observations, not a stock K-line provider.
 //! Dates/ratios and unadjusted closing-price inputs only; no price fallback or PIT claim.
+#[cfg(feature = "sqlite-cache")]
+pub mod cached;
+
 use crate::{Runtime, codes, http::parse_json_or_jsonp};
 use anyhow::{Result, bail};
 use chrono::NaiveDate;

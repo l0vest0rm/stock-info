@@ -30,7 +30,7 @@ async fn native_institutional_snapshot_reads_local_api_and_writes_classified_art
     let authority = listener.local_addr().unwrap().to_string();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let db = Database::open(dir.path().join("db.sqlite")).unwrap();
-    let state = AppState::new(db, dir.path().into(), authority).unwrap();
+    let state = AppState::new_isolated(db, dir.path().into(), authority).unwrap();
     let result = research_cli::run(&state, "institutional-tracks", &json!({}))
         .await
         .unwrap();
@@ -51,7 +51,7 @@ async fn native_institutional_snapshot_reads_local_api_and_writes_classified_art
 async fn remote_api_rejected_before_any_output() {
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(dir.path().join("db.sqlite")).unwrap();
-    let state = AppState::new(db, dir.path().into(), "127.0.0.1:8000".into()).unwrap();
+    let state = AppState::new_isolated(db, dir.path().into(), "127.0.0.1:8000".into()).unwrap();
     let error = research_cli::run(
         &state,
         "institutional-tracks",

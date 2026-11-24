@@ -224,6 +224,16 @@ fn headers(referer: &str) -> Result<HeaderMap> {
     Ok(result)
 }
 
+/// Only this mainland statement family uses the cross-application namespace.
+/// HK statements and Yahoo (which may require a proxy) retain host-local routing.
+pub fn is_cn_statement_source(url: &Url) -> bool {
+    url.origin().ascii_serialization() == "https://datacenter-web.eastmoney.com"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
+        && url.path() == "/securities/api/data/get"
+}
+
 // The dynamic source TTL is selected once on a network response, not extended
 // on cache hits. A stale quarter never becomes permanently fresh by polling.
 async fn financial_json(
@@ -232,16 +242,22 @@ async fn financial_json(
     referer: &str,
     yahoo: bool,
 ) -> Result<Value> {
-    let key = format!(
-        "financial-primary:v1:{:x}",
-        Sha256::digest(url.as_str().as_bytes())
-    );
+    let cn = !yahoo && is_cn_statement_source(url);
+    let prefix = if cn {
+        "financial-public-cn:v1"
+    } else {
+        "financial-primary:v1"
+    };
+    let key = format!("{prefix}:{:x}", Sha256::digest(url.as_str().as_bytes()));
     let now = Utc::now().timestamp_millis();
     if let Some(text) = state.read_http_cache(&key, now).await? {
         return parse_json_or_jsonp(&text);
     }
     let text = state.get_text(url.as_str(), headers(referer)?).await?;
     let body = parse_json_or_jsonp(&text)?;
+    if cn && (body["success"] != true || !body["result"]["data"].is_array()) {
+        bail!("invalid public mainland statement response");
+    }
     let mut dates = BTreeSet::new();
     if yahoo {
         if !body["timeseries"]["error"].is_null() {
@@ -333,6 +349,15 @@ fn report_dates() -> Vec<String> {
     result
 }
 
+/// Fetch a validated mainland statement page, including host-selected annual-only
+/// date windows. Use the same category, absolute freshness and transport as fetch_cn.
+pub async fn cn_statement_page(state: &impl Runtime, url: &Url) -> Result<Value> {
+    if !is_cn_statement_source(url) {
+        bail!("not a mainland financial statement endpoint");
+    }
+    financial_json(state, url, "https://emweb.securities.eastmoney.com/", false).await
+}
+
 async fn fetch_cn_family(
     state: &impl Runtime,
     code: &str,
@@ -359,13 +384,7 @@ async fn fetch_cn_family(
         ("source", "HSF10"),
         ("client", "PC"),
     ]);
-    let body = financial_json(
-        state,
-        &url,
-        "https://emweb.securities.eastmoney.com/",
-        false,
-    )
-    .await?;
+    let body = cn_statement_page(state, &url).await?;
     let now = Utc::now().timestamp_millis();
     Ok(body["result"]["data"].as_array().into_iter().flatten().filter_map(|payload| {
         let d=date(&payload["REPORT_DATE"]); if d.is_empty() {return None;}

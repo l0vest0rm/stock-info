@@ -342,7 +342,7 @@ async fn json_body(response: axum::response::Response) -> Value {
 #[tokio::test]
 async fn version_routes_body_validation_and_conflict_status() {
     let (dir, database) = setup();
-    let state = AppState::new(
+    let state = AppState::new_isolated(
         database.clone(),
         dir.path().to_path_buf(),
         "127.0.0.1:8000".into(),

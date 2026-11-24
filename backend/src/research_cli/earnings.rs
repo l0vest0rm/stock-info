@@ -76,19 +76,12 @@ async fn fetch_rows(
         let mut url = reqwest::Url::parse("https://datacenter-web.eastmoney.com/api/data/v1/get")?;
         url.query_pairs_mut()
             .extend_pairs(params.iter().map(|(k, v)| (k.as_str(), v.as_str())));
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::REFERER,
-            reqwest::header::HeaderValue::from_static("https://emweb.securities.eastmoney.com/"),
-        );
-        let text = state
-            .http
-            .text_with_timeout(url.as_str(), reqwest::Method::GET, headers, None, 30_000)
-            .await?;
-        let body: Value = serde_json::from_str(&text)?;
-        if body["success"] != true {
-            bail!("eastmoney {report} failed: {}", body["message"]);
-        }
+        let body = crate::finance::sync::disclosure_page(
+            state,
+            &url,
+            Some(std::time::Duration::from_secs(30)),
+        )
+        .await?;
         pages = body["result"]["pages"].as_u64().unwrap_or(1).max(1);
         let page_rows = body["result"]["data"]
             .as_array()

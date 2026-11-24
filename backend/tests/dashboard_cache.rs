@@ -39,7 +39,7 @@ fn fixture() -> (TempDir, AppState) {
     let db = Database::open(root.join("test.sqlite")).unwrap();
     db.migrate(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../migrations"))
         .unwrap();
-    let state = AppState::new(db, root.to_path_buf(), "127.0.0.1:8000".into()).unwrap();
+    let state = AppState::new_isolated(db, root.to_path_buf(), "127.0.0.1:8000".into()).unwrap();
     (dir, state)
 }
 

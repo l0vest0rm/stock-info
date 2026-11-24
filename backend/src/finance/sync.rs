@@ -71,6 +71,37 @@ trait PageFetcher: Sync {
         page: usize,
     ) -> FetchFuture<'a>;
 }
+// Both the bounded ingest and earnings CLI use the same public page contract.
+// The release window/filter/page is in the URL; a CLI request may keep its
+// explicit transport deadline without creating a second cache identity.
+pub(crate) async fn disclosure_page(
+    state: &AppState,
+    url: &Url,
+    timeout: Option<std::time::Duration>,
+) -> Result<Value> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        REFERER,
+        HeaderValue::from_static("https://emweb.securities.eastmoney.com/"),
+    );
+    securities_data::shared_http::cached_get(
+        &state.public_cache,
+        url.as_str(),
+        &headers,
+        600_000,
+        || {
+            state.http.public_source_text(
+                url.as_str(),
+                reqwest::Method::GET,
+                headers.clone(),
+                None,
+                timeout,
+            )
+        },
+    )
+    .await
+}
+
 struct Provider;
 impl PageFetcher for Provider {
     fn fetch<'a>(
@@ -105,15 +136,7 @@ impl PageFetcher for Provider {
                 ("sortTypes", "-1,-1"),
                 ("sortColumns", sort),
             ]);
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                REFERER,
-                HeaderValue::from_static("https://emweb.securities.eastmoney.com/"),
-            );
-            let body = state
-                .http
-                .cached_json(&state.db, url.as_str(), headers, 600_000, false)
-                .await?;
+            let body = disclosure_page(state, &url, None).await?;
             let pages = number(&body["result"]["pages"])
                 .filter(|n| *n >= 1.0 && n.fract() == 0.0 && *n <= usize::MAX as f64)
                 .map(|n| n as usize)

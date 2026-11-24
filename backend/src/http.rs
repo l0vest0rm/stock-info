@@ -37,11 +37,14 @@ struct RequestPolicy {
     timeout: Duration,
     retry: bool,
     max_bytes: usize,
+    public_cache: bool,
 }
 
 #[derive(Clone)]
 pub struct HttpClient {
     client: Client,
+    public_client: Client,
+    public_proxy_client: Option<Client>,
     limits: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
     timeout: Duration,
     concurrency: usize,
@@ -77,8 +80,8 @@ impl HttpClient {
                 .timeout(timeout)
                 .user_agent("Mozilla/5.0 stock-info-local/0.1")
         };
-        let proxy_client = if proxy_url.trim().is_empty() {
-            None
+        let (proxy_client, public_proxy_client) = if proxy_url.trim().is_empty() {
+            (None, None)
         } else {
             let url = reqwest::Url::parse(proxy_url)
                 .map_err(|_| anyhow::anyhow!("invalid HTTP_PROXY_URL"))?;
@@ -93,10 +96,22 @@ impl HttpClient {
             // Explicit proxy configuration, never environment/system proxy or direct fallback.
             let proxy =
                 reqwest::Proxy::all(url).map_err(|_| anyhow::anyhow!("invalid HTTP_PROXY_URL"))?;
-            Some(client().proxy(proxy).build()?)
+            (
+                Some(client().proxy(proxy.clone()).build()?),
+                Some(
+                    client()
+                        .proxy(proxy)
+                        .redirect(reqwest::redirect::Policy::none())
+                        .build()?,
+                ),
+            )
         };
         Ok(Self {
             client: client().build()?,
+            public_client: client()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()?,
+            public_proxy_client,
             proxy_client,
             limits: Default::default(),
             timeout,
@@ -204,9 +219,37 @@ impl HttpClient {
                 timeout,
                 retry,
                 max_bytes: usize::MAX,
+                public_cache: false,
             },
         )
         .await
+    }
+
+    // Shared-cache admission never follows redirects or accepts an unbounded,
+    // lossy-decoded response. Keep the same retry, proxy and concurrency gates.
+    pub(crate) async fn public_source_text(
+        &self,
+        url: &str,
+        method: Method,
+        headers: HeaderMap,
+        body: Option<String>,
+        timeout: Option<Duration>,
+    ) -> Result<String> {
+        let (bytes, _) = self
+            .request_bytes_policy(
+                url,
+                method,
+                headers,
+                body,
+                RequestPolicy {
+                    timeout: timeout.unwrap_or(self.timeout),
+                    retry: true,
+                    max_bytes: 2 * 1024 * 1024,
+                    public_cache: true,
+                },
+            )
+            .await?;
+        Ok(String::from_utf8(bytes)?)
     }
 
     /// Enforces the cap while decoding/streaming, including proxied requests.
@@ -226,6 +269,7 @@ impl HttpClient {
                 timeout: Duration::from_millis(timeout_ms),
                 retry: true,
                 max_bytes,
+                public_cache: false,
             },
         )
         .await
@@ -243,6 +287,7 @@ impl HttpClient {
             timeout,
             retry,
             max_bytes,
+            public_cache,
         } = policy;
         let parsed = reqwest::Url::parse(url)?;
         let host = parsed.host_str().context("HTTP request has no host")?;
@@ -266,9 +311,17 @@ impl HttpClient {
                 .iter()
                 .any(|domain| host == domain || host.ends_with(&format!(".{domain}")));
         let client = if proxy {
-            self.proxy_client.as_ref().context(
+            (if public_cache {
+                &self.public_proxy_client
+            } else {
+                &self.proxy_client
+            })
+            .as_ref()
+            .context(
                 "HTTP_PROXY_URL is required for configured proxy domains and local Yahoo requests",
             )?
+        } else if public_cache {
+            &self.public_client
         } else {
             &self.client
         };
@@ -480,6 +533,39 @@ mod proxy_tests {
             bytes.push(stream.read_u8().await.unwrap());
         }
         String::from_utf8(bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn shared_public_transport_rejects_redirects_oversize_and_invalid_utf8() {
+        let client = client("", "");
+        for response in [
+            b"HTTP/1.1 302 Found\r\nLocation: /different\r\nContent-Length: 0\r\n\r\n".as_slice(),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2097153\r\n\r\n",
+            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n\xff\xff",
+        ] {
+            let server = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/public", server.local_addr().unwrap());
+            let peer = tokio::spawn(async move {
+                let (mut socket, _) = server.accept().await.unwrap();
+                head(&mut socket).await;
+                socket.write_all(response).await.unwrap();
+                drop(socket);
+                // In particular, don't follow the redirect or retry a successful
+                // public response with invalid content.
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(100), server.accept())
+                        .await
+                        .is_err()
+                );
+            });
+            assert!(
+                client
+                    .public_source_text(&url, Method::GET, HeaderMap::new(), None, None)
+                    .await
+                    .is_err()
+            );
+            peer.await.unwrap();
+        }
     }
 
     #[test]

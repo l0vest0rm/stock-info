@@ -12,7 +12,8 @@ fn setup() -> (tempfile::TempDir, AppState) {
     db.migrate(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../migrations"))
         .unwrap();
     let state =
-        AppState::new(db, directory.path().to_path_buf(), "127.0.0.1:18000".into()).unwrap();
+        AppState::new_isolated(db, directory.path().to_path_buf(), "127.0.0.1:18000".into())
+            .unwrap();
     (directory, state)
 }
 

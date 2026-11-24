@@ -7,7 +7,7 @@ fn state() -> (tempfile::TempDir, AppState) {
     let db = Database::open(dir.path().join("test.sqlite")).unwrap();
     db.migrate(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../migrations"))
         .unwrap();
-    let state = AppState::new(db, dir.path().into(), "127.0.0.1:8000".into()).unwrap();
+    let state = AppState::new_isolated(db, dir.path().into(), "127.0.0.1:8000".into()).unwrap();
     (dir, state)
 }
 #[tokio::test]

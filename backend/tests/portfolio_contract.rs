@@ -437,7 +437,7 @@ async fn routes_keep_read_privacy_content_type_size_and_history_contracts() {
     )
     .await
     .unwrap();
-    let state = AppState::new(
+    let state = AppState::new_isolated(
         db.clone(),
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".."),
         "127.0.0.1:8000".into(),

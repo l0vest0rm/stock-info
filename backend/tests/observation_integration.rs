@@ -19,7 +19,7 @@ async fn assembled_editor_is_local_same_origin_read_only_and_versioned() {
         .parent()
         .unwrap()
         .to_path_buf();
-    let state = AppState::new(db.clone(), root, "127.0.0.1:8000".into()).unwrap();
+    let state = AppState::new_isolated(db.clone(), root, "127.0.0.1:8000".into()).unwrap();
     let app = router(state, dir.path());
     let path = "/api/research/observation/600036.SH";
     for (host, origin) in [

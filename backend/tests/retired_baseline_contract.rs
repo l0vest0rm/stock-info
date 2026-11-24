@@ -147,7 +147,8 @@ async fn missing_cookie_is_rejected_before_cache_or_network_even_for_spot_quotes
     }
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(dir.path().join("empty.sqlite")).unwrap();
-    let state = AppState::new(db, dir.path().to_path_buf(), "127.0.0.1:8000".into()).unwrap();
+    let state =
+        AppState::new_isolated(db, dir.path().to_path_buf(), "127.0.0.1:8000".into()).unwrap();
     let error = xueqiu::stock_quote(&state, "NVDA.US", false)
         .await
         .unwrap_err();
@@ -199,7 +200,8 @@ async fn report_forecasts_keep_publication_years_and_unauthorized_clients_never_
     // clients are rejected before provider access, not given a redacted list.
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(dir.path().join("empty.sqlite")).unwrap();
-    let state = AppState::new(db, dir.path().to_path_buf(), "127.0.0.1:8000".into()).unwrap();
+    let state =
+        AppState::new_isolated(db, dir.path().to_path_buf(), "127.0.0.1:8000".into()).unwrap();
     let app = router(state, dir.path());
     for (host, origin) in [
         ("evil.example:8000", None),

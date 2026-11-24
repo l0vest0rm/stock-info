@@ -57,7 +57,8 @@ async fn routes_read_provider_fixtures_without_live_network() {
     let db = stock_info_local::db::Database::open(temp.path().join("stock.sqlite")).unwrap();
     db.migrate(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../migrations"))
         .unwrap();
-    let state = AppState::new(db, temp.path().to_path_buf(), "127.0.0.1:18000".into()).unwrap();
+    let state =
+        AppState::new_isolated(db, temp.path().to_path_buf(), "127.0.0.1:18000".into()).unwrap();
     let referer = "https://fundf10.eastmoney.com/";
     cache(
         &state,

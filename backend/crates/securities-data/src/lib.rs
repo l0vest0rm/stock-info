@@ -1,7 +1,11 @@
 //! Reusable statement acquisition/normalization and research-report processing.
-//! No database, listener, scheduler, credentials, or implicit provider fallback.
+//! Optional public SQLite cache; no application database, listener, scheduler, credentials or fallback.
 pub mod cache_policy;
 pub mod codes;
+#[cfg(feature = "sqlite-cache")]
+pub mod data_cache;
+#[cfg(feature = "sqlite-cache")]
+pub mod shared_http;
 pub mod finance {
     pub mod dividends;
     pub mod providers;

@@ -244,6 +244,18 @@
 - `backend/src/securities_runtime.rs` adapts host HTTP/cache/object storage to
   `securities_data::Runtime`. Consumers such as trade inject their own services;
   never depend on stock-info's running server, real DB or private ledgers.
+  With feature `sqlite-cache`, both production hosts resolve the same disposable
+  public KV at `~/.cache/securities-data/public.sqlite3` (absolute
+  `SECURITIES_PUBLIC_CACHE_DB` override, isolate this path for tests).
+  Mainland primary statements and allowlisted Eastmoney GET/CNINFO read-only
+  POST data use the crate's shared policy with no local HTTP cache fallback or
+  double-write. Keep host-specific sources, Yahoo proxy and credentials, local
+  object snapshots and durable namespaces isolated; never migrate or share the
+  application's primary database. The public-cache miss transport enforces a
+  2 MiB limit, no redirects, strict UTF-8 and original proxy/concurrency rules.
+  `AppState::new` uses the shared resolver in real runs. Construct integration
+  fixtures with `AppState::new_isolated` beside their temporary DB; unit-test
+  construction also uses an isolated path except for the explicit cross-process probe.
 - Report news-classification keywords are bundled in the crate's `config/`.
   Reviewed LLM prompts and browser discovery/scheduling remain host-owned.
 - Include crate source/config/manifests in valuation dependency revisions.

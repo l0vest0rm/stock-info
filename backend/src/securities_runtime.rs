@@ -1,10 +1,12 @@
 //! Stock-info I/O adapter. Shared acquisition code never opens our SQLite DB.
-use crate::{AppState, http::parse_json_or_jsonp};
+use crate::AppState;
 use anyhow::Result;
 use reqwest::{Method, header::HeaderMap};
-use securities_data::Runtime;
-use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
+use securities_data::{Runtime, shared_http};
+use serde_json::Value;
+
+#[cfg(test)]
+mod shared_cache_host_probe;
 
 impl Runtime for AppState {
     fn config(&self, path: &str) -> Result<Value> {
@@ -17,6 +19,14 @@ impl Runtime for AppState {
         self.market_store()?.put_json(key, value).await
     }
     async fn read_http_cache(&self, key: &str, now: i64) -> Result<Option<String>> {
+        if shared_http::is_primary_key(key) {
+            let cache = self.public_cache.clone();
+            let key = key.to_owned();
+            return Ok(tokio::task::spawn_blocking(move || {
+                shared_http::read_primary(&cache, &key, now)
+            })
+            .await?);
+        }
         let rows = self
             .db
             .query(
@@ -37,6 +47,14 @@ impl Runtime for AppState {
         expires_at: i64,
         now: i64,
     ) -> Result<()> {
+        if shared_http::is_primary_key(key) {
+            let cache = self.public_cache.clone();
+            let (key, url, text) = (key.to_owned(), url.to_owned(), text.to_owned());
+            return tokio::task::spawn_blocking(move || {
+                shared_http::write_primary(&cache, &key, &url, &text, expires_at, now)
+            })
+            .await?;
+        }
         self.db.execute("INSERT INTO http_cache(cache_key,url,method,status,headers_json,body_text,expires_at,updated_at) VALUES(?,?,'GET',200,'{}',?,?,?) ON CONFLICT(cache_key) DO UPDATE SET body_text=excluded.body_text,status=200,expires_at=excluded.expires_at,updated_at=excluded.updated_at",vec![key.into(),url.into(),text.into(),expires_at.into(),now.into()]).await?;
         Ok(())
     }
@@ -62,9 +80,31 @@ impl Runtime for AppState {
             .await
     }
     async fn get_text(&self, url: &str, headers: HeaderMap) -> Result<String> {
+        if securities_data::finance::providers::is_cn_statement_source(&reqwest::Url::parse(url)?) {
+            #[cfg(test)]
+            if let Some(response) = shared_cache_host_probe::fixture_response(url) {
+                return response;
+            }
+            return self
+                .http
+                .public_source_text(url, Method::GET, headers, None, None)
+                .await;
+        }
         self.http.text(url, Method::GET, headers, None).await
     }
     async fn cached_json(&self, url: &str, headers: HeaderMap, ttl_ms: i64) -> Result<Value> {
+        if shared_http::supports_get(url) {
+            return shared_http::cached_get(&self.public_cache, url, &headers, ttl_ms, || async {
+                #[cfg(test)]
+                if let Some(result) = shared_cache_host_probe::fixture_response(url) {
+                    return result;
+                }
+                self.http
+                    .public_source_text(url, Method::GET, headers.clone(), None, None)
+                    .await
+            })
+            .await;
+        }
         self.http
             .cached_json(&self.db, url, headers, ttl_ms, false)
             .await
@@ -90,23 +130,19 @@ impl securities_data::notices::NoticeRuntime for AppState {
         body: Option<String>,
         ttl: i64,
     ) -> Result<Value> {
-        let safe_headers = headers
-            .iter()
-            .filter_map(|(name, value)| value.to_str().ok().map(|value| (name.as_str(), value)))
-            .collect::<std::collections::BTreeMap<_, _>>();
-        let key = format!(
-            "{:x}",
-            Sha256::digest(serde_json::to_vec(
-                &json!({"method":"POST","url":url,"headers":safe_headers,"body":body})
-            )?)
-        );
-        let now = chrono::Utc::now().timestamp_millis();
-        if let Some(text) = self.read_http_cache(&key, now).await? {
-            return parse_json_or_jsonp(&text);
-        }
-        let text = self.http.text(url, Method::POST, headers, body).await?;
-        let result = parse_json_or_jsonp(&text)?;
-        self.db.execute("INSERT INTO http_cache(cache_key,url,method,status,headers_json,body_text,expires_at,updated_at) VALUES(?,?,'POST',200,'{}',?,?,?) ON CONFLICT(cache_key) DO UPDATE SET body_text=excluded.body_text,status=200,expires_at=excluded.expires_at,updated_at=excluded.updated_at",vec![key.into(),url.into(),text.into(),(now+ttl).into(),now.into()]).await?;
-        Ok(result)
+        // This trait exposes only the two public CNINFO query POSTs: never cache
+        // arbitrary POSTs, use a stale fallback or send credentials through it.
+        shared_http::cached_post(
+            &self.public_cache,
+            url,
+            &headers,
+            body.as_deref(),
+            ttl,
+            || {
+                self.http
+                    .public_source_text(url, Method::POST, headers.clone(), body.clone(), None)
+            },
+        )
+        .await
     }
 }

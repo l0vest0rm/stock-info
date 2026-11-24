@@ -602,3 +602,53 @@ async fn share_additional_preserves_raw_financing_rows_and_provider_contract() {
     *host.response.lock().unwrap() = None;
     assert!(dividends::share_additional(&host, "300308").await.is_err());
 }
+
+#[cfg(feature = "sqlite-cache")]
+#[tokio::test]
+async fn valuation_cache_shares_points_not_host_envelopes_and_rechecks_dividends() {
+    use securities_data::{
+        data_cache::Cache as Kv,
+        finance::valuations::{Metric, cached},
+    };
+    let dir = std::env::temp_dir().join(format!(
+        "valuation-kv-{}-{}",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap()
+    ));
+    let db = dir.join("public.sqlite3");
+    let host = Host::default();
+    let code = "600519.SH";
+    let from = "2026-01-01".parse().unwrap();
+    let to = "2026-03-02".parse().unwrap();
+    *host.response.lock().unwrap()=Some(json!({"success":true,"result":{"count":1,"pages":1,"data":[{"SECUCODE":code,"TRADE_DATE":"2026-03-02","PE_TTM":22,"CLOSE_PRICE":100}]}}).to_string());
+    let first = cached::history(&Kv::at(db.clone()), &host, code, Metric::PeTtm, from, to)
+        .await
+        .unwrap();
+    cached::closing_prices(&Kv::at(db.clone()), &host, code, from, to)
+        .await
+        .unwrap();
+    let other_host = Host::default(); // No transport response: a source request here fails.
+    let repeated = cached::history(
+        &Kv::at(db.clone()),
+        &other_host,
+        code,
+        Metric::PeTtm,
+        from,
+        to,
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.points, repeated.points);
+    assert_eq!(first.retrieved_at, repeated.retrieved_at);
+    assert!(other_host.requests.lock().unwrap().is_empty());
+    for (plan, expected) in [("10派20元", 2.0), ("10派30元", 3.0)] {
+        *other_host.response.lock().unwrap()=Some(json!({"success":true,"result":{"data":[{"SECUCODE":code,"REPORT_DATE":"2025-12-31","NOTICE_DATE":"2026-03-01","IMPL_PLAN_PROFILE":plan}]}}).to_string());
+        let revised =
+            cached::periodic_dividend_yield(&Kv::at(db.clone()), &other_host, code, from, to)
+                .await
+                .unwrap();
+        assert_eq!(revised[0]["value"], expected);
+    }
+    assert_eq!(other_host.requests.lock().unwrap().len(), 2); // dividend reads only
+    std::fs::remove_dir_all(dir).unwrap();
+}
